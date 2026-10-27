@@ -42,7 +42,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         return numberToHex(blockNumber);
       case "eth_call": {
         const [tx, block] = params as [
-          { to?: Address; from?: Address; data?: Hex; input?: Hex },
+          { to?: Address; from?: Address; value?: Hex; data?: Hex; input?: Hex },
           BlockTag | Hex | undefined,
         ];
         const data = tx.data ?? tx.input;
@@ -57,6 +57,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
 
         return target.resolve(data, {
           from: tx.from,
+          value: tx.value ? hexToBigInt(tx.value) : 0n,
           blockNumber: resolveBlock(block),
         });
       }

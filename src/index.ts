@@ -5,7 +5,9 @@ export type {
   MockContract,
   MockContractDefaults,
   MockFunction,
+  MockContractFunction,
   MockReadFunction,
+  MockSimulateFunction,
   ResolverContext,
 } from "./contract.js";
 export { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";

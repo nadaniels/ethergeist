@@ -17,9 +17,12 @@ import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.
 import { type RevertFn, type RevertSpec, createRevertError } from "./revert.js";
 
 type ReadMutability = "pure" | "view";
+type WriteMutability = "nonpayable" | "payable";
 
 export type CallContext = {
   from: Address | undefined;
+  /** Wei sent with the call; `0n` when none. */
+  value: bigint;
   blockNumber: bigint;
 };
 
@@ -54,23 +57,45 @@ export type MockFunction<abi extends Abi, args, result> = {
   ): void;
 };
 
-/** Mirrors `getContract(...).read.<functionName>(args)`, but registers a mock. */
+/** Mirrors `getContract(...).<namespace>.<functionName>(args)`, but registers a mock. */
+export type MockContractFunction<
+  abi extends Abi,
+  mutability extends ReadMutability | WriteMutability,
+  functionName extends ContractFunctionName<abi, mutability>,
+> = {
+  <const args extends ContractFunctionArgs<abi, mutability, functionName>>(
+    args?: args,
+  ): MockFunction<abi, args, ContractFunctionReturnType<abi, mutability, functionName, args>>;
+  /** Every call to this function the mock has received, in order. */
+  readonly calls: MockCall<ContractFunctionArgs<abi, mutability, functionName>>[];
+};
+
 export type MockReadFunction<
   abi extends Abi,
   functionName extends ContractFunctionName<abi, ReadMutability>,
-> = {
-  <const args extends ContractFunctionArgs<abi, ReadMutability, functionName>>(
-    args?: args,
-  ): MockFunction<abi, args, ContractFunctionReturnType<abi, ReadMutability, functionName, args>>;
-  /** Every call to this function the mock has received, in order. */
-  readonly calls: MockCall<ContractFunctionArgs<abi, ReadMutability, functionName>>[];
-};
+> = MockContractFunction<abi, ReadMutability, functionName>;
+
+export type MockSimulateFunction<
+  abi extends Abi,
+  functionName extends ContractFunctionName<abi, WriteMutability>,
+> = MockContractFunction<abi, WriteMutability, functionName>;
 
 export type MockContract<abi extends Abi> = {
   address: Address;
   abi: abi;
+  /** View and pure functions. */
   read: {
     [functionName in ContractFunctionName<abi, ReadMutability>]: MockReadFunction<
+      abi,
+      functionName
+    >;
+  };
+  /**
+   * Nonpayable and payable functions, answered over `eth_call` as
+   * `simulateContract` sends them. Nothing here runs for a sent transaction.
+   */
+  simulate: {
+    [functionName in ContractFunctionName<abi, WriteMutability>]: MockSimulateFunction<
       abi,
       functionName
     >;
@@ -78,8 +103,8 @@ export type MockContract<abi extends Abi> = {
 };
 
 /**
- * One resolver per read function, registered before any `.on()` mock so that
- * `.on()` always overrides it.
+ * One resolver per read function, registered before any `read` mock so that
+ * `read` mocks always override it.
  */
 export type MockContractDefaults<abi extends Abi> = {
   [functionName in ContractFunctionName<abi, ReadMutability>]?: Resolver<
@@ -109,9 +134,22 @@ export function createMockContract<const abi extends Abi>(
   const handlers: Handler[] = [];
   const history: MockCall[] = [];
 
-  function register(functionName: string, args: readonly unknown[] | undefined) {
+  const functionsOf = (mutabilities: readonly string[]) =>
+    (abi as Abi).filter(
+      (item): item is AbiFunction =>
+        item.type === "function" && mutabilities.includes(item.stateMutability),
+    );
+  const readFunctions = functionsOf(["view", "pure"]);
+  const simulateFunctions = functionsOf(["nonpayable", "payable"]);
+
+  /** `functions` limits the lookup so an overload never binds across namespaces. */
+  function register(
+    functions: readonly AbiFunction[],
+    functionName: string,
+    args: readonly unknown[] | undefined,
+  ) {
     const abiItem = getAbiItem({
-      abi: abi as Abi,
+      abi: functions,
       name: functionName,
       args,
     } as never) as AbiFunction | undefined;
@@ -139,23 +177,28 @@ export function createMockContract<const abi extends Abi>(
   }
 
   for (const [functionName, resolver] of Object.entries(defaults))
-    register(functionName, undefined).returns(resolver);
+    register(readFunctions, functionName, undefined).returns(resolver);
 
   // Overloads share one entry, as in viem's `getContract`.
-  const read: Record<string, unknown> = {};
-  for (const item of abi as Abi) {
-    if (item.type !== "function") continue;
-    if (item.stateMutability !== "view" && item.stateMutability !== "pure") continue;
-    const functionName = item.name;
-    if (functionName in read) continue;
-    read[functionName] = Object.defineProperty(
-      (args?: readonly unknown[]) => register(functionName, args),
-      "calls",
-      { get: () => history.filter((call) => call.functionName === functionName) },
-    );
+  function namespace(functions: readonly AbiFunction[]) {
+    const entries: Record<string, unknown> = {};
+    for (const { name: functionName } of functions) {
+      if (functionName in entries) continue;
+      entries[functionName] = Object.defineProperty(
+        (args?: readonly unknown[]) => register(functions, functionName, args),
+        "calls",
+        { get: () => history.filter((call) => call.functionName === functionName) },
+      );
+    }
+    return entries;
   }
 
-  const contract = { address, abi, read } as unknown as MockContract<abi>;
+  const contract = {
+    address,
+    abi,
+    read: namespace(readFunctions),
+    simulate: namespace(simulateFunctions),
+  } as unknown as MockContract<abi>;
 
   async function resolve(data: Hex, context: CallContext): Promise<Hex> {
     const selector = slice(data, 0, 4);

@@ -121,3 +121,42 @@ describe("reverts", () => {
     });
   });
 });
+
+describe("simulate", () => {
+  test("exposes only nonpayable and payable function names", () => {
+    expectTypeOf<keyof typeof usdc.simulate>().toEqualTypeOf<
+      "approve" | "transfer" | "transferFrom"
+    >();
+
+    // @ts-expect-error view functions live on read
+    usdc.simulate.balanceOf();
+  });
+
+  test("args, returns, and resolver context are typed from the ABI", () => {
+    usdc.simulate.transfer([USDC, 1n]).returns(true);
+    usdc.simulate.transfer().returns(({ args, from, value }) => {
+      expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
+      expectTypeOf(from).toEqualTypeOf<Address | undefined>();
+      expectTypeOf(value).toEqualTypeOf<bigint>();
+      return true;
+    });
+
+    // @ts-expect-error wrong arg type
+    usdc.simulate.transfer([USDC, "1"]);
+    // @ts-expect-error wrong return type
+    usdc.simulate.transfer().returns(1n);
+  });
+
+  test("functions without outputs return void", () => {
+    const weth = mock.contract({
+      abi: parseAbi(["function deposit() payable"]),
+      address: USDC,
+    });
+    weth.simulate.deposit().returns(() => {});
+    weth.simulate.deposit().returns(undefined);
+  });
+
+  test("history is typed per function", () => {
+    expectTypeOf(usdc.simulate.transfer.calls[0]!.args).toEqualTypeOf<readonly [Address, bigint]>();
+  });
+});
