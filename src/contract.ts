@@ -42,8 +42,8 @@ type Handler = {
   selector: Hex;
   args: readonly unknown[] | undefined;
   specificity: number;
-  resolver: Resolver<Abi, readonly unknown[], unknown> | undefined;
-  hasResolver: boolean;
+  /** Static values are wrapped at registration; `undefined` until `.returns()`/`.reverts()`. */
+  resolver: ((context: ResolverContext<Abi, readonly unknown[]>) => unknown) | undefined;
 };
 
 export type MockFunction<abi extends Abi, args, result> = {
@@ -123,14 +123,13 @@ export function createMockContract<const abi extends Abi>(
       args,
       specificity: specificity(args),
       resolver: undefined,
-      hasResolver: false,
     };
     handlers.push(handler);
 
     const builder = {
-      returns(value: Handler["resolver"]) {
-        handler.resolver = value;
-        handler.hasResolver = true;
+      returns(value: unknown) {
+        handler.resolver =
+          typeof value === "function" ? (value as Handler["resolver"]) : () => value;
       },
       reverts(spec?: RevertSpec) {
         builder.returns(({ revert }: ResolverContext<Abi, unknown>) => revert(spec));
@@ -182,7 +181,7 @@ export function createMockContract<const abi extends Abi>(
       if (h.args !== undefined && !isMatch(h.args, decoded.args)) continue;
       if (!handler || h.specificity >= handler.specificity) handler = h;
     }
-    if (!handler || !handler.hasResolver) {
+    if (!handler?.resolver) {
       const registered = handlers
         .filter((h) => h.selector === selector)
         .map((h) => `  ${formatCall(decoded.functionName, h.args)}`);
@@ -196,18 +195,16 @@ export function createMockContract<const abi extends Abi>(
       );
     }
 
+    const revert = ((spec?: RevertSpec) => {
+      throw createRevertError(abi as Abi, spec);
+    }) as RevertFn<Abi>;
     let result: unknown;
-    if (typeof handler.resolver === "function") {
-      const revert = ((spec?: RevertSpec) => {
-        throw createRevertError(abi as Abi, spec);
-      }) as RevertFn<Abi>;
-      try {
-        result = await handler.resolver({ ...call, revert });
-      } catch (error) {
-        if (error instanceof MockRevertError) throw error;
-        throw new MockResolverError(decoded.functionName, error);
-      }
-    } else result = handler.resolver;
+    try {
+      result = await handler.resolver({ ...call, revert });
+    } catch (error) {
+      if (error instanceof MockRevertError) throw error;
+      throw new MockResolverError(decoded.functionName, error);
+    }
 
     return encodeFunctionResult({
       abi: [handler.abiItem],

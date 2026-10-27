@@ -1,10 +1,12 @@
 import {
   type Abi,
   type Address,
+  type BlockTag,
   type CustomTransportConfig,
   type Hex,
   custom,
   hexToBigInt,
+  isHex,
   numberToHex,
 } from "viem";
 import {
@@ -41,7 +43,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       case "eth_call": {
         const [tx, block] = params as [
           { to?: Address; from?: Address; data?: Hex; input?: Hex },
-          Hex | string | undefined,
+          BlockTag | Hex | undefined,
         ];
         const data = tx.data ?? tx.input;
         if (!tx.to || !data)
@@ -63,9 +65,9 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     }
   }
 
-  function resolveBlock(block: Hex | string | undefined): bigint {
-    if (block === undefined || !block.startsWith("0x")) return blockNumber;
-    return hexToBigInt(block as Hex);
+  function resolveBlock(block: BlockTag | Hex | undefined): bigint {
+    if (block === undefined || !isHex(block)) return blockNumber;
+    return hexToBigInt(block);
   }
 
   return {
