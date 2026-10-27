@@ -41,7 +41,7 @@ describe('balanceOf', () => {
   test('returns a mocked value for specific args', async () => {
     const { mock, client } = setup()
     const usdc = mock.contract({ abi: erc20Abi, address: USDC })
-    usdc.on('balanceOf', [alice]).returns(500_000000n)
+    usdc.read.balanceOf([alice]).returns(500_000000n)
 
     const balance = await client.readContract({
       abi: erc20Abi,
@@ -55,8 +55,8 @@ describe('balanceOf', () => {
   test('stores and retrieves multiple calls', async () => {
     const { mock, client } = setup()
     const usdc = mock.contract({ abi: erc20Abi, address: USDC })
-    usdc.on('balanceOf', [alice]).returns(1n)
-    usdc.on('balanceOf', [bob]).returns(2n)
+    usdc.read.balanceOf([alice]).returns(1n)
+    usdc.read.balanceOf([bob]).returns(2n)
 
     const read = (account: `0x${string}`) =>
       client.readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [account] })
@@ -69,9 +69,9 @@ describe('balanceOf', () => {
   test('falls back to an args-less mock; most recent match wins', async () => {
     const { mock, client } = setup()
     const usdc = mock.contract({ abi: erc20Abi, address: USDC })
-    usdc.on('balanceOf').returns(0n)
-    usdc.on('balanceOf', [alice]).returns(1n)
-    usdc.on('balanceOf', [alice]).returns(2n)
+    usdc.read.balanceOf().returns(0n)
+    usdc.read.balanceOf([alice]).returns(1n)
+    usdc.read.balanceOf([alice]).returns(2n)
 
     const read = (account: `0x${string}`) =>
       client.readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [account] })
@@ -82,7 +82,7 @@ describe('balanceOf', () => {
   test('matches addresses case-insensitively', async () => {
     const { mock, client } = setup()
     const usdc = mock.contract({ abi: erc20Abi, address: USDC.toLowerCase() as `0x${string}` })
-    usdc.on('balanceOf', [alice.toUpperCase().replace('0X', '0x') as `0x${string}`]).returns(7n)
+    usdc.read.balanceOf([alice.toUpperCase().replace('0X', '0x') as `0x${string}`]).returns(7n)
 
     expect(
       await client.readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [alice] }),
@@ -92,7 +92,7 @@ describe('balanceOf', () => {
   test('resolver functions see args and block (balance-at-block)', async () => {
     const { mock, client } = setup({ blockNumber: 10n })
     const usdc = mock.contract({ abi: erc20Abi, address: USDC })
-    usdc.on('balanceOf').returns(({ blockNumber }) => (blockNumber >= 10n ? 100n : 50n))
+    usdc.read.balanceOf().returns(({ blockNumber }) => (blockNumber >= 10n ? 100n : 50n))
 
     const read = (blockNumber?: bigint) =>
       client.readContract({
@@ -109,18 +109,27 @@ describe('balanceOf', () => {
   test('records decoded calls', async () => {
     const { mock, client } = setup()
     const usdc = mock.contract({ abi: erc20Abi, address: USDC })
-    usdc.on('balanceOf').returns(0n)
+    usdc.read.balanceOf().returns(0n)
 
     await client.readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [alice] })
-    const calls = usdc.calls('balanceOf')
+    const calls = usdc.read.balanceOf.calls
     expect(calls).toHaveLength(1)
     expect(calls[0]?.args).toEqual([getAddress(alice)])
+  })
+
+  test('function names that shadow object/function builtins work', async () => {
+    const { mock, client } = setup()
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC })
+    usdc.read.name().returns('USD Coin')
+
+    expect(await client.readContract({ abi: erc20Abi, address: USDC, functionName: 'name' })).toBe('USD Coin')
+    expect(usdc.read.name.calls).toHaveLength(1)
   })
 
   test('unmocked calls fail once, loudly, without retries', async () => {
     const { mock, client } = setup()
     const usdc = mock.contract({ abi: erc20Abi, address: USDC })
-    usdc.on('balanceOf', [bob]).returns(0n)
+    usdc.read.balanceOf([bob]).returns(0n)
 
     const error = await client
       .readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [alice] })
@@ -164,16 +173,16 @@ describe('defaults', () => {
     expect(await balanceOf(bob)).toBe(3n)
   })
 
-  test('on() overrides defaults', async () => {
+  test('read mocks override defaults', async () => {
     const { mock, client } = setup()
     const usdc = mock.contract({ abi: erc20Abi, address: USDC, defaults: { balanceOf: 0n } })
-    usdc.on('balanceOf', [alice]).returns(9n)
-    usdc.on('balanceOf').returns(1n)
+    usdc.read.balanceOf([alice]).returns(9n)
+    usdc.read.balanceOf().returns(1n)
 
     const balanceOf = (account: `0x${string}`) =>
       client.readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [account] })
     expect(await balanceOf(bob)).toBe(1n)
-    // An args-less on() registered later wins over a specific one registered earlier.
+    // An args-less mock registered later wins over a specific one registered earlier.
     expect(await balanceOf(alice)).toBe(1n)
   })
 

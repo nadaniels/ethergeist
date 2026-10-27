@@ -40,22 +40,32 @@ export type MockFunction<args, result> = {
   returns(value: Resolver<args, result>): void
 }
 
-export type MockContract<abi extends Abi> = {
-  address: Address
-  abi: abi
-  on<
-    functionName extends ContractFunctionName<abi, ReadMutability>,
-    const args extends ContractFunctionArgs<abi, ReadMutability, functionName>,
-  >(
-    functionName: functionName,
+/** Mirrors `getContract(...).read.<functionName>(args)`, but registers a mock. */
+export type MockReadFunction<
+  abi extends Abi,
+  functionName extends ContractFunctionName<abi, ReadMutability>,
+> = {
+  <const args extends ContractFunctionArgs<abi, ReadMutability, functionName>>(
     args?: args,
   ): MockFunction<
     args,
     ContractFunctionReturnType<abi, ReadMutability, functionName, args>
   >
-  calls<functionName extends ContractFunctionName<abi, ReadMutability>>(
-    functionName: functionName,
-  ): MockCall<ContractFunctionArgs<abi, ReadMutability, functionName>>[]
+  /** Every call to this function the mock has received, in order. */
+  readonly calls: MockCall<
+    ContractFunctionArgs<abi, ReadMutability, functionName>
+  >[]
+}
+
+export type MockContract<abi extends Abi> = {
+  address: Address
+  abi: abi
+  read: {
+    [functionName in ContractFunctionName<abi, ReadMutability>]: MockReadFunction<
+      abi,
+      functionName
+    >
+  }
 }
 
 /**
@@ -117,14 +127,21 @@ export function createMockContract<const abi extends Abi>(
   for (const [functionName, resolver] of Object.entries(defaults))
     register(functionName, undefined).returns(resolver)
 
-  const contract = {
-    address,
-    abi,
-    on: register,
-    calls(functionName: string) {
-      return history.filter((call) => call.functionName === functionName)
-    },
-  } as unknown as MockContract<abi>
+  // Overloads share one entry, as in viem's `getContract`.
+  const read: Record<string, unknown> = {}
+  for (const item of abi as Abi) {
+    if (item.type !== 'function') continue
+    if (item.stateMutability !== 'view' && item.stateMutability !== 'pure') continue
+    const functionName = item.name
+    if (functionName in read) continue
+    read[functionName] = Object.defineProperty(
+      (args?: readonly unknown[]) => register(functionName, args),
+      'calls',
+      { get: () => history.filter((call) => call.functionName === functionName) },
+    )
+  }
+
+  const contract = { address, abi, read } as unknown as MockContract<abi>
 
   async function resolve(data: Hex, context: CallContext): Promise<Hex> {
     const selector = slice(data, 0, 4)
