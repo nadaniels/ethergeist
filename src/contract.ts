@@ -2,6 +2,7 @@ import {
   type Abi,
   type AbiFunction,
   type Address,
+  type ContractErrorName,
   type ContractFunctionArgs,
   type ContractFunctionName,
   type ContractFunctionReturnType,
@@ -12,7 +13,8 @@ import {
   slice,
   toFunctionSelector,
 } from 'viem'
-import { MockNotFoundError } from './errors.js'
+import { MockNotFoundError, MockResolverError, MockRevertError } from './errors.js'
+import { type RevertFn, type RevertSpec, createRevertError } from './revert.js'
 
 type ReadMutability = 'pure' | 'view'
 
@@ -26,19 +28,30 @@ export type MockCall<args = readonly unknown[]> = CallContext & {
   args: args
 }
 
-type Resolver<args, result> = result | ((call: MockCall<args>) => result)
+export type ResolverContext<abi extends Abi, args> = MockCall<args> & {
+  /** Revert this call, e.g. `revert('paused')` or `revert({ errorName, args })`. */
+  revert: RevertFn<abi>
+}
+
+type Resolver<abi extends Abi, args, result> =
+  | result
+  | ((context: ResolverContext<abi, args>) => result)
 
 type Handler = {
   abiItem: AbiFunction
   selector: Hex
   args: readonly unknown[] | undefined
   specificity: number
-  resolver: Resolver<readonly unknown[], unknown> | undefined
+  resolver: Resolver<Abi, readonly unknown[], unknown> | undefined
   hasResolver: boolean
 }
 
-export type MockFunction<args, result> = {
-  returns(value: Resolver<args, result>): void
+export type MockFunction<abi extends Abi, args, result> = {
+  returns(value: Resolver<abi, args, result>): void
+  /** Revert every matching call. See `RevertSpec` for the accepted forms. */
+  reverts<errorName extends ContractErrorName<abi> = ContractErrorName<abi>>(
+    spec?: RevertSpec<abi, errorName>,
+  ): void
 }
 
 /** Mirrors `getContract(...).read.<functionName>(args)`, but registers a mock. */
@@ -49,6 +62,7 @@ export type MockReadFunction<
   <const args extends ContractFunctionArgs<abi, ReadMutability, functionName>>(
     args?: args,
   ): MockFunction<
+    abi,
     args,
     ContractFunctionReturnType<abi, ReadMutability, functionName, args>
   >
@@ -75,6 +89,7 @@ export type MockContract<abi extends Abi> = {
  */
 export type MockContractDefaults<abi extends Abi> = {
   [functionName in ContractFunctionName<abi, ReadMutability>]?: Resolver<
+    abi,
     ContractFunctionArgs<abi, ReadMutability, functionName>,
     ContractFunctionReturnType<abi, ReadMutability, functionName>
   >
@@ -118,12 +133,16 @@ export function createMockContract<const abi extends Abi>(
     }
     handlers.push(handler)
 
-    return {
+    const builder = {
       returns(value: Handler['resolver']) {
         handler.resolver = value
         handler.hasResolver = true
       },
+      reverts(spec?: RevertSpec) {
+        builder.returns(({ revert }: ResolverContext<Abi, unknown>) => revert(spec))
+      },
     }
+    return builder
   }
 
   for (const [functionName, resolver] of Object.entries(defaults))
@@ -183,10 +202,18 @@ export function createMockContract<const abi extends Abi>(
       )
     }
 
-    const result =
-      typeof handler.resolver === 'function'
-        ? await handler.resolver(call)
-        : handler.resolver
+    let result: unknown
+    if (typeof handler.resolver === 'function') {
+      const revert = ((spec?: RevertSpec) => {
+        throw createRevertError(abi as Abi, spec)
+      }) as RevertFn<Abi>
+      try {
+        result = await handler.resolver({ ...call, revert })
+      } catch (error) {
+        if (error instanceof MockRevertError) throw error
+        throw new MockResolverError(decoded.functionName, error)
+      }
+    } else result = handler.resolver
 
     return encodeFunctionResult({
       abi: [handler.abiItem],

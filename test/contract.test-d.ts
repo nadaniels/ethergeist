@@ -1,4 +1,4 @@
-import { type Address, erc20Abi } from 'viem'
+import { type Address, erc20Abi, parseAbi } from 'viem'
 import { describe, expectTypeOf, test } from 'vitest'
 import { createMockRpc } from '../src/index.js'
 
@@ -85,5 +85,39 @@ describe('defaults', () => {
     })
     // @ts-expect-error wrong return type
     mock.contract({ abi: erc20Abi, address: USDC, defaults: { decimals: 'six' } })
+  })
+})
+
+describe('reverts', () => {
+  const erc721Abi = parseAbi([
+    'function ownerOf(uint256 tokenId) view returns (address)',
+    'error ERC721IncorrectOwner(address sender, uint256 tokenId, address owner)',
+    'error EnforcedPause()',
+  ])
+  const nft = mock.contract({ abi: erc721Abi, address: USDC })
+
+  test('reverts() takes a reason, custom error, panic, raw data, or nothing', () => {
+    nft.read.ownerOf().reverts()
+    nft.read.ownerOf().reverts('ERC721: invalid token ID')
+    nft.read.ownerOf().reverts({ errorName: 'ERC721IncorrectOwner', args: [USDC, 1n, USDC] })
+    nft.read.ownerOf().reverts({ errorName: 'EnforcedPause' })
+    nft.read.ownerOf().reverts({ panic: 0x11 })
+    nft.read.ownerOf().reverts({ data: '0xdeadbeef' })
+
+    // @ts-expect-error not an error on the ABI
+    nft.read.ownerOf().reverts({ errorName: 'Nope' })
+    // @ts-expect-error args are required when the error has inputs
+    nft.read.ownerOf().reverts({ errorName: 'ERC721IncorrectOwner' })
+    // @ts-expect-error wrong arg types
+    nft.read.ownerOf().reverts({ errorName: 'ERC721IncorrectOwner', args: [1n, USDC, 1n] })
+  })
+
+  test('revert() in a resolver is typed against the ABI and returns never', () => {
+    nft.read.ownerOf().returns(({ args: [tokenId], revert }) => {
+      expectTypeOf(revert({ errorName: 'EnforcedPause' })).toBeNever()
+      // @ts-expect-error not an error on the ABI
+      if (tokenId === 0n) revert({ errorName: 'Nope' })
+      return tokenId > 10n ? revert({ errorName: 'EnforcedPause' }) : USDC
+    })
   })
 })
