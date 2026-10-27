@@ -14,6 +14,7 @@ import {
   toFunctionSelector,
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
+import { type MockReturnType, normalizeResult } from "./result.js";
 import { type RevertFn, type RevertSpec, createRevertError } from "./revert.js";
 
 type ReadMutability = "pure" | "view";
@@ -65,7 +66,15 @@ export type MockContractFunction<
 > = {
   <const args extends ContractFunctionArgs<abi, mutability, functionName>>(
     args?: args,
-  ): MockFunction<abi, args, ContractFunctionReturnType<abi, mutability, functionName, args>>;
+  ): MockFunction<
+    abi,
+    args,
+    MockReturnType<
+      abi,
+      functionName,
+      ContractFunctionReturnType<abi, mutability, functionName, args>
+    >
+  >;
   /** Every call to this function the mock has received, in order. */
   readonly calls: MockCall<ContractFunctionArgs<abi, mutability, functionName>>[];
 };
@@ -106,7 +115,7 @@ type NamespaceDefaults<abi extends Abi, mutability extends ReadMutability | Writ
   [functionName in ContractFunctionName<abi, mutability>]?: Resolver<
     abi,
     ContractFunctionArgs<abi, mutability, functionName>,
-    ContractFunctionReturnType<abi, mutability, functionName>
+    MockReturnType<abi, functionName, ContractFunctionReturnType<abi, mutability, functionName>>
   >;
 };
 
@@ -260,7 +269,7 @@ export function createMockContract<const abi extends Abi>(
     return encodeFunctionResult({
       abi: [handler.abiItem],
       functionName: handler.abiItem.name,
-      result,
+      result: normalizeResult(handler.abiItem.outputs, result),
     } as never);
   }
 

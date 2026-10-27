@@ -193,3 +193,57 @@ describe("simulate", () => {
     expectTypeOf(usdc.simulate.transfer.calls[0]!.args).toEqualTypeOf<readonly [Address, bigint]>();
   });
 });
+
+describe("returns: named outputs and partial structs", () => {
+  const feed = mock.contract({
+    abi: parseAbi([
+      "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
+      "function getRoundData(uint80 roundId) view returns (uint80, int256, uint256, uint256, uint80)",
+    ]),
+    address: USDC,
+  });
+  const store = mock.contract({
+    abi: parseAbi([
+      "struct Position { address owner; uint256 amount; }",
+      "function position(uint256 id) view returns (Position)",
+    ]),
+    address: USDC,
+  });
+
+  test("named outputs accept a partial object of the right types", () => {
+    feed.read.latestRoundData().returns({ answer: 1n, updatedAt: 2n });
+    feed.read.latestRoundData().returns({});
+    feed.read.latestRoundData().returns(() => ({ answer: 1n }));
+
+    // @ts-expect-error unknown output name
+    feed.read.latestRoundData().returns({ answr: 1n });
+    // @ts-expect-error wrong type for a named output
+    feed.read.latestRoundData().returns({ answer: "1" });
+    // @ts-expect-error unknown output name from a resolver
+    feed.read.latestRoundData().returns(() => ({ answr: 1n }));
+  });
+
+  test("the tuple form must be complete", () => {
+    feed.read.latestRoundData().returns([1n, 2n, 3n, 4n, 5n]);
+
+    // @ts-expect-error missing elements
+    feed.read.latestRoundData().returns([1n, 2n]);
+  });
+
+  test("unnamed outputs only take the tuple form", () => {
+    feed.read.getRoundData().returns([1n, 2n, 3n, 4n, 5n]);
+
+    // @ts-expect-error no names to key by
+    feed.read.getRoundData().returns({ answer: 1n });
+  });
+
+  test("struct returns accept partial objects but not unknown fields", () => {
+    store.read.position().returns({ amount: 1n });
+    store.read.position().returns({});
+
+    // @ts-expect-error unknown field
+    store.read.position().returns({ ownr: USDC });
+    // @ts-expect-error wrong field type
+    store.read.position().returns({ amount: "1" });
+  });
+});
