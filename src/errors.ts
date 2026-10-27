@@ -1,4 +1,4 @@
-import { BaseError, type Hex } from 'viem'
+import { BaseError, type Hex } from "viem";
 
 // Every error the mock throws carries a numeric JSON-RPC `code` that viem's
 // `shouldRetry` does not retry. Without one, viem wraps the error in
@@ -7,22 +7,22 @@ import { BaseError, type Hex } from 'viem'
 
 /** Thrown when a request reaches the mock with nothing registered to answer it. */
 export class MockNotFoundError extends BaseError {
-  override name = 'MockNotFoundError'
-  code = -32099
+  override name = "MockNotFoundError";
+  code = -32099;
 
   constructor(shortMessage: string, { details }: { details?: string } = {}) {
-    super(shortMessage, details ? { details } : {})
+    super(shortMessage, details ? { details } : {});
   }
 }
 
 /** Thrown when a resolver throws anything other than a revert. */
 export class MockResolverError extends BaseError {
-  override name = 'MockResolverError'
-  code = -32098
+  override name = "MockResolverError";
+  code = -32098;
 
   constructor(functionName: string, cause: unknown) {
-    const error = cause instanceof Error ? cause : new Error(String(cause))
-    super(`Mock resolver for "${functionName}" threw: ${error.message}`, { cause: error })
+    const error = cause instanceof Error ? cause : new Error(String(cause));
+    super(`Mock resolver for "${functionName}" threw: ${error.message}`, { cause: error });
   }
 }
 
@@ -31,12 +31,12 @@ export class MockResolverError extends BaseError {
  * viem's `getContractError` turns into a decoded `ContractFunctionRevertedError`.
  */
 export class MockRevertError extends BaseError {
-  override name = 'MockRevertError'
-  code = 3
-  data: Hex
+  override name = "MockRevertError";
+  code = 3;
+  data: Hex;
 
   constructor(data: Hex, reason?: string) {
-    super(reason === undefined ? 'execution reverted' : `execution reverted: ${reason}`)
-    this.data = data
+    super(reason === undefined ? "execution reverted" : `execution reverted: ${reason}`);
+    this.data = data;
   }
 }
