@@ -54,3 +54,34 @@ describe('calls()', () => {
     expectTypeOf(usdc.calls('allowance')[0]!.args).toEqualTypeOf<readonly [Address, Address]>()
   })
 })
+
+describe('defaults', () => {
+  test('keys are read function names; values are typed resolvers', () => {
+    mock.contract({
+      abi: erc20Abi,
+      address: USDC,
+      defaults: {
+        decimals: 6,
+        balanceOf: (call) => {
+          expectTypeOf(call.args).toEqualTypeOf<readonly [Address]>()
+          return 0n
+        },
+      },
+    })
+
+    mock.contract({
+      abi: erc20Abi,
+      address: USDC,
+      // @ts-expect-error not a function on the ABI
+      defaults: { balanceOff: 0n },
+    })
+    mock.contract({
+      abi: erc20Abi,
+      address: USDC,
+      // @ts-expect-error write functions are excluded
+      defaults: { transfer: true },
+    })
+    // @ts-expect-error wrong return type
+    mock.contract({ abi: erc20Abi, address: USDC, defaults: { decimals: 'six' } })
+  })
+})

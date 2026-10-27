@@ -1,3 +1,3 @@
 export { createMockRpc, type CreateMockRpcParameters, type RpcRequest } from './createMockRpc.js'
-export type { MockCall, MockContract, MockFunction, CallContext } from './contract.js'
+export type { CallContext, MockCall, MockContract, MockContractDefaults, MockFunction } from './contract.js'
 export { MockNotFoundError } from './errors.js'

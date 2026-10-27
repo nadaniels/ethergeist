@@ -58,9 +58,21 @@ export type MockContract<abi extends Abi> = {
   ): MockCall<ContractFunctionArgs<abi, ReadMutability, functionName>>[]
 }
 
+/**
+ * One resolver per read function, registered before any `.on()` mock so that
+ * `.on()` always overrides it.
+ */
+export type MockContractDefaults<abi extends Abi> = {
+  [functionName in ContractFunctionName<abi, ReadMutability>]?: Resolver<
+    ContractFunctionArgs<abi, ReadMutability, functionName>,
+    ContractFunctionReturnType<abi, ReadMutability, functionName>
+  >
+}
+
 export type CreateMockContractParameters<abi extends Abi> = {
   abi: abi
   address: Address
+  defaults?: MockContractDefaults<abi>
 }
 
 /** Internal: the public contract API plus the hook the dispatcher calls. */
@@ -73,37 +85,42 @@ export type InternalMockContract<abi extends Abi = Abi> = {
 export function createMockContract<const abi extends Abi>(
   parameters: CreateMockContractParameters<abi>,
 ): InternalMockContract<abi> {
-  const { abi, address } = parameters
+  const { abi, address, defaults = {} } = parameters
   const handlers: Handler[] = []
   const history: MockCall[] = []
+
+  function register(functionName: string, args: readonly unknown[] | undefined) {
+    const abiItem = getAbiItem({
+      abi: abi as Abi,
+      name: functionName,
+      args,
+    } as never) as AbiFunction | undefined
+    if (!abiItem) throw new Error(`Function "${functionName}" not found on ABI.`)
+
+    const handler: Handler = {
+      abiItem,
+      selector: toFunctionSelector(abiItem),
+      args,
+      resolver: undefined,
+      hasResolver: false,
+    }
+    handlers.push(handler)
+
+    return {
+      returns(value: Handler['resolver']) {
+        handler.resolver = value
+        handler.hasResolver = true
+      },
+    }
+  }
+
+  for (const [functionName, resolver] of Object.entries(defaults))
+    register(functionName, undefined).returns(resolver)
 
   const contract = {
     address,
     abi,
-    on(functionName: string, args?: readonly unknown[]) {
-      const abiItem = getAbiItem({
-        abi: abi as Abi,
-        name: functionName,
-        args,
-      } as never) as AbiFunction | undefined
-      if (!abiItem) throw new Error(`Function "${functionName}" not found on ABI.`)
-
-      const handler: Handler = {
-        abiItem,
-        selector: toFunctionSelector(abiItem),
-        args,
-        resolver: undefined,
-        hasResolver: false,
-      }
-      handlers.push(handler)
-
-      return {
-        returns(value: Handler['resolver']) {
-          handler.resolver = value
-          handler.hasResolver = true
-        },
-      }
-    },
+    on: register,
     calls(functionName: string) {
       return history.filter((call) => call.functionName === functionName)
     },

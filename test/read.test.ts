@@ -134,3 +134,55 @@ describe('balanceOf', () => {
     expect(mock.requests).toHaveLength(1)
   })
 })
+
+describe('defaults', () => {
+  test('answers reads from a defaults object', async () => {
+    const { mock, client } = setup()
+    const balances: Record<string, bigint> = { [getAddress(alice)]: 500n }
+    mock.contract({
+      abi: erc20Abi,
+      address: USDC,
+      defaults: {
+        decimals: 6,
+        symbol: 'USDC',
+        balanceOf: ({ args: [owner] }) => balances[owner] ?? 0n,
+      },
+    })
+
+    const read = <functionName extends 'decimals' | 'symbol'>(functionName: functionName) =>
+      client.readContract({ abi: erc20Abi, address: USDC, functionName })
+    expect(await read('decimals')).toBe(6)
+    expect(await read('symbol')).toBe('USDC')
+
+    const balanceOf = (account: `0x${string}`) =>
+      client.readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [account] })
+    expect(await balanceOf(alice)).toBe(500n)
+    expect(await balanceOf(bob)).toBe(0n)
+
+    // Closures over test state are the store, for now.
+    balances[getAddress(bob)] = 3n
+    expect(await balanceOf(bob)).toBe(3n)
+  })
+
+  test('on() overrides defaults', async () => {
+    const { mock, client } = setup()
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC, defaults: { balanceOf: 0n } })
+    usdc.on('balanceOf', [alice]).returns(9n)
+    usdc.on('balanceOf').returns(1n)
+
+    const balanceOf = (account: `0x${string}`) =>
+      client.readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [account] })
+    expect(await balanceOf(bob)).toBe(1n)
+    // An args-less on() registered later wins over a specific one registered earlier.
+    expect(await balanceOf(alice)).toBe(1n)
+  })
+
+  test('functions missing from defaults still fail loudly', async () => {
+    const { mock, client } = setup()
+    mock.contract({ abi: erc20Abi, address: USDC, defaults: { decimals: 6 } })
+
+    await expect(
+      client.readContract({ abi: erc20Abi, address: USDC, functionName: 'symbol' }),
+    ).rejects.toThrow('No mocks registered for "symbol"')
+  })
+})
