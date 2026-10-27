@@ -102,16 +102,22 @@ export type MockContract<abi extends Abi> = {
   };
 };
 
+type NamespaceDefaults<abi extends Abi, mutability extends ReadMutability | WriteMutability> = {
+  [functionName in ContractFunctionName<abi, mutability>]?: Resolver<
+    abi,
+    ContractFunctionArgs<abi, mutability, functionName>,
+    ContractFunctionReturnType<abi, mutability, functionName>
+  >;
+};
+
 /**
- * One resolver per read function, registered before any `read` mock so that
- * `read` mocks always override it.
+ * One resolver per function, keyed by namespace like `MockContract`. Defaults
+ * are registered before any other mock, so `read`/`simulate` mocks always
+ * override them.
  */
 export type MockContractDefaults<abi extends Abi> = {
-  [functionName in ContractFunctionName<abi, ReadMutability>]?: Resolver<
-    abi,
-    ContractFunctionArgs<abi, ReadMutability, functionName>,
-    ContractFunctionReturnType<abi, ReadMutability, functionName>
-  >;
+  read?: NamespaceDefaults<abi, ReadMutability>;
+  simulate?: NamespaceDefaults<abi, WriteMutability>;
 };
 
 export type CreateMockContractParameters<abi extends Abi> = {
@@ -176,8 +182,10 @@ export function createMockContract<const abi extends Abi>(
     return builder;
   }
 
-  for (const [functionName, resolver] of Object.entries(defaults))
+  for (const [functionName, resolver] of Object.entries(defaults.read ?? {}))
     register(readFunctions, functionName, undefined).returns(resolver);
+  for (const [functionName, resolver] of Object.entries(defaults.simulate ?? {}))
+    register(simulateFunctions, functionName, undefined).returns(resolver);
 
   // Overloads share one entry, as in viem's `getContract`.
   function namespace(functions: readonly AbiFunction[]) {

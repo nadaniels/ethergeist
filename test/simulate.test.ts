@@ -105,6 +105,33 @@ describe("simulate", () => {
     expect(weth.simulate.deposit.calls[0]?.value).toBe(10n ** 18n);
   });
 
+  test("defaults answer simulateContract and are overridden by simulate mocks", async () => {
+    const { mock, client } = setup();
+    const token = mock.contract({
+      abi: tokenAbi,
+      address: TOKEN,
+      defaults: { simulate: { transfer: true, approve: true } },
+    });
+    token.simulate.transfer([bob, 0n]).returns(false);
+
+    const approve = await client.simulateContract({
+      abi: tokenAbi,
+      address: TOKEN,
+      functionName: "approve",
+      args: [bob, 1n],
+    });
+    expect(approve.result).toBe(true);
+    const transfer = (amount: bigint) =>
+      client.simulateContract({
+        abi: tokenAbi,
+        address: TOKEN,
+        functionName: "transfer",
+        args: [bob, amount],
+      });
+    expect((await transfer(1n)).result).toBe(true);
+    expect((await transfer(0n)).result).toBe(false);
+  });
+
   test("read and simulate only expose their own functions", () => {
     const { mock } = setup();
     const weth = mock.contract({ abi: wethAbi, address: WETH });

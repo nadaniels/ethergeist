@@ -210,9 +210,11 @@ describe("defaults", () => {
       abi: erc20Abi,
       address: USDC,
       defaults: {
-        decimals: 6,
-        symbol: "USDC",
-        balanceOf: ({ args: [owner] }) => balances[owner] ?? 0n,
+        read: {
+          decimals: 6,
+          symbol: "USDC",
+          balanceOf: ({ args: [owner] }) => balances[owner] ?? 0n,
+        },
       },
     });
 
@@ -236,11 +238,13 @@ describe("defaults", () => {
     expect(await balanceOf(bob)).toBe(3n);
   });
 
-  test("read mocks override defaults", async () => {
+  test("an args-less read mock replaces the default", async () => {
     const { mock, client } = setup();
-    const usdc = mock.contract({ abi: erc20Abi, address: USDC, defaults: { balanceOf: 0n } });
-    usdc.read.balanceOf([alice]).returns(9n);
-    usdc.read.balanceOf().returns(1n);
+    const usdc = mock.contract({
+      abi: erc20Abi,
+      address: USDC,
+      defaults: { read: { balanceOf: 0n } },
+    });
 
     const balanceOf = (account: `0x${string}`) =>
       client.readContract({
@@ -249,14 +253,36 @@ describe("defaults", () => {
         functionName: "balanceOf",
         args: [account],
       });
-    // The later args-less mock replaces the default; the specific one still wins.
-    expect(await balanceOf(bob)).toBe(1n);
+    expect(await balanceOf(alice)).toBe(0n);
+
+    // Same specificity as the default (any args), registered later, so it wins.
+    usdc.read.balanceOf().returns(1n);
+    expect(await balanceOf(alice)).toBe(1n);
+  });
+
+  test("a read mock with args wins over the default only for those args", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({
+      abi: erc20Abi,
+      address: USDC,
+      defaults: { read: { balanceOf: 0n } },
+    });
+    usdc.read.balanceOf([alice]).returns(9n);
+
+    const balanceOf = (account: `0x${string}`) =>
+      client.readContract({
+        abi: erc20Abi,
+        address: USDC,
+        functionName: "balanceOf",
+        args: [account],
+      });
     expect(await balanceOf(alice)).toBe(9n);
+    expect(await balanceOf(bob)).toBe(0n);
   });
 
   test("functions missing from defaults still fail loudly", async () => {
     const { mock, client } = setup();
-    mock.contract({ abi: erc20Abi, address: USDC, defaults: { decimals: 6 } });
+    mock.contract({ abi: erc20Abi, address: USDC, defaults: { read: { decimals: 6 } } });
 
     await expect(
       client.readContract({ abi: erc20Abi, address: USDC, functionName: "symbol" }),
