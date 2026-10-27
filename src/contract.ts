@@ -32,6 +32,7 @@ type Handler = {
   abiItem: AbiFunction
   selector: Hex
   args: readonly unknown[] | undefined
+  specificity: number
   resolver: Resolver<readonly unknown[], unknown> | undefined
   hasResolver: boolean
 }
@@ -111,6 +112,7 @@ export function createMockContract<const abi extends Abi>(
       abiItem,
       selector: toFunctionSelector(abiItem),
       args,
+      specificity: specificity(args),
       resolver: undefined,
       hasResolver: false,
     }
@@ -159,13 +161,14 @@ export function createMockContract<const abi extends Abi>(
     const call: MockCall = { ...context, ...decoded }
     history.push(call)
 
-    // Most recently registered matching handler wins, so later (more specific
-    // or per-test) mocks override earlier defaults.
-    const handler = handlers.findLast(
-      (h) =>
-        h.selector === selector &&
-        (h.args === undefined || isMatch(h.args, decoded.args)),
-    )
+    // The most specific matching handler wins; among equally specific ones,
+    // the most recently registered wins, so per-test mocks override defaults.
+    let handler: Handler | undefined
+    for (const h of handlers) {
+      if (h.selector !== selector) continue
+      if (h.args !== undefined && !isMatch(h.args, decoded.args)) continue
+      if (!handler || h.specificity >= handler.specificity) handler = h
+    }
     if (!handler || !handler.hasResolver) {
       const registered = handlers
         .filter((h) => h.selector === selector)
@@ -197,6 +200,21 @@ export function createMockContract<const abi extends Abi>(
     matches: (other) => other.toLowerCase() === address.toLowerCase(),
     resolve,
   }
+}
+
+/**
+ * How narrowly a handler's args constrain a call: the number of leaf values it
+ * pins down. Args-less handlers match anything and rank below all others.
+ */
+function specificity(args: readonly unknown[] | undefined): number {
+  if (args === undefined) return -1
+  const count = (value: unknown): number => {
+    if (Array.isArray(value)) return value.reduce((n: number, v) => n + count(v), 0)
+    if (value && typeof value === 'object')
+      return Object.values(value).reduce((n: number, v) => n + count(v), 0)
+    return 1
+  }
+  return count(args)
 }
 
 /** Deep equality where hex strings (addresses, bytes) compare case-insensitively. */

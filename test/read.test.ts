@@ -66,7 +66,7 @@ describe('balanceOf', () => {
     expect(balanceBob).toBe(2n)
   })
 
-  test('falls back to an args-less mock; most recent match wins', async () => {
+  test('falls back to an args-less mock; most recent of equal specificity wins', async () => {
     const { mock, client } = setup()
     const usdc = mock.contract({ abi: erc20Abi, address: USDC })
     usdc.read.balanceOf().returns(0n)
@@ -77,6 +77,30 @@ describe('balanceOf', () => {
       client.readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [account] })
     expect(await read(alice)).toBe(2n)
     expect(await read(bob)).toBe(0n)
+  })
+
+  test('specific args win over a broader mock registered later', async () => {
+    const { mock, client } = setup()
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC })
+    usdc.read.balanceOf([alice]).returns(9n)
+    usdc.read.balanceOf().returns(1n)
+
+    const read = (account: `0x${string}`) =>
+      client.readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [account] })
+    expect(await read(alice)).toBe(9n)
+    expect(await read(bob)).toBe(1n)
+  })
+
+  test('more pinned-down args win: allowance(alice, bob) over allowance()', async () => {
+    const { mock, client } = setup()
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC })
+    usdc.read.allowance([alice, bob]).returns(5n)
+    usdc.read.allowance().returns(0n)
+
+    const allowance = (owner: `0x${string}`, spender: `0x${string}`) =>
+      client.readContract({ abi: erc20Abi, address: USDC, functionName: 'allowance', args: [owner, spender] })
+    expect(await allowance(alice, bob)).toBe(5n)
+    expect(await allowance(bob, alice)).toBe(0n)
   })
 
   test('matches addresses case-insensitively', async () => {
@@ -181,9 +205,9 @@ describe('defaults', () => {
 
     const balanceOf = (account: `0x${string}`) =>
       client.readContract({ abi: erc20Abi, address: USDC, functionName: 'balanceOf', args: [account] })
+    // The later args-less mock replaces the default; the specific one still wins.
     expect(await balanceOf(bob)).toBe(1n)
-    // An args-less mock registered later wins over a specific one registered earlier.
-    expect(await balanceOf(alice)).toBe(1n)
+    expect(await balanceOf(alice)).toBe(9n)
   })
 
   test('functions missing from defaults still fail loudly', async () => {
