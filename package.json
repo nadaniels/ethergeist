@@ -2,14 +2,25 @@
   "name": "viem-transport-mock",
   "version": "1.0.0",
   "description": "",
+  "keywords": [],
+  "license": "ISC",
+  "author": "",
+  "type": "module",
   "main": "./src/index.ts",
   "scripts": {
-    "test": "vitest run --typecheck",
-    "typecheck": "tsc"
+    "test": "vp test run --typecheck",
+    "typecheck": "tsc",
+    "prepare": "vp config"
   },
-  "keywords": [],
-  "author": "",
-  "license": "ISC",
+  "devDependencies": {
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "viem": "^2.57.11",
+    "vite-plus": "catalog:"
+  },
+  "peerDependencies": {
+    "viem": "^2.0.0"
+  },
   "devEngines": {
     "packageManager": {
       "name": "pnpm",
@@ -17,15 +28,5 @@
       "onFail": "download"
     }
   },
-  "packageManager": "pnpm@12.15.0",
-  "type": "module",
-  "devDependencies": {
-    "@types/node": "^26.6.5",
-    "typescript": "^7.0.2",
-    "viem": "^2.57.11",
-    "vitest": "^5.0.5"
-  },
-  "peerDependencies": {
-    "viem": "^2.0.0"
-  }
+  "packageManager": "pnpm@12.15.0"
 }
