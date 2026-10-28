@@ -48,6 +48,33 @@ describe("actions", () => {
   });
 });
 
+describe("getBlock", () => {
+  test("pins a number, hash, or tag", () => {
+    mock.actions.getBlock({ blockNumber: 1n });
+    mock.actions.getBlock({ blockHash: "0x01" });
+    mock.actions.getBlock({ blockTag: "finalized" });
+    // @ts-expect-error not a block tag
+    mock.actions.getBlock({ blockTag: "newest" });
+  });
+
+  test("returns a partial viem block, or null", () => {
+    mock.actions.getBlock().returns({ timestamp: 1n, baseFeePerGas: null });
+    mock.actions.getBlock().returns(null);
+    mock.actions.getBlock().returns(({ blockNumber }) => ({ gasUsed: blockNumber }));
+    // @ts-expect-error transactions are hashes
+    mock.actions.getBlock().returns({ transactions: [{ hash: "0x01" }] });
+  });
+
+  test("calls carry how the block was asked for", () => {
+    expectTypeOf(mock.actions.getBlock.calls[0]!).toEqualTypeOf<{
+      blockNumber: bigint;
+      blockHash?: Hex;
+      blockTag?: "latest" | "earliest" | "pending" | "safe" | "finalized";
+      includeTransactions: boolean;
+    }>();
+  });
+});
+
 describe("method()", () => {
   test("answers with JSON-RPC values, not viem's types", () => {
     mock.method("eth_gasPrice").returns("0x1");

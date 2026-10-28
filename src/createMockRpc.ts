@@ -16,6 +16,7 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { createActions } from "./actions.js";
+import { type BlockClock, generateBlock, numberOfBlockHash } from "./blocks.js";
 import {
   type CallContext,
   type CreateMockContractParameters,
@@ -48,6 +49,12 @@ export type CreateMockRpcParameters = {
   chain?: Chain;
   /** Block number the mock starts at. Defaults to 1n. */
   blockNumber?: bigint;
+  /**
+   * Unix timestamp, in seconds, of the starting block. Later and earlier blocks
+   * are `chain.blockTime` apart (12s if the chain doesn't say). Defaults to
+   * 1_700_000_000n, so runs are deterministic.
+   */
+  timestamp?: bigint;
 };
 
 /** Public client options, minus the chain and transport, which come from the mock. */
@@ -84,7 +91,17 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   const unhandled: UnhandledRequest[] = [];
   const faults: ActiveFault[] = [];
   let batchCount = 0;
-  const actions = createActions({ resolveBlock, codeAt });
+  const clock: BlockClock = {
+    startBlock: initialBlockNumber,
+    startTimestamp: parameters.timestamp ?? 1_700_000_000n,
+    blockTime: chain.blockTime ?? 12_000,
+  };
+  const actions = createActions({
+    resolveBlock,
+    codeAt,
+    blockNumber: () => blockNumber,
+    generateBlock: (number) => generateBlock(number, clock),
+  });
 
   async function request(rpcRequest: RpcRequest): Promise<unknown> {
     const { method, params } = rpcRequest;
@@ -194,17 +211,23 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   }
 
   /**
-   * A block parameter as a block number: a hex number, a tag (every tag is the
-   * current block; there are no reorgs), or an EIP-1898 `{ blockNumber }`.
+   * A block parameter as a block number: a hex number, a tag (`earliest` is 0;
+   * every other tag is the current block, as there are no reorgs), or an
+   * EIP-1898 `{ blockNumber }` or `{ blockHash }` of a generated block.
    */
   function resolveBlock(block: unknown): bigint {
     if (isHex(block)) return hexToBigInt(block);
+    if (block === "earliest") return 0n;
     if (isPlainObject(block)) {
       if (isHex(block.blockNumber)) return hexToBigInt(block.blockNumber);
-      if (isHex(block.blockHash))
-        throw new MockNotFoundError("Blocks by hash are not supported yet.", {
-          details: `Block hash: ${block.blockHash}`,
-        });
+      if (isHex(block.blockHash)) {
+        const number = numberOfBlockHash(block.blockHash);
+        if (number === undefined)
+          throw new MockNotFoundError(`No block with hash ${block.blockHash}.`, {
+            details: "Only generated blocks' hashes resolve to a block number.",
+          });
+        return number;
+      }
     }
     return blockNumber;
   }

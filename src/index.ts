@@ -1,6 +1,7 @@
 export type {
   ActionContext,
   BalanceCall,
+  BlockCall,
   CodeCall,
   MethodCall,
   MockAction,
@@ -28,6 +29,7 @@ export type {
   MockSimulateFunction,
   ResolverContext,
 } from "./contract.js";
+export type { MockBlock } from "./blocks.js";
 export { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 export type { FailRequestsOptions, MockFault, MockFaultHandle } from "./faults.js";
 export { type MockBatch, multicall3Address } from "./multicall.js";

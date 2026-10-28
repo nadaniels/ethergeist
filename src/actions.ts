@@ -1,4 +1,14 @@
-import { type Address, type Hex, getAddress, isHex, numberToHex } from "viem";
+import {
+  type Address,
+  type BlockTag,
+  type Hash,
+  type Hex,
+  getAddress,
+  hexToBigInt,
+  isHex,
+  numberToHex,
+} from "viem";
+import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
 import { MockNotFoundError, MockResolverError } from "./errors.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
 import { isMatch, specificity } from "./match.js";
@@ -8,6 +18,17 @@ import { isPlainObject, zeroResult } from "./result.js";
 export type BalanceCall = { address: Address; blockNumber: bigint };
 /** What a call to `getCode` asked for. Block tags resolve to the mock's block number. */
 export type CodeCall = { address: Address; blockNumber: bigint };
+/**
+ * What a call to `getBlock` asked for. `blockNumber` is always set: a tag
+ * resolves to the mock's block number, and a generated block's hash to its
+ * number. An unknown hash (one a mock pins) uses the mock's block number.
+ */
+export type BlockCall = {
+  blockNumber: bigint;
+  blockHash?: Hash;
+  blockTag?: BlockTag;
+  includeTransactions: boolean;
+};
 /** A JSON value, as JSON-RPC carries it: quantities are hex strings, not bigints. */
 export type RpcValue =
   | string
@@ -55,6 +76,13 @@ export type MockActions = {
    * with placeholder code, `0xfe`, and an `empty()` address with `0x`.
    */
   getCode: MockAction<CodeCall, Hex>;
+  /**
+   * `eth_getBlockByNumber` and `eth_getBlockByHash`. Unmocked, blocks up to the
+   * current one are generated: number, hash, parent hash, and a timestamp that
+   * follows the chain's `blockTime`, with everything else zero. A mock's fields
+   * are merged over the generated block; `null` answers "no such block".
+   */
+  getBlock: MockAction<BlockCall, Partial<MockBlock> | null>;
 };
 
 export type MockMethodBuilder = MockActionBuilder<MethodCall, RpcValue>;
@@ -73,9 +101,12 @@ type Definition = {
   name: string;
   /** Where to register a mock, for "not mocked" messages. */
   hint: string;
-  decode: (params: readonly unknown[]) => object;
-  /** Validates a value in viem's types and converts it to its JSON-RPC form. */
-  encode: (value: unknown) => unknown;
+  decode: (params: readonly unknown[], method: string) => object;
+  /**
+   * Validates a value in viem's types and converts it to its JSON-RPC form.
+   * `call` is `undefined` when validating a static value at registration.
+   */
+  encode: (value: unknown, call: object | undefined) => unknown;
   zero: unknown;
   /** Normalizes pinned fields at registration, e.g. checksumming addresses. */
   pin?: (pinned: unknown) => unknown;
@@ -106,7 +137,7 @@ function createTable(definition: Definition) {
       returns(value: unknown = zeroResult) {
         const resolved = value === zeroResult ? definition.zero : value;
         // A static value that can't be encoded fails here, not inside a request.
-        if (typeof resolved !== "function") definition.encode(resolved);
+        if (typeof resolved !== "function") definition.encode(resolved, undefined);
         handler.resolver =
           // The types guarantee a resolver's signature; it can't be checked at runtime.
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function
@@ -119,8 +150,8 @@ function createTable(definition: Definition) {
     return builder;
   }
 
-  async function answer(params: readonly unknown[]): Promise<unknown> {
-    const call = definition.decode(params);
+  async function answer(method: string, params: readonly unknown[]): Promise<unknown> {
+    const call = definition.decode(params, method);
     history.push(call);
 
     // The most specific matching handler wins; among equally specific ones,
@@ -145,7 +176,7 @@ function createTable(definition: Definition) {
     handler.usedCount += 1;
     try {
       const value = await handler.resolver({ ...call, fail });
-      return definition.encode(value === zeroResult ? definition.zero : value);
+      return definition.encode(value === zeroResult ? definition.zero : value, call);
     } catch (error) {
       if (error instanceof MockFailure) throw error;
       throw new MockResolverError(definition.name, error);
@@ -190,8 +221,28 @@ export function createActions(options: {
   resolveBlock: (block: unknown) => bigint;
   /** Code for an address the mock knows about without a mock: registered or empty. */
   codeAt: (address: Address) => Hex | undefined;
+  /** The current block number. */
+  blockNumber: () => bigint;
+  /** Block `number` as generated, before any mock's fields. */
+  generateBlock: (number: bigint) => MockBlock;
 }) {
-  const { resolveBlock, codeAt } = options;
+  const { resolveBlock, codeAt, blockNumber, generateBlock } = options;
+  /** `eth_getBlockByNumber` takes a number or tag; `eth_getBlockByHash` a hash. */
+  function decodeBlock([block, includeTransactions]: readonly unknown[], rpcMethod: string) {
+    const include = includeTransactions === true;
+    if (rpcMethod === "eth_getBlockByHash" && isHex(block)) {
+      const number = numberOfBlockHash(block);
+      return {
+        blockNumber: number ?? blockNumber(),
+        blockHash: block,
+        includeTransactions: include,
+      };
+    }
+    if (isHex(block)) return { blockNumber: hexToBigInt(block), includeTransactions: include };
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a tag, per JSON-RPC
+    const blockTag = (block ?? "latest") as BlockTag;
+    return { blockNumber: resolveBlock(blockTag), blockTag, includeTransactions: include };
+  }
   const decodeAddressAtBlock = ([address, block]: readonly unknown[]) => ({
     // JSON-RPC params arrive untyped; viem sends the address first.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
@@ -225,10 +276,36 @@ export function createActions(options: {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeAddressAtBlock
       fallback: (call) => codeAt((call as CodeCall).address),
     }),
+    getBlock: createTable({
+      name: "getBlock",
+      hint: "mock.actions.getBlock({ blockNumber }).returns(…)",
+      decode: decodeBlock,
+      zero: {},
+      encode(value, call) {
+        if (value === null) return null;
+        if (!isPlainObject(value))
+          throw new TypeError(`A block must be an object or null; got ${typeof value}.`);
+        const { blockNumber: number, blockHash } = (call ?? {}) as Partial<BlockCall>;
+        const generated = generateBlock(number ?? blockNumber());
+        // A pinned, unknown hash is the block's own hash.
+        const base = blockHash === undefined ? generated : { ...generated, hash: blockHash };
+        return toRpcBlock({ ...base, ...value });
+      },
+      // Generated blocks exist up to the current one, and only by their own hashes.
+      fallback(call) {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeBlock
+        const { blockNumber: number, blockHash } = call as BlockCall;
+        if (blockHash !== undefined && numberOfBlockHash(blockHash) === undefined) return undefined;
+        if (number > blockNumber()) return undefined;
+        return toRpcBlock(generateBlock(number));
+      },
+    }),
   };
   const typedMethods = new Map<string, keyof typeof typed>([
     ["eth_getBalance", "getBalance"],
     ["eth_getCode", "getCode"],
+    ["eth_getBlockByNumber", "getBlock"],
+    ["eth_getBlockByHash", "getBlock"],
   ]);
   const typedTable = (name: string) => {
     const action = typedMethods.get(name);
@@ -247,6 +324,7 @@ export function createActions(options: {
   const actions = {
     getBalance: buildAction(typed.getBalance),
     getCode: buildAction(typed.getCode),
+    getBlock: buildAction(typed.getBlock),
   } as unknown as MockActions;
 
   function method(name: string, params?: readonly unknown[]): MockMethodBuilder {
@@ -284,7 +362,7 @@ export function createActions(options: {
     answer(name: string, params: unknown): Promise<unknown> | undefined {
       const table = typedTable(name) ?? raw.get(name);
       // JSON-RPC params are an array for every method viem sends.
-      return table?.answer(Array.isArray(params) ? params : []);
+      return table?.answer(name, Array.isArray(params) ? params : []);
     },
     clearCalls() {
       for (const table of tables()) table.clearCalls();

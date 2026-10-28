@@ -1,13 +1,18 @@
 import {
   HttpRequestError,
   InvalidAddressError,
+  BlockNotFoundError,
   TimeoutError,
   createPublicClient,
+  keccak256,
+  parseGwei,
+  toHex,
   erc20Abi,
   getAddress,
   parseEther,
   zeroHash,
 } from "viem";
+import { avalanche } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import {
   MockNotFoundError,
@@ -175,15 +180,125 @@ describe("getCode", () => {
     expect(await client.getCode({ address: USDC })).toBe("0x6080");
   });
 
-  test("blocks by hash aren't supported yet", async () => {
+  test("a generated block's hash resolves to its number; other hashes don't", async () => {
     const { mock, client } = setup();
-    mock.actions.getCode().returns("0x6080");
+    mock.actions.getCode().returns(({ blockNumber }) => (blockNumber === 7n ? "0x07" : "0x"));
+    const { hash } = await client.getBlock({ blockNumber: 7n });
 
+    expect(await client.getCode({ address: USDC, blockHash: hash })).toBe("0x07");
     const error = expectCause(
       await rejectionOf(client.getCode({ address: USDC, blockHash: zeroHash })),
       MockNotFoundError,
     );
-    expect(error.message).toContain("Blocks by hash are not supported yet");
+    expect(error.message).toContain(`No block with hash ${zeroHash}`);
+  });
+});
+
+describe("getBlock", () => {
+  test("blocks up to the current one are generated, with no setup", async () => {
+    const { client } = setup();
+
+    const latest = await client.getBlock();
+    expect(latest).toMatchObject({ number: 10n, timestamp: 1_700_000_000n, transactions: [] });
+    const parent = await client.getBlock({ blockNumber: 9n });
+    expect(latest.parentHash).toBe(parent.hash);
+    expect(parent.timestamp).toBe(1_700_000_000n - 12n);
+  });
+
+  test("mine() moves latest, and timestamps follow the chain's blockTime", async () => {
+    const mock = createMockRpc({ chain: avalanche, blockNumber: 100n, timestamp: 2_000n });
+    const client = mock.publicClient();
+
+    mock.mine(10n);
+    const block = await client.getBlock();
+    expect(block.number).toBe(110n);
+    // Avalanche's blockTime is 1.7s; timestamps are whole seconds.
+    expect(block.timestamp).toBe(2_017n);
+  });
+
+  test("tags resolve to the current block; earliest is block 0", async () => {
+    const { client } = setup();
+
+    expect((await client.getBlock({ blockTag: "finalized" })).number).toBe(10n);
+    expect((await client.getBlock({ blockTag: "earliest" })).number).toBe(0n);
+  });
+
+  test("a generated block is found by its hash", async () => {
+    const { client } = setup();
+    const { hash } = await client.getBlock({ blockNumber: 4n });
+
+    expect((await client.getBlock({ blockHash: hash })).number).toBe(4n);
+  });
+
+  test("future blocks and unknown hashes are unhandled", async () => {
+    const { mock, client } = setup();
+
+    expectCause(await rejectionOf(client.getBlock({ blockNumber: 11n })), MockNotFoundError);
+    expectCause(await rejectionOf(client.getBlock({ blockHash: zeroHash })), MockNotFoundError);
+    expect(mock.unhandled).toHaveLength(2);
+  });
+
+  test("a mock's fields merge over the generated block", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBlock().returns({ baseFeePerGas: parseGwei("30") });
+    mock.actions.getBlock({ blockNumber: 9n }).returns({ timestamp: 1_234n });
+
+    const latest = await client.getBlock();
+    expect(latest).toMatchObject({ number: 10n, baseFeePerGas: parseGwei("30") });
+    expect(latest.timestamp).toBe(1_700_000_000n);
+    expect(await client.getBlock({ blockNumber: 9n })).toMatchObject({
+      number: 9n,
+      timestamp: 1_234n,
+      baseFeePerGas: 0n,
+    });
+  });
+
+  test("resolvers get the block number, so fields can follow it", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBlock().returns(({ blockNumber }) => ({ gasUsed: blockNumber * 1_000n }));
+
+    expect((await client.getBlock()).gasUsed).toBe(10_000n);
+    expect((await client.getBlock({ blockNumber: 3n })).gasUsed).toBe(3_000n);
+  });
+
+  test("a mock can seed a future block or a block by its own hash", async () => {
+    const { mock, client } = setup();
+    const hash = keccak256(toHex("seeded"));
+    mock.actions.getBlock({ blockNumber: 50n }).returns({ timestamp: 5_000n });
+    mock.actions.getBlock({ blockHash: hash }).returns({ number: 42n });
+
+    expect((await client.getBlock({ blockNumber: 50n })).timestamp).toBe(5_000n);
+    expect(await client.getBlock({ blockHash: hash })).toMatchObject({ number: 42n, hash });
+  });
+
+  test("returns(null) is no such block, as viem reports it", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBlock({ blockNumber: 5n }).returns(null);
+
+    expectCause(await rejectionOf(client.getBlock({ blockNumber: 5n })), BlockNotFoundError);
+    expect(mock.unhandled).toEqual([]);
+  });
+
+  test("calls record how the block was asked for", async () => {
+    const { mock, client } = setup();
+    const { hash } = await client.getBlock({ blockNumber: 2n });
+    await client.getBlock({ blockTag: "safe" });
+    await client.getBlock({ blockHash: hash, includeTransactions: true });
+
+    expect(mock.actions.getBlock.calls).toEqual([
+      { blockNumber: 2n, includeTransactions: false },
+      { blockNumber: 10n, blockTag: "safe", includeTransactions: false },
+      { blockNumber: 2n, blockHash: hash, includeTransactions: true },
+    ]);
+  });
+
+  test("an invalid static value fails at registration", () => {
+    const { mock } = setup();
+
+    expect(() => {
+      // @ts-expect-error timestamps are bigints
+      mock.actions.getBlock().returns({ timestamp: "soon" });
+    }).toThrow();
   });
 });
 

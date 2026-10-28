@@ -14,11 +14,13 @@
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "ox": "0.14.59",
     "typescript": "^7.0.2",
-    "viem": "^2.57.11",
+    "viem": "^2.57.12",
     "vite-plus": "catalog:"
   },
   "peerDependencies": {
+    "ox": "^0.14.0",
     "viem": "^2.0.0"
   },
   "devEngines": {
