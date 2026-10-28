@@ -56,6 +56,8 @@ type Handler = {
   specificity: number;
   /** Static values are wrapped at registration; `undefined` until `.returns()`/`.reverts()`. */
   resolver: ((context: ResolverContext<Abi, readonly unknown[]>) => unknown) | undefined;
+  /** Calls this handler answered since registration or the last `clearCalls()`. */
+  usedCount: number;
 };
 
 export type MockFunction<abi extends Abi, args, result> = {
@@ -159,6 +161,8 @@ export type InternalMockContract<abi extends Abi = Abi> = {
   matches(address: Address): boolean;
   resolve(data: Hex, context: CallContext): Promise<Hex>;
   clearCalls(): void;
+  /** Mocks registered with args that haven't answered a call, formatted for messages. */
+  unusedMocks(): string[];
 };
 
 export function createMockContract<const abi extends Abi>(
@@ -200,6 +204,7 @@ export function createMockContract<const abi extends Abi>(
       args,
       specificity: specificity(args),
       resolver: undefined,
+      usedCount: 0,
     };
     handlers.push(handler);
 
@@ -288,6 +293,7 @@ export function createMockContract<const abi extends Abi>(
       );
     }
 
+    handler.usedCount += 1;
     let result: unknown;
     try {
       result = await handler.resolver({ ...call, revert });
@@ -312,7 +318,12 @@ export function createMockContract<const abi extends Abi>(
     resolve,
     clearCalls() {
       history.length = 0;
+      for (const handler of handlers) handler.usedCount = 0;
     },
+    unusedMocks: () =>
+      handlers
+        .filter((h) => h.args !== undefined && h.resolver !== undefined && h.usedCount === 0)
+        .map((h) => `${formatCall(h.abiItem.name, h.args)} on ${address}`),
   };
 }
 

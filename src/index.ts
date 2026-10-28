@@ -3,6 +3,7 @@ export {
   type CreateMockRpcParameters,
   type MockRpc,
   type RpcRequest,
+  type UnhandledRequest,
 } from "./createMockRpc.js";
 export type {
   CallContext,

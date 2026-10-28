@@ -17,7 +17,7 @@ import {
   type MockContract,
   createMockContract,
 } from "./contract.js";
-import { MockNotFoundError } from "./errors.js";
+import { MockNotFoundError, MockResolverError } from "./errors.js";
 import { multicall3Address, resolveMulticall } from "./multicall.js";
 
 export type CreateMockRpcParameters = {
@@ -34,6 +34,9 @@ export type CreateMockRpcParameters = {
 
 export type RpcRequest = { method: string; params?: unknown };
 
+/** A request the mock couldn't answer: nothing was mocked for it, or a resolver threw. */
+export type UnhandledRequest = RpcRequest & { error: MockNotFoundError | MockResolverError };
+
 export type MockRpc = ReturnType<typeof createMockRpc>;
 
 export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
@@ -44,11 +47,25 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   const contracts: InternalMockContract<any>[] = [];
   const calls: MockCall[] = [];
   const requests: RpcRequest[] = [];
+  const unhandled: UnhandledRequest[] = [];
   let batchCount = 0;
 
-  async function request({ method, params }: RpcRequest): Promise<unknown> {
-    requests.push(params === undefined ? { method } : { method, params });
+  async function request(rpcRequest: RpcRequest): Promise<unknown> {
+    const { method, params } = rpcRequest;
+    const entry: RpcRequest = params === undefined ? { method } : { method, params };
+    requests.push(entry);
+    try {
+      return await answer(rpcRequest);
+    } catch (error) {
+      // Recorded because callers can swallow these: app code with a fallback,
+      // or viem's multicall turning a failed batch into per-call failures.
+      if (error instanceof MockNotFoundError || error instanceof MockResolverError)
+        unhandled.push({ ...entry, error });
+      throw error;
+    }
+  }
 
+  async function answer({ method, params }: RpcRequest): Promise<unknown> {
     switch (method) {
       case "eth_chainId":
         return numberToHex(chainId);
@@ -144,10 +161,37 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     get requests() {
       return [...requests];
     },
-    /** Clears call and request history; registrations and the block number stay. */
+    /** Requests the mock couldn't answer, even if the code under test swallowed the error. */
+    get unhandled() {
+      return [...unhandled];
+    },
+    /**
+     * Throws if any request went unanswered: a missing mock or a resolver that
+     * threw. Catches errors the code under test swallowed. Reverts are answers.
+     */
+    assertNoUnhandled() {
+      if (unhandled.length === 0) return;
+      const lines = unhandled.map(({ error }) => `  - ${error.shortMessage}`);
+      throw new Error(
+        `The mock couldn't answer ${unhandled.length} request(s):\n${lines.join("\n")}`,
+      );
+    },
+    /**
+     * Throws if a mock registered with args never answered a call, which usually
+     * means the args are wrong and a broader mock answered instead. Args-less
+     * mocks and defaults are meant as fallbacks, so they're not checked.
+     */
+    assertAllUsed() {
+      const unused = contracts.flatMap((c) => c.unusedMocks());
+      if (unused.length === 0) return;
+      const lines = unused.map((mock) => `  - ${mock}`);
+      throw new Error(`${unused.length} mock(s) never answered a call:\n${lines.join("\n")}`);
+    },
+    /** Clears call and request history and usage; registrations and the block number stay. */
     clearCalls() {
       calls.length = 0;
       requests.length = 0;
+      unhandled.length = 0;
       for (const contract of contracts) contract.clearCalls();
     },
     /**
@@ -158,6 +202,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       contracts.length = 0;
       calls.length = 0;
       requests.length = 0;
+      unhandled.length = 0;
       batchCount = 0;
       blockNumber = initialBlockNumber;
     },
