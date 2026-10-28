@@ -5,6 +5,7 @@ import {
   type CustomTransportConfig,
   type Hex,
   custom,
+  getAddress,
   hexToBigInt,
   isHex,
   numberToHex,
@@ -45,6 +46,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   let blockNumber = initialBlockNumber;
   const multicallAddress = parameters.multicallAddress ?? multicall3Address;
   const contracts: InternalMockContract<any>[] = [];
+  const emptyAddresses = new Set<Address>();
   const calls: MockCall[] = [];
   const requests: RpcRequest[] = [];
   const unhandled: UnhandledRequest[] = [];
@@ -109,11 +111,28 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       });
 
     const target = contracts.find((c) => c.matches(to));
-    if (!target)
-      throw new MockNotFoundError(`No mocked contract at ${to}.`, {
-        details: `Call data: ${data}`,
-      });
-    return target.resolve(data, context);
+    if (target) return target.resolve(data, context);
+    // A real node answers a call to an address without code with empty data.
+    if (emptyAddresses.has(getAddress(to))) return Promise.resolve("0x");
+    throw new MockNotFoundError(`No mocked contract at ${to}.`, {
+      details:
+        `Call data: ${data}\n` +
+        "Register it with contract(), or mark it empty() for an address without code.",
+    });
+  }
+
+  function assertUnregistered(address: Address) {
+    if (contracts.some((c) => c.matches(address)))
+      throw new Error(
+        `A contract is already registered at ${address}. Register it once with a ` +
+          "combined ABI (abi: [...a, ...b]), or call reset() between tests.",
+      );
+    if (emptyAddresses.has(getAddress(address)))
+      throw new Error(`${address} is already registered as empty. Call reset() between tests.`);
+  }
+
+  function onCall(call: MockCall) {
+    calls.push(call);
   }
 
   function resolveBlock(block: BlockTag | Hex | undefined): bigint {
@@ -132,17 +151,18 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     contract<const abi extends Abi>(
       contractParameters: CreateMockContractParameters<abi>,
     ): MockContract<abi> {
-      const { address } = contractParameters;
-      if (contracts.some((c) => c.matches(address)))
-        throw new Error(
-          `A contract is already registered at ${address}. Register it once with a ` +
-            "combined ABI (abi: [...a, ...b]), or call reset() between tests.",
-        );
-      const internal = createMockContract(contractParameters, (call) => {
-        calls.push(call);
-      });
+      assertUnregistered(contractParameters.address);
+      const internal = createMockContract(contractParameters, onCall);
       contracts.push(internal);
       return internal.contract;
+    },
+    /**
+     * Marks an address as having no code: calls to it succeed with empty data,
+     * as on a real node, which viem reports as `ContractFunctionZeroDataError`.
+     */
+    empty(address: Address) {
+      assertUnregistered(address);
+      emptyAddresses.add(getAddress(address));
     },
     get chainId() {
       return chainId;
@@ -200,6 +220,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      */
     reset() {
       contracts.length = 0;
+      emptyAddresses.clear();
       calls.length = 0;
       requests.length = 0;
       unhandled.length = 0;
