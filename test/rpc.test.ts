@@ -31,7 +31,10 @@ describe("registration", () => {
     mock.contract({ abi: erc20Abi, address: USDC });
 
     expect(() => mock.contract({ abi: ownableAbi, address: usdcLowercase })).toThrow(
-      `A contract is already registered at ${usdcLowercase}`,
+      `A contract is already registered at ${USDC}`,
+    );
+    expect(() => mock.contract({ abi: ownableAbi, address: USDC })).toThrow(
+      "restore a checkpoint after each test, or call reset()",
     );
   });
 

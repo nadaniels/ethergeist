@@ -10,7 +10,7 @@ import {
   zeroHash,
 } from "viem";
 import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
-import { removedMockError } from "./checkpoint.js";
+import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
 import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError } from "./errors.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
@@ -166,6 +166,13 @@ function createTable(definition: Definition) {
     return builder;
   }
 
+  /** Mocks with pinned params that haven't answered a call; unpinned ones are fallbacks. */
+  function unused(list: Handler[]) {
+    return list
+      .filter((h) => h.pinned !== undefined && h.resolver !== undefined && h.usedCount === 0)
+      .map((h) => format(definition.name, h.pinned));
+  }
+
   async function answer(method: string, params: readonly unknown[]): Promise<unknown> {
     const call = definition.decode(params, method);
     history.push(call);
@@ -212,17 +219,17 @@ function createTable(definition: Definition) {
       handlers.length = 0;
       history.length = 0;
     },
-    unusedMocks: () =>
-      handlers
-        .filter((h) => h.pinned !== undefined && h.resolver !== undefined && h.usedCount === 0)
-        .map((h) => format(definition.name, h.pinned)),
-    /** Saves the registered mocks and their answers; the returned function puts them back. */
-    checkpoint() {
+    unusedMocks: () => unused(handlers),
+    /** Saves the registered mocks and their answers, to put back or compare against. */
+    checkpoint(): PartCheckpoint {
       const saved = handlers.map((h) => [h, h.resolver] as const);
-      return () => {
-        for (const handler of handlers.slice(saved.length)) handler.removed = true;
-        handlers.length = saved.length;
-        for (const [handler, resolver] of saved) handler.resolver = resolver;
+      return {
+        restore() {
+          for (const handler of handlers.slice(saved.length)) handler.removed = true;
+          handlers.length = saved.length;
+          for (const [handler, resolver] of saved) handler.resolver = resolver;
+        },
+        unusedSince: () => unused(handlers.slice(saved.length)),
       };
     },
   };
@@ -414,22 +421,30 @@ export function createActions(options: {
       raw.clear();
     },
     unusedMocks: () => tables().flatMap((table) => table.unusedMocks()),
-    /** Saves every table's mocks, typed and raw; the returned function puts them back. */
-    checkpoint() {
-      const typedRestores = Object.values(typed).map((table) => table.checkpoint());
-      const rawRestores = new Map([...raw].map(([name, table]) => [name, table.checkpoint()]));
-      return () => {
-        for (const restoreTable of typedRestores) restoreTable();
-        for (const [name, table] of raw) {
-          const restoreTable = rawRestores.get(name);
-          if (restoreTable) {
-            restoreTable();
-          } else {
-            // Created since the checkpoint.
-            table.reset();
-            raw.delete(name);
+    /** Saves every table's mocks, typed and raw, to put back or compare against. */
+    checkpoint(): PartCheckpoint {
+      const typedSaved = Object.values(typed).map((table) => table.checkpoint());
+      const rawSaved = new Map([...raw].map(([name, table]) => [name, table.checkpoint()]));
+      return {
+        restore() {
+          for (const saved of typedSaved) saved.restore();
+          for (const [name, table] of raw) {
+            const saved = rawSaved.get(name);
+            if (saved) {
+              saved.restore();
+            } else {
+              // Created since the checkpoint.
+              table.reset();
+              raw.delete(name);
+            }
           }
-        }
+        },
+        unusedSince: () => [
+          ...typedSaved.flatMap((saved) => saved.unusedSince()),
+          ...[...raw].flatMap(
+            ([name, table]) => rawSaved.get(name)?.unusedSince() ?? table.unusedMocks(),
+          ),
+        ],
       };
     },
   };

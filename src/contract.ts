@@ -15,11 +15,11 @@ import {
   toFunctionSelector,
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
-import { removedMockError } from "./checkpoint.js";
+import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
 import type { MockBatch } from "./multicall.js";
 import { isMatch, specificity } from "./match.js";
-import { type MockReturnType, normalizeResult, zeroResult } from "./result.js";
+import { type MockReturnType, checksumAddresses, normalizeResult, zeroResult } from "./result.js";
 import { type RevertFn, type RevertSpec, createRevertError } from "./revert.js";
 
 type ReadMutability = "pure" | "view";
@@ -184,8 +184,8 @@ export type InternalMockContract<abi extends Abi = Abi> = {
   clearCalls(): void;
   /** Mocks registered with args that haven't answered a call, formatted for messages. */
   unusedMocks(): string[];
-  /** Saves the registered mocks and their answers; the returned function puts them back. */
-  checkpoint(): () => void;
+  /** Saves the registered mocks and their answers, to put back or compare against. */
+  checkpoint(): PartCheckpoint;
   /** Marks the contract removed: registering on it, or answering its mocks, throws. */
   detach(): void;
 };
@@ -244,11 +244,16 @@ export function createMockContract<const abi extends Abi>(
     // viem's type assumes a match, but untyped callers can pass any name.
     if (abiItem === undefined) throw notInNamespaceError(namespace, functionName);
 
+    // Checksummed so messages show addresses one way, and a malformed one fails here.
+    const pinned = args?.map((arg, i) => {
+      const input = abiItem.inputs[i];
+      return input ? checksumAddresses(input, arg) : arg;
+    });
     const handler: Handler = {
       abiItem,
       selector: toFunctionSelector(abiItem),
-      args,
-      specificity: specificity(args),
+      args: pinned,
+      specificity: specificity(pinned),
       resolver: undefined,
       usedCount: 0,
       removed: false,
@@ -365,6 +370,13 @@ export function createMockContract<const abi extends Abi>(
     }
   }
 
+  /** Mocks registered with args that haven't answered a call; args-less ones are fallbacks. */
+  function unused(list: Handler[]) {
+    return list
+      .filter((h) => h.args !== undefined && h.resolver !== undefined && h.usedCount === 0)
+      .map((h) => `${formatCall(h.abiItem.name, h.args)} on ${address}`);
+  }
+
   return {
     contract,
     matches: (other) => other === address,
@@ -373,16 +385,16 @@ export function createMockContract<const abi extends Abi>(
       history.length = 0;
       for (const handler of handlers) handler.usedCount = 0;
     },
-    unusedMocks: () =>
-      handlers
-        .filter((h) => h.args !== undefined && h.resolver !== undefined && h.usedCount === 0)
-        .map((h) => `${formatCall(h.abiItem.name, h.args)} on ${address}`),
+    unusedMocks: () => unused(handlers),
     checkpoint() {
       const saved = handlers.map((h) => [h, h.resolver] as const);
-      return () => {
-        for (const handler of handlers.slice(saved.length)) handler.removed = true;
-        handlers.length = saved.length;
-        for (const [handler, resolver] of saved) handler.resolver = resolver;
+      return {
+        restore() {
+          for (const handler of handlers.slice(saved.length)) handler.removed = true;
+          handlers.length = saved.length;
+          for (const [handler, resolver] of saved) handler.resolver = resolver;
+        },
+        unusedSince: () => unused(handlers.slice(saved.length)),
       };
     },
     detach() {

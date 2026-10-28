@@ -1,4 +1,10 @@
-import { type Abi, type AbiParameter, type AbiParameterToPrimitiveType, zeroAddress } from "viem";
+import {
+  type Abi,
+  type AbiParameter,
+  type AbiParameterToPrimitiveType,
+  getAddress,
+  zeroAddress,
+} from "viem";
 
 /**
  * Struct objects at any depth may omit fields; omitted fields are filled with
@@ -75,6 +81,35 @@ function fill(parameter: AbiParameter, value: unknown): unknown {
     if (Array.isArray(value)) return components.map((c, i) => fill(c, value[i]));
     if (isPlainObject(value))
       return Object.fromEntries(components.map((c) => [c.name, fill(c, value[c.name!])]));
+  }
+  return value;
+}
+
+/**
+ * `value` with every address-typed part checksummed, which also validates it.
+ * Partial structs keep only the fields they have; anything that isn't a
+ * string where an address goes is left for the types (or matching) to judge.
+ */
+export function checksumAddresses(parameter: AbiParameter, value: unknown): unknown {
+  if (parameter.type === "address") return typeof value === "string" ? getAddress(value) : value;
+
+  const element = arrayElement(parameter);
+  if (element)
+    return Array.isArray(value) ? value.map((v) => checksumAddresses(element, v)) : value;
+
+  if (parameter.type === "tuple" && "components" in parameter) {
+    const { components } = parameter;
+    if (Array.isArray(value))
+      return value.map((v: unknown, i) =>
+        components[i] ? checksumAddresses(components[i], v) : v,
+      );
+    if (isPlainObject(value))
+      return Object.fromEntries(
+        Object.entries(value).map(([key, v]) => {
+          const component = components.find((c) => c.name === key);
+          return [key, component ? checksumAddresses(component, v) : v];
+        }),
+      );
   }
   return value;
 }

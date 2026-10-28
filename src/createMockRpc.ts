@@ -71,6 +71,20 @@ export type UnhandledRequest = RpcRequest & { error: MockNotFoundError | MockRes
 
 export type MockRpc = ReturnType<typeof createMockRpc>;
 
+/** `assertNoUnhandled()`'s message, if any request went unanswered. */
+function unhandledFailure(list: readonly UnhandledRequest[]): string[] {
+  if (list.length === 0) return [];
+  const lines = list.map(({ error }) => `  - ${error.shortMessage}`);
+  return [`The mock couldn't answer ${list.length} request(s):\n${lines.join("\n")}`];
+}
+
+/** `assertAllUsed()`'s message, if any mock never answered. */
+function unusedFailure(list: readonly string[]): string[] {
+  if (list.length === 0) return [];
+  const lines = list.map((mock) => `  - ${mock}`);
+  return [`${list.length} mock(s) never answered a call:\n${lines.join("\n")}`];
+}
+
 export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   const given = parameters.chain ?? mainnet;
   // Without a Multicall3 address, viem's multicall falls back to deployless calls.
@@ -197,11 +211,15 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     const checksummed = getAddress(address);
     if (contracts.some((c) => c.matches(checksummed)))
       throw new Error(
-        `A contract is already registered at ${address}. Register it once with a ` +
-          "combined ABI (abi: [...a, ...b]), or call reset() between tests.",
+        `A contract is already registered at ${checksummed}. Register it once with a ` +
+          "combined ABI (abi: [...a, ...b]). If an earlier test registered it, restore " +
+          "a checkpoint after each test, or call reset().",
       );
     if (emptyAddresses.has(checksummed))
-      throw new Error(`${address} is already registered as empty. Call reset() between tests.`);
+      throw new Error(
+        `${checksummed} is already registered as empty. If an earlier test registered it, ` +
+          "restore a checkpoint after each test, or call reset().",
+      );
   }
 
   function onCall(call: MockCall) {
@@ -343,11 +361,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * threw. Catches errors the code under test swallowed. Reverts are answers.
      */
     assertNoUnhandled() {
-      if (unhandled.length === 0) return;
-      const lines = unhandled.map(({ error }) => `  - ${error.shortMessage}`);
-      throw new Error(
-        `The mock couldn't answer ${unhandled.length} request(s):\n${lines.join("\n")}`,
-      );
+      const [failure] = unhandledFailure(unhandled);
+      if (failure !== undefined) throw new Error(failure);
     },
     /**
      * Throws if a mock registered with args never answered a call, which usually
@@ -355,10 +370,11 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * mocks and defaults are meant as fallbacks, so they're not checked.
      */
     assertAllUsed() {
-      const unused = [...contracts.flatMap((c) => c.unusedMocks()), ...actions.unusedMocks()];
-      if (unused.length === 0) return;
-      const lines = unused.map((mock) => `  - ${mock}`);
-      throw new Error(`${unused.length} mock(s) never answered a call:\n${lines.join("\n")}`);
+      const [failure] = unusedFailure([
+        ...contracts.flatMap((c) => c.unusedMocks()),
+        ...actions.unusedMocks(),
+      ]);
+      if (failure !== undefined) throw new Error(failure);
     },
     /** Clears call and request history and usage; registrations and the block number stay. */
     clearCalls,
@@ -376,8 +392,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         );
 
       const contractCount = contracts.length;
-      const restoreContracts = contracts.map((contract) => contract.checkpoint());
-      const restoreActions = actions.checkpoint();
+      const savedContracts = contracts.map((contract) => contract.checkpoint());
+      const savedActions = actions.checkpoint();
       const savedEmpty = new Set(emptyAddresses);
       const savedFaults = faults.map((fault) => [fault, fault.remaining, fault.count] as const);
       const savedBlockNumber = blockNumber;
@@ -385,21 +401,35 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       const entry = { valid: true };
       checkpoints.push(entry);
 
+      /** Mocks with args registered since this checkpoint that never answered. */
+      const unusedSince = () => [
+        ...savedContracts.flatMap((saved) => saved.unusedSince()),
+        ...contracts.slice(contractCount).flatMap((contract) => contract.unusedMocks()),
+        ...savedActions.unusedSince(),
+      ];
+
       return {
-        restore() {
+        restore(options = {}) {
           if (!entry.valid)
             throw new Error(
               "This checkpoint is no longer valid: an earlier checkpoint was restored, " +
                 "or reset() was called, after it was taken.",
             );
+          // Checked first, because restoring clears what they look at; thrown
+          // last, so a failed check can't leave the next test unrestored.
+          const failures = [
+            ...(options.assertNoUnhandled === true ? unhandledFailure(unhandled) : []),
+            ...(options.assertAllUsed === true ? unusedFailure(unusedSince()) : []),
+          ];
+
           // Checkpoints taken after this one describe state that's about to go away.
           for (const later of checkpoints.splice(checkpoints.indexOf(entry) + 1))
             later.valid = false;
 
           for (const contract of contracts.slice(contractCount)) contract.detach();
           contracts.length = contractCount;
-          for (const restoreContract of restoreContracts) restoreContract();
-          restoreActions();
+          for (const saved of savedContracts) saved.restore();
+          savedActions.restore();
           emptyAddresses.clear();
           for (const address of savedEmpty) emptyAddresses.add(address);
           faults.length = savedFaults.length;
@@ -410,6 +440,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
           blockNumber = savedBlockNumber;
           batchCount = savedBatchCount;
           clearCalls();
+
+          if (failures.length > 0) throw new Error(failures.join("\n\n"));
         },
       };
     },

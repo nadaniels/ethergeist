@@ -1,42 +1,100 @@
-# Notes for the documentation
+# Documentation to write
 
-Points the eventual library docs must cover, gathered as features land. Each
-section should grow into a docs page or a section of one.
+The pages the library docs need, and what each must cover. Items are added as
+features land; tick them off as pages get written.
 
-## When to use this, and when to use anvil
+## 1. Overview: when to use this, and when to use anvil
 
-- This library answers each request with what a test says, fast and
-  deterministically, with no binary and no shared process: per-test answers,
-  injected network failures, isolated concurrent tests.
-- It never executes anything, and never derives one answer from another: a
-  mocked receipt with a `Transfer` log doesn't change any balance, and a
-  receipt in block 100 doesn't appear in that block's `transactions`.
-- Use anvil, or an anvil fork, when a test needs real execution or real chain
-  state.
+- [ ] What it is: a viem transport that answers each JSON-RPC request with
+      what the test registered. Fast and deterministic, with no binary and no
+      shared process.
+- [ ] What it isn't: nothing executes, and no answer is derived from another.
+      For example, a mocked receipt with a `Transfer` log doesn't change any
+      balance.
+- [ ] When to use anvil (or an anvil fork) instead: tests that need real
+      execution or real chain state.
 
-## Sharing setup across tests: `checkpoint()` and `restore()`
+## 2. Getting started
 
-- Register shared contracts and mocks once (at module scope, or in a
-  describe's `beforeAll`), call `checkpoint()`, and `restore()` after each
-  test. Anything registered at checkpoint time is the baseline: `defaults`,
-  mocks with args, `.fails()`, `empty()`, actions, raw methods, faults.
-- Run `assertNoUnhandled()` before `restore()`, in the same `afterEach`:
-  `restore()` clears history, including `unhandled`.
-- `checkpoint()` throws if requests since the last clear went unanswered,
-  because a broken setup isn't a baseline. A test that deliberately triggers
-  a missing mock, in a file that doesn't restore per test, needs a
-  `clearCalls()` before a later checkpoint.
-- Nesting:
-  - Checkpoints form a stack. Restoring one invalidates every checkpoint taken
-    after it, and `reset()` invalidates all of them.
-  - Restore at one level only per test. An `afterEach` also runs for nested
-    describes, innermost first, so an outer per-test restore wipes a nested
-    suite's setup and invalidates its checkpoints. Make describes that restore
-    an outer checkpoint per test siblings of describes with their own suite
-    setup, not parents of them. (Tested in `test/checkpoint.test.ts`, "module-scope
-    setup".)
-  - A describe with its own suite setup needs a checkpoint on each side of
-    it, so later describes don't inherit it:
+- [ ] `createMockRpc({ chain, blockNumber, timestamp })`, then
+      `mock.publicClient()`, or `createPublicClient({ transport: mock.transport() })`
+      with the defaults the helper sets (`cacheTime: 0`, `retryDelay: 0`).
+- [ ] Registering a contract, and `defaults: { read: { … }, simulate: { … } }`.
+      This is the first setup code everyone writes, so the docs should lead
+      with it and repeat it in examples.
+- [ ] `read` vs `simulate` namespaces (view/pure vs nonpayable/payable),
+      mirroring `getContract`.
+
+## 3. Mocking contract calls
+
+- [ ] Matching: pinned args, args-less mocks as fallbacks, most specific wins,
+      ties go to the most recent.
+- [ ] Return values: named outputs as objects, partial structs zero-filled,
+      `zeroResult`, resolvers that receive the call.
+- [ ] Reverts: reason strings, custom errors, panics, raw data, `revert()` in
+      resolvers, and what viem throws.
+- [ ] Multicall: batching, `batch` info on calls, how reverts and faults
+      behave inside a batch.
+- [ ] `mock.empty(address)` for addresses without code.
+
+## 4. Failures: `.fails()` vs `.reverts()`
+
+- [ ] A fault is a network failure. It throws `HttpRequestError`,
+      `RpcRequestError` or `TimeoutError`, viem retries it by its own rules,
+      and it fails a whole multicall batch.
+- [ ] A revert is the contract refusing. It throws
+      `ContractFunctionRevertedError`, is never retried, and fails only its
+      own result in a multicall.
+- [ ] `failRequests()` for transport-wide faults, versus `.fails()` and
+      `fail()` for one function.
+
+## 5. Node data: `mock.actions` and `mock.method`
+
+- [ ] `getBalance`, `getCode`, `getBlock` and `getTransactionReceipt`, with
+      values in viem's types.
+- [ ] Generated blocks: what's generated (numbers, linked hashes, timestamps
+      from `timestamp` and `chain.blockTime`), and what's zero.
+- [ ] Receipts: the defaults (status `"success"`, block, log context), and
+      `.returns(null)` for "not found".
+- [ ] Strict by default for data the test owns (balances, receipts), and how
+      to opt into real-node defaults with args-less mocks.
+- [ ] `mock.method()` for any other method, with raw JSON-RPC values.
+
+## 6. Assertions and error messages
+
+- [ ] `assertNoUnhandled()` (catches errors the app swallowed) and
+      `assertAllUsed()` (catches mocks with wrong args).
+- [ ] How to read "No mock for …" and its "Registered:" list.
+- [ ] Addresses in messages are always checksummed. Address args are
+      normalized at registration, which also rejects malformed ones.
+
+## 7. Sharing setup across tests: `checkpoint()` and `restore()`
+
+- [ ] The pattern: register shared contracts and mocks once (at module scope,
+      or in a describe's `beforeAll`), then `checkpoint()`, then
+      `restore({ assertNoUnhandled: true, assertAllUsed: true })` in
+      `afterEach`. Everything registered at checkpoint time is the baseline.
+- [ ] Why the checks go in `restore()`: it checks, restores, then throws.
+      Vitest skips the remaining `afterEach` hooks once one throws, so a
+      separate assertion hook that fails leaves later tests running on stale
+      mocks, and one failure shows up as many.
+- [ ] `assertAllUsed` in `restore()` checks only mocks registered since the
+      checkpoint; the standalone `assertAllUsed()` checks everything.
+- [ ] Other `afterEach` hooks that throw can still skip the restore. Explain
+      when a `beforeEach` backstop is safe: only when the previous restore
+      didn't run, since an unconditional one wipes nested suites' setup.
+      (Replace this with the vitest helper once it exists.)
+- [ ] Say plainly that the conditional backstop prevents one failure turning
+      into many, but doesn't make nesting safe: an outer per-test restore
+      still wipes a nested describe's `beforeAll` setup after its first test.
+- [ ] `checkpoint()` throws on unanswered requests since the last clear, and
+      tests that trigger a missing mock on purpose need `clearCalls()`.
+- [ ] Nesting:
+  - checkpoints form a stack, and `reset()` invalidates all of them;
+  - restore at one level only per test, so describes that restore an outer
+    checkpoint per test are siblings of describes with their own setup, not
+    parents of them;
+  - a describe with its own setup takes a checkpoint on each side of it:
     ```ts
     let outer: MockCheckpoint, suite: MockCheckpoint;
     beforeAll(() => {
@@ -44,41 +102,45 @@ section should grow into a docs page or a section of one.
       registerPools(rpc);
       suite = rpc.checkpoint();
     });
-    afterEach(() => {
-      rpc.assertNoUnhandled();
-      suite.restore();
-    });
+    afterEach(() => suite.restore({ assertNoUnhandled: true }));
     afterAll(() => outer.restore());
     ```
-- What's restored: registrations, answers given to baseline builders, and
-  the mock's own state (block number, batch ids, faults' remaining counts and
-  `count`). Mocks, contracts and handles created since are removed; using a
-  removed handle to register throws, and its `.calls` can still be read.
-- What isn't restored: state a resolver closes over (counters, prices,
-  external fixtures). History is cleared, not rolled back, so a checkpoint
-  taken mid-test also drops that test's earlier history.
-- Requests still in flight when `restore()` runs (fire-and-forget calls from
-  the previous test) land in the next test's history and `unhandled`.
+- [ ] What's restored (registrations, baseline builders' answers, block
+      number, batch ids, fault counts) and what isn't (state that resolvers
+      close over). History is cleared, not rolled back.
+- [ ] Removed handles throw when used to register. Their `.calls` can still
+      be read.
+- [ ] Requests still in flight at `restore()` time land in the next test's
+      history.
 
-## Concurrent tests
+## 8. Concurrent tests
 
-- Every `createMockRpc()` is independent; nothing is global. Concurrent tests
-  are safe with one mock per test.
-- One mock shared by concurrent tests is never safe, with or without
-  checkpoints: overrides, `mine()`, `reset()`/`restore()` and history all
-  collide. Checkpoints are for serial suites.
-- One mock per test, with shared setup and inferred types:
-  ```ts
-  function setup() {
-    const rpc = createMockRpc({ chain: base });
-    const quoter = rpc.contract({ abi: quoterAbi, address: QUOTER, defaults: { … } });
-    return { rpc, quoter, client: rpc.publicClient() };
-  }
-  test.concurrent("…", async () => {
-    const { quoter, client } = setup();
-  });
-  ```
-  Vitest fixtures (`test.extend`) are the same idea with destructuring.
-- If the app under test reads its clients from a global, concurrent tests
-  share whichever mock was installed last, whatever the library does. Inject
-  clients, or scope them per test (for example with `AsyncLocalStorage`).
+- [ ] Every `createMockRpc()` is independent, with no global state, so one
+      mock per concurrent test is safe.
+- [ ] One mock shared by concurrent tests is never safe, with or without
+      checkpoints. Checkpoints are for serial suites.
+- [ ] The per-test setup factory (inferred types, no `let`s), and vitest
+      fixtures (`test.extend`) as the same idea:
+      `ts
+      function setup() {
+        const rpc = createMockRpc({ chain: base });
+        const quoter = rpc.contract({ abi: quoterAbi, address: QUOTER, defaults: { … } });
+        return { rpc, quoter, client: rpc.publicClient() };
+      }
+      test.concurrent("…", async () => {
+        const { quoter, client } = setup();
+      });
+      `
+- [ ] Apps that read clients from a global share them across concurrent
+      tests whatever the mock does: inject clients, or scope them per test
+      (e.g. `AsyncLocalStorage`).
+
+## 9. Recipes
+
+- [ ] A contract whose address is only known at run time: register it per
+      test, next to the fixture that creates it.
+- [ ] One mock per chain, for code that talks to several chains.
+- [ ] A shared file of app-specific presets (a price feed, a quoter) that
+      tests reuse.
+- [ ] Replacing hand-built `vi.mock` fakes of `getTransactionReceipt` and
+      `getBlock` with receipts and generated blocks.

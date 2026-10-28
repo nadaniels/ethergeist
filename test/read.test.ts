@@ -203,7 +203,7 @@ describe("balanceOf", () => {
       BaseError,
     );
     expect(error.message).toContain(`No mock for balanceOf(${getAddress(alice)})`);
-    expect(error.message).toContain(`balanceOf(${bob})`);
+    expect(error.message).toContain(`balanceOf(${getAddress(bob)})`);
     expectCause(error, MockNotFoundError);
     expect(mock.requests).toHaveLength(1);
   });

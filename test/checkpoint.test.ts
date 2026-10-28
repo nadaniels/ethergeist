@@ -1,4 +1,4 @@
-import { HttpRequestError, createPublicClient, erc20Abi } from "viem";
+import { HttpRequestError, createPublicClient, erc20Abi, getAddress } from "viem";
 import { base } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vite-plus/test";
 import { type MockCheckpoint, MockNotFoundError, createMockRpc } from "../src/index.js";
@@ -176,6 +176,79 @@ describe("restore()", () => {
   });
 });
 
+describe("restore() checks", () => {
+  test("assertNoUnhandled restores first, then throws", async () => {
+    const { mock, read } = setup();
+    const baseline = mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI }).read.decimals().returns(18);
+    await rejectionOf(read(USDC, "decimals"));
+
+    expect(() => {
+      baseline.restore({ assertNoUnhandled: true });
+    }).toThrow("The mock couldn't answer 1 request(s)");
+    // Restored anyway: the next test doesn't inherit this one's mocks or history.
+    expectCause(await rejectionOf(read(DAI, "decimals")), MockNotFoundError);
+    mock.clearCalls();
+    expect(() => {
+      baseline.restore({ assertNoUnhandled: true });
+    }).not.toThrow();
+  });
+
+  test("assertAllUsed checks only mocks registered since the checkpoint", async () => {
+    const { mock, client, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.read.balanceOf([alice]).returns(5n);
+    usdc.read.allowance([alice, DAI]).returns(0n);
+    const baseline = mock.checkpoint();
+
+    // The baseline's allowance mock goes unused; that's not this test's concern.
+    await balanceOf();
+    expect(() => {
+      baseline.restore({ assertAllUsed: true });
+    }).not.toThrow();
+
+    usdc.read.balanceOf([DAI]).returns(1n);
+    mock.contract({ abi: erc20Abi, address: DAI }).read.balanceOf([alice]).returns(2n);
+    mock.actions.getBalance({ address: alice }).returns(3n);
+    mock.method("eth_getStorageAt", [USDC]).returns("0x");
+    mock.actions.getBalance().returns(0n);
+    await client.getBalance({ address: DAI });
+    let error: unknown;
+    try {
+      baseline.restore({ assertAllUsed: true });
+    } catch (caught) {
+      error = caught;
+    }
+    expect(String(error)).toContain("4 mock(s) never answered a call");
+    expect(String(error)).toContain(`balanceOf(${DAI}) on ${USDC}`);
+    expect(String(error)).toContain(`balanceOf(${getAddress(alice)}) on ${DAI}`);
+    expect(String(error)).toContain(`getBalance({ address: ${getAddress(alice)} })`);
+    expect(String(error)).toContain(`eth_getStorageAt([${USDC}])`);
+  });
+
+  test("both checks fail together, in one error", async () => {
+    const { mock, read } = setup();
+    const baseline = mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI }).read.balanceOf([alice]).returns(1n);
+    await rejectionOf(read(USDC, "decimals"));
+
+    expect(() => {
+      baseline.restore({ assertNoUnhandled: true, assertAllUsed: true });
+    }).toThrow(/couldn't answer 1 request[\s\S]*1 mock\(s\) never answered/u);
+  });
+
+  test("without options, restore() doesn't check", async () => {
+    const { mock, read } = setup();
+    const baseline = mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI }).read.balanceOf([alice]).returns(1n);
+    await rejectionOf(read(USDC, "decimals"));
+
+    expect(() => {
+      baseline.restore();
+    }).not.toThrow();
+  });
+});
+
 describe("nesting", () => {
   test("restoring an inner checkpoint keeps the outer one valid", async () => {
     const { mock, read } = setup();
@@ -237,8 +310,7 @@ describe("module-scope setup", () => {
 
   describe("tests restoring the baseline", () => {
     afterEach(() => {
-      mock.assertNoUnhandled();
-      baseline.restore();
+      baseline.restore({ assertNoUnhandled: true });
     });
 
     test("an override in one test…", async () => {
@@ -260,8 +332,7 @@ describe("module-scope setup", () => {
       suite = mock.checkpoint();
     });
     afterEach(() => {
-      mock.assertNoUnhandled();
-      suite.restore();
+      suite.restore({ assertNoUnhandled: true });
     });
     afterAll(() => {
       outer.restore();

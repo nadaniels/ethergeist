@@ -1,4 +1,4 @@
-import { InvalidAddressError, createPublicClient, erc20Abi, parseAbi } from "viem";
+import { InvalidAddressError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import { MockResolverError, createMockRpc } from "../src/index.js";
@@ -138,6 +138,38 @@ describe("unencodable returns", () => {
   });
 });
 
+describe("address args", () => {
+  // A batch-balance view, for address arrays.
+  const batchAbi = parseAbi(["function balancesOf(address[] owners) view returns (uint256[])"]);
+
+  test("are checksummed at registration, so messages show them one way", () => {
+    const { mock } = setup();
+    const usdcLowercase = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
+    mock
+      .contract({ abi: erc20Abi, address: USDC })
+      .read.allowance([usdcLowercase, bob])
+      .returns(1n);
+    mock
+      .contract({ abi: batchAbi, address: DAI })
+      .read.balancesOf([[alice, bob]])
+      .returns([]);
+
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`allowance(${USDC}, ${getAddress(bob)})`);
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`balancesOf(${getAddress(alice)},${getAddress(bob)})`);
+  });
+
+  test("a malformed one fails at registration", () => {
+    const { mock } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+
+    expect(() => usdc.read.balanceOf(["0x1234"])).toThrow(InvalidAddressError);
+  });
+});
+
 describe("assertAllUsed()", () => {
   test("passes when every mock with args answered a call", async () => {
     const { mock, balanceOf } = setup();
@@ -165,7 +197,7 @@ describe("assertAllUsed()", () => {
     expect(await balanceOf(alice)).toBe(0n);
     expect(() => {
       mock.assertAllUsed();
-    }).toThrow(`balanceOf(${bob}) on ${USDC}`);
+    }).toThrow(`balanceOf(${getAddress(bob)}) on ${USDC}`);
   });
 
   test("doesn't check args-less mocks or defaults", () => {
@@ -202,6 +234,6 @@ describe("assertAllUsed()", () => {
     mock.clearCalls();
     expect(() => {
       mock.assertAllUsed();
-    }).toThrow(`balanceOf(${alice})`);
+    }).toThrow(`balanceOf(${getAddress(alice)})`);
   });
 });

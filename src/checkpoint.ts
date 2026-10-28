@@ -3,10 +3,14 @@
  *
  * Notes for the docs (to expand when writing them):
  * - Typical use: register shared contracts and mocks at module scope, call
- *   `checkpoint()` in `beforeAll`, and in one `afterEach` call
- *   `assertNoUnhandled()` first, then `restore()`. `restore()` clears
- *   `unhandled`, so the assertion has to run before it, in the same hook;
- *   separate hooks would depend on vitest's (reversed) hook order.
+ *   `checkpoint()` in `beforeAll`, and in `afterEach` call
+ *   `restore({ assertNoUnhandled: true, assertAllUsed: true })`. Passing the
+ *   checks to `restore()` matters: it checks, restores, then throws, so a
+ *   failing check can't skip the restore. Vitest skips the remaining
+ *   `afterEach` hooks when one throws, so a separate assertion hook that
+ *   fails would leave every later test running on this test's mocks.
+ * - `assertAllUsed` in `restore()` checks only mocks registered since the
+ *   checkpoint: shared setup can register more than any one test uses.
  * - Nesting: checkpoints form a stack. Restoring one invalidates every
  *   checkpoint taken after it, and `reset()` invalidates all of them.
  * - Restore at one level only per test. An `afterEach` applies to nested
@@ -39,9 +43,33 @@ export type MockCheckpoint = {
    * Undoes every registration made since the checkpoint and returns the
    * mock's own state (block number, batch ids, faults' counts) to what it
    * was, then clears history. Can be called repeatedly, e.g. after each test.
-   * Throws if the checkpoint is no longer valid.
+   * Throws if the checkpoint is no longer valid, or, after restoring, if a
+   * check in `options` fails.
    */
+  restore(options?: MockRestoreOptions): void;
+};
+
+/**
+ * Checks `restore()` runs on the test that's ending. They're checked before
+ * restoring (which clears what they look at) and thrown after, so a failing
+ * check can't leave the next test running on this one's mocks.
+ */
+export type MockRestoreOptions = {
+  /** Throw, like `assertNoUnhandled()`, if any request went unanswered. */
+  assertNoUnhandled?: boolean;
+  /**
+   * Throw, like `assertAllUsed()`, if a mock with args registered since the
+   * checkpoint never answered a call. Baseline mocks aren't checked: shared
+   * setup can register more than any one test uses.
+   */
+  assertAllUsed?: boolean;
+};
+
+/** One part of the mock's checkpoint: a contract, or the actions. */
+export type PartCheckpoint = {
   restore(): void;
+  /** Mocks registered since the checkpoint, with args, that haven't answered a call. */
+  unusedSince(): string[];
 };
 
 /** For a builder whose mock a `restore()` or `reset()` removed. */
