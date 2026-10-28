@@ -15,7 +15,7 @@ import {
   toFunctionSelector,
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
-import { MockFailure, type MockFault } from "./faults.js";
+import { MockFailure, type MockFault, fail } from "./faults.js";
 import type { MockBatch } from "./multicall.js";
 import { isMatch, specificity } from "./match.js";
 import { type MockReturnType, normalizeResult, zeroResult } from "./result.js";
@@ -364,11 +364,6 @@ export function createMockContract<const abi extends Abi>(
         .filter((h) => h.args !== undefined && h.resolver !== undefined && h.usedCount === 0)
         .map((h) => `${formatCall(h.abiItem.name, h.args)} on ${address}`),
   };
-}
-
-/** Handed to every resolver; unlike `revert`, it doesn't depend on the ABI. */
-function fail(fault: MockFault): never {
-  throw new MockFailure(fault);
 }
 
 function encodeResult(abiItem: AbiFunction, value: unknown): Hex {

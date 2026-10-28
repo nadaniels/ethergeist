@@ -1,3 +1,14 @@
+export type {
+  ActionContext,
+  BalanceCall,
+  CodeCall,
+  MethodCall,
+  MockAction,
+  MockActionBuilder,
+  MockActions,
+  MockMethodBuilder,
+  RpcValue,
+} from "./actions.js";
 export {
   createMockRpc,
   type CreateMockRpcParameters,

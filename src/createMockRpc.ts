@@ -1,7 +1,6 @@
 import {
   type Abi,
   type Address,
-  type BlockTag,
   type Chain,
   type CustomTransport,
   type CustomTransportConfig,
@@ -16,6 +15,7 @@ import {
   numberToHex,
 } from "viem";
 import { mainnet } from "viem/chains";
+import { createActions } from "./actions.js";
 import {
   type CallContext,
   type CreateMockContractParameters,
@@ -36,6 +36,7 @@ import {
   createFaultError,
 } from "./faults.js";
 import { multicall3Address, resolveMulticall } from "./multicall.js";
+import { isPlainObject } from "./result.js";
 
 export type CreateMockRpcParameters = {
   /**
@@ -83,6 +84,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   const unhandled: UnhandledRequest[] = [];
   const faults: ActiveFault[] = [];
   let batchCount = 0;
+  const actions = createActions({ resolveBlock, codeAt });
 
   async function request(rpcRequest: RpcRequest): Promise<unknown> {
     const { method, params } = rpcRequest;
@@ -122,7 +124,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
         const [tx, block] = params as [
           { to?: Address; from?: Address; value?: Hex; data?: Hex; input?: Hex },
-          BlockTag | Hex | undefined,
+          unknown,
         ];
         const data = tx.data ?? tx.input;
         if (!data) throw new MockNotFoundError("eth_call without `data` is not supported.");
@@ -140,8 +142,13 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
           batch: undefined,
         });
       }
-      default:
-        throw new MockNotFoundError(`RPC method "${method}" is not mocked.`);
+      default: {
+        const answered = actions.answer(method, params);
+        if (answered) return await answered;
+        throw new MockNotFoundError(`RPC method "${method}" is not mocked.`, {
+          details: `Mock it with mock.method("${method}", …).returns(…).`,
+        });
+      }
     }
   }
 
@@ -186,9 +193,27 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     return custom({ request }, { retryDelay: 0, ...config });
   }
 
-  function resolveBlock(block: BlockTag | Hex | undefined): bigint {
-    if (block === undefined || !isHex(block)) return blockNumber;
-    return hexToBigInt(block);
+  /**
+   * A block parameter as a block number: a hex number, a tag (every tag is the
+   * current block; there are no reorgs), or an EIP-1898 `{ blockNumber }`.
+   */
+  function resolveBlock(block: unknown): bigint {
+    if (isHex(block)) return hexToBigInt(block);
+    if (isPlainObject(block)) {
+      if (isHex(block.blockNumber)) return hexToBigInt(block.blockNumber);
+      if (isHex(block.blockHash))
+        throw new MockNotFoundError("Blocks by hash are not supported yet.", {
+          details: `Block hash: ${block.blockHash}`,
+        });
+    }
+    return blockNumber;
+  }
+
+  /** Code at an address the mock knows without a mock: placeholder code for contracts, none for empty. */
+  function codeAt(address: Address): Hex | undefined {
+    if (address === multicallAddress || contracts.some((c) => c.matches(address))) return "0xfe";
+    if (emptyAddresses.has(address)) return "0x";
+    return undefined;
   }
 
   return {
@@ -218,6 +243,17 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       contracts.push(internal);
       return internal.contract;
     },
+    /**
+     * Mocks for viem's public actions beyond contract calls, e.g.
+     * `mock.actions.getBalance({ address }).returns(parseEther("1"))`. Values
+     * are in viem's own types; the mock encodes them for JSON-RPC.
+     */
+    actions: actions.actions,
+    /**
+     * Mocks a JSON-RPC method that has no typed mock, answering with raw JSON-RPC
+     * values. Pinned `params` match a prefix of the request's params.
+     */
+    method: actions.method,
     /**
      * Fails requests at the transport, with the error viem's `http` transport
      * would throw, until cleared or `times` runs out. See `MockFault` for kinds.
@@ -286,7 +322,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * mocks and defaults are meant as fallbacks, so they're not checked.
      */
     assertAllUsed() {
-      const unused = contracts.flatMap((c) => c.unusedMocks());
+      const unused = [...contracts.flatMap((c) => c.unusedMocks()), ...actions.unusedMocks()];
       if (unused.length === 0) return;
       const lines = unused.map((mock) => `  - ${mock}`);
       throw new Error(`${unused.length} mock(s) never answered a call:\n${lines.join("\n")}`);
@@ -297,6 +333,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       requests.length = 0;
       unhandled.length = 0;
       for (const contract of contracts) contract.clearCalls();
+      actions.clearCalls();
     },
     /**
      * Returns the mock to its initial state: no contracts, no history, and the
@@ -304,6 +341,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      */
     reset() {
       contracts.length = 0;
+      actions.reset();
       emptyAddresses.clear();
       faults.length = 0;
       calls.length = 0;

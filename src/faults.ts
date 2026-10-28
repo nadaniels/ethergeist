@@ -33,6 +33,11 @@ export class MockFailure extends Error {
   }
 }
 
+/** Handed to every resolver, contract or action, to fail the request it's answering. */
+export function fail(fault: MockFault): never {
+  throw new MockFailure(fault);
+}
+
 export type FailRequestsOptions = {
   /** Only fail requests for these JSON-RPC methods. Defaults to every method. */
   method?: string | readonly string[];
