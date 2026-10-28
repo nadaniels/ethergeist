@@ -17,6 +17,7 @@ import {
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
+import { formatCall, formatContract } from "./format.js";
 import type { MockBatch } from "./multicall.js";
 import { isMatch, specificity } from "./match.js";
 import { type MockReturnType, checksumAddresses, normalizeResult, zeroResult } from "./result.js";
@@ -129,6 +130,8 @@ export type MockSimulateFunction<
 
 export type MockContract<abi extends Abi> = {
   address: Address;
+  /** The name given at registration, if any. */
+  name: string | undefined;
   abi: abi;
   /** Every call to any of this contract's functions, in order. */
   readonly calls: (NamespaceCall<abi, ReadMutability> | NamespaceCall<abi, WriteMutability>)[];
@@ -172,12 +175,16 @@ export type MockContractDefaults<abi extends Abi> = {
 export type CreateMockContractParameters<abi extends Abi> = {
   abi: abi;
   address: Address;
+  /** A name for messages and history, e.g. `"USDC"`. Defaults to the address alone. */
+  name?: string;
   defaults?: MockContractDefaults<abi>;
 };
 
 /** Internal: the public contract API plus the hooks the rpc calls. */
 export type InternalMockContract<abi extends Abi = Abi> = {
   contract: MockContract<abi>;
+  /** The contract for messages: its name and address, or just the address. */
+  label: string;
   /** Whether this contract is registered at `address`, which must be checksummed. */
   matches(address: Address): boolean;
   resolve(data: Hex, context: CallContext): Promise<Hex>;
@@ -195,9 +202,10 @@ export function createMockContract<const abi extends Abi>(
   /** Called with every decoded call, so the rpc can keep a log across contracts. */
   onCall: (call: MockCall) => void = () => {},
 ): InternalMockContract<abi> {
-  const { abi, defaults = {} } = parameters;
+  const { abi, name, defaults = {} } = parameters;
   // Also validates the address at registration.
   const address = getAddress(parameters.address);
+  const label = formatContract(address, name);
   const handlers: Handler[] = [];
   const history: MockCall[] = [];
   let detached = false;
@@ -238,7 +246,7 @@ export function createMockContract<const abi extends Abi>(
   ) {
     if (detached)
       throw new Error(
-        `The contract at ${address} was removed by restore() or reset(); register it again.`,
+        `The contract at ${label} was removed by restore() or reset(); register it again.`,
       );
     const abiItem = getAbiItem({ abi: functionsIn[namespace], name: functionName, args });
     // viem's type assumes a match, but untyped callers can pass any name.
@@ -286,23 +294,23 @@ export function createMockContract<const abi extends Abi>(
     register("simulate", functionName, undefined).returns(resolver);
 
   // Overloads share one entry, as in viem's `getContract`.
-  function buildNamespace(name: Namespace) {
+  function buildNamespace(namespace: Namespace) {
     const entries: Record<string, unknown> = {};
-    for (const { name: functionName } of functionsIn[name]) {
+    for (const { name: functionName } of functionsIn[namespace]) {
       if (functionName in entries) continue;
       entries[functionName] = Object.defineProperty(
-        (args?: readonly unknown[]) => register(name, functionName, args),
+        (args?: readonly unknown[]) => register(namespace, functionName, args),
         "calls",
         { get: () => history.filter((call) => call.functionName === functionName) },
       );
     }
     // Untyped callers reaching for the other namespace's functions get a pointer
     // to the right one instead of "is not a function". Hidden from Object.keys.
-    for (const { name: functionName } of functionsIn[name === "read" ? "simulate" : "read"]) {
+    for (const { name: functionName } of functionsIn[namespace === "read" ? "simulate" : "read"]) {
       if (functionName in entries) continue;
       Object.defineProperty(entries, functionName, {
         value: () => {
-          throw notInNamespaceError(name, functionName);
+          throw notInNamespaceError(namespace, functionName);
         },
       });
     }
@@ -313,6 +321,7 @@ export function createMockContract<const abi extends Abi>(
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- runtime-built typed facade
   const contract = {
     address,
+    name,
     abi,
     get calls() {
       return [...history];
@@ -330,7 +339,7 @@ export function createMockContract<const abi extends Abi>(
       decoded = { functionName: result.functionName, args: result.args ?? [] };
     } catch {
       throw new MockNotFoundError(
-        `No function with selector ${selector} on mocked contract ${address}.`,
+        `No function with selector ${selector} on mocked contract ${label}.`,
       );
     }
 
@@ -351,7 +360,7 @@ export function createMockContract<const abi extends Abi>(
         .filter((h) => h.selector === selector)
         .map((h) => `  ${formatCall(decoded.functionName, h.args)}`);
       throw new MockNotFoundError(
-        `No mock for ${formatCall(decoded.functionName, decoded.args)} on ${address}.`,
+        `No mock for ${formatCall(decoded.functionName, decoded.args)} on ${label}.`,
         {
           details:
             registered.length > 0
@@ -374,11 +383,12 @@ export function createMockContract<const abi extends Abi>(
   function unused(list: Handler[]) {
     return list
       .filter((h) => h.args !== undefined && h.resolver !== undefined && h.usedCount === 0)
-      .map((h) => `${formatCall(h.abiItem.name, h.args)} on ${address}`);
+      .map((h) => `${formatCall(h.abiItem.name, h.args)} on ${label}`);
   }
 
   return {
     contract,
+    label,
     matches: (other) => other === address,
     resolve,
     clearCalls() {
@@ -413,9 +423,4 @@ function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem's type is narrower than its runtime
     result: normalizeResult(abiItem.outputs, value) as readonly unknown[] | undefined,
   });
-}
-
-function formatCall(functionName: string, args: readonly unknown[] | undefined) {
-  if (args === undefined) return `${functionName}(*)`;
-  return `${functionName}(${args.map((arg) => (typeof arg === "bigint" ? `${arg}n` : String(arg))).join(", ")})`;
 }

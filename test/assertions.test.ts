@@ -1,7 +1,7 @@
 import { InvalidAddressError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { MockResolverError, createMockRpc } from "../src/index.js";
+import { MockNotFoundError, MockResolverError, createMockRpc } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -138,6 +138,55 @@ describe("unencodable returns", () => {
   });
 });
 
+describe("messages", () => {
+  // A generic order book, for a struct arg.
+  const bookAbi = parseAbi([
+    "struct Order { address maker; uint256 amount; }",
+    "function filled(Order order) view returns (bool)",
+  ]);
+
+  test("a contract's name shows next to its address", async () => {
+    const { mock, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
+    usdc.read.balanceOf([bob]).returns(1n);
+
+    expect(usdc.name).toBe("USDC");
+    const error = expectCause(await rejectionOf(balanceOf(alice)), MockNotFoundError);
+    expect(error.message).toContain(
+      `No mock for balanceOf(${getAddress(alice)}) on USDC (${USDC})`,
+    );
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`balanceOf(${getAddress(bob)}) on USDC (${USDC})`);
+    expect(() => mock.contract({ abi: erc20Abi, address: USDC })).toThrow(
+      `A contract is already registered at USDC (${USDC})`,
+    );
+  });
+
+  test("without a name, it's the address alone", () => {
+    const { mock } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.read.balanceOf([bob]).returns(1n);
+
+    expect(usdc.name).toBeUndefined();
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`balanceOf(${getAddress(bob)}) on ${USDC}`);
+  });
+
+  test("struct args are spelled out", () => {
+    const { mock } = setup();
+    mock
+      .contract({ abi: bookAbi, address: DAI, name: "Book" })
+      .read.filled([{ maker: alice, amount: 5n }])
+      .returns(true);
+
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`filled({ maker: ${getAddress(alice)}, amount: 5n }) on Book`);
+  });
+});
+
 describe("address args", () => {
   // A batch-balance view, for address arrays.
   const batchAbi = parseAbi(["function balancesOf(address[] owners) view returns (uint256[])"]);
@@ -159,7 +208,7 @@ describe("address args", () => {
     }).toThrow(`allowance(${USDC}, ${getAddress(bob)})`);
     expect(() => {
       mock.assertAllUsed();
-    }).toThrow(`balancesOf(${getAddress(alice)},${getAddress(bob)})`);
+    }).toThrow(`balancesOf([${getAddress(alice)}, ${getAddress(bob)}])`);
   });
 
   test("a malformed one fails at registration", () => {

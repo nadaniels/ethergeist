@@ -14,6 +14,7 @@ import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
 import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError } from "./errors.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
+import { formatCall } from "./format.js";
 import { isMatch, specificity } from "./match.js";
 import { isPlainObject, zeroResult } from "./result.js";
 
@@ -170,7 +171,7 @@ function createTable(definition: Definition) {
   function unused(list: Handler[]) {
     return list
       .filter((h) => h.pinned !== undefined && h.resolver !== undefined && h.usedCount === 0)
-      .map((h) => format(definition.name, h.pinned));
+      .map((h) => formatCall(definition.name, h.pinned));
   }
 
   async function answer(method: string, params: readonly unknown[]): Promise<unknown> {
@@ -187,8 +188,8 @@ function createTable(definition: Definition) {
     if (!handler?.resolver) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
-      const registered = handlers.map((h) => `  ${format(definition.name, h.pinned)}`);
-      throw new MockNotFoundError(`No mock for ${format(definition.name, call)}.`, {
+      const registered = handlers.map((h) => `  ${formatCall(definition.name, h.pinned)}`);
+      throw new MockNotFoundError(`No mock for ${formatCall(definition.name, call)}.`, {
         details:
           registered.length > 0
             ? `Registered:\n${registered.join("\n")}`
@@ -448,20 +449,4 @@ export function createActions(options: {
       };
     },
   };
-}
-
-/** Formats a call or pinned params for messages, e.g. `getBalance({ address: 0x… })`. */
-function format(name: string, value: unknown): string {
-  if (value === undefined) return `${name}(*)`;
-  return `${name}(${formatValue(value)})`;
-}
-
-function formatValue(value: unknown): string {
-  if (typeof value === "bigint") return `${value}n`;
-  if (Array.isArray(value)) return `[${value.map((v) => formatValue(v)).join(", ")}]`;
-  if (isPlainObject(value))
-    return `{ ${Object.entries(value)
-      .map(([key, v]) => `${key}: ${formatValue(v)}`)
-      .join(", ")} }`;
-  return typeof value === "string" ? value : JSON.stringify(value);
 }

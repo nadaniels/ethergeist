@@ -223,7 +223,7 @@ describe("restore() checks", () => {
     expect(String(error)).toContain(`balanceOf(${DAI}) on ${USDC}`);
     expect(String(error)).toContain(`balanceOf(${getAddress(alice)}) on ${DAI}`);
     expect(String(error)).toContain(`getBalance({ address: ${getAddress(alice)} })`);
-    expect(String(error)).toContain(`eth_getStorageAt([${USDC}])`);
+    expect(String(error)).toContain(`eth_getStorageAt(${USDC})`);
   });
 
   test("both checks fail together, in one error", async () => {

@@ -493,7 +493,7 @@ describe("bookkeeping", () => {
     }).toThrow(`getBalance({ address: ${getAddress(bob)} })`);
     expect(() => {
       mock.assertAllUsed();
-    }).toThrow(`eth_getStorageAt([${USDC}])`);
+    }).toThrow(`eth_getStorageAt(${USDC})`);
   });
 
   test("clearCalls() clears history; reset() clears mocks", async () => {

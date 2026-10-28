@@ -7,6 +7,15 @@ const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const mock = createMockRpc();
 const usdc = mock.contract({ abi: erc20Abi, address: USDC });
 
+describe("names", () => {
+  test("name is optional and readable back", () => {
+    const named = createMockRpc().contract({ abi: erc20Abi, address: USDC, name: "USDC" });
+    expectTypeOf(named.name).toEqualTypeOf<string | undefined>();
+    // @ts-expect-error names are strings
+    createMockRpc().contract({ abi: erc20Abi, address: USDC, name: 1 });
+  });
+});
+
 describe("read", () => {
   test("exposes only read function names from the ABI", () => {
     expectTypeOf<keyof typeof usdc.read>().toEqualTypeOf<

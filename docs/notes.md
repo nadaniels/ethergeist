@@ -67,6 +67,8 @@ features land; tick them off as pages get written.
 - [ ] How to read "No mock for …" and its "Registered:" list.
 - [ ] Addresses in messages are always checksummed. Address args are
       normalized at registration, which also rejects malformed ones.
+- [ ] `contract({ …, name: "USDC" })`: names show in every message (and in
+      history), next to the address.
 
 ## 7. Sharing setup across tests: `checkpoint()` and `restore()`
 

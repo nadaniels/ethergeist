@@ -209,9 +209,11 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
 
   function assertUnregistered(address: Address) {
     const checksummed = getAddress(address);
-    if (contracts.some((c) => c.matches(checksummed)))
+    const existing = contracts.find((c) => c.matches(checksummed));
+    if (existing)
       throw new Error(
-        `A contract is already registered at ${checksummed}. Register it once with a ` +
+        `A contract is already registered at ${existing.label}. ` +
+          "Register it once with a " +
           "combined ABI (abi: [...a, ...b]). If an earlier test registered it, restore " +
           "a checkpoint after each test, or call reset().",
       );
