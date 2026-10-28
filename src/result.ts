@@ -5,7 +5,7 @@ import { type Abi, type AbiParameter, type AbiParameterToPrimitiveType, zeroAddr
  * Solidity zero values, as unset storage would read. Tuples (positional
  * multi-output returns, unnamed components) stay complete.
  */
-export type PartialStructs<value> = value extends readonly unknown[]
+type PartialStructs<value> = value extends readonly unknown[]
   ? { [index in keyof value]: PartialStructs<value[index]> }
   : value extends object
     ? { [key in keyof value]?: PartialStructs<value[key]> }
