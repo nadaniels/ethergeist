@@ -10,6 +10,7 @@ import {
   decodeFunctionData,
   encodeFunctionResult,
   getAbiItem,
+  getAddress,
   slice,
   toFunctionSelector,
 } from "viem";
@@ -158,6 +159,7 @@ export type CreateMockContractParameters<abi extends Abi> = {
 /** Internal: the public contract API plus the hooks the rpc calls. */
 export type InternalMockContract<abi extends Abi = Abi> = {
   contract: MockContract<abi>;
+  /** Whether this contract is registered at `address`, which must be checksummed. */
   matches(address: Address): boolean;
   resolve(data: Hex, context: CallContext): Promise<Hex>;
   clearCalls(): void;
@@ -171,6 +173,8 @@ export function createMockContract<const abi extends Abi>(
   onCall: (call: MockCall) => void = () => {},
 ): InternalMockContract<abi> {
   const { abi, address, defaults = {} } = parameters;
+  // Also validates the address at registration.
+  const checksummed = getAddress(address);
   const handlers: Handler[] = [];
   const history: MockCall[] = [];
   // Handed to every resolver. RevertFn's generic signature only narrows what
@@ -314,7 +318,7 @@ export function createMockContract<const abi extends Abi>(
 
   return {
     contract,
-    matches: (other) => other.toLowerCase() === address.toLowerCase(),
+    matches: (other) => other === checksummed,
     resolve,
     clearCalls() {
       history.length = 0;

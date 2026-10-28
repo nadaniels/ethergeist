@@ -44,7 +44,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   const chainId = parameters.chainId ?? 1;
   const initialBlockNumber = parameters.blockNumber ?? 1n;
   let blockNumber = initialBlockNumber;
-  const multicallAddress = parameters.multicallAddress ?? multicall3Address;
+  const multicallAddress = getAddress(parameters.multicallAddress ?? multicall3Address);
   const contracts: InternalMockContract<any>[] = [];
   const emptyAddresses = new Set<Address>();
   const calls: MockCall[] = [];
@@ -102,7 +102,9 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   }
 
   function dispatch(to: Address, data: Hex, context: CallContext): Promise<Hex> {
-    if (to.toLowerCase() === multicallAddress.toLowerCase())
+    // Checksummed once here; lookups below compare checksummed addresses.
+    const target = getAddress(to);
+    if (target === multicallAddress)
       return resolveMulticall(data, {
         address: multicallAddress,
         batchId: ++batchCount,
@@ -110,10 +112,10 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         dispatch,
       });
 
-    const target = contracts.find((c) => c.matches(to));
-    if (target) return target.resolve(data, context);
+    const contract = contracts.find((c) => c.matches(target));
+    if (contract) return contract.resolve(data, context);
     // A real node answers a call to an address without code with empty data.
-    if (emptyAddresses.has(getAddress(to))) return Promise.resolve("0x");
+    if (emptyAddresses.has(target)) return Promise.resolve("0x");
     throw new MockNotFoundError(`No mocked contract at ${to}.`, {
       details:
         `Call data: ${data}\n` +
@@ -122,12 +124,13 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   }
 
   function assertUnregistered(address: Address) {
-    if (contracts.some((c) => c.matches(address)))
+    const checksummed = getAddress(address);
+    if (contracts.some((c) => c.matches(checksummed)))
       throw new Error(
         `A contract is already registered at ${address}. Register it once with a ` +
           "combined ABI (abi: [...a, ...b]), or call reset() between tests.",
       );
-    if (emptyAddresses.has(getAddress(address)))
+    if (emptyAddresses.has(checksummed))
       throw new Error(`${address} is already registered as empty. Call reset() between tests.`);
   }
 

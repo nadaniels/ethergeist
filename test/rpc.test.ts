@@ -1,4 +1,4 @@
-import { createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
+import { InvalidAddressError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import { MockNotFoundError, createMockRpc } from "../src/index.js";
@@ -33,6 +33,11 @@ describe("registration", () => {
     expect(() => mock.contract({ abi: ownableAbi, address: usdcLowercase })).toThrow(
       `A contract is already registered at ${usdcLowercase}`,
     );
+  });
+
+  test("a malformed address is rejected at registration", () => {
+    const { mock } = setup();
+    expect(() => mock.contract({ abi: erc20Abi, address: "0x1234" })).toThrow(InvalidAddressError);
   });
 
   test("one registration with a combined ABI answers both", async () => {
