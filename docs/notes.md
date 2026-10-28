@@ -62,6 +62,19 @@ features land; tick them off as pages get written.
 - [ ] Multicall: batching, `batch` info on calls, how reverts and faults
       behave inside a batch.
 - [ ] `mock.empty(address)` for addresses without code.
+- [ ] Limits: `.once()` and `.times(n)` before the answer, on every builder
+      (contracts, actions, `method`). Show:
+  - Sequences: limited mocks go ahead of unlimited ones as specific, oldest
+    first, so `once().reverts(…)` then `returns(…)` plays out as written,
+    in either registration order (like Vitest's `mockReturnValueOnce`).
+    Specificity still comes first.
+  - A used-up mock steps aside; with nothing behind it, the call isn't
+    mocked, and "Registered:" shows `once, used up`.
+  - Each multicall sub-call uses an answer.
+  - `clearCalls()` keeps counts; `restore()` refills them, so a baseline
+    `.once()` is fresh in every test.
+  - `assertAllUsed()`: answering at least once counts as used; messages show
+    what's left (`3 times, 2 left`).
 
 ## 4. Failures: `.fails()` vs `.reverts()`
 
@@ -73,6 +86,19 @@ features land; tick them off as pages get written.
       own result in a multicall.
 - [ ] `failRequests()` for transport-wide faults, versus `.fails()` and
       `fail()` for one function.
+- [ ] Recovering after a failure: `.once().fails(…)` or `.times(n).fails(…)`
+      next to a mock that answers. Retries use up answers, so with viem's
+      default 3 retries, `.times(3)` still succeeds and `.times(4)` fails the
+      call. Plain `.fails()` fails every retry.
+- [ ] The retry footgun, both ways:
+  - Expecting the app to see an error, but a limited fault let viem's retry
+    succeed: the mock can't tell (nothing went wrong on its side), so say it
+    plainly. `.once().fails()` tests recovery; to test the app seeing the
+    error, use `.fails()` without a limit, or `retryCount: 0` on the
+    transport. `formatHistory()` shows it as a fault, then a `(retry)`.
+  - A retry finding nothing behind a used-up fault: the "not mocked" error
+    says it's a retry and gives the transport's `retryCount` (the default
+    wording under `fallback()`, which retries itself).
 
 ## 5. Node data: `mock.actions` and `mock.method`
 
@@ -161,8 +187,8 @@ features land; tick them off as pages get written.
     afterEach(() => suite.restore({ assertNoUnhandled: true }));
     afterAll(() => outer.restore());
     ```
-- [ ] What's restored (registrations, baseline builders' answers, block
-      number, batch ids, fault counts) and what isn't (state that resolvers
+- [ ] What's restored (registrations, baseline builders' answers and limits,
+      `.once()`/`.times(n)` counts, block number, batch ids, fault counts) and what isn't (state that resolvers
       close over). History is cleared, not rolled back.
 - [ ] Removed handles throw when used to register. Their `.calls` can still
       be read.

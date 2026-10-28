@@ -19,8 +19,15 @@ import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError } from "./errors.js";
 import { type MockOutcome, errorOutcome } from "./history.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
-import { formatCall } from "./format.js";
-import { type Specificity, assertNoMatchers, bestMatch, isMatch, specificity } from "./match.js";
+import { formatCall, formatLimit } from "./format.js";
+import {
+  type Specificity,
+  assertNoMatchers,
+  bestMatch,
+  isMatch,
+  setLimit,
+  specificity,
+} from "./match.js";
 import { isPlainObject, zeroResult } from "./result.js";
 
 /** What a call to `getBalance` asked for. Block tags resolve to the mock's block number. */
@@ -60,7 +67,8 @@ export type ActionContext<call> = call & {
   fail: (fault: MockFault) => never;
 };
 
-export type MockActionBuilder<call, value> = {
+/** How a mock answers: `.returns()` or `.fails()`. */
+export type MockActionAnswers<call, value> = {
   /** With no argument, answers with the zero value, like `.returns(zeroResult)`. */
   returns(): void;
   returns(
@@ -68,6 +76,17 @@ export type MockActionBuilder<call, value> = {
   ): void;
   /** Fail every matching request at the network level. See `MockFault` for the kinds. */
   fails(fault: MockFault): void;
+};
+
+export type MockActionBuilder<call, value> = MockActionAnswers<call, value> & {
+  /**
+   * Answer only the next matching request, then step aside for the next best
+   * mock. Limited mocks go ahead of unlimited ones as specific, oldest first.
+   * Retries use up answers too.
+   */
+  once(): MockActionAnswers<call, value>;
+  /** Like `.once()`, for the next `count` matching requests. */
+  times(count: number): MockActionAnswers<call, value>;
 };
 
 /**
@@ -125,6 +144,9 @@ type Handler = {
   resolver: ((context: ActionContext<object>) => unknown) | undefined;
   /** Calls this handler answered since registration or the last `clearCalls()`. */
   usedCount: number;
+  /** Set by `.once()`/`.times(n)`: answers in all, and how many are left. Kept by `clearCalls()`. */
+  limit: number | undefined;
+  remaining: number | undefined;
   /** Set when a `restore()` or `reset()` removes it, so its builder can't answer again. */
   removed: boolean;
 };
@@ -165,6 +187,8 @@ function createTable(definition: Definition) {
       specificity: specificity(pinned),
       resolver: undefined,
       usedCount: 0,
+      limit: undefined,
+      remaining: undefined,
       removed: false,
     };
     handlers.push(handler);
@@ -183,15 +207,21 @@ function createTable(definition: Definition) {
       fails(fault: MockFault) {
         builder.returns(() => fail(fault));
       },
+      once: () => builder.times(1),
+      times(count: number) {
+        if (handler.removed) throw removedMockError();
+        setLimit(handler, count);
+        return builder;
+      },
     };
     return builder;
   }
 
-  /** Mocks that haven't answered a call. */
+  /** Mocks that haven't answered a call, except used-up ones: they answered every call they had. */
   function unused(list: Handler[]) {
     return list
-      .filter((h) => h.resolver !== undefined && h.usedCount === 0)
-      .map((h) => formatCall(definition.name, h.pinned));
+      .filter((h) => h.resolver !== undefined && h.usedCount === 0 && h.remaining !== 0)
+      .map((h) => `${formatCall(definition.name, h.pinned)}${formatLimit(h.limit, h.remaining)}`);
   }
 
   async function answer(
@@ -233,7 +263,9 @@ function createTable(definition: Definition) {
     if (!handler?.resolver) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
-      const registered = handlers.map((h) => `  ${formatCall(definition.name, h.pinned)}`);
+      const registered = handlers.map(
+        (h) => `  ${formatCall(definition.name, h.pinned)}${formatLimit(h.limit, h.remaining)}`,
+      );
       throw new MockNotFoundError(`No mock for ${formatCall(definition.name, call)}.`, {
         details:
           registered.length > 0
@@ -243,6 +275,7 @@ function createTable(definition: Definition) {
     }
 
     handler.usedCount += 1;
+    if (handler.remaining !== undefined) handler.remaining -= 1;
     try {
       const value = await handler.resolver({ ...call, fail });
       return encode(value === zeroResult ? definition.zero : value, call);
@@ -268,12 +301,13 @@ function createTable(definition: Definition) {
     unusedMocks: () => unused(handlers),
     /** Saves the registered mocks and their answers, to put back or compare against. */
     checkpoint(): PartCheckpoint {
-      const saved = handlers.map((h) => [h, h.resolver] as const);
+      const saved = handlers.map((h) => [h, h.resolver, h.limit, h.remaining] as const);
       return {
         restore() {
           for (const handler of handlers.slice(saved.length)) handler.removed = true;
           handlers.length = saved.length;
-          for (const [handler, resolver] of saved) handler.resolver = resolver;
+          for (const [handler, resolver, limit, remaining] of saved)
+            Object.assign(handler, { resolver, limit, remaining });
         },
         unusedSince: () => unused(handlers.slice(saved.length)),
       };

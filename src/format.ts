@@ -20,6 +20,17 @@ export function formatCall(name: string, args: unknown, options: FormatOptions =
   return `${name}(${list.join(", ")})`;
 }
 
+/**
+ * A mock's limit for messages, after its call: ` once`, ` 3 times, 1 left`,
+ * or `, used up`. Empty for an unlimited mock.
+ */
+export function formatLimit(limit: number | undefined, remaining: number | undefined): string {
+  if (limit === undefined || remaining === undefined) return "";
+  const count = limit === 1 ? "once" : `${limit} times`;
+  if (remaining === 0) return ` ${count}, used up`;
+  return remaining === limit ? ` ${count}` : ` ${count}, ${remaining} left`;
+}
+
 type FormatOptions = {
   /** Shorten long hex (addresses, hashes, data) to `0x1234…abcd`, for overviews. Errors keep it whole. */
   short?: boolean;

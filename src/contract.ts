@@ -21,7 +21,7 @@ import {
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
-import { formatCall, formatContract } from "./format.js";
+import { formatCall, formatContract, formatLimit } from "./format.js";
 import { type MockCallRecord, type MockOutcome, errorOutcome } from "./history.js";
 import type { MockBatch } from "./multicall.js";
 import {
@@ -30,6 +30,7 @@ import {
   bestMatch,
   findMatcher,
   isMatch,
+  setLimit,
   specificity,
 } from "./match.js";
 import { type MockReturnType, checksumAddresses, normalizeResult, zeroResult } from "./result.js";
@@ -84,11 +85,15 @@ type Handler = {
   usedCount: number;
   /** Registered from `defaults`: shared setup, which `assertAllUsed()` doesn't hold to any one test. */
   isDefault: boolean;
+  /** Set by `.once()`/`.times(n)`: answers in all, and how many are left. Kept by `clearCalls()`. */
+  limit: number | undefined;
+  remaining: number | undefined;
   /** Set when a `restore()` or `reset()` removes it, so its builder can't answer again. */
   removed: boolean;
 };
 
-export type MockFunction<abi extends Abi, args, result> = {
+/** How a mock answers: `.returns()`, `.reverts()`, or `.fails()`. */
+export type MockFunctionAnswers<abi extends Abi, args, result> = {
   /** With no argument, answers with zero values, like `.returns(zeroResult)`. */
   returns(): void;
   returns(value: Resolver<abi, args, result>): void;
@@ -102,6 +107,18 @@ export type MockFunction<abi extends Abi, args, result> = {
    * transport would, so viem's retries apply. See `MockFault` for the kinds.
    */
   fails(fault: MockFault): void;
+};
+
+export type MockFunction<abi extends Abi, args, result> = MockFunctionAnswers<abi, args, result> & {
+  /**
+   * Answer only the next matching call, then step aside for the next best
+   * mock. Limited mocks go ahead of unlimited ones as specific, oldest first,
+   * so `fn().once().fails("network")` beside `fn().returns(1n)` fails once
+   * whichever is registered first. Retries use up answers too.
+   */
+  once(): MockFunctionAnswers<abi, args, result>;
+  /** Like `.once()`, for the next `count` matching calls. */
+  times(count: number): MockFunctionAnswers<abi, args, result>;
 };
 
 /** Mirrors `getContract(...).<namespace>.<functionName>(args)`, but registers a mock. */
@@ -314,6 +331,8 @@ export function createMockContract<const abi extends Abi>(
       resolver: undefined,
       usedCount: 0,
       isDefault,
+      limit: undefined,
+      remaining: undefined,
       removed: false,
     };
     handlers.push(handler);
@@ -333,6 +352,12 @@ export function createMockContract<const abi extends Abi>(
       },
       fails(fault: MockFault) {
         builder.returns(() => fail(fault));
+      },
+      once: () => builder.times(1),
+      times(count: number) {
+        if (handler.removed) throw removedMockError();
+        setLimit(handler, count);
+        return builder;
       },
     };
     return builder;
@@ -436,7 +461,7 @@ export function createMockContract<const abi extends Abi>(
     if (!handler?.resolver) {
       const registered = handlers
         .filter((h) => h.selector === selector)
-        .map((h) => `  ${formatCall(fn.functionName, h.args)}`);
+        .map((h) => `  ${formatCall(fn.functionName, h.args)}${formatLimit(h.limit, h.remaining)}`);
       throw new MockNotFoundError(
         `No mock for ${formatCall(fn.functionName, fn.args)} on ${label}.`,
         {
@@ -449,6 +474,7 @@ export function createMockContract<const abi extends Abi>(
     }
 
     handler.usedCount += 1;
+    if (handler.remaining !== undefined) handler.remaining -= 1;
     const { abiItem } = handler;
     try {
       return {
@@ -461,11 +487,19 @@ export function createMockContract<const abi extends Abi>(
     }
   }
 
-  /** Mocks that haven't answered a call; defaults are shared setup, so they're left out. */
+  /**
+   * Mocks that haven't answered a call; defaults are shared setup, so they're
+   * left out, and so are used-up mocks, which answered every call they had.
+   */
   function unused(list: Handler[]) {
     return list
-      .filter((h) => !h.isDefault && h.resolver !== undefined && h.usedCount === 0)
-      .map((h) => `${formatCall(h.abiItem.name, h.args)} on ${label}`);
+      .filter(
+        (h) => !h.isDefault && h.resolver !== undefined && h.usedCount === 0 && h.remaining !== 0,
+      )
+      .map(
+        (h) =>
+          `${formatCall(h.abiItem.name, h.args)}${formatLimit(h.limit, h.remaining)} on ${label}`,
+      );
   }
 
   return {
@@ -479,12 +513,13 @@ export function createMockContract<const abi extends Abi>(
     },
     unusedMocks: () => unused(handlers),
     checkpoint() {
-      const saved = handlers.map((h) => [h, h.resolver] as const);
+      const saved = handlers.map((h) => [h, h.resolver, h.limit, h.remaining] as const);
       return {
         restore() {
           for (const handler of handlers.slice(saved.length)) handler.removed = true;
           handlers.length = saved.length;
-          for (const [handler, resolver] of saved) handler.resolver = resolver;
+          for (const [handler, resolver, limit, remaining] of saved)
+            Object.assign(handler, { resolver, limit, remaining });
         },
         unusedSince: () => unused(handlers.slice(saved.length)),
       };

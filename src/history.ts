@@ -130,16 +130,47 @@ export function formatHistory(
     .join("\n");
 }
 
+/** The fault that entry `index` retries, if it's a retry: the same request, right after a fault. */
+function faultRetried(
+  entries: readonly MockHistoryEntry[],
+  index: number,
+): Extract<MockOutcome, { type: "fault" }> | undefined {
+  const entry = entries[index];
+  const previous = entries[index - 1];
+  if (entry === undefined || previous?.outcome.type !== "fault") return undefined;
+  const same =
+    previous.method === entry.method &&
+    JSON.stringify(previous.params) === JSON.stringify(entry.params);
+  return same ? previous.outcome : undefined;
+}
+
+/**
+ * For a request a mock didn't answer: explains that it's viem retrying after
+ * a limited mock's fault used up its answers. `retryCount` is the transport's,
+ * when known. A `fallback()` transport does the retrying itself and gives its
+ * transports `retryCount: 0`, so a retry through one of those shows the default.
+ */
+export function retryHint(
+  entries: readonly MockHistoryEntry[],
+  index: number,
+  retryCount: number | undefined,
+): string | undefined {
+  if (faultRetried(entries, index)?.source !== "mock") return undefined;
+  const retries =
+    retryCount === undefined || retryCount === 0
+      ? "viem retries a failed request (`retryCount`, 3 by default)"
+      : `viem retries a failed request (this transport's \`retryCount\` is ${retryCount})`;
+  return (
+    `This is a retry after a mock's fault: ${retries}, and each attempt uses one of a ` +
+    "`.once()`/`.times(n)` mock's answers. Register a mock to answer after it, or use " +
+    "`.fails()` without a limit to fail every attempt."
+  );
+}
+
 /** Entry `index` of `entries`, formatted; earlier entries tell retries apart. */
 export function formatEntry(entries: readonly MockHistoryEntry[], index: number): string {
   const entry = entries[index]!;
-  const previous = entries[index - 1];
-  const retry =
-    previous?.outcome.type === "fault" &&
-    previous.method === entry.method &&
-    JSON.stringify(previous.params) === JSON.stringify(entry.params)
-      ? "(retry) "
-      : "";
+  const retry = faultRetried(entries, index) ? "(retry) " : "";
   const head = `#${index + 1} ${entry.method} ${retry}`;
 
   if (entry.type === "call")

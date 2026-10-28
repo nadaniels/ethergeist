@@ -37,21 +37,31 @@ export function specificity(pinned: unknown): Specificity {
 }
 
 /**
- * The best candidate that matches: the most specific, and among equally
- * specific ones the most recent. Candidates are tried best first, each on its
- * exact values before its predicates, so a predicate runs only for a mock still
- * in contention.
+ * The best candidate that matches. Candidates are ranked by specificity; at
+ * equal specificity, limited mocks (`.once()`, `.times(n)`) queue ahead of
+ * unlimited ones and are used oldest first, while among unlimited ones the
+ * most recent wins. Used-up mocks are skipped. Candidates are tried best first,
+ * each on its exact values before its predicates, so a predicate runs only for
+ * a mock still in contention.
  */
-export function bestMatch<candidate extends { specificity: Specificity }>(
+export function bestMatch<candidate extends Rankable>(
+  /** In registration order. */
   candidates: readonly candidate[],
   matches: (candidate: candidate, options: MatchOptions) => boolean,
   /** The function or action, for the error when a predicate throws. */
   name: string,
 ): candidate | undefined {
-  // The sort is stable, so reversing first puts the most recent first on ties.
   const ranked = candidates
-    .toReversed()
-    .toSorted((a, b) => b.specificity[0] - a.specificity[0] || b.specificity[1] - a.specificity[1]);
+    .map((candidate, index) => ({ candidate, index, limited: candidate.remaining !== undefined }))
+    .filter(({ candidate }) => candidate.remaining !== 0)
+    .toSorted(
+      (a, b) =>
+        b.candidate.specificity[0] - a.candidate.specificity[0] ||
+        b.candidate.specificity[1] - a.candidate.specificity[1] ||
+        Number(b.limited) - Number(a.limited) ||
+        (a.limited ? a.index - b.index : b.index - a.index),
+    )
+    .map(({ candidate }) => candidate);
   try {
     return ranked.find(
       (candidate) => matches(candidate, { predicates: false }) && matches(candidate, {}),
@@ -61,6 +71,25 @@ export function bestMatch<candidate extends { specificity: Specificity }>(
     throw new MockResolverError(name, error.cause, { matcher: error.matcher });
   }
 }
+
+/** A mock's limit: `limit` answers in all, `remaining` of them left. */
+type Limit = { limit: number | undefined; remaining: number | undefined };
+
+/** Limits a mock to `count` answers, for `.once()` and `.times(count)`. */
+export function setLimit(mock: Limit, count: number): void {
+  if (!Number.isInteger(count) || count < 1)
+    throw new RangeError(`times() takes a positive integer; got ${String(count)}.`);
+  if (mock.limit !== undefined)
+    throw new Error("This mock already has a limit; call once() or times() only once.");
+  mock.limit = count;
+  mock.remaining = count;
+}
+
+type Rankable = {
+  specificity: Specificity;
+  /** Answers left for a limited mock; `undefined` when unlimited. */
+  remaining: number | undefined;
+};
 
 type MatchOptions = {
   /** Run `match.where()` predicates; with `false`, they match anything. Defaults to `true`. */

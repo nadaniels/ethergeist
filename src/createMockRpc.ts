@@ -48,6 +48,7 @@ import {
   formatHistory,
   outcomeOf,
   reporterFor,
+  retryHint,
   valueOf,
 } from "./history.js";
 import { multicall3Address, resolveMulticall } from "./multicall.js";
@@ -150,7 +151,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     generateBlock: (number) => generateBlock(number, clock),
   });
 
-  async function request(rpcRequest: RpcRequest): Promise<unknown> {
+  /** `retryCount` is the transport's, when the request came through `transport()`. */
+  async function request(rpcRequest: RpcRequest, retryCount?: number): Promise<unknown> {
     const { method, params } = rpcRequest;
     const entry: RpcRequest = params === undefined ? { method } : { method, params };
     requests.push(entry);
@@ -171,7 +173,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       const answered = await answer(rpcRequest, record);
       settle(record, { type: "result", value: answered.value });
       return answered.rpc;
-    } catch (error) {
+    } catch (caught) {
+      const error = withRetryHint(caught, record, retryCount);
       settle(record, outcomeOf(record, error));
       // A mock's `.fails()` or `fail()`: deliberate, like `failRequests`.
       if (error instanceof MockFailure) throw createFaultError(error.fault, entry);
@@ -344,8 +347,28 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     actions.clearCalls();
   }
 
-  function transport(config?: CustomTransportConfig) {
-    return custom({ request }, { retryDelay: 0, ...config });
+  /** A "not mocked" error, explained when it's viem retrying past a limited mock's fault. */
+  function withRetryHint(error: unknown, record: MockHistoryEntry, retryCount: number | undefined) {
+    if (!(error instanceof MockNotFoundError)) return error;
+    const hint = retryHint(history, history.indexOf(record), retryCount);
+    if (hint === undefined) return error;
+    return new MockNotFoundError(error.shortMessage, {
+      details: error.details === "" ? hint : `${error.details}\n${hint}`,
+    });
+  }
+
+  function transport(config?: CustomTransportConfig): CustomTransport {
+    // Each transport tells its requests its resolved `retryCount` (its own,
+    // a fallback transport's, or viem's default), for the retry hint.
+    return (params) => {
+      let retryCount: number | undefined;
+      const created = custom(
+        { request: (args: RpcRequest) => request(args, retryCount) },
+        { retryDelay: 0, ...config },
+      )(params);
+      retryCount = created.config.retryCount;
+      return created;
+    };
   }
 
   /**
@@ -378,7 +401,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   }
 
   return {
-    request,
+    /** Answers a JSON-RPC request directly, as `transport()` does for viem. */
+    request: (rpcRequest: RpcRequest) => request(rpcRequest),
     /**
      * A viem transport backed by this mock. Retries keep viem's `retryCount` but
      * default to `retryDelay: 0`, so faulted requests retry without waiting.
