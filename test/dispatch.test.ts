@@ -1,4 +1,5 @@
 import {
+  ContractFunctionExecutionError,
   ContractFunctionZeroDataError,
   InvalidAddressError,
   createPublicClient,
@@ -28,7 +29,9 @@ describe("empty()", () => {
     const { mock, decimals } = setup();
     mock.empty(NOWHERE);
 
-    expectCause(await rejectionOf(decimals(NOWHERE)), ContractFunctionZeroDataError);
+    const error = await rejectionOf(decimals(NOWHERE));
+    expect(error).toBeInstanceOf(ContractFunctionExecutionError);
+    expectCause(error, ContractFunctionZeroDataError);
     expect(() => {
       mock.assertNoUnhandled();
     }).not.toThrow();

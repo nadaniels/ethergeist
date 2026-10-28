@@ -1,7 +1,8 @@
-import { createPublicClient, erc20Abi } from "viem";
+import { InvalidAddressError, createPublicClient, erc20Abi, parseAbi } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { createMockRpc } from "../src/index.js";
+import { MockResolverError, createMockRpc } from "../src/index.js";
+import { expectCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -101,6 +102,39 @@ describe("assertNoUnhandled()", () => {
     expect(() => {
       mock.assertNoUnhandled();
     }).not.toThrow();
+  });
+});
+
+describe("unencodable returns", () => {
+  // OpenZeppelin's Ownable.
+  const ownableAbi = parseAbi(["function owner() view returns (address)"]);
+  // USDC with its checksum broken, which viem refuses to encode.
+  const badChecksum = "0xa0B86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+
+  test("a resolver's value is a resolver error, recorded and not retried", async () => {
+    const { mock, client } = setup();
+    mock
+      .contract({ abi: ownableAbi, address: USDC })
+      .read.owner()
+      .returns(() => badChecksum);
+
+    const error = await rejectionOf(
+      client.readContract({ abi: ownableAbi, address: USDC, functionName: "owner" }),
+    );
+    expectCause(error, MockResolverError);
+    expect(mock.requests).toHaveLength(1);
+    expect(() => {
+      mock.assertNoUnhandled();
+    }).toThrow("owner");
+  });
+
+  test("a static value is rejected at registration", () => {
+    const { mock } = setup();
+    const owner = mock.contract({ abi: ownableAbi, address: USDC }).read.owner();
+
+    expect(() => {
+      owner.returns(badChecksum);
+    }).toThrow(InvalidAddressError);
   });
 });
 

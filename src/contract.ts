@@ -11,6 +11,7 @@ import {
   encodeFunctionResult,
   getAbiItem,
   getAddress,
+  isHex,
   slice,
   toFunctionSelector,
 } from "viem";
@@ -36,7 +37,7 @@ export type MockCall<
   args = readonly unknown[],
   functionName extends string = string,
 > = CallContext & {
-  /** The contract's address, as registered. */
+  /** The contract's address, checksummed. */
   address: Address;
   functionName: functionName;
   args: args;
@@ -175,9 +176,9 @@ export function createMockContract<const abi extends Abi>(
   /** Called with every decoded call, so the rpc can keep a log across contracts. */
   onCall: (call: MockCall) => void = () => {},
 ): InternalMockContract<abi> {
-  const { abi, address, defaults = {} } = parameters;
+  const { abi, defaults = {} } = parameters;
   // Also validates the address at registration.
-  const checksummed = getAddress(address);
+  const address = getAddress(parameters.address);
   const handlers: Handler[] = [];
   const history: MockCall[] = [];
   // Handed to every resolver. RevertFn's generic signature only narrows what
@@ -231,6 +232,8 @@ export function createMockContract<const abi extends Abi>(
 
     const builder = {
       returns(value: unknown = zeroResult) {
+        // A static value that can't be encoded fails here, not inside a request.
+        if (typeof value !== "function") encodeResult(abiItem, value);
         handler.resolver =
           // The types guarantee a resolver's signature; it can't be checked at runtime.
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function
@@ -325,27 +328,17 @@ export function createMockContract<const abi extends Abi>(
     }
 
     handler.usedCount += 1;
-    let result: unknown;
     try {
-      result = await handler.resolver({ ...call, revert });
+      return encodeResult(handler.abiItem, await handler.resolver({ ...call, revert }));
     } catch (error) {
       if (error instanceof MockRevertError) throw error;
       throw new MockResolverError(decoded.functionName, error);
     }
-
-    return encodeFunctionResult({
-      abi: [handler.abiItem],
-      functionName: handler.abiItem.name,
-      // viem types `result` as a tuple for a non-literal AbiFunction, but it
-      // takes a bare value for single-output functions at runtime.
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem's type is narrower than its runtime
-      result: normalizeResult(handler.abiItem.outputs, result) as readonly unknown[] | undefined,
-    });
   }
 
   return {
     contract,
-    matches: (other) => other === checksummed,
+    matches: (other) => other === address,
     resolve,
     clearCalls() {
       history.length = 0;
@@ -372,13 +365,23 @@ function specificity(args: readonly unknown[] | undefined): number {
   return count(args);
 }
 
+function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
+  return encodeFunctionResult({
+    abi: [abiItem],
+    functionName: abiItem.name,
+    // viem types `result` as a tuple for a non-literal AbiFunction, but it
+    // takes a bare value for single-output functions at runtime.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem's type is narrower than its runtime
+    result: normalizeResult(abiItem.outputs, value) as readonly unknown[] | undefined,
+  });
+}
+
 /**
  * Deep equality where hex strings (addresses, bytes) compare case-insensitively
  * and equal integers match as either `number` or `bigint`.
  */
 function isMatch(expected: unknown, actual: unknown): boolean {
-  if (typeof expected === "string" && typeof actual === "string")
-    return expected.toLowerCase() === actual.toLowerCase();
+  if (isHex(expected) && isHex(actual)) return expected.toLowerCase() === actual.toLowerCase();
   if (Array.isArray(expected) && Array.isArray(actual))
     return (
       expected.length === actual.length && expected.every((value, i) => isMatch(value, actual[i]))

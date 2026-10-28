@@ -233,7 +233,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     },
     /**
      * Marks an address as having no code: calls to it succeed with empty data,
-     * as on a real node, which viem reports as `ContractFunctionZeroDataError`.
+     * as on a real node. viem's `readContract` and `multicall` then fail with a
+     * `ContractFunctionExecutionError` caused by `ContractFunctionZeroDataError`.
      */
     empty(address: Address) {
       assertUnregistered(address);

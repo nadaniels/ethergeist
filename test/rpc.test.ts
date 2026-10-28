@@ -71,6 +71,17 @@ describe("rpc.calls", () => {
     ]);
   });
 
+  test("addresses are checksummed, whatever case was registered", async () => {
+    const { mock, decimals } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: usdcLowercase });
+    usdc.read.decimals().returns(6);
+
+    await decimals(USDC);
+    expect(usdc.address).toBe(USDC);
+    expect(mock.calls[0]?.address).toBe(USDC);
+    expect(usdc.calls[0]?.address).toBe(USDC);
+  });
+
   test("keeps batch order for multicall sub-calls", async () => {
     const { mock, client } = setup();
     mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);

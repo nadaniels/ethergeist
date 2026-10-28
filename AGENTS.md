@@ -37,3 +37,7 @@ release. Add a tool name to select part of the graph. For example, run
 - Normalize and compare addresses with viem's `getAddress` (checksummed) wherever they need to be valid: registration, lookups, address-keyed sets and maps. `getAddress` validates the input, so a malformed address fails at registration instead of silently never matching, and it accepts any casing.
 - Don't compare addresses with `.toLowerCase()`.
 - The exception is matching arbitrary hex values, like `isMatch` in `src/contract.ts`. Those may be `bytes` or `bytes32` rather than addresses, so they compare case-insensitively.
+
+## Bugs
+
+- Fix bugs red/green: first write a test that reproduces the bug and watch it fail for the reason reported, then fix the code and watch it pass. A bug that's only in a doc comment gets a test that pins the real behavior, where practical.

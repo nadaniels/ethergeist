@@ -209,6 +209,28 @@ describe("balanceOf", () => {
   });
 });
 
+describe("string args", () => {
+  // A name registry keyed by plain strings.
+  const registryAbi = parseAbi(["function lookup(string name) view returns (address)"]);
+  const lookup = (client: ReturnType<typeof setup>["client"], name: string) =>
+    client.readContract({ abi: registryAbi, address: USDC, functionName: "lookup", args: [name] });
+
+  test("match exactly, case included", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: registryAbi, address: USDC }).read.lookup(["USDC"]).returns(alice);
+
+    expect(await lookup(client, "USDC")).toBe(getAddress(alice));
+    expectCause(await rejectionOf(lookup(client, "usdc")), MockNotFoundError);
+  });
+
+  test("hex strings still match in any case", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: registryAbi, address: USDC }).read.lookup(["0xABCD"]).returns(alice);
+
+    expect(await lookup(client, "0xabcd")).toBe(getAddress(alice));
+  });
+});
+
 describe("number and bigint args", () => {
   // OpenZeppelin ERC20Votes (uint32 position: a number) and ERC-721 (uint256 id: a bigint).
   const abi = parseAbi([
