@@ -73,7 +73,7 @@ function fill(parameter: AbiParameter, value: unknown): unknown {
 function zeroValue(parameter: AbiParameter): unknown {
   const element = arrayElement(parameter);
   if (element) {
-    const size = /\[(\d+)\]$/.exec(parameter.type)?.[1];
+    const size = /\[(\d+)\]$/u.exec(parameter.type)?.[1];
     return size ? Array.from({ length: Number(size) }, () => zeroValue(element)) : [];
   }
 
@@ -81,14 +81,14 @@ function zeroValue(parameter: AbiParameter): unknown {
     const { components } = parameter;
     return components.every((c) => c.name)
       ? Object.fromEntries(components.map((c) => [c.name, zeroValue(c)]))
-      : components.map(zeroValue);
+      : components.map((c) => zeroValue(c));
   }
 
   if (parameter.type === "address") return zeroAddress;
   if (parameter.type === "bool") return false;
   if (parameter.type === "string") return "";
   if (parameter.type === "bytes") return "0x";
-  const bytesSize = /^bytes(\d+)$/.exec(parameter.type)?.[1];
+  const bytesSize = /^bytes(\d+)$/u.exec(parameter.type)?.[1];
   if (bytesSize) return `0x${"00".repeat(Number(bytesSize))}`;
   // int<N> / uint<N>: the encoder takes bigint for every size.
   return 0n;
@@ -96,10 +96,10 @@ function zeroValue(parameter: AbiParameter): unknown {
 
 /** The element parameter of an array type (`T[]`, `T[n]`), or undefined. */
 function arrayElement(parameter: AbiParameter): AbiParameter | undefined {
-  const match = /^(.*)\[\d*\]$/.exec(parameter.type);
+  const match = /^(.*)\[\d*\]$/u.exec(parameter.type);
   return match ? { ...parameter, type: match[1]! } : undefined;
 }
 
-function isPlainObject(value: unknown): value is Record<string, unknown> {
+export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }

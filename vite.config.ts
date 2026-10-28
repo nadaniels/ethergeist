@@ -4,10 +4,39 @@ export default defineConfig({
   staged: {
     "*": "vp check --fix",
   },
-  fmt: {},
+  fmt: { sortPackageJson: true },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
-    rules: { "vite-plus/prefer-vite-plus-imports": "error" },
-    options: { typeAware: true, typeCheck: true },
+    rules: {
+      "vite-plus/prefer-vite-plus-imports": "error",
+      "typescript/no-unnecessary-type-assertion": "error",
+      "typescript/no-unnecessary-type-arguments": "error",
+      "typescript/return-await": ["error", "always"],
+
+      "eslint/max-classes-per-file": "off",
+      "eslint/max-lines": "off",
+      "eslint/max-lines-per-function": "off",
+      "eslint/no-redeclare": "off",
+      "typescript/prefer-readonly-parameter-types": "off",
+      "typescript/strict-boolean-expressions": [
+        "warn",
+        { allowNullableString: true, allowNullableObject: true },
+      ],
+      "unicorn/no-useless-undefined": "off",
+    },
+    options: { reportUnusedDisableDirectives: "error", typeAware: true, typeCheck: true },
+    plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise"],
+    categories: { correctness: "error", suspicious: "warn", perf: "warn", pedantic: "warn" },
+    overrides: [
+      {
+        files: ["**/*.test.ts", "**/*.test-d.ts"],
+        plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise", "vitest"],
+      },
+      {
+        // Type tests assert through compilation and @ts-expect-error.
+        files: ["**/*.test-d.ts"],
+        rules: { "typescript/no-unsafe-call": "off", "vitest/expect-expect": "off" },
+      },
+    ],
   },
 });

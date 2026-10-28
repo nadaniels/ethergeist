@@ -50,6 +50,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       case "eth_blockNumber":
         return numberToHex(blockNumber);
       case "eth_call": {
+        // JSON-RPC params arrive untyped; this is the shape viem sends for eth_call.
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
         const [tx, block] = params as [
           { to?: Address; from?: Address; value?: Hex; data?: Hex; input?: Hex },
           BlockTag | Hex | undefined,
@@ -63,7 +65,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
               "Use a chain with a Multicall3 address, or set `multicallAddress`.",
           });
 
-        return dispatch(tx.to, data, {
+        return await dispatch(tx.to, data, {
           from: tx.from,
           value: tx.value ? hexToBigInt(tx.value) : 0n,
           blockNumber: resolveBlock(block),
@@ -102,9 +104,9 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     /** A viem transport backed by this mock. */
     transport: (config?: CustomTransportConfig) => custom({ request }, config),
     contract<const abi extends Abi>(
-      parameters: CreateMockContractParameters<abi>,
+      contractParameters: CreateMockContractParameters<abi>,
     ): MockContract<abi> {
-      const internal = createMockContract(parameters);
+      const internal = createMockContract(contractParameters);
       contracts.push(internal);
       return internal.contract;
     },

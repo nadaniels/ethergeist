@@ -51,10 +51,12 @@ export async function resolveMulticall(
       { details: `Call data: ${data.slice(0, 10)}…` },
     );
 
-  // Sequential, so each contract's call history keeps batch order.
+  // Sequential, like the real contract: each sub-call finishes before the next
+  // starts, so async resolvers never interleave and history keeps batch order.
   const results: { success: boolean; returnData: Hex }[] = [];
   for (const [index, { target, allowFailure, callData }] of decoded.args[0].entries()) {
     try {
+      // oxlint-disable-next-line eslint/no-await-in-loop -- sub-calls run in order on-chain
       const returnData = await dispatch(target, callData, {
         ...context,
         from: address,

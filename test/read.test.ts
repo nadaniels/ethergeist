@@ -2,6 +2,7 @@ import { BaseError, createPublicClient, erc20Abi, getAddress } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import { MockNotFoundError, createMockRpc } from "../src/index.js";
+import { expectCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = "0x00000000000000000000000000000000000a11ce";
@@ -125,8 +126,11 @@ describe("balanceOf", () => {
 
   test("matches addresses case-insensitively", async () => {
     const { mock, client } = setup();
-    const usdc = mock.contract({ abi: erc20Abi, address: USDC.toLowerCase() as `0x${string}` });
-    usdc.read.balanceOf([alice.toUpperCase().replace("0X", "0x") as `0x${string}`]).returns(7n);
+    const usdc = mock.contract({
+      abi: erc20Abi,
+      address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+    });
+    usdc.read.balanceOf(["0x00000000000000000000000000000000000A11CE"]).returns(7n);
 
     expect(
       await client.readContract({
@@ -187,17 +191,20 @@ describe("balanceOf", () => {
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });
     usdc.read.balanceOf([bob]).returns(0n);
 
-    const error = await client
-      .readContract({ abi: erc20Abi, address: USDC, functionName: "balanceOf", args: [alice] })
-      .catch((e: BaseError) => e);
-
-    expect(error).toBeInstanceOf(BaseError);
-    const { message } = error as BaseError;
-    expect(message).toContain(`No mock for balanceOf(${getAddress(alice)})`);
-    expect(message).toContain(`balanceOf(${bob})`);
-    expect((error as BaseError).walk((e) => e instanceof MockNotFoundError)).toBeInstanceOf(
-      MockNotFoundError,
+    const error = expectCause(
+      await rejectionOf(
+        client.readContract({
+          abi: erc20Abi,
+          address: USDC,
+          functionName: "balanceOf",
+          args: [alice],
+        }),
+      ),
+      BaseError,
     );
+    expect(error.message).toContain(`No mock for balanceOf(${getAddress(alice)})`);
+    expect(error.message).toContain(`balanceOf(${bob})`);
+    expectCause(error, MockNotFoundError);
     expect(mock.requests).toHaveLength(1);
   });
 });

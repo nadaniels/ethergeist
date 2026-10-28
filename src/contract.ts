@@ -15,7 +15,7 @@ import {
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 import type { MockBatch } from "./multicall.js";
-import { type MockReturnType, normalizeResult } from "./result.js";
+import { type MockReturnType, isPlainObject, normalizeResult } from "./result.js";
 import { type RevertFn, type RevertSpec, createRevertError } from "./revert.js";
 
 type ReadMutability = "pure" | "view";
@@ -164,6 +164,12 @@ export function createMockContract<const abi extends Abi>(
   const { abi, address, defaults = {} } = parameters;
   const handlers: Handler[] = [];
   const history: MockCall[] = [];
+  // Handed to every resolver. RevertFn's generic signature only narrows what
+  // callers may pass; createRevertError accepts every RevertSpec.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- generic signature, non-generic implementation
+  const revert = ((spec?: RevertSpec) => {
+    throw createRevertError(abi, spec);
+  }) as RevertFn<Abi>;
 
   const functionsOf = (mutabilities: readonly string[]) =>
     (abi as Abi).filter(
@@ -179,12 +185,9 @@ export function createMockContract<const abi extends Abi>(
     functionName: string,
     args: readonly unknown[] | undefined,
   ) {
-    const abiItem = getAbiItem({
-      abi: functions,
-      name: functionName,
-      args,
-    } as never) as AbiFunction | undefined;
-    if (!abiItem) throw new Error(`Function "${functionName}" not found on ABI.`);
+    const abiItem = getAbiItem({ abi: functions, name: functionName, args });
+    // viem's type assumes a match, but untyped callers can pass any name.
+    if (abiItem === undefined) throw new Error(`Function "${functionName}" not found on ABI.`);
 
     const handler: Handler = {
       abiItem,
@@ -198,10 +201,12 @@ export function createMockContract<const abi extends Abi>(
     const builder = {
       returns(value: unknown) {
         handler.resolver =
+          // The types guarantee a resolver's signature; it can't be checked at runtime.
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function
           typeof value === "function" ? (value as Handler["resolver"]) : () => value;
       },
       reverts(spec?: RevertSpec) {
-        builder.returns(({ revert }: ResolverContext<Abi, unknown>) => revert(spec));
+        builder.returns(() => revert(spec));
       },
     };
     return builder;
@@ -226,6 +231,8 @@ export function createMockContract<const abi extends Abi>(
     return entries;
   }
 
+  // Built from the ABI at runtime; `MockContract<abi>` describes the same shape.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- runtime-built typed facade
   const contract = {
     address,
     abi,
@@ -241,7 +248,7 @@ export function createMockContract<const abi extends Abi>(
 
     let decoded: { functionName: string; args: readonly unknown[] };
     try {
-      const result = decodeFunctionData({ abi: abi as Abi, data });
+      const result = decodeFunctionData<Abi>({ abi, data });
       decoded = { functionName: result.functionName, args: result.args ?? [] };
     } catch {
       throw new MockNotFoundError(
@@ -267,16 +274,14 @@ export function createMockContract<const abi extends Abi>(
       throw new MockNotFoundError(
         `No mock for ${formatCall(decoded.functionName, decoded.args)} on ${address}.`,
         {
-          details: registered.length
-            ? `Registered:\n${registered.join("\n")}`
-            : `No mocks registered for "${decoded.functionName}".`,
+          details:
+            registered.length > 0
+              ? `Registered:\n${registered.join("\n")}`
+              : `No mocks registered for "${decoded.functionName}".`,
         },
       );
     }
 
-    const revert = ((spec?: RevertSpec) => {
-      throw createRevertError(abi as Abi, spec);
-    }) as RevertFn<Abi>;
     let result: unknown;
     try {
       result = await handler.resolver({ ...call, revert });
@@ -288,8 +293,11 @@ export function createMockContract<const abi extends Abi>(
     return encodeFunctionResult({
       abi: [handler.abiItem],
       functionName: handler.abiItem.name,
-      result: normalizeResult(handler.abiItem.outputs, result),
-    } as never);
+      // viem types `result` as a tuple for a non-literal AbiFunction, but it
+      // takes a bare value for single-output functions at runtime.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem's type is narrower than its runtime
+      result: normalizeResult(handler.abiItem.outputs, result) as readonly unknown[] | undefined,
+    });
   }
 
   return {
@@ -307,8 +315,7 @@ function specificity(args: readonly unknown[] | undefined): number {
   if (args === undefined) return -1;
   const count = (value: unknown): number => {
     if (Array.isArray(value)) return value.reduce((n: number, v) => n + count(v), 0);
-    if (value && typeof value === "object")
-      return Object.values(value).reduce((n: number, v) => n + count(v), 0);
+    if (isPlainObject(value)) return Object.values(value).reduce((n: number, v) => n + count(v), 0);
     return 1;
   };
   return count(args);
@@ -322,10 +329,8 @@ function isMatch(expected: unknown, actual: unknown): boolean {
     return (
       expected.length === actual.length && expected.every((value, i) => isMatch(value, actual[i]))
     );
-  if (expected && actual && typeof expected === "object" && typeof actual === "object")
-    return Object.entries(expected).every(([key, value]) =>
-      isMatch(value, (actual as Record<string, unknown>)[key]),
-    );
+  if (isPlainObject(expected) && isPlainObject(actual))
+    return Object.entries(expected).every(([key, value]) => isMatch(value, actual[key]));
   return expected === actual;
 }
 

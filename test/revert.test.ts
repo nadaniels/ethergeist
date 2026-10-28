@@ -1,6 +1,5 @@
 import {
   type Address,
-  BaseError,
   ContractFunctionRevertedError,
   createPublicClient,
   encodeErrorResult,
@@ -10,6 +9,7 @@ import {
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import { MockResolverError, createMockRpc } from "../src/index.js";
+import { expectCause, findCause, rejectionOf } from "./utils.js";
 
 const NFT = "0x0000000000000000000000000000000000000721";
 const alice = "0x00000000000000000000000000000000000a11ce";
@@ -35,13 +35,7 @@ function setup() {
 
 /** Resolves to the revert error viem surfaced, or fails if there wasn't one. */
 async function revertOf(promise: Promise<unknown>) {
-  const error = await promise.then(
-    () => expect.unreachable("expected a revert"),
-    (e: BaseError) => e,
-  );
-  const revert = error.walk((e) => e instanceof ContractFunctionRevertedError);
-  expect(revert, `not a revert: ${error.message}`).toBeInstanceOf(ContractFunctionRevertedError);
-  return revert as ContractFunctionRevertedError;
+  return expectCause(await rejectionOf(promise), ContractFunctionRevertedError);
 }
 
 describe("reverts()", () => {
@@ -77,7 +71,7 @@ describe("reverts()", () => {
 
     const revert = await revertOf(ownerOf(1n));
     expect(revert.data?.errorName).toBe("Panic");
-    expect(revert.reason).toMatch(/overflow/);
+    expect(revert.reason).toMatch(/overflow/u);
   });
 
   test("raw data passes through for errors not on the ABI", async () => {
@@ -159,15 +153,12 @@ describe("resolvers that throw", () => {
       throw new Error("fixture bug");
     });
 
-    const error = await ownerOf(1n).then(
-      () => expect.unreachable("expected an error"),
-      (e: BaseError) => e,
-    );
-    expect(error.walk((e) => e instanceof ContractFunctionRevertedError)).toBeNull();
-    const resolverError = error.walk((e) => e instanceof MockResolverError) as MockResolverError;
+    const error = await rejectionOf(ownerOf(1n));
+    expect(findCause(error, ContractFunctionRevertedError)).toBeUndefined();
+    const resolverError = expectCause(error, MockResolverError);
     expect(resolverError).toBeInstanceOf(MockResolverError);
     expect(resolverError.message).toContain('Mock resolver for "ownerOf" threw: fixture bug');
-    expect((resolverError.cause as Error).message).toBe("fixture bug");
+    expect(resolverError.cause).toMatchObject({ message: "fixture bug" });
     expect(mock.requests).toHaveLength(1);
   });
 });

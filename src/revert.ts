@@ -48,6 +48,6 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
       encodeErrorResult({ abi: builtinErrors, errorName: "Panic", args: [BigInt(spec.panic)] }),
     );
   return new MockRevertError(
-    encodeErrorResult({ abi, errorName: spec.errorName, args: spec.args } as never),
+    encodeErrorResult({ abi, errorName: spec.errorName, args: spec.args }),
   );
 }

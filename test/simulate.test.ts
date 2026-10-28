@@ -1,5 +1,4 @@
 import {
-  BaseError,
   ContractFunctionRevertedError,
   createPublicClient,
   erc20Abi,
@@ -9,6 +8,7 @@ import {
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import { MockNotFoundError, createMockRpc } from "../src/index.js";
+import { expectCause, rejectionOf } from "./utils.js";
 
 const TOKEN = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
@@ -68,13 +68,8 @@ describe("simulate", () => {
         revert({ errorName: "ERC20InsufficientBalance", args: [from!, 0n, amount] }),
       );
 
-    const error = await transfer(bob, 100n).then(
-      () => expect.unreachable("expected a revert"),
-      (e: BaseError) => e,
-    );
-    const revert = error.walk(
-      (e) => e instanceof ContractFunctionRevertedError,
-    ) as ContractFunctionRevertedError;
+    const error = await rejectionOf(transfer(bob, 100n));
+    const revert = expectCause(error, ContractFunctionRevertedError);
     expect(revert.data?.errorName).toBe("ERC20InsufficientBalance");
     expect(revert.data?.args).toEqual([getAddress(alice), 0n, 100n]);
   });
@@ -144,11 +139,7 @@ describe("simulate", () => {
     const { token, transfer } = setup();
     token.simulate.approve().returns(true);
 
-    const error = await transfer(bob, 1n).then(
-      () => expect.unreachable("expected an error"),
-      (e: BaseError) => e,
-    );
-    expect(error.walk((e) => e instanceof MockNotFoundError)).toBeInstanceOf(MockNotFoundError);
+    const error = expectCause(await rejectionOf(transfer(bob, 1n)), MockNotFoundError);
     expect(error.message).toContain('No mocks registered for "transfer"');
   });
 

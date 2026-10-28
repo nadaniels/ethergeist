@@ -1,5 +1,4 @@
 import {
-  BaseError,
   ContractFunctionRevertedError,
   createPublicClient,
   defineChain,
@@ -10,6 +9,7 @@ import {
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import { MockNotFoundError, createMockRpc, multicall3Address } from "../src/index.js";
+import { expectCause, failureOf, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
@@ -98,10 +98,7 @@ describe("client.multicall", () => {
     });
 
     expect(decimals).toEqual({ status: "success", result: 8 });
-    if (round?.status !== "failure") return expect.unreachable("expected a failure");
-    const revert = (round.error as BaseError).walk(
-      (e) => e instanceof ContractFunctionRevertedError,
-    ) as ContractFunctionRevertedError;
+    const revert = expectCause(failureOf(round), ContractFunctionRevertedError);
     expect(revert.data?.errorName).toBe("StalePrice");
   });
 
@@ -109,21 +106,16 @@ describe("client.multicall", () => {
     const { client, feed } = setup();
     feed.read.latestRoundData().reverts("stale");
 
-    const error = await client
-      .multicall({
+    const error = await rejectionOf(
+      client.multicall({
         contracts: [
           { abi: feedAbi, address: FEED, functionName: "latestRoundData" },
           { abi: feedAbi, address: FEED, functionName: "decimals" },
         ],
         allowFailure: false,
-      })
-      .then(
-        () => expect.unreachable("expected a revert"),
-        (e: BaseError) => e,
-      );
-    const revert = error.walk(
-      (e) => e instanceof ContractFunctionRevertedError,
-    ) as ContractFunctionRevertedError;
+      }),
+    );
+    const revert = expectCause(error, ContractFunctionRevertedError);
     expect(revert.reason).toBe("stale");
   });
 
@@ -135,10 +127,9 @@ describe("client.multicall", () => {
     });
 
     // viem reports a failed aggregate3 request as a failure for each call in it.
-    if (result?.status !== "failure") return expect.unreachable("expected a failure");
-    const error = result.error as BaseError;
-    expect(error.walk((e) => e instanceof MockNotFoundError)).toBeInstanceOf(MockNotFoundError);
-    expect(error.walk((e) => e instanceof ContractFunctionRevertedError)).toBeNull();
+    const error = failureOf(result);
+    expectCause(error, MockNotFoundError);
+    expect(findCause(error, ContractFunctionRevertedError)).toBeUndefined();
   });
 });
 
@@ -147,37 +138,43 @@ describe("aggregate3 called directly", () => {
     const { client, feed } = setup();
     feed.read.decimals().reverts();
 
-    const error = await client
-      .readContract({
+    const error = await rejectionOf(
+      client.readContract({
         abi: multicall3Abi,
         address: multicall3Address,
         functionName: "aggregate3",
         args: [[{ target: FEED, allowFailure: false, callData: "0x313ce567" }]],
-      })
-      .then(
-        () => expect.unreachable("expected a revert"),
-        (e: BaseError) => e,
-      );
-    const revert = error.walk(
-      (e) => e instanceof ContractFunctionRevertedError,
-    ) as ContractFunctionRevertedError;
+      }),
+    );
+    const revert = expectCause(error, ContractFunctionRevertedError);
     expect(revert.reason).toBe("Multicall3: call failed");
   });
 });
 
-describe("batch.multicall", () => {
-  const readAll = (client: ReturnType<typeof setup>["client"]) =>
-    Promise.all([
-      client.readContract({ abi: erc20Abi, address: USDC, functionName: "decimals" }),
-      client.readContract({
-        abi: erc20Abi,
-        address: USDC,
-        functionName: "balanceOf",
-        args: [alice],
-      }),
-      client.readContract({ abi: feedAbi, address: FEED, functionName: "latestRoundData" }),
-    ]);
+const readAll = (client: ReturnType<typeof setup>["client"]) =>
+  Promise.all([
+    client.readContract({ abi: erc20Abi, address: USDC, functionName: "decimals" }),
+    client.readContract({
+      abi: erc20Abi,
+      address: USDC,
+      functionName: "balanceOf",
+      args: [alice],
+    }),
+    client.readContract({ abi: feedAbi, address: FEED, functionName: "latestRoundData" }),
+  ]);
 
+/** The decoded revert from reading a reverting feed, with batching on or off. */
+async function revertOf(batch: boolean) {
+  const { client, feed } = setup({ batch });
+  feed.read.latestRoundData().reverts({ errorName: "StalePrice", args: [100n] });
+  const error = await rejectionOf(
+    client.readContract({ abi: feedAbi, address: FEED, functionName: "latestRoundData" }),
+  );
+  const revert = expectCause(error, ContractFunctionRevertedError);
+  return { errorName: revert.data?.errorName, args: revert.data?.args };
+}
+
+describe("batch.multicall", () => {
   test("concurrent reads go out as one aggregate3 request", async () => {
     const { client, ethCalls, usdc } = setup({ batch: true });
 
@@ -196,21 +193,6 @@ describe("batch.multicall", () => {
   });
 
   test("reverts decode the same with batching on and off", async () => {
-    const revertOf = async (batch: boolean) => {
-      const { client, feed } = setup({ batch });
-      feed.read.latestRoundData().reverts({ errorName: "StalePrice", args: [100n] });
-      const error = await client
-        .readContract({ abi: feedAbi, address: FEED, functionName: "latestRoundData" })
-        .then(
-          () => expect.unreachable("expected a revert"),
-          (e: BaseError) => e,
-        );
-      const revert = error.walk(
-        (e) => e instanceof ContractFunctionRevertedError,
-      ) as ContractFunctionRevertedError;
-      return { errorName: revert.data?.errorName, args: revert.data?.args };
-    };
-
     expect(await revertOf(true)).toEqual(await revertOf(false));
     expect(await revertOf(true)).toEqual({ errorName: "StalePrice", args: [100n] });
   });
@@ -241,7 +223,6 @@ describe("configuration", () => {
       contracts: [{ abi: erc20Abi, address: USDC, functionName: "decimals" }],
       deployless: true,
     });
-    if (result?.status !== "failure") return expect.unreachable("expected a failure");
-    expect(result.error.message).toContain("Deployless");
+    expect(failureOf(result).message).toContain("Deployless");
   });
 });
