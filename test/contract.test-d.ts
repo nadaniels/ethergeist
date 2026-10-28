@@ -1,6 +1,6 @@
 import { type Address, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
-import { type MockBatch, createMockRpc } from "../src/index.js";
+import { type MockBatch, type MockRpc, createMockRpc } from "../src/index.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
@@ -270,5 +270,22 @@ describe("contract.calls", () => {
 
   test("calls carry batch info", () => {
     expectTypeOf(usdc.calls[0]!.batch).toEqualTypeOf<MockBatch | undefined>();
+  });
+});
+
+describe("rpc", () => {
+  test("MockRpc is the type createMockRpc returns", () => {
+    expectTypeOf(mock).toEqualTypeOf<MockRpc>();
+  });
+
+  test("calls are untyped across contracts but carry the address", () => {
+    const call = mock.calls[0]!;
+    expectTypeOf(call.address).toEqualTypeOf<Address>();
+    expectTypeOf(call.args).toEqualTypeOf<readonly unknown[]>();
+    expectTypeOf(usdc.calls[0]!.address).toEqualTypeOf<Address>();
+  });
+
+  test("chainId is a number", () => {
+    expectTypeOf(mock.chainId).toEqualTypeOf<number>();
   });
 });

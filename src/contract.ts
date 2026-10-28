@@ -34,6 +34,8 @@ export type MockCall<
   args = readonly unknown[],
   functionName extends string = string,
 > = CallContext & {
+  /** The contract's address, as registered. */
+  address: Address;
   functionName: functionName;
   args: args;
 };
@@ -151,15 +153,18 @@ export type CreateMockContractParameters<abi extends Abi> = {
   defaults?: MockContractDefaults<abi>;
 };
 
-/** Internal: the public contract API plus the hook the dispatcher calls. */
+/** Internal: the public contract API plus the hooks the rpc calls. */
 export type InternalMockContract<abi extends Abi = Abi> = {
   contract: MockContract<abi>;
   matches(address: Address): boolean;
   resolve(data: Hex, context: CallContext): Promise<Hex>;
+  clearCalls(): void;
 };
 
 export function createMockContract<const abi extends Abi>(
   parameters: CreateMockContractParameters<abi>,
+  /** Called with every decoded call, so the rpc can keep a log across contracts. */
+  onCall: (call: MockCall) => void = () => {},
 ): InternalMockContract<abi> {
   const { abi, address, defaults = {} } = parameters;
   const handlers: Handler[] = [];
@@ -256,8 +261,9 @@ export function createMockContract<const abi extends Abi>(
       );
     }
 
-    const call: MockCall = { ...context, ...decoded };
+    const call: MockCall = { ...context, address, ...decoded };
     history.push(call);
+    onCall(call);
 
     // The most specific matching handler wins; among equally specific ones,
     // the most recently registered wins, so per-test mocks override defaults.
@@ -304,6 +310,9 @@ export function createMockContract<const abi extends Abi>(
     contract,
     matches: (other) => other.toLowerCase() === address.toLowerCase(),
     resolve,
+    clearCalls() {
+      history.length = 0;
+    },
   };
 }
 

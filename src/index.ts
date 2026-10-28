@@ -1,4 +1,9 @@
-export { createMockRpc, type CreateMockRpcParameters, type RpcRequest } from "./createMockRpc.js";
+export {
+  createMockRpc,
+  type CreateMockRpcParameters,
+  type MockRpc,
+  type RpcRequest,
+} from "./createMockRpc.js";
 export type {
   CallContext,
   MockCall,

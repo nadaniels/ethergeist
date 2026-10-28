@@ -12,6 +12,8 @@ import { expectCause, rejectionOf } from "./utils.js";
 
 const TOKEN = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
+// For tests that register their own contract instead of setup()'s token.
+const OTHER = "0x0000000000000000000000000000000000000123";
 const alice = "0x00000000000000000000000000000000000a11ce";
 const bob = "0x0000000000000000000000000000000000000b0b";
 
@@ -104,14 +106,14 @@ describe("simulate", () => {
     const { mock, client } = setup();
     const token = mock.contract({
       abi: tokenAbi,
-      address: TOKEN,
+      address: OTHER,
       defaults: { simulate: { transfer: true, approve: true } },
     });
     token.simulate.transfer([bob, 0n]).returns(false);
 
     const approve = await client.simulateContract({
       abi: tokenAbi,
-      address: TOKEN,
+      address: OTHER,
       functionName: "approve",
       args: [bob, 1n],
     });
@@ -119,7 +121,7 @@ describe("simulate", () => {
     const transfer = (amount: bigint) =>
       client.simulateContract({
         abi: tokenAbi,
-        address: TOKEN,
+        address: OTHER,
         functionName: "transfer",
         args: [bob, amount],
       });
@@ -151,16 +153,16 @@ describe("simulate", () => {
       "function nonces(address owner) view returns (uint256)",
       "function nonces(address owner, uint256 increment) returns (uint256)",
     ]);
-    const contract = mock.contract({ abi, address: TOKEN });
+    const contract = mock.contract({ abi, address: OTHER });
     contract.read.nonces().returns(1n);
     contract.simulate.nonces().returns(2n);
 
     expect(
-      await client.readContract({ abi, address: TOKEN, functionName: "nonces", args: [alice] }),
+      await client.readContract({ abi, address: OTHER, functionName: "nonces", args: [alice] }),
     ).toBe(1n);
     const { result } = await client.simulateContract({
       abi,
-      address: TOKEN,
+      address: OTHER,
       functionName: "nonces",
       args: [alice, 1n],
     });

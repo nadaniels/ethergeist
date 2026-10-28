@@ -13,6 +13,7 @@ import {
   type CallContext,
   type CreateMockContractParameters,
   type InternalMockContract,
+  type MockCall,
   type MockContract,
   createMockContract,
 } from "./contract.js";
@@ -33,11 +34,15 @@ export type CreateMockRpcParameters = {
 
 export type RpcRequest = { method: string; params?: unknown };
 
+export type MockRpc = ReturnType<typeof createMockRpc>;
+
 export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   const chainId = parameters.chainId ?? 1;
-  let blockNumber = parameters.blockNumber ?? 1n;
+  const initialBlockNumber = parameters.blockNumber ?? 1n;
+  let blockNumber = initialBlockNumber;
   const multicallAddress = parameters.multicallAddress ?? multicall3Address;
   const contracts: InternalMockContract<any>[] = [];
+  const calls: MockCall[] = [];
   const requests: RpcRequest[] = [];
   let batchCount = 0;
 
@@ -86,7 +91,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         dispatch,
       });
 
-    const target = contracts.findLast((c) => c.matches(to));
+    const target = contracts.find((c) => c.matches(to));
     if (!target)
       throw new MockNotFoundError(`No mocked contract at ${to}.`, {
         details: `Call data: ${data}`,
@@ -103,12 +108,27 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     request,
     /** A viem transport backed by this mock. */
     transport: (config?: CustomTransportConfig) => custom({ request }, config),
+    /**
+     * Registers a mocked contract. Each address takes one registration; for a
+     * proxy or extended contract, combine the ABIs (`abi: [...a, ...b]`).
+     */
     contract<const abi extends Abi>(
       contractParameters: CreateMockContractParameters<abi>,
     ): MockContract<abi> {
-      const internal = createMockContract(contractParameters);
+      const { address } = contractParameters;
+      if (contracts.some((c) => c.matches(address)))
+        throw new Error(
+          `A contract is already registered at ${address}. Register it once with a ` +
+            "combined ABI (abi: [...a, ...b]), or call reset() between tests.",
+        );
+      const internal = createMockContract(contractParameters, (call) => {
+        calls.push(call);
+      });
       contracts.push(internal);
       return internal.contract;
+    },
+    get chainId() {
+      return chainId;
     },
     get blockNumber() {
       return blockNumber;
@@ -116,7 +136,30 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     mine(blocks = 1n) {
       blockNumber += blocks;
     },
+    /** Every decoded contract call, across all contracts, in the order received. */
+    get calls() {
+      return [...calls];
+    },
     /** Every raw JSON-RPC request the mock has received, in order. */
-    requests,
+    get requests() {
+      return [...requests];
+    },
+    /** Clears call and request history; registrations and the block number stay. */
+    clearCalls() {
+      calls.length = 0;
+      requests.length = 0;
+      for (const contract of contracts) contract.clearCalls();
+    },
+    /**
+     * Returns the mock to its initial state: no contracts, no history, and the
+     * starting block number. Handles from before the reset no longer answer calls.
+     */
+    reset() {
+      contracts.length = 0;
+      calls.length = 0;
+      requests.length = 0;
+      batchCount = 0;
+      blockNumber = initialBlockNumber;
+    },
   };
 }
