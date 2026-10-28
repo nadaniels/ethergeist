@@ -82,6 +82,8 @@ type Handler = {
   resolver: ((context: ResolverContext<Abi, readonly unknown[]>) => unknown) | undefined;
   /** Calls this handler answered since registration or the last `clearCalls()`. */
   usedCount: number;
+  /** Registered from `defaults`: shared setup, which `assertAllUsed()` doesn't hold to any one test. */
+  isDefault: boolean;
   /** Set when a `restore()` or `reset()` removes it, so its builder can't answer again. */
   removed: boolean;
 };
@@ -203,7 +205,7 @@ export type InternalMockContract<abi extends Abi = Abi> = {
   /** Answers a call; `report` hears the decoded call and its outcome, however it ends. */
   resolve(data: Hex, context: CallContext, report?: (record: MockCallRecord) => void): Promise<Hex>;
   clearCalls(): void;
-  /** Mocks registered with args that haven't answered a call, formatted for messages. */
+  /** Mocks other than defaults that haven't answered a call, formatted for messages. */
   unusedMocks(): string[];
   /** Saves the registered mocks and their answers, to put back or compare against. */
   checkpoint(): PartCheckpoint;
@@ -291,6 +293,7 @@ export function createMockContract<const abi extends Abi>(
     namespace: Namespace,
     functionName: string,
     args: readonly unknown[] | undefined,
+    isDefault = false,
   ) {
     if (detached)
       throw new Error(
@@ -310,6 +313,7 @@ export function createMockContract<const abi extends Abi>(
       specificity: specificity(pinned),
       resolver: undefined,
       usedCount: 0,
+      isDefault,
       removed: false,
     };
     handlers.push(handler);
@@ -335,9 +339,9 @@ export function createMockContract<const abi extends Abi>(
   }
 
   for (const [functionName, resolver] of Object.entries(defaults.read ?? {}))
-    register("read", functionName, undefined).returns(resolver);
+    register("read", functionName, undefined, true).returns(resolver);
   for (const [functionName, resolver] of Object.entries(defaults.simulate ?? {}))
-    register("simulate", functionName, undefined).returns(resolver);
+    register("simulate", functionName, undefined, true).returns(resolver);
 
   // Overloads share one entry, as in viem's `getContract`.
   function buildNamespace(namespace: Namespace) {
@@ -457,10 +461,10 @@ export function createMockContract<const abi extends Abi>(
     }
   }
 
-  /** Mocks registered with args that haven't answered a call; args-less ones are fallbacks. */
+  /** Mocks that haven't answered a call; defaults are shared setup, so they're left out. */
   function unused(list: Handler[]) {
     return list
-      .filter((h) => h.args !== undefined && h.resolver !== undefined && h.usedCount === 0)
+      .filter((h) => !h.isDefault && h.resolver !== undefined && h.usedCount === 0)
       .map((h) => `${formatCall(h.abiItem.name, h.args)} on ${label}`);
   }
 

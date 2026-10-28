@@ -89,7 +89,19 @@ features land; tick them off as pages get written.
 ## 6. Assertions and error messages
 
 - [ ] `assertNoUnhandled()` (catches errors the app swallowed) and
-      `assertAllUsed()` (catches mocks with wrong args).
+      `assertAllUsed()` (catches mocks that never answered: wrong args, or a
+      call the app no longer makes).
+- [ ] What `assertAllUsed()` checks: every registration, args-less ones and
+      `.fails()`/`.reverts()` overrides included, except contract `defaults`.
+      Explain why: defaults are shared setup, answers many tests use but no
+      single test must, like the checkpoint baseline. Not "never hit".
+      Show the surprise case: a fallback shadowed by a more specific mock
+      (`fn()` plus `fn([x])`, only ever called with `x`) is reported.
+- [ ] Where shared fallbacks go: on contracts, in `defaults`. For actions,
+      `method`, and narrowed fallbacks (`fn([match.where(…)])`), which have
+      no `defaults`, take a checkpoint after registering them and use
+      `restore({ assertAllUsed: true })`. That includes a per-test setup
+      function: end it with `mock.checkpoint()` and return the checkpoint.
 - [ ] How to read "No mock for …" and its "Registered:" list.
 - [ ] Addresses in messages are always checksummed. Address args are
       normalized at registration, which also rejects malformed ones.
@@ -122,7 +134,8 @@ features land; tick them off as pages get written.
       separate assertion hook that fails leaves later tests running on stale
       mocks, and one failure shows up as many.
 - [ ] `assertAllUsed` in `restore()` checks only mocks registered since the
-      checkpoint; the standalone `assertAllUsed()` checks everything.
+      checkpoint; the standalone `assertAllUsed()` checks everything but
+      `defaults`.
 - [ ] Other `afterEach` hooks that throw can still skip the restore. Explain
       when a `beforeEach` backstop is safe: only when the previous restore
       didn't run, since an unconditional one wipes nested suites' setup.
@@ -174,6 +187,9 @@ features land; tick them off as pages get written.
         const { quoter, client } = setup();
       });
       `
+- [ ] Setup functions that register fallbacks other than `defaults` end with
+      a checkpoint, so `restore({ assertAllUsed: true })` checks only the
+      test's own mocks (see section 6).
 - [ ] Apps that read clients from a global share them across concurrent
       tests whatever the mock does: inject clients, or scope them per test
       (e.g. `AsyncLocalStorage`).

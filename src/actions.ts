@@ -187,10 +187,10 @@ function createTable(definition: Definition) {
     return builder;
   }
 
-  /** Mocks with pinned params that haven't answered a call; unpinned ones are fallbacks. */
+  /** Mocks that haven't answered a call. */
   function unused(list: Handler[]) {
     return list
-      .filter((h) => h.pinned !== undefined && h.resolver !== undefined && h.usedCount === 0)
+      .filter((h) => h.resolver !== undefined && h.usedCount === 0)
       .map((h) => formatCall(definition.name, h.pinned));
   }
 

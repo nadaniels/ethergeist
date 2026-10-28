@@ -58,9 +58,9 @@ export type MockRestoreOptions = {
   /** Throw, like `assertNoUnhandled()`, if any request went unanswered. */
   assertNoUnhandled?: boolean;
   /**
-   * Throw, like `assertAllUsed()`, if a mock with args registered since the
-   * checkpoint never answered a call. Baseline mocks aren't checked: shared
-   * setup can register more than any one test uses.
+   * Throw, like `assertAllUsed()`, if a mock registered since the checkpoint
+   * never answered a call. Baseline mocks aren't checked: shared setup can
+   * register more than any one test uses.
    */
   assertAllUsed?: boolean;
 };

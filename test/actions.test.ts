@@ -481,6 +481,16 @@ describe("method()", () => {
 });
 
 describe("bookkeeping", () => {
+  test("assertAllUsed() reports args-less action and method mocks too", () => {
+    const { mock } = setup();
+    mock.actions.getBalance().returns(0n);
+    mock.method("eth_gasPrice").returns("0x1");
+
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(/getBalance\(\*\)[\s\S]*eth_gasPrice\(\*\)/u);
+  });
+
   test("assertAllUsed() reports pinned action mocks that never answered", async () => {
     const { mock, client } = setup();
     mock.actions.getBalance({ address: bob }).returns(1n);

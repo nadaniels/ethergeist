@@ -249,14 +249,53 @@ describe("assertAllUsed()", () => {
     }).toThrow(`balanceOf(${getAddress(bob)}) on ${USDC}`);
   });
 
-  test("doesn't check args-less mocks or defaults", () => {
+  test("checks args-less mocks too: an override that never answered is dead", async () => {
+    const { mock, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.read.balanceOf().fails("network");
+    usdc.read.allowance().reverts("paused");
+    usdc.read.decimals().returns(6);
+
+    await rejectionOf(balanceOf(alice));
+    let error: unknown;
+    try {
+      mock.assertAllUsed();
+    } catch (caught) {
+      error = caught;
+    }
+    expect(String(error)).toContain("2 mock(s) never answered a call");
+    expect(String(error)).toContain(`allowance(*) on ${USDC}`);
+    expect(String(error)).toContain(`decimals(*) on ${USDC}`);
+  });
+
+  test("checks a fallback shadowed by a more specific mock", async () => {
+    const { mock, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.read.balanceOf().returns(1n);
+    usdc.read.balanceOf([alice]).returns(2n);
+
+    await balanceOf(alice);
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`balanceOf(*) on ${USDC}`);
+  });
+
+  test("doesn't check defaults: they're fallbacks", () => {
     const { mock } = setup();
-    const usdc = mock.contract({
+    mock.contract({
       abi: erc20Abi,
       address: USDC,
-      defaults: { read: { decimals: 6 } },
+      defaults: { read: { decimals: 6, balanceOf: 0n } },
     });
-    usdc.read.balanceOf().returns(0n);
+
+    expect(() => {
+      mock.assertAllUsed();
+    }).not.toThrow();
+  });
+
+  test("doesn't check a mock still waiting for its answer", () => {
+    const { mock } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC }).read.balanceOf();
 
     expect(() => {
       mock.assertAllUsed();

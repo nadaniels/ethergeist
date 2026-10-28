@@ -492,9 +492,13 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       if (failure !== undefined) throw new Error(failure);
     },
     /**
-     * Throws if a mock registered with args never answered a call, which usually
-     * means the args are wrong and a broader mock answered instead. Args-less
-     * mocks and defaults are meant as fallbacks, so they're not checked.
+     * Throws if a mock never answered a call: its args are wrong and a broader
+     * mock answered instead, or the app no longer makes the call it stands for.
+     * Contract `defaults` aren't checked: they're shared setup, answers for
+     * the whole suite that any one test may not use. For other shared setup
+     * (actions, `method`, narrowed mocks), take a checkpoint after registering
+     * it and use `restore({ assertAllUsed: true })`, which checks only what
+     * was registered since.
      */
     assertAllUsed() {
       const [failure] = unusedFailure([

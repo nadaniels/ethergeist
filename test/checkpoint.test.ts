@@ -176,6 +176,17 @@ describe("restore()", () => {
   });
 });
 
+/**
+ * One mock per test, built by a setup function: its fallbacks aren't
+ * `defaults`, so a checkpoint marks where the test's own mocks begin.
+ */
+function setupWithFallbacks() {
+  const { mock, client } = setup();
+  mock.actions.getBalance().returns(0n);
+  mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
+  return { mock, client, baseline: mock.checkpoint() };
+}
+
 describe("restore() checks", () => {
   test("assertNoUnhandled restores first, then throws", async () => {
     const { mock, read } = setup();
@@ -224,6 +235,38 @@ describe("restore() checks", () => {
     expect(String(error)).toContain(`balanceOf(${getAddress(alice)}) on ${DAI}`);
     expect(String(error)).toContain(`getBalance({ address: ${getAddress(alice)} })`);
     expect(String(error)).toContain(`eth_getStorageAt(${USDC})`);
+  });
+
+  test("assertAllUsed checks args-less mocks since the checkpoint, not defaults", () => {
+    const { mock } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.read.decimals().returns(6);
+    mock.actions.getBalance().returns(0n);
+    const baseline = mock.checkpoint();
+
+    // In the baseline: not this test's concern.
+    expect(() => {
+      baseline.restore({ assertAllUsed: true });
+    }).not.toThrow();
+
+    usdc.read.balanceOf().fails("network");
+    mock.contract({ abi: erc20Abi, address: DAI, defaults: { read: { decimals: 18 } } });
+    expect(() => {
+      baseline.restore({ assertAllUsed: true });
+    }).toThrow(`1 mock(s) never answered a call:\n  - balanceOf(*) on ${USDC}`);
+  });
+
+  test("a checkpoint after per-test setup exempts its fallbacks", async () => {
+    const { mock, client, baseline } = setupWithFallbacks();
+    mock.actions.getBalance({ address: alice }).returns(5n);
+    expect(await client.getBalance({ address: alice })).toBe(5n);
+    expect(() => {
+      baseline.restore({ assertAllUsed: true });
+    }).not.toThrow();
+    // Plain assertAllUsed() has no such boundary.
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow("getBalance(*)");
   });
 
   test("both checks fail together, in one error", async () => {
