@@ -167,12 +167,18 @@ describe("reset()", () => {
     expect(await decimals(USDC)).toBe(18);
   });
 
-  test("handles from before the reset no longer answer", async () => {
+  test("handles from before the reset throw instead of silently not answering", async () => {
     const { mock, decimals } = setup();
     const stale = mock.contract({ abi: erc20Abi, address: USDC });
+    const decimalsMock = stale.read.decimals();
 
     mock.reset();
-    stale.read.decimals().returns(6);
+    expect(() => stale.read.decimals()).toThrow(
+      `The contract at ${USDC} was removed by restore() or reset()`,
+    );
+    expect(() => {
+      decimalsMock.returns(6);
+    }).toThrow("This mock was removed by restore() or reset()");
     expectCause(await rejectionOf(decimals(USDC)), MockNotFoundError);
   });
 

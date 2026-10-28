@@ -10,6 +10,7 @@ import {
   zeroHash,
 } from "viem";
 import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
+import { removedMockError } from "./checkpoint.js";
 import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError } from "./errors.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
@@ -105,6 +106,8 @@ type Handler = {
   resolver: ((context: ActionContext<object>) => unknown) | undefined;
   /** Calls this handler answered since registration or the last `clearCalls()`. */
   usedCount: number;
+  /** Set when a `restore()` or `reset()` removes it, so its builder can't answer again. */
+  removed: boolean;
 };
 
 type Definition = {
@@ -141,11 +144,13 @@ function createTable(definition: Definition) {
       specificity: specificity(pinned),
       resolver: undefined,
       usedCount: 0,
+      removed: false,
     };
     handlers.push(handler);
 
     const builder: MockActionBuilder<object, unknown> = {
       returns(value: unknown = zeroResult) {
+        if (handler.removed) throw removedMockError();
         const resolved = value === zeroResult ? definition.zero : value;
         // A static value that can't be encoded fails here, not inside a request.
         if (typeof resolved !== "function") definition.encode(resolved, undefined);
@@ -203,6 +208,7 @@ function createTable(definition: Definition) {
       for (const handler of handlers) handler.usedCount = 0;
     },
     reset() {
+      for (const handler of handlers) handler.removed = true;
       handlers.length = 0;
       history.length = 0;
     },
@@ -210,6 +216,15 @@ function createTable(definition: Definition) {
       handlers
         .filter((h) => h.pinned !== undefined && h.resolver !== undefined && h.usedCount === 0)
         .map((h) => format(definition.name, h.pinned)),
+    /** Saves the registered mocks and their answers; the returned function puts them back. */
+    checkpoint() {
+      const saved = handlers.map((h) => [h, h.resolver] as const);
+      return () => {
+        for (const handler of handlers.slice(saved.length)) handler.removed = true;
+        handlers.length = saved.length;
+        for (const [handler, resolver] of saved) handler.resolver = resolver;
+      };
+    },
   };
 }
 
@@ -395,10 +410,28 @@ export function createActions(options: {
       for (const table of tables()) table.clearCalls();
     },
     reset() {
-      for (const table of Object.values(typed)) table.reset();
+      for (const table of tables()) table.reset();
       raw.clear();
     },
     unusedMocks: () => tables().flatMap((table) => table.unusedMocks()),
+    /** Saves every table's mocks, typed and raw; the returned function puts them back. */
+    checkpoint() {
+      const typedRestores = Object.values(typed).map((table) => table.checkpoint());
+      const rawRestores = new Map([...raw].map(([name, table]) => [name, table.checkpoint()]));
+      return () => {
+        for (const restoreTable of typedRestores) restoreTable();
+        for (const [name, table] of raw) {
+          const restoreTable = rawRestores.get(name);
+          if (restoreTable) {
+            restoreTable();
+          } else {
+            // Created since the checkpoint.
+            table.reset();
+            raw.delete(name);
+          }
+        }
+      };
+    },
   };
 }
 

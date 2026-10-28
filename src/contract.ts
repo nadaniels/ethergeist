@@ -15,6 +15,7 @@ import {
   toFunctionSelector,
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
+import { removedMockError } from "./checkpoint.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
 import type { MockBatch } from "./multicall.js";
 import { isMatch, specificity } from "./match.js";
@@ -67,6 +68,8 @@ type Handler = {
   resolver: ((context: ResolverContext<Abi, readonly unknown[]>) => unknown) | undefined;
   /** Calls this handler answered since registration or the last `clearCalls()`. */
   usedCount: number;
+  /** Set when a `restore()` or `reset()` removes it, so its builder can't answer again. */
+  removed: boolean;
 };
 
 export type MockFunction<abi extends Abi, args, result> = {
@@ -181,6 +184,10 @@ export type InternalMockContract<abi extends Abi = Abi> = {
   clearCalls(): void;
   /** Mocks registered with args that haven't answered a call, formatted for messages. */
   unusedMocks(): string[];
+  /** Saves the registered mocks and their answers; the returned function puts them back. */
+  checkpoint(): () => void;
+  /** Marks the contract removed: registering on it, or answering its mocks, throws. */
+  detach(): void;
 };
 
 export function createMockContract<const abi extends Abi>(
@@ -193,6 +200,7 @@ export function createMockContract<const abi extends Abi>(
   const address = getAddress(parameters.address);
   const handlers: Handler[] = [];
   const history: MockCall[] = [];
+  let detached = false;
   // Handed to every resolver. RevertFn's generic signature only narrows what
   // callers may pass; createRevertError accepts every RevertSpec.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- generic signature, non-generic implementation
@@ -228,6 +236,10 @@ export function createMockContract<const abi extends Abi>(
     functionName: string,
     args: readonly unknown[] | undefined,
   ) {
+    if (detached)
+      throw new Error(
+        `The contract at ${address} was removed by restore() or reset(); register it again.`,
+      );
     const abiItem = getAbiItem({ abi: functionsIn[namespace], name: functionName, args });
     // viem's type assumes a match, but untyped callers can pass any name.
     if (abiItem === undefined) throw notInNamespaceError(namespace, functionName);
@@ -239,11 +251,13 @@ export function createMockContract<const abi extends Abi>(
       specificity: specificity(args),
       resolver: undefined,
       usedCount: 0,
+      removed: false,
     };
     handlers.push(handler);
 
     const builder = {
       returns(value: unknown = zeroResult) {
+        if (handler.removed) throw removedMockError();
         // A static value that can't be encoded fails here, not inside a request.
         if (typeof value !== "function") encodeResult(abiItem, value);
         handler.resolver =
@@ -363,6 +377,18 @@ export function createMockContract<const abi extends Abi>(
       handlers
         .filter((h) => h.args !== undefined && h.resolver !== undefined && h.usedCount === 0)
         .map((h) => `${formatCall(h.abiItem.name, h.args)} on ${address}`),
+    checkpoint() {
+      const saved = handlers.map((h) => [h, h.resolver] as const);
+      return () => {
+        for (const handler of handlers.slice(saved.length)) handler.removed = true;
+        handlers.length = saved.length;
+        for (const [handler, resolver] of saved) handler.resolver = resolver;
+      };
+    },
+    detach() {
+      detached = true;
+      for (const handler of handlers) handler.removed = true;
+    },
   };
 }
 

@@ -17,6 +17,7 @@ import {
 import { mainnet } from "viem/chains";
 import { createActions } from "./actions.js";
 import { type BlockClock, generateBlock, numberOfBlockHash } from "./blocks.js";
+import type { MockCheckpoint } from "./checkpoint.js";
 import {
   type CallContext,
   type CreateMockContractParameters,
@@ -96,6 +97,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     startTimestamp: parameters.timestamp ?? 1_700_000_000n,
     blockTime: chain.blockTime ?? 12_000,
   };
+  const checkpoints: { valid: boolean }[] = [];
   const actions = createActions({
     resolveBlock,
     codeAt,
@@ -204,6 +206,14 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
 
   function onCall(call: MockCall) {
     calls.push(call);
+  }
+
+  function clearCalls() {
+    calls.length = 0;
+    requests.length = 0;
+    unhandled.length = 0;
+    for (const contract of contracts) contract.clearCalls();
+    actions.clearCalls();
   }
 
   function transport(config?: CustomTransportConfig) {
@@ -351,18 +361,66 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       throw new Error(`${unused.length} mock(s) never answered a call:\n${lines.join("\n")}`);
     },
     /** Clears call and request history and usage; registrations and the block number stay. */
-    clearCalls() {
-      calls.length = 0;
-      requests.length = 0;
-      unhandled.length = 0;
-      for (const contract of contracts) contract.clearCalls();
-      actions.clearCalls();
+    clearCalls,
+    /**
+     * Saves what's registered now as a baseline to `restore()` to, e.g. after
+     * each test, so shared setup can be registered once. Throws if requests
+     * since the last clear went unanswered: a broken setup isn't a baseline. See `MockCheckpoint` for nesting and caveats.
+     */
+    checkpoint(): MockCheckpoint {
+      if (unhandled.length > 0)
+        throw new Error(
+          `Can't checkpoint: ${unhandled.length} request(s) since the last clear ` +
+            "went unanswered. Fix the setup, or call clearCalls() first if they were " +
+            `intentional:\n${unhandled.map(({ error }) => `  - ${error.shortMessage}`).join("\n")}`,
+        );
+
+      const contractCount = contracts.length;
+      const restoreContracts = contracts.map((contract) => contract.checkpoint());
+      const restoreActions = actions.checkpoint();
+      const savedEmpty = new Set(emptyAddresses);
+      const savedFaults = faults.map((fault) => [fault, fault.remaining, fault.count] as const);
+      const savedBlockNumber = blockNumber;
+      const savedBatchCount = batchCount;
+      const entry = { valid: true };
+      checkpoints.push(entry);
+
+      return {
+        restore() {
+          if (!entry.valid)
+            throw new Error(
+              "This checkpoint is no longer valid: an earlier checkpoint was restored, " +
+                "or reset() was called, after it was taken.",
+            );
+          // Checkpoints taken after this one describe state that's about to go away.
+          for (const later of checkpoints.splice(checkpoints.indexOf(entry) + 1))
+            later.valid = false;
+
+          for (const contract of contracts.slice(contractCount)) contract.detach();
+          contracts.length = contractCount;
+          for (const restoreContract of restoreContracts) restoreContract();
+          restoreActions();
+          emptyAddresses.clear();
+          for (const address of savedEmpty) emptyAddresses.add(address);
+          faults.length = savedFaults.length;
+          for (const [fault, remaining, count] of savedFaults) {
+            fault.remaining = remaining;
+            fault.count = count;
+          }
+          blockNumber = savedBlockNumber;
+          batchCount = savedBatchCount;
+          clearCalls();
+        },
+      };
     },
     /**
      * Returns the mock to its initial state: no contracts, no history, and the
-     * starting block number. Handles from before the reset no longer answer calls.
+     * starting block number. Handles from before the reset throw if used to
+     * register, and every checkpoint becomes invalid.
      */
     reset() {
+      for (const entry of checkpoints.splice(0)) entry.valid = false;
+      for (const contract of contracts) contract.detach();
       contracts.length = 0;
       actions.reset();
       emptyAddresses.clear();
