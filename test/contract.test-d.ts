@@ -155,6 +155,25 @@ describe("reverts", () => {
   });
 });
 
+describe("faults", () => {
+  test("fails() takes a MockFault", () => {
+    usdc.read.decimals().fails({ status: 503, retryAfter: 1 });
+    usdc.read.decimals().fails({ code: -32005, message: "limit exceeded" });
+    usdc.read.decimals().fails("timeout");
+    usdc.simulate.transfer().fails("network");
+
+    // @ts-expect-error not a fault kind
+    usdc.read.decimals().fails("offline");
+  });
+
+  test("fail() in a resolver returns never", () => {
+    usdc.read.decimals().returns(({ fail }) => {
+      expectTypeOf(fail("timeout")).toBeNever();
+      return 6;
+    });
+  });
+});
+
 describe("simulate", () => {
   test("exposes only nonpayable and payable function names", () => {
     expectTypeOf<keyof typeof usdc.simulate>().toEqualTypeOf<

@@ -20,6 +20,19 @@ export type MockFault =
   | "timeout"
   | "network";
 
+/**
+ * Thrown by a resolver's `fail()` and caught by the rpc, which needs the raw
+ * request to build viem's error. Internal: it never reaches viem.
+ */
+export class MockFailure extends Error {
+  readonly fault: MockFault;
+
+  constructor(fault: MockFault) {
+    super("Mock fault");
+    this.fault = fault;
+  }
+}
+
 export type FailRequestsOptions = {
   /** Only fail requests for these JSON-RPC methods. Defaults to every method. */
   method?: string | readonly string[];

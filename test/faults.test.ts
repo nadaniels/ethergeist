@@ -6,6 +6,7 @@ import {
   TimeoutError,
   createPublicClient,
   erc20Abi,
+  getAddress,
 } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
@@ -13,6 +14,9 @@ import { createMockRpc } from "../src/index.js";
 import { expectCause, failureOf, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
+const alice = "0x00000000000000000000000000000000000a11ce";
+const bob = "0x0000000000000000000000000000000000000b0b";
 
 function setup({ retryCount }: { retryCount?: number } = {}) {
   const mock = createMockRpc();
@@ -193,5 +197,136 @@ describe("lifecycle", () => {
     const { mock } = setup();
     expect(() => mock.failRequests("timeout", { times: 0 })).toThrow("positive integer");
     expect(() => mock.failRequests("timeout", { times: 1.5 })).toThrow("positive integer");
+  });
+});
+
+// Like setup(), but with nothing registered.
+function setupTokens({ retryCount }: { retryCount?: number | undefined } = {}) {
+  const mock = createMockRpc();
+  const client = createPublicClient({
+    chain: mainnet,
+    transport: mock.transport(retryCount === undefined ? {} : { retryCount }),
+  });
+  const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+  const dai = mock.contract({ abi: erc20Abi, address: DAI });
+  const read = (address: `0x${string}`, functionName: "decimals" | "symbol") =>
+    client.readContract({ abi: erc20Abi, address, functionName });
+  const balanceOf = (owner: `0x${string}`) =>
+    client.readContract({ abi: erc20Abi, address: USDC, functionName: "balanceOf", args: [owner] });
+  return { mock, client, usdc, dai, read, balanceOf };
+}
+
+describe(".fails()", () => {
+  test("fails one function while the rest of the chain answers", async () => {
+    const { usdc, dai, read } = setupTokens();
+    usdc.read.decimals().fails({ status: 503 });
+    usdc.read.symbol().returns("USDC");
+    dai.read.decimals().returns(18);
+
+    expect(expectCause(await rejectionOf(read(USDC, "decimals")), HttpRequestError).status).toBe(
+      503,
+    );
+    expect(await read(USDC, "symbol")).toBe("USDC");
+    expect(await read(DAI, "decimals")).toBe(18);
+  });
+
+  test("targets args like any other mock", async () => {
+    const { usdc, balanceOf } = setupTokens();
+    usdc.read.balanceOf([alice]).fails("timeout");
+    usdc.read.balanceOf().returns(5n);
+
+    expectCause(await rejectionOf(balanceOf(alice)), TimeoutError);
+    expect(await balanceOf(bob)).toBe(5n);
+  });
+
+  test.each([
+    { retryCount: undefined, attempts: 4 },
+    { retryCount: 1, attempts: 2 },
+  ])("every retry fails (retryCount $retryCount)", async ({ retryCount, attempts }) => {
+    const { mock, usdc, read } = setupTokens({ retryCount });
+    usdc.read.decimals().fails({ status: 503 });
+
+    await rejectionOf(read(USDC, "decimals"));
+    expect(mock.requests).toHaveLength(attempts);
+  });
+
+  test("a JSON-RPC code maps to viem's error class", async () => {
+    const { usdc, read } = setupTokens();
+    usdc.read.decimals().fails({ code: LimitExceededRpcError.code });
+
+    expectCause(await rejectionOf(read(USDC, "decimals")), LimitExceededRpcError);
+  });
+
+  test("works for simulate", async () => {
+    const { client, usdc } = setupTokens({ retryCount: 0 });
+    usdc.simulate.transfer().fails("network");
+
+    const error = await rejectionOf(
+      client.simulateContract({
+        abi: erc20Abi,
+        address: USDC,
+        functionName: "transfer",
+        args: [bob, 1n],
+        account: alice,
+      }),
+    );
+    expect(expectCause(error, HttpRequestError).status).toBeUndefined();
+  });
+
+  test("fails the whole multicall, even with allowFailure", async () => {
+    const { mock, client, usdc } = setupTokens({ retryCount: 0 });
+    usdc.read.decimals().returns(6);
+    usdc.read.symbol().fails({ status: 503 });
+
+    const results = await client.multicall({
+      contracts: [
+        { abi: erc20Abi, address: USDC, functionName: "decimals" },
+        { abi: erc20Abi, address: USDC, functionName: "symbol" },
+      ],
+    });
+    for (const result of results) expectCause(failureOf(result), HttpRequestError);
+    expect(mock.requests).toHaveLength(1);
+  });
+
+  test("a later returns() replaces it", async () => {
+    const { usdc, read } = setupTokens();
+    usdc.read.decimals().fails({ status: 503 });
+    usdc.read.decimals().returns(6);
+
+    expect(await read(USDC, "decimals")).toBe(6);
+  });
+
+  test("is logged and used, but not unhandled", async () => {
+    const { mock, usdc, balanceOf } = setupTokens({ retryCount: 0 });
+    usdc.read.balanceOf([alice]).fails({ status: 503 });
+
+    await rejectionOf(balanceOf(alice));
+    expect(usdc.read.balanceOf.calls).toMatchObject([{ args: [getAddress(alice)] }]);
+    expect(() => {
+      mock.assertNoUnhandled();
+    }).not.toThrow();
+    expect(() => {
+      mock.assertAllUsed();
+    }).not.toThrow();
+  });
+
+  test("failRequests() still comes first", async () => {
+    const { mock, usdc, read } = setupTokens({ retryCount: 0 });
+    usdc.read.decimals().fails({ status: 503 });
+    mock.failRequests({ status: 429 });
+
+    expect(expectCause(await rejectionOf(read(USDC, "decimals")), HttpRequestError).status).toBe(
+      429,
+    );
+  });
+
+  test("fail() in a resolver can fail some calls and answer others", async () => {
+    const { mock, usdc, read } = setupTokens();
+    let attempts = 0;
+    usdc.read.decimals().returns(({ fail }) => (++attempts === 1 ? fail({ status: 503 }) : 6));
+
+    // The first attempt fails; viem's retry gets the answer.
+    expect(await read(USDC, "decimals")).toBe(6);
+    expect(mock.requests).toHaveLength(2);
   });
 });

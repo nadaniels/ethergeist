@@ -16,6 +16,7 @@ import {
   toFunctionSelector,
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
+import { MockFailure, type MockFault } from "./faults.js";
 import type { MockBatch } from "./multicall.js";
 import { type MockReturnType, isPlainObject, normalizeResult, zeroResult } from "./result.js";
 import { type RevertFn, type RevertSpec, createRevertError } from "./revert.js";
@@ -46,6 +47,11 @@ export type MockCall<
 export type ResolverContext<abi extends Abi, args> = MockCall<args> & {
   /** Revert this call, e.g. `revert('paused')` or `revert({ errorName, args })`. */
   revert: RevertFn<abi>;
+  /**
+   * Fail the whole JSON-RPC request with a transport-level fault, e.g.
+   * `fail({ status: 503 })`. See `MockFault` for the kinds.
+   */
+  fail: (fault: MockFault) => never;
 };
 
 type Resolver<abi extends Abi, args, result> =
@@ -71,6 +77,12 @@ export type MockFunction<abi extends Abi, args, result> = {
   reverts<errorName extends ContractErrorName<abi> = ContractErrorName<abi>>(
     spec?: RevertSpec<abi, errorName>,
   ): void;
+  /**
+   * Fail every matching call at the network level: the whole JSON-RPC request,
+   * including a multicall batch it's in, throws the error viem's `http`
+   * transport would, so viem's retries apply. See `MockFault` for the kinds.
+   */
+  fails(fault: MockFault): void;
 };
 
 /** Mirrors `getContract(...).<namespace>.<functionName>(args)`, but registers a mock. */
@@ -242,6 +254,9 @@ export function createMockContract<const abi extends Abi>(
       reverts(spec?: RevertSpec) {
         builder.returns(() => revert(spec));
       },
+      fails(fault: MockFault) {
+        builder.returns(() => fail(fault));
+      },
     };
     return builder;
   }
@@ -329,9 +344,9 @@ export function createMockContract<const abi extends Abi>(
 
     handler.usedCount += 1;
     try {
-      return encodeResult(handler.abiItem, await handler.resolver({ ...call, revert }));
+      return encodeResult(handler.abiItem, await handler.resolver({ ...call, revert, fail }));
     } catch (error) {
-      if (error instanceof MockRevertError) throw error;
+      if (error instanceof MockRevertError || error instanceof MockFailure) throw error;
       throw new MockResolverError(decoded.functionName, error);
     }
   }
@@ -363,6 +378,11 @@ function specificity(args: readonly unknown[] | undefined): number {
     return 1;
   };
   return count(args);
+}
+
+/** Handed to every resolver; unlike `revert`, it doesn't depend on the ABI. */
+function fail(fault: MockFault): never {
+  throw new MockFailure(fault);
 }
 
 function encodeResult(abiItem: AbiFunction, value: unknown): Hex {

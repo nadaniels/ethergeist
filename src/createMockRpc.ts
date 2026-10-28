@@ -30,6 +30,7 @@ import {
   type FailRequestsOptions,
   type MockFault,
   type MockFaultHandle,
+  MockFailure,
   appliesTo,
   createActiveFault,
   createFaultError,
@@ -100,6 +101,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     try {
       return await answer(rpcRequest);
     } catch (error) {
+      // A mock's `.fails()` or `fail()`: deliberate, like `failRequests`.
+      if (error instanceof MockFailure) throw createFaultError(error.fault, entry);
       // Recorded because callers can swallow these: app code with a fallback,
       // or viem's multicall turning a failed batch into per-call failures.
       if (error instanceof MockNotFoundError || error instanceof MockResolverError)
@@ -218,6 +221,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     /**
      * Fails requests at the transport, with the error viem's `http` transport
      * would throw, until cleared or `times` runs out. See `MockFault` for kinds.
+     * To fail calls to one contract function instead, use `.fails()` on its mock.
      */
     failRequests(fault: MockFault, options: FailRequestsOptions = {}): MockFaultHandle {
       const active = createActiveFault(fault, options);
