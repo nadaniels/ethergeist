@@ -38,15 +38,24 @@ type NamedOutputs<abiFunction> = abiFunction extends {
   : never;
 
 /** What `.returns()` accepts for a function: viem's return type, or named outputs. */
+/**
+ * Answers with Solidity zero values for every output (`0n`, `false`, the zero
+ * address, …), or with nothing for a function without outputs. Use it anywhere
+ * a return value goes: `.returns(zeroResult)`, `defaults`, or from a resolver.
+ */
+export const zeroResult = Symbol("zeroResult");
+
 export type MockReturnType<abi extends Abi, functionName extends string, returnType> =
   | PartialStructs<returnType>
-  | NamedOutputs<Extract<abi[number], { type: "function"; name: functionName }>>;
+  | NamedOutputs<Extract<abi[number], { type: "function"; name: functionName }>>
+  | typeof zeroResult;
 
 /**
  * Turns what a resolver returned into the value viem's encoder expects: named
  * outputs become a tuple in ABI order, and omitted struct fields get zero values.
  */
 export function normalizeResult(outputs: readonly AbiParameter[], value: unknown): unknown {
+  if (value === zeroResult) return normalizeResult(outputs, outputs.length > 1 ? [] : undefined);
   if (outputs.length === 0) return value;
   if (outputs.length === 1) return fill(outputs[0]!, value);
   if (Array.isArray(value)) return outputs.map((output, i) => fill(output, value[i]));

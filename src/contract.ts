@@ -16,7 +16,7 @@ import {
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 import type { MockBatch } from "./multicall.js";
-import { type MockReturnType, isPlainObject, normalizeResult } from "./result.js";
+import { type MockReturnType, isPlainObject, normalizeResult, zeroResult } from "./result.js";
 import { type RevertFn, type RevertSpec, createRevertError } from "./revert.js";
 
 type ReadMutability = "pure" | "view";
@@ -63,6 +63,8 @@ type Handler = {
 };
 
 export type MockFunction<abi extends Abi, args, result> = {
+  /** With no argument, answers with zero values, like `.returns(zeroResult)`. */
+  returns(): void;
   returns(value: Resolver<abi, args, result>): void;
   /** Revert every matching call. See `RevertSpec` for the accepted forms. */
   reverts<errorName extends ContractErrorName<abi> = ContractErrorName<abi>>(
@@ -228,7 +230,7 @@ export function createMockContract<const abi extends Abi>(
     handlers.push(handler);
 
     const builder = {
-      returns(value: unknown) {
+      returns(value: unknown = zeroResult) {
         handler.resolver =
           // The types guarantee a resolver's signature; it can't be checked at runtime.
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function

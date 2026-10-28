@@ -1,7 +1,7 @@
 import { createPublicClient, parseAbi, zeroAddress } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { createMockRpc } from "../src/index.js";
+import { createMockRpc, zeroResult } from "../src/index.js";
 
 const FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
 const STORE = "0x0000000000000000000000000000000000005703";
@@ -171,5 +171,79 @@ describe("partial structs", () => {
     expect(
       await client.readContract({ abi: storeAbi, address: STORE, functionName: "summary" }),
     ).toEqual([3n, { ...emptyPosition, owner: alice }]);
+  });
+});
+
+describe("zeroResult", () => {
+  const wethAbi = parseAbi(["function deposit() payable"]);
+
+  test("every output is zero", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: feedAbi, address: FEED }).read.latestRoundData().returns(zeroResult);
+
+    expect(
+      await client.readContract({ abi: feedAbi, address: FEED, functionName: "latestRoundData" }),
+    ).toEqual([0n, 0n, 0n, 0n, 0n]);
+  });
+
+  test("structs and arrays are zero and empty", async () => {
+    const { mock, client } = setup();
+    const store = mock.contract({ abi: storeAbi, address: STORE });
+    store.read.position().returns(zeroResult);
+    store.read.positions().returns(zeroResult);
+
+    expect(
+      await client.readContract({
+        abi: storeAbi,
+        address: STORE,
+        functionName: "position",
+        args: [1n],
+      }),
+    ).toEqual(emptyPosition);
+    expect(
+      await client.readContract({ abi: storeAbi, address: STORE, functionName: "positions" }),
+    ).toEqual([]);
+  });
+
+  test("a function without outputs just succeeds", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: wethAbi, address: STORE }).simulate.deposit().returns(zeroResult);
+
+    const { result } = await client.simulateContract({
+      abi: wethAbi,
+      address: STORE,
+      functionName: "deposit",
+      value: 1n,
+    });
+    expect(result).toBeUndefined();
+  });
+
+  test(".returns() with no argument is the same", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: feedAbi, address: FEED }).read.latestRoundData().returns();
+    mock.contract({ abi: wethAbi, address: STORE }).simulate.deposit().returns();
+
+    expect(
+      await client.readContract({ abi: feedAbi, address: FEED, functionName: "latestRoundData" }),
+    ).toEqual([0n, 0n, 0n, 0n, 0n]);
+    await client.simulateContract({ abi: wethAbi, address: STORE, functionName: "deposit" });
+  });
+
+  test("works in defaults and from resolvers", async () => {
+    const { mock, client } = setup();
+    let live = false;
+    const feed = mock.contract({
+      abi: feedAbi,
+      address: FEED,
+      defaults: { read: { latestRoundData: zeroResult } },
+    });
+    const latest = () =>
+      client.readContract({ abi: feedAbi, address: FEED, functionName: "latestRoundData" });
+    expect(await latest()).toEqual([0n, 0n, 0n, 0n, 0n]);
+
+    feed.read.latestRoundData().returns(() => (live ? { answer: 5n } : zeroResult));
+    expect((await latest())[1]).toBe(0n);
+    live = true;
+    expect((await latest())[1]).toBe(5n);
   });
 });

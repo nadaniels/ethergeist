@@ -1,6 +1,6 @@
 import { type Address, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
-import { type MockBatch, type MockRpc, createMockRpc } from "../src/index.js";
+import { type MockBatch, type MockRpc, createMockRpc, zeroResult } from "../src/index.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
@@ -287,5 +287,30 @@ describe("rpc", () => {
 
   test("chainId is a number", () => {
     expectTypeOf(mock.chainId).toEqualTypeOf<number>();
+  });
+});
+
+describe("zeroResult", () => {
+  const weth = mock.contract({ abi: parseAbi(["function deposit() payable"]), address: USDC });
+
+  test("is accepted wherever a return value is", () => {
+    usdc.read.balanceOf().returns(zeroResult);
+    usdc.simulate.transfer().returns(zeroResult);
+    weth.simulate.deposit().returns(zeroResult);
+    usdc.read.balanceOf().returns(({ args: [owner] }) => (owner === USDC ? 1n : zeroResult));
+    mock.contract({
+      abi: erc20Abi,
+      address: USDC,
+      defaults: { read: { decimals: zeroResult }, simulate: { approve: zeroResult } },
+    });
+  });
+
+  test(".returns() takes no argument, but undefined only where there are no outputs", () => {
+    usdc.read.balanceOf().returns();
+    weth.simulate.deposit().returns();
+    weth.simulate.deposit().returns(undefined);
+
+    // @ts-expect-error balanceOf has an output
+    usdc.read.balanceOf().returns(undefined);
   });
 });
