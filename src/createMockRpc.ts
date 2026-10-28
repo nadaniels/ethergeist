@@ -19,6 +19,15 @@ import {
   createMockContract,
 } from "./contract.js";
 import { MockNotFoundError, MockResolverError } from "./errors.js";
+import {
+  type ActiveFault,
+  type FailRequestsOptions,
+  type MockFault,
+  type MockFaultHandle,
+  appliesTo,
+  createActiveFault,
+  createFaultError,
+} from "./faults.js";
 import { multicall3Address, resolveMulticall } from "./multicall.js";
 
 export type CreateMockRpcParameters = {
@@ -50,12 +59,23 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   const calls: MockCall[] = [];
   const requests: RpcRequest[] = [];
   const unhandled: UnhandledRequest[] = [];
+  const faults: ActiveFault[] = [];
   let batchCount = 0;
 
   async function request(rpcRequest: RpcRequest): Promise<unknown> {
     const { method, params } = rpcRequest;
     const entry: RpcRequest = params === undefined ? { method } : { method, params };
     requests.push(entry);
+
+    // The most recent fault wins, like mocks. A fault is a deliberate answer, so
+    // it isn't recorded as unhandled.
+    const fault = faults.findLast((f) => appliesTo(f, method));
+    if (fault) {
+      fault.remaining -= 1;
+      fault.count += 1;
+      throw createFaultError(fault.fault, entry);
+    }
+
     try {
       return await answer(rpcRequest);
     } catch (error) {
@@ -145,8 +165,12 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
 
   return {
     request,
-    /** A viem transport backed by this mock. */
-    transport: (config?: CustomTransportConfig) => custom({ request }, config),
+    /**
+     * A viem transport backed by this mock. Retries keep viem's `retryCount` but
+     * default to `retryDelay: 0`, so faulted requests retry without waiting.
+     */
+    transport: (config?: CustomTransportConfig) =>
+      custom({ request }, { retryDelay: 0, ...config }),
     /**
      * Registers a mocked contract. Each address takes one registration; for a
      * proxy or extended contract, combine the ABIs (`abi: [...a, ...b]`).
@@ -158,6 +182,22 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       const internal = createMockContract(contractParameters, onCall);
       contracts.push(internal);
       return internal.contract;
+    },
+    /**
+     * Fails requests at the transport, with the error viem's `http` transport
+     * would throw, until cleared or `times` runs out. See `MockFault` for kinds.
+     */
+    failRequests(fault: MockFault, options: FailRequestsOptions = {}): MockFaultHandle {
+      const active = createActiveFault(fault, options);
+      faults.push(active);
+      return {
+        get count() {
+          return active.count;
+        },
+        clear() {
+          active.remaining = 0;
+        },
+      };
     },
     /**
      * Marks an address as having no code: calls to it succeed with empty data,
@@ -224,6 +264,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     reset() {
       contracts.length = 0;
       emptyAddresses.clear();
+      faults.length = 0;
       calls.length = 0;
       requests.length = 0;
       unhandled.length = 0;
