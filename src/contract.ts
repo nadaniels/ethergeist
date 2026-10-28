@@ -20,6 +20,7 @@ import { type MockReturnType, isPlainObject, normalizeResult } from "./result.js
 import { type RevertFn, type RevertSpec, createRevertError } from "./revert.js";
 
 type ReadMutability = "pure" | "view";
+type Namespace = "read" | "simulate";
 type WriteMutability = "nonpayable" | "payable";
 
 export type CallContext = {
@@ -189,18 +190,32 @@ export function createMockContract<const abi extends Abi>(
       (item): item is AbiFunction =>
         item.type === "function" && mutabilities.includes(item.stateMutability),
     );
-  const readFunctions = functionsOf(["view", "pure"]);
-  const simulateFunctions = functionsOf(["nonpayable", "payable"]);
+  const functionsIn = {
+    read: functionsOf(["view", "pure"]),
+    simulate: functionsOf(["nonpayable", "payable"]),
+  };
 
-  /** `functions` limits the lookup so an overload never binds across namespaces. */
+  /** For a name that isn't in `namespace`: says where it is instead, if anywhere. */
+  function notInNamespaceError(namespace: Namespace, functionName: string) {
+    const other = namespace === "read" ? "simulate" : "read";
+    const elsewhere = functionsIn[other].find((f) => f.name === functionName);
+    return elsewhere
+      ? new Error(
+          `"${functionName}" is a ${elsewhere.stateMutability} function; ` +
+            `register it under ${other}, not ${namespace}.`,
+        )
+      : new Error(`No function "${functionName}" on this contract's ABI.`);
+  }
+
+  /** Looks up only within `namespace`, so an overload never binds across namespaces. */
   function register(
-    functions: readonly AbiFunction[],
+    namespace: Namespace,
     functionName: string,
     args: readonly unknown[] | undefined,
   ) {
-    const abiItem = getAbiItem({ abi: functions, name: functionName, args });
+    const abiItem = getAbiItem({ abi: functionsIn[namespace], name: functionName, args });
     // viem's type assumes a match, but untyped callers can pass any name.
-    if (abiItem === undefined) throw new Error(`Function "${functionName}" not found on ABI.`);
+    if (abiItem === undefined) throw notInNamespaceError(namespace, functionName);
 
     const handler: Handler = {
       abiItem,
@@ -227,20 +242,30 @@ export function createMockContract<const abi extends Abi>(
   }
 
   for (const [functionName, resolver] of Object.entries(defaults.read ?? {}))
-    register(readFunctions, functionName, undefined).returns(resolver);
+    register("read", functionName, undefined).returns(resolver);
   for (const [functionName, resolver] of Object.entries(defaults.simulate ?? {}))
-    register(simulateFunctions, functionName, undefined).returns(resolver);
+    register("simulate", functionName, undefined).returns(resolver);
 
   // Overloads share one entry, as in viem's `getContract`.
-  function namespace(functions: readonly AbiFunction[]) {
+  function buildNamespace(name: Namespace) {
     const entries: Record<string, unknown> = {};
-    for (const { name: functionName } of functions) {
+    for (const { name: functionName } of functionsIn[name]) {
       if (functionName in entries) continue;
       entries[functionName] = Object.defineProperty(
-        (args?: readonly unknown[]) => register(functions, functionName, args),
+        (args?: readonly unknown[]) => register(name, functionName, args),
         "calls",
         { get: () => history.filter((call) => call.functionName === functionName) },
       );
+    }
+    // Untyped callers reaching for the other namespace's functions get a pointer
+    // to the right one instead of "is not a function". Hidden from Object.keys.
+    for (const { name: functionName } of functionsIn[name === "read" ? "simulate" : "read"]) {
+      if (functionName in entries) continue;
+      Object.defineProperty(entries, functionName, {
+        value: () => {
+          throw notInNamespaceError(name, functionName);
+        },
+      });
     }
     return entries;
   }
@@ -253,8 +278,8 @@ export function createMockContract<const abi extends Abi>(
     get calls() {
       return [...history];
     },
-    read: namespace(readFunctions),
-    simulate: namespace(simulateFunctions),
+    read: buildNamespace("read"),
+    simulate: buildNamespace("simulate"),
   } as unknown as MockContract<abi>;
 
   async function resolve(data: Hex, context: CallContext): Promise<Hex> {

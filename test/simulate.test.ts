@@ -137,6 +137,41 @@ describe("simulate", () => {
     expect(Object.keys(weth.simulate)).toEqual(["deposit", "withdraw"]);
   });
 
+  test("untyped callers using the wrong namespace are pointed to the right one", () => {
+    const { mock } = setup();
+    const weth = mock.contract({ abi: wethAbi, address: WETH });
+
+    expect(() => {
+      // @ts-expect-error payable functions live on simulate
+      weth.read.deposit(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
+    }).toThrow('"deposit" is a payable function; register it under simulate, not read.');
+    expect(() => {
+      // @ts-expect-error view functions live on read
+      weth.simulate.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
+    }).toThrow('"balanceOf" is a view function; register it under read, not simulate.');
+  });
+
+  test("defaults under the wrong namespace, or not on the ABI, say so", () => {
+    const { mock } = setup();
+
+    expect(() =>
+      mock.contract({
+        abi: wethAbi,
+        address: WETH,
+        // @ts-expect-error payable functions belong under simulate
+        defaults: { read: { deposit: undefined } },
+      }),
+    ).toThrow('"deposit" is a payable function; register it under simulate, not read.');
+    expect(() =>
+      mock.contract({
+        abi: wethAbi,
+        address: OTHER,
+        // @ts-expect-error not on the ABI
+        defaults: { read: { balanceOff: 0n } },
+      }),
+    ).toThrow('No function "balanceOff" on this contract\'s ABI.');
+  });
+
   test("unmocked nonpayable functions fail loudly", async () => {
     const { token, transfer } = setup();
     token.simulate.approve().returns(true);
