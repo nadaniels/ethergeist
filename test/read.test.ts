@@ -1,4 +1,4 @@
-import { BaseError, createPublicClient, erc20Abi, getAddress } from "viem";
+import { BaseError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import { MockNotFoundError, createMockRpc } from "../src/index.js";
@@ -206,6 +206,54 @@ describe("balanceOf", () => {
     expect(error.message).toContain(`balanceOf(${bob})`);
     expectCause(error, MockNotFoundError);
     expect(mock.requests).toHaveLength(1);
+  });
+});
+
+describe("number and bigint args", () => {
+  // OpenZeppelin ERC20Votes (uint32 position: a number) and ERC-721 (uint256 id: a bigint).
+  const abi = parseAbi([
+    "function checkpoints(address account, uint32 pos) view returns (uint48 key, uint208 value)",
+    "function ownerOf(uint256 tokenId) view returns (address)",
+  ]);
+
+  test("a bigint registered for a small integer matches the decoded number", async () => {
+    const { mock, client } = setup();
+    const votes = mock.contract({ abi, address: USDC });
+    // @ts-expect-error the types want a number for uint32; a loosely typed helper might not
+    votes.read.checkpoints([alice, 3n]).returns({ value: 7n });
+
+    const [, value] = await client.readContract({
+      abi,
+      address: USDC,
+      functionName: "checkpoints",
+      args: [alice, 3],
+    });
+    expect(value).toBe(7n);
+  });
+
+  test("a number registered for a wide integer matches the decoded bigint", async () => {
+    const { mock, client } = setup();
+    const nft = mock.contract({ abi, address: USDC });
+    // @ts-expect-error the types want a bigint for uint256
+    nft.read.ownerOf([42]).returns(alice);
+
+    expect(
+      await client.readContract({ abi, address: USDC, functionName: "ownerOf", args: [42n] }),
+    ).toBe(getAddress(alice));
+  });
+
+  test("different values still don't match", async () => {
+    const { mock, client } = setup();
+    const nft = mock.contract({ abi, address: USDC });
+    // @ts-expect-error the types want a bigint for uint256
+    nft.read.ownerOf([42]).returns(alice);
+
+    expectCause(
+      await rejectionOf(
+        client.readContract({ abi, address: USDC, functionName: "ownerOf", args: [43n] }),
+      ),
+      MockNotFoundError,
+    );
   });
 });
 

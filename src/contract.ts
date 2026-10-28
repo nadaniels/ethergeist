@@ -370,7 +370,10 @@ function specificity(args: readonly unknown[] | undefined): number {
   return count(args);
 }
 
-/** Deep equality where hex strings (addresses, bytes) compare case-insensitively. */
+/**
+ * Deep equality where hex strings (addresses, bytes) compare case-insensitively
+ * and equal integers match as either `number` or `bigint`.
+ */
 function isMatch(expected: unknown, actual: unknown): boolean {
   if (typeof expected === "string" && typeof actual === "string")
     return expected.toLowerCase() === actual.toLowerCase();
@@ -380,6 +383,12 @@ function isMatch(expected: unknown, actual: unknown): boolean {
     );
   if (isPlainObject(expected) && isPlainObject(actual))
     return Object.entries(expected).every(([key, value]) => isMatch(value, actual[key]));
+  // viem decodes integers up to 48 bits as numbers and wider ones as bigints. A
+  // value of the other kind that got past the types still means the same number.
+  if (typeof expected === "bigint" && typeof actual === "number")
+    return Number.isInteger(actual) && expected === BigInt(actual);
+  if (typeof expected === "number" && typeof actual === "bigint")
+    return Number.isInteger(expected) && BigInt(expected) === actual;
   return expected === actual;
 }
 
