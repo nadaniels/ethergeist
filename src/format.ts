@@ -1,4 +1,5 @@
 import { type Address, isHex } from "viem";
+import { formatMatcher, isMatcher } from "./matchers.js";
 import { isPlainObject } from "./result.js";
 
 /** A contract for messages: its name and address, or just the address. */
@@ -26,6 +27,7 @@ type FormatOptions = {
 
 /** A value for messages: bigints as `5n`, arrays and structs spelled out. */
 export function formatValue(value: unknown, options: FormatOptions = {}): string {
+  if (isMatcher(value)) return formatMatcher(value);
   if (typeof value === "bigint") return `${value}n`;
   if (Array.isArray(value))
     return `[${value.map((v: unknown) => formatValue(v, options)).join(", ")}]`;

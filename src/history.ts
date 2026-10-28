@@ -193,9 +193,10 @@ function formatOutcome(outcome: MockOutcome, action?: string): string {
   if (outcome.type === "error")
     return `✗ error: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`;
   // "unhandled"
-  return outcome.error instanceof MockResolverError
-    ? `✗ resolver threw: ${outcome.error.cause instanceof Error ? outcome.error.cause.message : ""}`
-    : "✗ not mocked";
+  if (!(outcome.error instanceof MockResolverError)) return "✗ not mocked";
+  const { matcher, cause } = outcome.error;
+  const thrower = matcher === undefined ? "resolver" : `matcher ${matcher}`;
+  return `✗ ${thrower} threw: ${cause instanceof Error ? cause.message : ""}`;
 }
 
 /** Blocks and receipts are long; history shows what identifies them. */

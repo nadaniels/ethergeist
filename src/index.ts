@@ -41,6 +41,7 @@ export type {
 } from "./history.js";
 export { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 export type { FailRequestsOptions, MockFault, MockFaultHandle } from "./faults.js";
+export { match } from "./matchers.js";
 export { type MockBatch, multicall3Address } from "./multicall.js";
 export { zeroResult } from "./result.js";
 export type { RevertFn, RevertSpec } from "./revert.js";

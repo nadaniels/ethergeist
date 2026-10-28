@@ -1,6 +1,7 @@
 import {
   type Abi,
   type AbiFunction,
+  type AbiParameter,
   type Address,
   type ContractErrorName,
   type ContractFunctionArgs,
@@ -9,11 +10,13 @@ import {
   type Hex,
   decodeFunctionData,
   decodeFunctionResult,
+  encodeAbiParameters,
   encodeFunctionResult,
   getAbiItem,
   getAddress,
   slice,
   toFunctionSelector,
+  toFunctionSignature,
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
@@ -21,7 +24,14 @@ import { MockFailure, type MockFault, fail } from "./faults.js";
 import { formatCall, formatContract } from "./format.js";
 import { type MockCallRecord, type MockOutcome, errorOutcome } from "./history.js";
 import type { MockBatch } from "./multicall.js";
-import { isMatch, specificity } from "./match.js";
+import {
+  type Specificity,
+  assertNoMatchers,
+  bestMatch,
+  findMatcher,
+  isMatch,
+  specificity,
+} from "./match.js";
 import { type MockReturnType, checksumAddresses, normalizeResult, zeroResult } from "./result.js";
 import { type RevertFn, type RevertSpec, createRevertError, revertOutcome } from "./revert.js";
 
@@ -67,7 +77,7 @@ type Handler = {
   abiItem: AbiFunction;
   selector: Hex;
   args: readonly unknown[] | undefined;
-  specificity: number;
+  specificity: Specificity;
   /** Static values are wrapped at registration; `undefined` until `.returns()`/`.reverts()`. */
   resolver: ((context: ResolverContext<Abi, readonly unknown[]>) => unknown) | undefined;
   /** Calls this handler answered since registration or the last `clearCalls()`. */
@@ -242,7 +252,41 @@ export function createMockContract<const abi extends Abi>(
       : new Error(`No function "${functionName}" on this contract's ABI.`);
   }
 
-  /** Looks up only within `namespace`, so an overload never binds across namespaces. */
+  /**
+   * The function `args` call, looked up only within `namespace`, so an overload
+   * never binds across namespaces. viem's `getAbiItem` tells overloads apart by
+   * their args' values, and silently picks the first when none fits. Matchers
+   * fit no type, so with matchers, overloads are told apart by the exact args
+   * alone. Args holding a matcher anywhere are skipped whole: a `match.partial`
+   * could rule overloads out field by field, but doesn't yet.
+   */
+  function findFunction(
+    namespace: Namespace,
+    functionName: string,
+    args: readonly unknown[] | undefined,
+  ): AbiFunction {
+    const overloads = functionsIn[namespace].filter((f) => f.name === functionName);
+    if (overloads.length < 2 || findMatcher(args) === undefined) {
+      const abiItem = getAbiItem({ abi: functionsIn[namespace], name: functionName, args });
+      // viem's type assumes a match, but untyped callers can pass any name.
+      if (abiItem === undefined) throw notInNamespaceError(namespace, functionName);
+      return abiItem;
+    }
+
+    const fits = overloads.filter(
+      (f) =>
+        f.inputs.length === args!.length &&
+        args!.every((arg, i) => findMatcher(arg) !== undefined || isOfType(f.inputs[i]!, arg)),
+    );
+    if (fits.length === 1) return fits[0]!;
+    const call = formatCall(functionName, args);
+    throw new Error(
+      fits.length === 0
+        ? `No overload of "${functionName}" takes ${call}. Overloads:\n${listSignatures(overloads)}`
+        : `Ambiguous overload for ${call}: pin an arg that tells them apart. It fits:\n${listSignatures(fits)}`,
+    );
+  }
+
   function register(
     namespace: Namespace,
     functionName: string,
@@ -252,9 +296,7 @@ export function createMockContract<const abi extends Abi>(
       throw new Error(
         `The contract at ${label} was removed by restore() or reset(); register it again.`,
       );
-    const abiItem = getAbiItem({ abi: functionsIn[namespace], name: functionName, args });
-    // viem's type assumes a match, but untyped callers can pass any name.
-    if (abiItem === undefined) throw notInNamespaceError(namespace, functionName);
+    const abiItem = findFunction(namespace, functionName, args);
 
     // Checksummed so messages show addresses one way, and a malformed one fails here.
     const pinned = args?.map((arg, i) => {
@@ -382,12 +424,11 @@ export function createMockContract<const abi extends Abi>(
 
     // The most specific matching handler wins; among equally specific ones,
     // the most recently registered wins, so per-test mocks override defaults.
-    let handler: Handler | undefined;
-    for (const h of handlers) {
-      if (h.selector !== selector) continue;
-      if (h.args !== undefined && !isMatch(h.args, fn.args)) continue;
-      if (!handler || h.specificity >= handler.specificity) handler = h;
-    }
+    const handler = bestMatch(
+      handlers.filter((h) => h.selector === selector),
+      (h, options) => h.args === undefined || isMatch(h.args, fn.args, options),
+      fn.functionName,
+    );
     if (!handler?.resolver) {
       const registered = handlers
         .filter((h) => h.selector === selector)
@@ -451,7 +492,22 @@ export function createMockContract<const abi extends Abi>(
   };
 }
 
+function listSignatures(functions: readonly AbiFunction[]): string {
+  return functions.map((f) => `  ${toFunctionSignature(f)}`).join("\n");
+}
+
+/** Whether `value` encodes as `parameter`'s type. */
+function isOfType(parameter: AbiParameter, value: unknown): boolean {
+  try {
+    encodeAbiParameters([parameter], [value]);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
+  assertNoMatchers(value);
   return encodeFunctionResult({
     abi: [abiItem],
     functionName: abiItem.name,

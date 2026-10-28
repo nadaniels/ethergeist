@@ -20,7 +20,7 @@ import { MockNotFoundError, MockResolverError } from "./errors.js";
 import { type MockOutcome, errorOutcome } from "./history.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
 import { formatCall } from "./format.js";
-import { isMatch, specificity } from "./match.js";
+import { type Specificity, assertNoMatchers, bestMatch, isMatch, specificity } from "./match.js";
 import { isPlainObject, zeroResult } from "./result.js";
 
 /** What a call to `getBalance` asked for. Block tags resolve to the mock's block number. */
@@ -120,7 +120,7 @@ export type MockMethodBuilder = MockActionBuilder<MethodCall, RpcValue>;
 
 type Handler = {
   pinned: unknown;
-  specificity: number;
+  specificity: Specificity;
   /** Static values are wrapped at registration; `undefined` until `.returns()`/`.fails()`. */
   resolver: ((context: ActionContext<object>) => unknown) | undefined;
   /** Calls this handler answered since registration or the last `clearCalls()`. */
@@ -143,8 +143,8 @@ type Definition = {
   zero: unknown;
   /** Normalizes pinned fields at registration, e.g. checksumming addresses. */
   pin?: (pinned: unknown) => unknown;
-  /** Defaults to `isMatch`: pinned fields match the call's, deeply. */
-  matches?: (pinned: unknown, call: object) => boolean;
+  /** What pinned params are matched against, deeply. Defaults to the call itself. */
+  actual?: (pinned: unknown, call: object) => unknown;
   /** The answer when no mock matches, or `undefined` to report the call as unhandled. */
   fallback?: (call: object) => unknown;
   /** A JSON-RPC answer in viem's types, as the action returns it; for history. Defaults to as is. */
@@ -156,7 +156,7 @@ type Table = ReturnType<typeof createTable>;
 function createTable(definition: Definition) {
   const handlers: Handler[] = [];
   const history: object[] = [];
-  const matches = definition.matches ?? isMatch;
+  const actualOf = definition.actual ?? ((_pinned: unknown, call: object) => call);
 
   function register(params: unknown) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
@@ -174,7 +174,7 @@ function createTable(definition: Definition) {
         if (handler.removed) throw removedMockError();
         const resolved = value === zeroResult ? definition.zero : value;
         // A static value that can't be encoded fails here, not inside a request.
-        if (typeof resolved !== "function") definition.encode(resolved, undefined);
+        if (typeof resolved !== "function") encode(resolved, undefined);
         handler.resolver =
           // The types guarantee a resolver's signature; it can't be checked at runtime.
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function
@@ -216,14 +216,20 @@ function createTable(definition: Definition) {
     }
   }
 
+  function encode(value: unknown, call: object | undefined) {
+    assertNoMatchers(value);
+    return definition.encode(value, call);
+  }
+
   async function answerCall(call: object): Promise<unknown> {
     // The most specific matching handler wins; among equally specific ones,
     // the most recently registered wins.
-    let handler: Handler | undefined;
-    for (const h of handlers) {
-      if (h.pinned !== undefined && !matches(h.pinned, call)) continue;
-      if (!handler || h.specificity >= handler.specificity) handler = h;
-    }
+    const handler = bestMatch(
+      handlers,
+      (h, options) =>
+        h.pinned === undefined || isMatch(h.pinned, actualOf(h.pinned, call), options),
+      definition.name,
+    );
     if (!handler?.resolver) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
@@ -239,7 +245,7 @@ function createTable(definition: Definition) {
     handler.usedCount += 1;
     try {
       const value = await handler.resolver({ ...call, fail });
-      return definition.encode(value === zeroResult ? definition.zero : value, call);
+      return encode(value === zeroResult ? definition.zero : value, call);
     } catch (error) {
       if (error instanceof MockFailure) throw error;
       throw new MockResolverError(definition.name, error);
@@ -437,10 +443,11 @@ export function createActions(options: {
         zero: null,
         encode: (value) => value,
         // Pinned params are a prefix: pin the leading ones, leave the rest open.
-        matches: (pinned, call) =>
-          Array.isArray(pinned) &&
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded above
-          pinned.every((value, i) => isMatch(value, (call as MethodCall).params[i])),
+        actual: (pinned, call) =>
+          Array.isArray(pinned)
+            ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded above
+              pinned.map((_, i) => (call as MethodCall).params[i])
+            : call,
       });
       raw.set(name, table);
     }

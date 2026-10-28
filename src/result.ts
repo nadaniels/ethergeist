@@ -5,6 +5,7 @@ import {
   getAddress,
   zeroAddress,
 } from "viem";
+import { isMatcher } from "./matchers.js";
 
 /**
  * Struct objects at any depth may omit fields; omitted fields are filled with
@@ -88,9 +89,11 @@ function fill(parameter: AbiParameter, value: unknown): unknown {
 /**
  * `value` with every address-typed part checksummed, which also validates it.
  * Partial structs keep only the fields they have; anything that isn't a
- * string where an address goes is left for the types (or matching) to judge.
+ * string where an address goes is left for the types (or matching) to judge,
+ * and matchers are left as they are.
  */
 export function checksumAddresses(parameter: AbiParameter, value: unknown): unknown {
+  if (isMatcher(value)) return value;
   if (parameter.type === "address") return typeof value === "string" ? getAddress(value) : value;
 
   const element = arrayElement(parameter);

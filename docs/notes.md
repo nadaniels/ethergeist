@@ -29,6 +29,26 @@ features land; tick them off as pages get written.
 
 - [ ] Matching: pinned args, args-less mocks as fallbacks, most specific wins,
       ties go to the most recent.
+- [ ] Matchers: `match.any()` and `match.where(predicate, label?)` in args and
+      in action and method params, typed as the value they replace. Show:
+  - Ranking: exact values, then predicates, then `any`, compared in that
+    order (one exact value beats any number of predicates); a mock with args,
+    even all `any`, beats an args-less one.
+  - Ties between equally specific matchers go to the most recent: `[X, any]`
+    and `[any, Y]` both match `[X, Y]`.
+  - Predicates get decoded values in viem's types. Addresses arrive
+    checksummed: compare with `isAddressEqual`, never `===` (a lowercase
+    literal never equals, so `!==` matches everything).
+  - Predicates should be cheap and pure. They run only for a mock still in
+    contention (its exact values match, every better mock failed); one that
+    throws is reported as unhandled, naming it.
+  - Names in messages: `where(isLarge)` from the function's name, the
+    `label`, or `where(…)`.
+  - Matchers for an array arg (a swap path "contains X" or "starts with X"):
+    `where` on the whole array.
+  - Overloads: with matchers, the exact args pick the overload; if they can't,
+    registration throws "ambiguous overload".
+  - Matchers can't be return values.
 - [ ] Return values: named outputs as objects, partial structs zero-filled,
       `zeroResult`, resolvers that receive the call.
 - [ ] Reverts: reason strings, custom errors, panics, raw data, `revert()` in

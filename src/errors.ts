@@ -15,14 +15,21 @@ export class MockNotFoundError extends BaseError {
   }
 }
 
-/** Thrown when a resolver throws anything other than a revert. */
+/**
+ * Thrown when a resolver throws anything other than a revert, or when a
+ * `match.where()` predicate throws while matching.
+ */
 export class MockResolverError extends BaseError {
   override name = "MockResolverError";
   code = -32098;
+  /** The matcher that threw, e.g. `where(isLarge)`; `undefined` when it was the resolver. */
+  matcher: string | undefined;
 
-  constructor(functionName: string, cause: unknown) {
+  constructor(functionName: string, cause: unknown, { matcher }: { matcher?: string } = {}) {
     const error = cause instanceof Error ? cause : new Error(String(cause));
-    super(`Mock resolver for "${functionName}" threw: ${error.message}`, { cause: error });
+    const thrower = matcher === undefined ? "Mock resolver" : `Matcher ${matcher}`;
+    super(`${thrower} for "${functionName}" threw: ${error.message}`, { cause: error });
+    this.matcher = matcher;
   }
 }
 
