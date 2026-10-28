@@ -199,13 +199,13 @@ describe("batch.multicall", () => {
 });
 
 describe("configuration", () => {
-  test("multicallAddress points the mock at a chain's own Multicall3", async () => {
+  test("the chain's Multicall3 address is the one answered", async () => {
     const address = "0x0000000000000000000000000000000000ca11ca";
-    const mock = createMockRpc({ multicallAddress: address });
     const chain = defineChain({
       ...mainnet,
       contracts: { multicall3: { address } },
     });
+    const mock = createMockRpc({ chain });
     const client = createPublicClient({ chain, transport: mock.transport() });
     mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
 

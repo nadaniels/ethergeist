@@ -2,14 +2,20 @@ import {
   type Abi,
   type Address,
   type BlockTag,
+  type Chain,
+  type CustomTransport,
   type CustomTransportConfig,
   type Hex,
+  type PublicClient,
+  type PublicClientConfig,
+  createPublicClient,
   custom,
   getAddress,
   hexToBigInt,
   isHex,
   numberToHex,
 } from "viem";
+import { mainnet } from "viem/chains";
 import {
   type CallContext,
   type CreateMockContractParameters,
@@ -31,16 +37,22 @@ import {
 import { multicall3Address, resolveMulticall } from "./multicall.js";
 
 export type CreateMockRpcParameters = {
-  /** Defaults to 1 (mainnet). */
-  chainId?: number;
+  /**
+   * The chain the mock stands in for: its id answers `eth_chainId`, and
+   * `aggregate3` calls to its Multicall3 (the canonical address if it has none)
+   * are decoded. `publicClient()` uses it. Defaults to viem's `mainnet`; for any
+   * other id or Multicall3 address, use a viem chain or `defineChain`.
+   */
+  chain?: Chain;
   /** Block number the mock starts at. Defaults to 1n. */
   blockNumber?: bigint;
-  /**
-   * Where Multicall3 `aggregate3` calls are answered. Defaults to the canonical
-   * deployment, `0xcA11bde05977b3631167028862bE2a173976CA11`.
-   */
-  multicallAddress?: Address;
 };
+
+/** Public client options, minus the chain and transport, which come from the mock. */
+export type MockPublicClientParameters = Omit<
+  PublicClientConfig<CustomTransport, Chain>,
+  "chain" | "transport"
+>;
 
 export type RpcRequest = { method: string; params?: unknown };
 
@@ -50,10 +62,19 @@ export type UnhandledRequest = RpcRequest & { error: MockNotFoundError | MockRes
 export type MockRpc = ReturnType<typeof createMockRpc>;
 
 export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
-  const chainId = parameters.chainId ?? 1;
+  const given = parameters.chain ?? mainnet;
+  // Without a Multicall3 address, viem's multicall falls back to deployless calls.
+  const chain = {
+    ...given,
+    contracts: {
+      ...given.contracts,
+      multicall3: given.contracts?.multicall3 ?? { address: multicall3Address },
+    },
+  };
+  const chainId = chain.id;
+  const multicallAddress = getAddress(chain.contracts.multicall3.address);
   const initialBlockNumber = parameters.blockNumber ?? 1n;
   let blockNumber = initialBlockNumber;
-  const multicallAddress = getAddress(parameters.multicallAddress ?? multicall3Address);
   const contracts: InternalMockContract<any>[] = [];
   const emptyAddresses = new Set<Address>();
   const calls: MockCall[] = [];
@@ -106,7 +127,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
           throw new MockNotFoundError("eth_call without `to` is not supported.", {
             details:
               "Deployless calls (including deployless multicall) need bytecode execution. " +
-              "Use a chain with a Multicall3 address, or set `multicallAddress`.",
+              "Give the client's chain a Multicall3 address, or use `mock.publicClient()`.",
           });
 
         return await dispatch(tx.to, data, {
@@ -158,6 +179,10 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     calls.push(call);
   }
 
+  function transport(config?: CustomTransportConfig) {
+    return custom({ request }, { retryDelay: 0, ...config });
+  }
+
   function resolveBlock(block: BlockTag | Hex | undefined): bigint {
     if (block === undefined || !isHex(block)) return blockNumber;
     return hexToBigInt(block);
@@ -169,8 +194,15 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * A viem transport backed by this mock. Retries keep viem's `retryCount` but
      * default to `retryDelay: 0`, so faulted requests retry without waiting.
      */
-    transport: (config?: CustomTransportConfig) =>
-      custom({ request }, { retryDelay: 0, ...config }),
+    transport,
+    /**
+     * A viem public client on this mock, with test-friendly defaults: the mock's
+     * chain and `cacheTime: 0`, so `mine()` shows up immediately. Options
+     * override the defaults.
+     */
+    publicClient(options: MockPublicClientParameters = {}): PublicClient<CustomTransport, Chain> {
+      return createPublicClient({ cacheTime: 0, ...options, chain, transport: transport() });
+    },
     /**
      * Registers a mocked contract. Each address takes one registration; for a
      * proxy or extended contract, combine the ABIs (`abi: [...a, ...b]`).
@@ -206,6 +238,10 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     empty(address: Address) {
       assertUnregistered(address);
       emptyAddresses.add(getAddress(address));
+    },
+    /** The chain clients should use: as given, with Multicall3 added if it had none. */
+    get chain() {
+      return chain;
     },
     get chainId() {
       return chainId;

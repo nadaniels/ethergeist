@@ -1,5 +1,5 @@
 import { InvalidAddressError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
-import { mainnet } from "viem/chains";
+import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import { MockNotFoundError, createMockRpc } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
@@ -187,10 +187,10 @@ describe("reset()", () => {
 
 describe("chainId", () => {
   test("matches what eth_chainId answers", async () => {
-    const mock = createMockRpc({ chainId: 43114 });
+    const mock = createMockRpc({ chain: base });
     const client = createPublicClient({ transport: mock.transport() });
 
-    expect(mock.chainId).toBe(43114);
-    expect(await client.getChainId()).toBe(43114);
+    expect(mock.chainId).toBe(8453);
+    expect(await client.getChainId()).toBe(8453);
   });
 });

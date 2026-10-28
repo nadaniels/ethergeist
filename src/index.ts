@@ -1,6 +1,7 @@
 export {
   createMockRpc,
   type CreateMockRpcParameters,
+  type MockPublicClientParameters,
   type MockRpc,
   type RpcRequest,
   type UnhandledRequest,
