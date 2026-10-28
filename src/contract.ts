@@ -11,14 +11,14 @@ import {
   encodeFunctionResult,
   getAbiItem,
   getAddress,
-  isHex,
   slice,
   toFunctionSelector,
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 import { MockFailure, type MockFault } from "./faults.js";
 import type { MockBatch } from "./multicall.js";
-import { type MockReturnType, isPlainObject, normalizeResult, zeroResult } from "./result.js";
+import { isMatch, specificity } from "./match.js";
+import { type MockReturnType, normalizeResult, zeroResult } from "./result.js";
 import { type RevertFn, type RevertSpec, createRevertError } from "./revert.js";
 
 type ReadMutability = "pure" | "view";
@@ -366,20 +366,6 @@ export function createMockContract<const abi extends Abi>(
   };
 }
 
-/**
- * How narrowly a handler's args constrain a call: the number of leaf values it
- * pins down. Args-less handlers match anything and rank below all others.
- */
-function specificity(args: readonly unknown[] | undefined): number {
-  if (args === undefined) return -1;
-  const count = (value: unknown): number => {
-    if (Array.isArray(value)) return value.reduce((n: number, v) => n + count(v), 0);
-    if (isPlainObject(value)) return Object.values(value).reduce((n: number, v) => n + count(v), 0);
-    return 1;
-  };
-  return count(args);
-}
-
 /** Handed to every resolver; unlike `revert`, it doesn't depend on the ABI. */
 function fail(fault: MockFault): never {
   throw new MockFailure(fault);
@@ -394,27 +380,6 @@ function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem's type is narrower than its runtime
     result: normalizeResult(abiItem.outputs, value) as readonly unknown[] | undefined,
   });
-}
-
-/**
- * Deep equality where hex strings (addresses, bytes) compare case-insensitively
- * and equal integers match as either `number` or `bigint`.
- */
-function isMatch(expected: unknown, actual: unknown): boolean {
-  if (isHex(expected) && isHex(actual)) return expected.toLowerCase() === actual.toLowerCase();
-  if (Array.isArray(expected) && Array.isArray(actual))
-    return (
-      expected.length === actual.length && expected.every((value, i) => isMatch(value, actual[i]))
-    );
-  if (isPlainObject(expected) && isPlainObject(actual))
-    return Object.entries(expected).every(([key, value]) => isMatch(value, actual[key]));
-  // viem decodes integers up to 48 bits as numbers and wider ones as bigints. A
-  // value of the other kind that got past the types still means the same number.
-  if (typeof expected === "bigint" && typeof actual === "number")
-    return Number.isInteger(actual) && expected === BigInt(actual);
-  if (typeof expected === "number" && typeof actual === "bigint")
-    return Number.isInteger(expected) && BigInt(expected) === actual;
-  return expected === actual;
 }
 
 function formatCall(functionName: string, args: readonly unknown[] | undefined) {
