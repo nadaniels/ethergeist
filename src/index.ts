@@ -8,6 +8,7 @@ export type {
   MockActionBuilder,
   MockActions,
   MockMethodBuilder,
+  ReceiptCall,
   RpcValue,
 } from "./actions.js";
 export {
@@ -30,6 +31,7 @@ export type {
   ResolverContext,
 } from "./contract.js";
 export type { MockBlock } from "./blocks.js";
+export type { MockLog, MockReceipt } from "./receipts.js";
 export { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 export type { FailRequestsOptions, MockFault, MockFaultHandle } from "./faults.js";
 export { type MockBatch, multicall3Address } from "./multicall.js";

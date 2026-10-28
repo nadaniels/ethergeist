@@ -75,6 +75,23 @@ describe("getBlock", () => {
   });
 });
 
+describe("getTransactionReceipt", () => {
+  test("returns a partial viem receipt with partial logs, or null", () => {
+    mock.actions.getTransactionReceipt({ hash: "0x01" }).returns({ status: "reverted" });
+    mock.actions.getTransactionReceipt().returns({ logs: [{ address: alice, data: "0x" }] });
+    mock.actions.getTransactionReceipt().returns(null);
+    // @ts-expect-error not a receipt status
+    mock.actions.getTransactionReceipt().returns({ status: "failed" });
+  });
+
+  test("resolvers get the hash", () => {
+    mock.actions.getTransactionReceipt().returns(({ hash }) => {
+      expectTypeOf(hash).toEqualTypeOf<Hex>();
+      return {};
+    });
+  });
+});
+
 describe("method()", () => {
   test("answers with JSON-RPC values, not viem's types", () => {
     mock.method("eth_gasPrice").returns("0x1");

@@ -7,8 +7,10 @@ import {
   hexToBigInt,
   isHex,
   numberToHex,
+  zeroHash,
 } from "viem";
 import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
+import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError } from "./errors.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
 import { isMatch, specificity } from "./match.js";
@@ -38,6 +40,8 @@ export type RpcValue =
   | readonly RpcValue[]
   | { readonly [key: string]: RpcValue };
 
+/** What a call to `getTransactionReceipt` asked for. */
+export type ReceiptCall = { hash: Hash };
 /** A raw JSON-RPC request answered by `mock.method()`. */
 export type MethodCall = { method: string; params: readonly RpcValue[] };
 
@@ -83,6 +87,13 @@ export type MockActions = {
    * are merged over the generated block; `null` answers "no such block".
    */
   getBlock: MockAction<BlockCall, Partial<MockBlock> | null>;
+  /**
+   * `eth_getTransactionReceipt`. A mock's fields go over defaults: `status` is
+   * `"success"`, the block is the current one, and logs get their index, block,
+   * and transaction from the receipt; the rest is zero. `null` answers "no
+   * such transaction". Unmocked hashes aren't answered.
+   */
+  getTransactionReceipt: MockAction<ReceiptCall, MockReceipt | null>;
 };
 
 export type MockMethodBuilder = MockActionBuilder<MethodCall, RpcValue>;
@@ -276,6 +287,20 @@ export function createActions(options: {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeAddressAtBlock
       fallback: (call) => codeAt((call as CodeCall).address),
     }),
+    getTransactionReceipt: createTable({
+      name: "getTransactionReceipt",
+      hint: "mock.actions.getTransactionReceipt({ hash }).returns(…)",
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
+      decode: ([hash]) => ({ hash: hash as Hash }),
+      zero: {},
+      encode(value, call) {
+        if (value === null) return null;
+        if (!isPlainObject(value))
+          throw new TypeError(`A receipt must be an object or null; got ${typeof value}.`);
+        const { hash = zeroHash } = (call ?? {}) as Partial<ReceiptCall>;
+        return toRpcReceipt(completeReceipt(value, { hash, blockNumber: blockNumber() }));
+      },
+    }),
     getBlock: createTable({
       name: "getBlock",
       hint: "mock.actions.getBlock({ blockNumber }).returns(…)",
@@ -306,6 +331,7 @@ export function createActions(options: {
     ["eth_getCode", "getCode"],
     ["eth_getBlockByNumber", "getBlock"],
     ["eth_getBlockByHash", "getBlock"],
+    ["eth_getTransactionReceipt", "getTransactionReceipt"],
   ]);
   const typedTable = (name: string) => {
     const action = typedMethods.get(name);
@@ -325,6 +351,7 @@ export function createActions(options: {
     getBalance: buildAction(typed.getBalance),
     getCode: buildAction(typed.getCode),
     getBlock: buildAction(typed.getBlock),
+    getTransactionReceipt: buildAction(typed.getTransactionReceipt),
   } as unknown as MockActions;
 
   function method(name: string, params?: readonly unknown[]): MockMethodBuilder {

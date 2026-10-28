@@ -3,8 +3,12 @@ import {
   InvalidAddressError,
   BlockNotFoundError,
   TimeoutError,
+  TransactionReceiptNotFoundError,
+  encodeAbiParameters,
+  encodeEventTopics,
   createPublicClient,
   keccak256,
+  parseEventLogs,
   parseGwei,
   toHex,
   erc20Abi,
@@ -12,7 +16,7 @@ import {
   parseEther,
   zeroHash,
 } from "viem";
-import { avalanche } from "viem/chains";
+import { base } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import {
   MockNotFoundError,
@@ -24,6 +28,7 @@ import {
 import { expectCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const NOWHERE = "0x000000000000000000000000000000000000dEaD";
 const alice = "0x00000000000000000000000000000000000a11ce";
 const bob = "0x0000000000000000000000000000000000000b0b";
@@ -206,14 +211,20 @@ describe("getBlock", () => {
   });
 
   test("mine() moves latest, and timestamps follow the chain's blockTime", async () => {
-    const mock = createMockRpc({ chain: avalanche, blockNumber: 100n, timestamp: 2_000n });
+    const mock = createMockRpc({ chain: base, blockNumber: 100n, timestamp: 2_000n });
     const client = mock.publicClient();
 
     mock.mine(10n);
     const block = await client.getBlock();
     expect(block.number).toBe(110n);
-    // Avalanche's blockTime is 1.7s; timestamps are whole seconds.
-    expect(block.timestamp).toBe(2_017n);
+    // Base's blockTime is 2s.
+    expect(block.timestamp).toBe(2_020n);
+
+    // Timestamps are whole seconds, even when blockTime isn't.
+    const fractional = createMockRpc({ chain: { ...base, blockTime: 1_700 }, timestamp: 0n });
+    fractional.mine(5n);
+    // 5 blocks of 1.7s is 8.5s.
+    expect((await fractional.publicClient().getBlock()).timestamp).toBe(8n);
   });
 
   test("tags resolve to the current block; earliest is block 0", async () => {
@@ -299,6 +310,123 @@ describe("getBlock", () => {
       // @ts-expect-error timestamps are bigints
       mock.actions.getBlock().returns({ timestamp: "soon" });
     }).toThrow();
+  });
+});
+
+describe("getTransactionReceipt", () => {
+  const txHash = keccak256(toHex("transfer"));
+  const otherHash = keccak256(toHex("other"));
+  const transferLog = {
+    address: USDC,
+    // encodeEventTopics is typed for filters; with every indexed arg given, each topic is hex.
+    topics: encodeEventTopics({
+      abi: erc20Abi,
+      eventName: "Transfer",
+      args: { from: alice, to: bob },
+    }).filter((topic) => typeof topic === "string"),
+    data: encodeAbiParameters([{ type: "uint256" }], [5n]),
+  } as const;
+
+  test("defaults to a successful receipt in the current block", async () => {
+    const { mock, client } = setup();
+    mock.actions.getTransactionReceipt({ hash: txHash }).returns();
+
+    const receipt = await client.getTransactionReceipt({ hash: txHash });
+    expect(receipt).toMatchObject({
+      transactionHash: txHash,
+      status: "success",
+      blockNumber: 10n,
+      blockHash: (await client.getBlock()).hash,
+      logs: [],
+      type: "eip1559",
+    });
+  });
+
+  test("a mock's fields override the defaults", async () => {
+    const { mock, client } = setup();
+    mock.actions
+      .getTransactionReceipt({ hash: txHash })
+      .returns({ status: "reverted", from: alice, gasUsed: 21_000n, blockNumber: 7n });
+
+    const receipt = await client.getTransactionReceipt({ hash: txHash });
+    expect(receipt).toMatchObject({
+      status: "reverted",
+      from: getAddress(alice),
+      gasUsed: 21_000n,
+      blockNumber: 7n,
+      blockHash: (await client.getBlock({ blockNumber: 7n })).hash,
+    });
+  });
+
+  test("logs take their position, block, and transaction from the receipt", async () => {
+    const { mock, client } = setup();
+    mock.actions
+      .getTransactionReceipt({ hash: txHash })
+      .returns({ blockNumber: 7n, logs: [transferLog, { ...transferLog, address: DAI }] });
+
+    const { logs } = await client.getTransactionReceipt({ hash: txHash });
+    expect(logs.map((log) => [log.address, log.logIndex, log.blockNumber])).toEqual([
+      [USDC, 0, 7n],
+      [DAI, 1, 7n],
+    ]);
+    expect(logs[0]?.transactionHash).toBe(txHash);
+    expect(parseEventLogs({ abi: erc20Abi, logs })[0]).toMatchObject({
+      eventName: "Transfer",
+      args: { from: getAddress(alice), to: getAddress(bob), value: 5n },
+    });
+  });
+
+  test("resolvers get the hash", async () => {
+    const { mock, client } = setup();
+    mock.actions
+      .getTransactionReceipt()
+      .returns(({ hash }) => ({ status: hash === txHash ? "success" : "reverted" }));
+
+    expect((await client.getTransactionReceipt({ hash: txHash })).status).toBe("success");
+    expect((await client.getTransactionReceipt({ hash: otherHash })).status).toBe("reverted");
+  });
+
+  test("returns(null) is no such transaction, as viem reports it", async () => {
+    const { mock, client } = setup();
+    mock.actions.getTransactionReceipt({ hash: txHash }).returns(null);
+
+    expectCause(
+      await rejectionOf(client.getTransactionReceipt({ hash: txHash })),
+      TransactionReceiptNotFoundError,
+    );
+    expect(mock.unhandled).toEqual([]);
+  });
+
+  test("an unmocked hash is unhandled", async () => {
+    const { mock, client } = setup();
+
+    const error = expectCause(
+      await rejectionOf(client.getTransactionReceipt({ hash: txHash })),
+      MockNotFoundError,
+    );
+    expect(error.message).toContain(`No mock for getTransactionReceipt({ hash: ${txHash} })`);
+    expect(mock.unhandled).toHaveLength(1);
+  });
+
+  test("waitForTransactionReceipt and confirmations work against it", async () => {
+    const { mock, client } = setup();
+    mock.actions.getTransactionReceipt({ hash: txHash }).returns({ blockNumber: 8n });
+
+    const receipt = await client.waitForTransactionReceipt({ hash: txHash });
+    expect(receipt.blockNumber).toBe(8n);
+    expect(await client.getTransactionConfirmations({ transactionReceipt: receipt })).toBe(3n);
+  });
+
+  test("an invalid static value fails at registration", () => {
+    const { mock } = setup();
+
+    expect(() => {
+      // @ts-expect-error gas is a bigint
+      mock.actions.getTransactionReceipt().returns({ gasUsed: "lots" });
+    }).toThrow();
+    expect(() => {
+      mock.actions.getTransactionReceipt().returns({ logs: [{ address: "0x1234" }] });
+    }).toThrow(InvalidAddressError);
   });
 });
 
