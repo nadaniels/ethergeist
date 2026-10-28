@@ -3,6 +3,10 @@ import {
   type BlockTag,
   type Hash,
   type Hex,
+  type RpcBlock,
+  type RpcTransactionReceipt,
+  formatBlock,
+  formatTransactionReceipt,
   getAddress,
   hexToBigInt,
   isHex,
@@ -13,6 +17,7 @@ import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
 import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
 import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError } from "./errors.js";
+import { type MockOutcome, errorOutcome } from "./history.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
 import { formatCall } from "./format.js";
 import { isMatch, specificity } from "./match.js";
@@ -58,7 +63,9 @@ export type ActionContext<call> = call & {
 export type MockActionBuilder<call, value> = {
   /** With no argument, answers with the zero value, like `.returns(zeroResult)`. */
   returns(): void;
-  returns(value: value | typeof zeroResult | ((context: ActionContext<call>) => value)): void;
+  returns(
+    value: value | typeof zeroResult | ((context: ActionContext<call>) => value | Promise<value>),
+  ): void;
   /** Fail every matching request at the network level. See `MockFault` for the kinds. */
   fails(fault: MockFault): void;
 };
@@ -72,6 +79,17 @@ export type MockAction<call, value> = {
   /** Every call to this action the mock has received, in order. */
   readonly calls: call[];
 };
+
+/** Each typed action's decoded call. */
+export type ActionCalls = {
+  getBalance: BalanceCall;
+  getCode: CodeCall;
+  getBlock: BlockCall;
+  getTransactionReceipt: ReceiptCall;
+};
+
+/** What a table tells the rpc about a call it answered, for history. */
+export type ActionReport = { action: string; call: object; outcome: MockOutcome };
 
 /** Mocks for viem's public actions, answered with values in viem's own types. */
 export type MockActions = {
@@ -129,6 +147,8 @@ type Definition = {
   matches?: (pinned: unknown, call: object) => boolean;
   /** The answer when no mock matches, or `undefined` to report the call as unhandled. */
   fallback?: (call: object) => unknown;
+  /** A JSON-RPC answer in viem's types, as the action returns it; for history. Defaults to as is. */
+  view?: (rpc: unknown) => unknown;
 };
 
 type Table = ReturnType<typeof createTable>;
@@ -174,10 +194,29 @@ function createTable(definition: Definition) {
       .map((h) => formatCall(definition.name, h.pinned));
   }
 
-  async function answer(method: string, params: readonly unknown[]): Promise<unknown> {
+  async function answer(
+    method: string,
+    params: readonly unknown[],
+    report?: (report: ActionReport) => void,
+  ): Promise<unknown> {
     const call = definition.decode(params, method);
     history.push(call);
+    const view = definition.view ?? ((rpc: unknown) => rpc);
+    try {
+      const rpc = await answerCall(call);
+      report?.({ action: definition.name, call, outcome: { type: "result", value: view(rpc) } });
+      return rpc;
+    } catch (error) {
+      const outcome: MockOutcome =
+        error instanceof MockFailure
+          ? { type: "fault", fault: error.fault, source: "mock" }
+          : errorOutcome(error);
+      report?.({ action: definition.name, call, outcome });
+      throw error;
+    }
+  }
 
+  async function answerCall(call: object): Promise<unknown> {
     // The most specific matching handler wins; among equally specific ones,
     // the most recently registered wins.
     let handler: Handler | undefined;
@@ -296,6 +335,7 @@ export function createActions(options: {
           throw new TypeError(`A balance must be a bigint; got ${typeof value}.`);
         return numberToHex(value);
       },
+      view: (rpc) => (isHex(rpc) ? hexToBigInt(rpc) : rpc),
     }),
     getCode: createTable({
       name: "getCode",
@@ -323,6 +363,8 @@ export function createActions(options: {
         const { hash = zeroHash } = (call ?? {}) as Partial<ReceiptCall>;
         return toRpcReceipt(completeReceipt(value, { hash, blockNumber: blockNumber() }));
       },
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encoded by toRpcReceipt
+      view: (rpc) => (rpc === null ? null : formatTransactionReceipt(rpc as RpcTransactionReceipt)),
     }),
     getBlock: createTable({
       name: "getBlock",
@@ -339,6 +381,8 @@ export function createActions(options: {
         const base = blockHash === undefined ? generated : { ...generated, hash: blockHash };
         return toRpcBlock({ ...base, ...value });
       },
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encoded by toRpcBlock
+      view: (rpc) => (rpc === null ? null : formatBlock(rpc as RpcBlock)),
       // Generated blocks exist up to the current one, and only by their own hashes.
       fallback(call) {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeBlock
@@ -409,11 +453,17 @@ export function createActions(options: {
     actions,
     method,
     /** Answers a request with a typed or raw mock, or returns `undefined` if none applies. */
-    answer(name: string, params: unknown): Promise<unknown> | undefined {
+    answer(
+      name: string,
+      params: unknown,
+      report?: (report: ActionReport) => void,
+    ): Promise<unknown> | undefined {
       const table = typedTable(name) ?? raw.get(name);
       // JSON-RPC params are an array for every method viem sends.
-      return table?.answer(name, Array.isArray(params) ? params : []);
+      return table?.answer(name, Array.isArray(params) ? params : [], report);
     },
+    /** The typed action answering `method`, if any: history records those as actions. */
+    actionFor: (rpcMethod: string) => typedMethods.get(rpcMethod),
     clearCalls() {
       for (const table of tables()) table.clearCalls();
     },

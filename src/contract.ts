@@ -8,6 +8,7 @@ import {
   type ContractFunctionReturnType,
   type Hex,
   decodeFunctionData,
+  decodeFunctionResult,
   encodeFunctionResult,
   getAbiItem,
   getAddress,
@@ -18,10 +19,11 @@ import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.
 import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
 import { formatCall, formatContract } from "./format.js";
+import { type MockCallRecord, type MockOutcome, errorOutcome } from "./history.js";
 import type { MockBatch } from "./multicall.js";
 import { isMatch, specificity } from "./match.js";
 import { type MockReturnType, checksumAddresses, normalizeResult, zeroResult } from "./result.js";
-import { type RevertFn, type RevertSpec, createRevertError } from "./revert.js";
+import { type RevertFn, type RevertSpec, createRevertError, revertOutcome } from "./revert.js";
 
 type ReadMutability = "pure" | "view";
 type Namespace = "read" | "simulate";
@@ -56,9 +58,10 @@ export type ResolverContext<abi extends Abi, args> = MockCall<args> & {
   fail: (fault: MockFault) => never;
 };
 
+/** A static value, or a function answering each call; it may be async. */
 type Resolver<abi extends Abi, args, result> =
   | result
-  | ((context: ResolverContext<abi, args>) => result);
+  | ((context: ResolverContext<abi, args>) => result | Promise<result>);
 
 type Handler = {
   abiItem: AbiFunction;
@@ -187,7 +190,8 @@ export type InternalMockContract<abi extends Abi = Abi> = {
   label: string;
   /** Whether this contract is registered at `address`, which must be checksummed. */
   matches(address: Address): boolean;
-  resolve(data: Hex, context: CallContext): Promise<Hex>;
+  /** Answers a call; `report` hears the decoded call and its outcome, however it ends. */
+  resolve(data: Hex, context: CallContext, report?: (record: MockCallRecord) => void): Promise<Hex>;
   clearCalls(): void;
   /** Mocks registered with args that haven't answered a call, formatted for messages. */
   unusedMocks(): string[];
@@ -330,20 +334,49 @@ export function createMockContract<const abi extends Abi>(
     simulate: buildNamespace("simulate"),
   } as unknown as MockContract<abi>;
 
-  async function resolve(data: Hex, context: CallContext): Promise<Hex> {
+  async function resolve(
+    data: Hex,
+    context: CallContext,
+    report?: (record: MockCallRecord) => void,
+  ): Promise<Hex> {
+    const decoded: { call?: MockCall } = {};
+    try {
+      const { hex, abiItem } = await answer(data, context, decoded);
+      const value = decodeFunctionResult({ abi: [abiItem], functionName: abiItem.name, data: hex });
+      report?.({ address, name, call: decoded.call, outcome: { type: "result", value } });
+      return hex;
+    } catch (error) {
+      report?.({ address, name, call: decoded.call, outcome: outcomeOf(error) });
+      throw error;
+    }
+  }
+
+  function outcomeOf(error: unknown): MockOutcome {
+    if (error instanceof MockRevertError) return revertOutcome(abi, error.data);
+    if (error instanceof MockFailure) return { type: "fault", fault: error.fault, source: "mock" };
+    return errorOutcome(error);
+  }
+
+  /** Decodes and answers a call, leaving the decoded call in `decoded` for reporting. */
+  async function answer(
+    data: Hex,
+    context: CallContext,
+    decoded: { call?: MockCall },
+  ): Promise<{ hex: Hex; abiItem: AbiFunction }> {
     const selector = slice(data, 0, 4);
 
-    let decoded: { functionName: string; args: readonly unknown[] };
+    let fn: { functionName: string; args: readonly unknown[] };
     try {
       const result = decodeFunctionData<Abi>({ abi, data });
-      decoded = { functionName: result.functionName, args: result.args ?? [] };
+      fn = { functionName: result.functionName, args: result.args ?? [] };
     } catch {
       throw new MockNotFoundError(
         `No function with selector ${selector} on mocked contract ${label}.`,
       );
     }
 
-    const call: MockCall = { ...context, address, ...decoded };
+    const call: MockCall = { ...context, address, ...fn };
+    decoded.call = call;
     history.push(call);
     onCall(call);
 
@@ -352,30 +385,34 @@ export function createMockContract<const abi extends Abi>(
     let handler: Handler | undefined;
     for (const h of handlers) {
       if (h.selector !== selector) continue;
-      if (h.args !== undefined && !isMatch(h.args, decoded.args)) continue;
+      if (h.args !== undefined && !isMatch(h.args, fn.args)) continue;
       if (!handler || h.specificity >= handler.specificity) handler = h;
     }
     if (!handler?.resolver) {
       const registered = handlers
         .filter((h) => h.selector === selector)
-        .map((h) => `  ${formatCall(decoded.functionName, h.args)}`);
+        .map((h) => `  ${formatCall(fn.functionName, h.args)}`);
       throw new MockNotFoundError(
-        `No mock for ${formatCall(decoded.functionName, decoded.args)} on ${label}.`,
+        `No mock for ${formatCall(fn.functionName, fn.args)} on ${label}.`,
         {
           details:
             registered.length > 0
               ? `Registered:\n${registered.join("\n")}`
-              : `No mocks registered for "${decoded.functionName}".`,
+              : `No mocks registered for "${fn.functionName}".`,
         },
       );
     }
 
     handler.usedCount += 1;
+    const { abiItem } = handler;
     try {
-      return encodeResult(handler.abiItem, await handler.resolver({ ...call, revert, fail }));
+      return {
+        hex: encodeResult(abiItem, await handler.resolver({ ...call, revert, fail })),
+        abiItem,
+      };
     } catch (error) {
       if (error instanceof MockRevertError || error instanceof MockFailure) throw error;
-      throw new MockResolverError(decoded.functionName, error);
+      throw new MockResolverError(fn.functionName, error);
     }
   }
 

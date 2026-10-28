@@ -3,10 +3,12 @@ import {
   type ContractErrorArgs,
   type ContractErrorName,
   type Hex,
+  decodeErrorResult,
   encodeErrorResult,
   parseAbi,
 } from "viem";
 import { MockRevertError } from "./errors.js";
+import type { MockOutcome } from "./history.js";
 
 const builtinErrors = parseAbi(["error Error(string)", "error Panic(uint256)"]);
 
@@ -50,4 +52,16 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
   return new MockRevertError(
     encodeErrorResult({ abi, errorName: spec.errorName, args: spec.args }),
   );
+}
+
+/** A revert's data, decoded against `abi` and the built-in errors where possible. */
+export function revertOutcome(abi: Abi, data: Hex): Extract<MockOutcome, { type: "revert" }> {
+  try {
+    const { errorName, args } = decodeErrorResult({ abi: [...abi, ...builtinErrors], data });
+    if (errorName === "Error" && typeof args[0] === "string")
+      return { type: "revert", data, reason: args[0] };
+    return { type: "revert", data, errorName, args: args ?? [] };
+  } catch {
+    return { type: "revert", data };
+  }
 }

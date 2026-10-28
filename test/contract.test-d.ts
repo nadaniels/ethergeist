@@ -7,6 +7,18 @@ const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const mock = createMockRpc();
 const usdc = mock.contract({ abi: erc20Abi, address: USDC });
 
+describe("async resolvers", () => {
+  test("a resolver may return a promise of the right type", () => {
+    const token = createMockRpc().contract({ abi: erc20Abi, address: USDC });
+    token.read.decimals().returns(() => Promise.resolve(6));
+    // @ts-expect-error still the function's return type
+    token.read.decimals().returns(() => Promise.resolve("six"));
+    createMockRpc()
+      .actions.getBalance()
+      .returns(() => Promise.resolve(1n));
+  });
+});
+
 describe("names", () => {
   test("name is optional and readable back", () => {
     const named = createMockRpc().contract({ abi: erc20Abi, address: USDC, name: "USDC" });

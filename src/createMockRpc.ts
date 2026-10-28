@@ -11,6 +11,7 @@ import {
   custom,
   getAddress,
   hexToBigInt,
+  isAddress,
   isHex,
   numberToHex,
 } from "viem";
@@ -37,6 +38,18 @@ import {
   createActiveFault,
   createFaultError,
 } from "./faults.js";
+import {
+  type FormatHistoryOptions,
+  type MockHistoryEntry,
+  type MockOutcome,
+  type Reporter,
+  errorOutcome,
+  formatEntry,
+  formatHistory,
+  outcomeOf,
+  reporterFor,
+  valueOf,
+} from "./history.js";
 import { multicall3Address, resolveMulticall } from "./multicall.js";
 import { isPlainObject } from "./result.js";
 
@@ -56,6 +69,15 @@ export type CreateMockRpcParameters = {
    * 1_700_000_000n, so runs are deterministic.
    */
   timestamp?: bigint;
+  /**
+   * Log each request as it's answered, one line per request (see
+   * `formatHistory()`). `true` logs with `console.log`; a function receives
+   * the line and the history entry, to send to any logger, e.g.
+   * `(line) => logger.debug(line)`. Useful when a test times out before it
+   * could print the history. Entries hold bigints, which `JSON.stringify`
+   * rejects, so pass loggers the line or chosen fields.
+   */
+  debug?: boolean | ((line: string, entry: MockHistoryEntry) => void);
 };
 
 /** Public client options, minus the chain and transport, which come from the mock. */
@@ -112,6 +134,15 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     blockTime: chain.blockTime ?? 12_000,
   };
   const checkpoints: { valid: boolean }[] = [];
+  const history: MockHistoryEntry[] = [];
+  const log =
+    parameters.debug === true
+      ? (line: string) => {
+          console.log(line);
+        }
+      : parameters.debug === false
+        ? undefined
+        : parameters.debug;
   const actions = createActions({
     resolveBlock,
     codeAt,
@@ -123,6 +154,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     const { method, params } = rpcRequest;
     const entry: RpcRequest = params === undefined ? { method } : { method, params };
     requests.push(entry);
+    const record = startEntry(method, params);
+    history.push(record);
 
     // The most recent fault wins, like mocks. A fault is a deliberate answer, so
     // it isn't recorded as unhandled.
@@ -130,12 +163,16 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     if (fault) {
       fault.remaining -= 1;
       fault.count += 1;
+      settle(record, { type: "fault", fault: fault.fault, source: "failRequests" });
       throw createFaultError(fault.fault, entry);
     }
 
     try {
-      return await answer(rpcRequest);
+      const answered = await answer(rpcRequest, record);
+      settle(record, { type: "result", value: answered.value });
+      return answered.rpc;
     } catch (error) {
+      settle(record, outcomeOf(record, error));
       // A mock's `.fails()` or `fail()`: deliberate, like `failRequests`.
       if (error instanceof MockFailure) throw createFaultError(error.fault, entry);
       // Recorded because callers can swallow these: app code with a fallback,
@@ -146,7 +183,51 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     }
   }
 
-  async function answer({ method, params }: RpcRequest): Promise<unknown> {
+  /** A history entry for a request, typed by what it asks for; details fill in as it's answered. */
+  function startEntry(method: string, params: unknown): MockHistoryEntry {
+    const base = { method, params, outcome: { type: "pending" } as const };
+    if (method === "eth_chainId" || method === "eth_blockNumber")
+      return { ...base, type: "builtIn" };
+    if (method === "eth_call") {
+      const to = Array.isArray(params) && isPlainObject(params[0]) ? params[0].to : undefined;
+      const target =
+        typeof to === "string" && isAddress(to, { strict: false }) ? getAddress(to) : undefined;
+      return target === multicallAddress
+        ? { ...base, type: "multicall", batchId: undefined, calls: [] }
+        : { ...base, type: "call", to: target, call: undefined };
+    }
+    const action = actions.actionFor(method);
+    if (action !== undefined) return { ...base, type: "action", action, call: undefined };
+    return { ...base, type: "method" };
+  }
+
+  /** Records how a request ended, and logs it when `debug` is on. */
+  function settle(entry: MockHistoryEntry, outcome: MockOutcome) {
+    entry.outcome = outcome;
+    if (!log) return;
+    const index = history.indexOf(entry);
+    // Cleared while it was in flight: still worth a line, just without its number.
+    log(index === -1 ? formatEntry([entry], 0) : formatEntry(history, index), entry);
+  }
+
+  async function answer(
+    rpcRequest: RpcRequest,
+    entry: MockHistoryEntry,
+  ): Promise<{ rpc: unknown; value: unknown }> {
+    let actionOutcome: MockOutcome | undefined;
+    const rpc = await answerRpc(rpcRequest, entry, (outcome) => {
+      actionOutcome = outcome;
+    });
+    // An action's table knows its value in viem's types; for the rest, decode the answer.
+    const value = actionOutcome?.type === "result" ? actionOutcome.value : valueOf(entry, rpc);
+    return { rpc, value };
+  }
+
+  async function answerRpc(
+    { method, params }: RpcRequest,
+    entry: MockHistoryEntry,
+    onAction: (outcome: MockOutcome) => void,
+  ): Promise<unknown> {
     switch (method) {
       case "eth_chainId":
         return numberToHex(chainId);
@@ -168,15 +249,25 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
               "Give the client's chain a Multicall3 address, or use `mock.publicClient()`.",
           });
 
-        return await dispatch(tx.to, data, {
-          from: tx.from,
-          value: tx.value ? hexToBigInt(tx.value) : 0n,
-          blockNumber: resolveBlock(block),
-          batch: undefined,
-        });
+        return await dispatch(
+          tx.to,
+          data,
+          {
+            from: tx.from,
+            value: tx.value ? hexToBigInt(tx.value) : 0n,
+            blockNumber: resolveBlock(block),
+            batch: undefined,
+          },
+          reporterFor(entry),
+        );
       }
       default: {
-        const answered = actions.answer(method, params);
+        const answered = actions.answer(method, params, (report) => {
+          if (entry.type !== "action") return;
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the table for entry.action decoded it
+          entry.call = report.call as typeof entry.call;
+          onAction(report.outcome);
+        });
         if (answered) return await answered;
         throw new MockNotFoundError(`RPC method "${method}" is not mocked.`, {
           details: `Mock it with mock.method("${method}", …).returns(…).`,
@@ -185,26 +276,42 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     }
   }
 
-  function dispatch(to: Address, data: Hex, context: CallContext): Promise<Hex> {
+  function dispatch(
+    to: Address,
+    data: Hex,
+    context: CallContext,
+    report: Reporter = {},
+  ): Promise<Hex> {
     // Checksummed once here; lookups below compare checksummed addresses.
     const target = getAddress(to);
-    if (target === multicallAddress)
+    if (target === multicallAddress) {
+      const batchId = ++batchCount;
+      report.batch?.(batchId);
       return resolveMulticall(data, {
         address: multicallAddress,
-        batchId: ++batchCount,
+        batchId,
         context,
-        dispatch,
+        dispatch: (subTarget, subData, subContext) =>
+          dispatch(subTarget, subData, subContext, report),
       });
+    }
 
     const contract = contracts.find((c) => c.matches(target));
-    if (contract) return contract.resolve(data, context);
+    if (contract)
+      return contract.resolve(data, context, (record) => report.call?.(record, context));
+    const unknown = { address: target, name: undefined, call: undefined };
     // A real node answers a call to an address without code with empty data.
-    if (emptyAddresses.has(target)) return Promise.resolve("0x");
-    throw new MockNotFoundError(`No mocked contract at ${to}.`, {
+    if (emptyAddresses.has(target)) {
+      report.call?.({ ...unknown, outcome: { type: "result", value: "0x" } }, context);
+      return Promise.resolve("0x");
+    }
+    const error = new MockNotFoundError(`No mocked contract at ${to}.`, {
       details:
         `Call data: ${data}\n` +
         "Register it with contract(), or mark it empty() for an address without code.",
     });
+    report.call?.({ ...unknown, outcome: errorOutcome(error) }, context);
+    throw error;
   }
 
   function assertUnregistered(address: Address) {
@@ -230,6 +337,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
 
   function clearCalls() {
     calls.length = 0;
+    history.length = 0;
     requests.length = 0;
     unhandled.length = 0;
     for (const contract of contracts) contract.clearCalls();
@@ -350,6 +458,23 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     get calls() {
       return [...calls];
     },
+    /**
+     * Every request the mock received, in order, with how it was answered:
+     * decoded contract calls (each multicall sub-call too), actions, and raw
+     * methods, each with a result in viem's types, a revert, a fault, or
+     * "unhandled". Retries are separate entries; in-flight ones are "pending".
+     */
+    get history() {
+      return [...history];
+    },
+    /**
+     * The history as text, one line per request (and per multicall sub-call),
+     * for `console.log` while debugging. `builtIns: false` leaves out
+     * `eth_chainId` and `eth_blockNumber`.
+     */
+    formatHistory(options?: FormatHistoryOptions) {
+      return formatHistory(history, options);
+    },
     /** Every raw JSON-RPC request the mock has received, in order. */
     get requests() {
       return [...requests];
@@ -460,6 +585,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       emptyAddresses.clear();
       faults.length = 0;
       calls.length = 0;
+      history.length = 0;
       requests.length = 0;
       unhandled.length = 0;
       batchCount = 0;

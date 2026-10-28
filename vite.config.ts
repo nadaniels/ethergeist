@@ -17,6 +17,8 @@ export default defineConfig({
       "eslint/max-lines": "off",
       "eslint/max-lines-per-function": "off",
       "eslint/no-redeclare": "off",
+      // Type-only imports add no runtime coupling; createMockRpc wires every part together.
+      "import/max-dependencies": ["warn", { max: 10, ignoreTypeImports: true }],
       "typescript/prefer-readonly-parameter-types": "off",
       "typescript/strict-boolean-expressions": [
         "warn",

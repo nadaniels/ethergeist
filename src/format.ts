@@ -1,4 +1,4 @@
-import type { Address } from "viem";
+import { type Address, isHex } from "viem";
 import { isPlainObject } from "./result.js";
 
 /** A contract for messages: its name and address, or just the address. */
@@ -11,21 +11,31 @@ export function formatContract(address: Address, name: string | undefined): stri
  * Positional args are listed; anything else is formatted as one value. With
  * nothing pinned (`undefined`), it's `name(*)`: any args.
  */
-export function formatCall(name: string, args: unknown): string {
+export function formatCall(name: string, args: unknown, options: FormatOptions = {}): string {
   if (args === undefined) return `${name}(*)`;
   const list = Array.isArray(args)
-    ? args.map((arg: unknown) => formatValue(arg))
-    : [formatValue(args)];
+    ? args.map((arg: unknown) => formatValue(arg, options))
+    : [formatValue(args, options)];
   return `${name}(${list.join(", ")})`;
 }
 
+type FormatOptions = {
+  /** Shorten long hex (addresses, hashes, data) to `0x1234…abcd`, for overviews. Errors keep it whole. */
+  short?: boolean;
+};
+
 /** A value for messages: bigints as `5n`, arrays and structs spelled out. */
-export function formatValue(value: unknown): string {
+export function formatValue(value: unknown, options: FormatOptions = {}): string {
   if (typeof value === "bigint") return `${value}n`;
-  if (Array.isArray(value)) return `[${value.map((v: unknown) => formatValue(v)).join(", ")}]`;
+  if (Array.isArray(value))
+    return `[${value.map((v: unknown) => formatValue(v, options)).join(", ")}]`;
   if (isPlainObject(value))
     return `{ ${Object.entries(value)
-      .map(([key, v]) => `${key}: ${formatValue(v)}`)
+      .map(([key, v]) => `${key}: ${formatValue(v, options)}`)
       .join(", ")} }`;
-  return typeof value === "string" ? value : JSON.stringify(value);
+  if (typeof value === "string")
+    return options.short === true && isHex(value) && value.length > 14
+      ? `${value.slice(0, 6)}…${value.slice(-4)}`
+      : value;
+  return JSON.stringify(value);
 }

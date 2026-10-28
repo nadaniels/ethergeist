@@ -70,7 +70,22 @@ features land; tick them off as pages get written.
 - [ ] `contract({ …, name: "USDC" })`: names show in every message (and in
       history), next to the address.
 
-## 7. Sharing setup across tests: `checkpoint()` and `restore()`
+## 7. Seeing what the app asked: history and debug output
+
+- [ ] `mock.history`: one entry per JSON-RPC request, discriminated by
+      `type` (`call`, `multicall`, `action`, `method`, `builtIn`), each with an
+      `outcome` (`result` in viem's types, `revert` decoded, `fault` with its
+      source, `unhandled`, `error`, `pending`). Retries are separate entries.
+- [ ] `mock.formatHistory({ builtIns })` for `console.log` while debugging,
+      with an example of its output.
+- [ ] `createMockRpc({ debug })`: `true` for `console.log`, or a function
+      `(line, entry) => …` to use any logger, with examples for pino- and
+      winston-style loggers and `process.stdout`. Warn that entries contain
+      bigints, which `JSON.stringify` rejects.
+- [ ] When to use which: `formatHistory()` after a failure, `debug` when a
+      test times out before it could print anything.
+
+## 8. Sharing setup across tests: `checkpoint()` and `restore()`
 
 - [ ] The pattern: register shared contracts and mocks once (at module scope,
       or in a describe's `beforeAll`), then `checkpoint()`, then
@@ -115,7 +130,7 @@ features land; tick them off as pages get written.
 - [ ] Requests still in flight at `restore()` time land in the next test's
       history.
 
-## 8. Concurrent tests
+## 9. Concurrent tests
 
 - [ ] Every `createMockRpc()` is independent, with no global state, so one
       mock per concurrent test is safe.
@@ -137,7 +152,7 @@ features land; tick them off as pages get written.
       tests whatever the mock does: inject clients, or scope them per test
       (e.g. `AsyncLocalStorage`).
 
-## 9. Recipes
+## 10. Recipes
 
 - [ ] A contract whose address is only known at run time: register it per
       test, next to the fixture that creates it.
