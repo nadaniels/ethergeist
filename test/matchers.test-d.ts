@@ -10,6 +10,14 @@ const abi = parseAbi([
   "function balanceOf(address owner, uint256 id) view returns (uint256)",
   "function balanceOf(address owner) view returns (uint256)",
 ]);
+// A generic order book, for structs.
+const bookAbi = parseAbi([
+  "struct Asset { address token; uint256 amount; }",
+  "struct Order { address maker; Asset sell; uint64 expiry; }",
+  "function filled(Order order) view returns (bool)",
+  "function anyFilled(Order[] orders) view returns (bool)",
+  "function makers(address[] path) view returns (bool)",
+]);
 
 describe("matchers take the type of their position", () => {
   test("predicates get the field's type", () => {
@@ -85,5 +93,48 @@ describe("matchers take the type of their position", () => {
       })
       .returns(null);
     mock.method("eth_getStorageAt", [match.any(), "0x00"]).returns(null);
+  });
+});
+
+describe("match.partial()", () => {
+  test("takes any subset of a struct's fields, at any depth", () => {
+    const mock = createMockRpc();
+    const book = mock.contract({ abi: bookAbi, address: USDC });
+
+    book.read.filled([match.partial({ maker: USDC })]).returns(true);
+    book.read.filled([match.partial({ sell: { amount: 5n } })]).returns(true);
+    book.read.anyFilled([[match.partial({ expiry: 1n })]]).returns(true);
+    book.read
+      .filled([
+        match.partial({
+          sell: {
+            amount: match.where((amount) => {
+              expectTypeOf(amount).toEqualTypeOf<bigint>();
+              return amount > 0n;
+            }),
+          },
+        }),
+      ])
+      .returns(true);
+  });
+
+  test("rejects unknown fields and wrong types", () => {
+    const mock = createMockRpc();
+    const book = mock.contract({ abi: bookAbi, address: USDC });
+
+    // @ts-expect-error -- Order has no `taker`
+    book.read.filled([match.partial({ taker: USDC })]).returns(true);
+    // @ts-expect-error -- `expiry` is a uint64: a bigint
+    book.read.filled([match.partial({ expiry: "soon" })]).returns(true);
+    // @ts-expect-error -- `filled` returns a bool
+    book.read.filled([match.partial({ maker: USDC })]).returns(1n);
+  });
+
+  test("isn't for arrays", () => {
+    const mock = createMockRpc();
+    const book = mock.contract({ abi: bookAbi, address: USDC });
+
+    // @ts-expect-error -- arrays match whole; use match.where()
+    book.read.makers([match.partial([USDC])]).returns(true);
   });
 });

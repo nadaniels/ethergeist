@@ -29,8 +29,9 @@ features land; tick them off as pages get written.
 
 - [ ] Matching: pinned args, args-less mocks as fallbacks, most specific wins,
       ties go to the most recent.
-- [ ] Matchers: `match.any()` and `match.where(predicate, label?)` in args and
-      in action and method params, typed as the value they replace. Show:
+- [ ] Matchers: `match.any()`, `match.where(predicate, label?)` and
+      `match.partial(fields)` in args and in action and method params, typed
+      as the value they replace. Show:
   - Ranking: exact values, then predicates, then `any`, compared in that
     order (one exact value beats any number of predicates); a mock with args,
     even all `any`, beats an args-less one.
@@ -44,10 +45,15 @@ features land; tick them off as pages get written.
     throws is reported as unhandled, naming it.
   - Names in messages: `where(isLarge)` from the function's name, the
     `label`, or `where(…)`.
+  - `partial` for "only these struct fields": at any depth, in structs inside
+    arrays, with matchers as field values. Struct args are complete without
+    it: omitting a field is a type error, not a wildcard. It ranks by what its
+    fields pin, so a full exact struct beats it.
   - Matchers for an array arg (a swap path "contains X" or "starts with X"):
-    `where` on the whole array.
+    `where` on the whole array; `partial` is only for structs.
   - Overloads: with matchers, the exact args pick the overload; if they can't,
-    registration throws "ambiguous overload".
+    registration throws "ambiguous overload". A `partial` doesn't help pick,
+    even when only one overload's struct has its fields.
   - Matchers can't be return values.
 - [ ] Return values: named outputs as objects, partial structs zero-filled,
       `zeroResult`, resolvers that receive the call.

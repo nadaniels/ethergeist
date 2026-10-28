@@ -1,5 +1,5 @@
 import { type Address, isHex } from "viem";
-import { formatMatcher, isMatcher } from "./matchers.js";
+import { type Matcher, isMatcher } from "./matchers.js";
 import { isPlainObject } from "./result.js";
 
 /** A contract for messages: its name and address, or just the address. */
@@ -27,7 +27,7 @@ type FormatOptions = {
 
 /** A value for messages: bigints as `5n`, arrays and structs spelled out. */
 export function formatValue(value: unknown, options: FormatOptions = {}): string {
-  if (isMatcher(value)) return formatMatcher(value);
+  if (isMatcher(value)) return formatMatcher(value, options);
   if (typeof value === "bigint") return `${value}n`;
   if (Array.isArray(value))
     return `[${value.map((v: unknown) => formatValue(v, options)).join(", ")}]`;
@@ -40,4 +40,17 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
       ? `${value.slice(0, 6)}…${value.slice(-4)}`
       : value;
   return JSON.stringify(value);
+}
+
+/**
+ * A matcher for messages: `any`, `where(isLarge)` (`where(…)` without a name),
+ * or a partial's fields followed by `…`.
+ */
+function formatMatcher(matcher: Matcher, options: FormatOptions): string {
+  if (matcher.type === "any") return "any";
+  if (matcher.type === "where") return `where(${matcher.label ?? "…"})`;
+  const fields = Object.entries(matcher.fields).map(
+    ([key, v]) => `${key}: ${formatValue(v, options)}`,
+  );
+  return `{ ${[...fields, "…"].join(", ")} }`;
 }

@@ -1,19 +1,24 @@
 import { isHex } from "viem";
 import { MockResolverError } from "./errors.js";
-import { type Matcher, formatMatcher, isMatcher } from "./matchers.js";
+import { formatValue } from "./format.js";
+import { type Matcher, isMatcher } from "./matchers.js";
 import { isPlainObject } from "./result.js";
 
 /**
  * How narrowly a mock's pinned args or params constrain a call:
  * `[exact values, predicates]`, compared in that order. `match.any()` counts
- * as neither. Mocks with nothing pinned match anything and rank below all others.
+ * as neither, and `match.partial()` counts what its fields pin. Mocks with
+ * nothing pinned match anything and rank below all others.
  */
 export type Specificity = readonly [exact: number, predicates: number];
 
 export function specificity(pinned: unknown): Specificity {
   if (pinned === undefined) return [-1, 0];
   const count = (value: unknown): Specificity => {
-    if (isMatcher(value)) return value.type === "where" ? [0, 1] : [0, 0];
+    if (isMatcher(value)) {
+      if (value.type === "partial") return count(value.fields);
+      return value.type === "where" ? [0, 1] : [0, 0];
+    }
     const parts = Array.isArray(value)
       ? value
       : isPlainObject(value)
@@ -69,11 +74,18 @@ type MatchOptions = {
  */
 export function isMatch(expected: unknown, actual: unknown, options: MatchOptions = {}): boolean {
   if (isMatcher(expected)) {
+    if (expected.type === "partial")
+      return (
+        isPlainObject(actual) &&
+        Object.entries(expected.fields).every(([key, value]) =>
+          isMatch(value, actual[key], options),
+        )
+      );
     if (expected.type === "any" || options.predicates === false) return true;
     try {
       return expected.predicate(actual);
     } catch (error) {
-      throw new MatcherThrewError(formatMatcher(expected), error);
+      throw new MatcherThrewError(formatValue(expected), error);
     }
   }
   if (isHex(expected) && isHex(actual)) return expected.toLowerCase() === actual.toLowerCase();
@@ -120,6 +132,6 @@ export function assertNoMatchers(value: unknown): void {
   const found = findMatcher(value);
   if (found)
     throw new TypeError(
-      `${formatMatcher(found)} is a matcher; matchers go in args or params, not in return values.`,
+      `${formatValue(found)} is a matcher; matchers go in args or params, not in return values.`,
     );
 }

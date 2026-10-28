@@ -1,4 +1,5 @@
 import {
+  type ContractFunctionArgs,
   InvalidAddressError,
   erc20Abi,
   getAddress,
@@ -30,6 +31,32 @@ const multiTokenAbi = parseAbi([
   "function quote(address token, bool exact) view returns (uint256)",
   "function quote(address token, uint256 amount) view returns (uint256)",
 ]);
+
+// A generic order book, for structs: nested, in arrays, and as overloads.
+const bookAbi = parseAbi([
+  "struct Asset { address token; uint256 amount; }",
+  "struct Order { address maker; Asset sell; Asset buy; uint64 expiry; }",
+  "struct Bid { address bidder; uint256 price; }",
+  "function filled(Order order) view returns (bool)",
+  "function anyFilled(Order[] orders) view returns (bool)",
+  "function place(Order order) view returns (uint256)",
+  "function place(Bid bid) view returns (uint256)",
+]);
+type Order = ContractFunctionArgs<typeof bookAbi, "view", "filled">[0];
+const order: Order = {
+  maker: alice,
+  sell: { token: USDC, amount: 100n },
+  buy: { token: DAI, amount: 99n },
+  expiry: 1_700_000_000n,
+};
+
+function setupBook() {
+  const { mock, client } = setup();
+  const book = mock.contract({ abi: bookAbi, address: DAI, name: "Book" });
+  const filled = (args: Order) =>
+    client.readContract({ abi: bookAbi, address: DAI, functionName: "filled", args: [args] });
+  return { mock, client, book, filled };
+}
 
 function setup() {
   const mock = createMockRpc();
@@ -192,6 +219,80 @@ describe("match.where()", () => {
   });
 });
 
+describe("match.partial()", () => {
+  test("matches a struct on the fields given, ignoring the rest", async () => {
+    const { book, filled } = setupBook();
+    book.read.filled([match.partial({ maker: alice })]).returns(true);
+
+    expect(await filled(order)).toBe(true);
+    await expect(filled({ ...order, maker: bob })).rejects.toThrow("No mock for filled");
+  });
+
+  test("works at depth, with matchers as field values", async () => {
+    const { book, filled } = setupBook();
+    book.read
+      .filled([
+        match.partial({
+          sell: { token: USDC },
+          buy: { amount: match.where((amount) => amount > 50n) },
+        }),
+      ])
+      .returns(true);
+
+    expect(await filled(order)).toBe(true);
+    await expect(filled({ ...order, buy: { token: DAI, amount: 1n } })).rejects.toThrow(
+      "No mock for filled",
+    );
+  });
+
+  test("works on structs inside arrays", async () => {
+    const { client, book } = setupBook();
+    book.read
+      .anyFilled([[match.partial({ maker: alice }), match.partial({ maker: bob })]])
+      .returns(true);
+
+    const anyFilled = await client.readContract({
+      abi: bookAbi,
+      address: DAI,
+      functionName: "anyFilled",
+      args: [[order, { ...order, maker: bob }]],
+    });
+    expect(anyFilled).toBe(true);
+  });
+
+  test("ranks by what its fields pin", async () => {
+    const { book, filled } = setupBook();
+    book.read.filled([order]).returns(false);
+    book.read.filled([match.partial({ maker: alice, expiry: order.expiry })]).returns(true);
+    book.read.filled([match.partial({ maker: match.where(() => true) })]).returns(false);
+    book.read.filled([match.partial({ maker: alice })]).returns(false);
+
+    // The exact struct pins 6 values; the two-field partial outranks the rest.
+    expect(await filled(order)).toBe(false);
+    expect(await filled({ ...order, sell: { token: DAI, amount: 1n } })).toBe(true);
+  });
+
+  test("exact addresses inside are validated and checksummed", () => {
+    const { mock, book } = setupBook();
+    expect(() => book.read.filled([match.partial({ maker: "0x1234" })])).toThrow(
+      InvalidAddressError,
+    );
+
+    // Pinned args are only visible in messages: `alice` was checksummed.
+    book.read.filled([match.partial({ sell: { token: alice } })]).returns(true);
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`filled({ sell: { token: ${getAddress(alice)} }, … }) on Book`);
+  });
+
+  test("takes an object of fields", () => {
+    // @ts-expect-error -- arrays aren't structs
+    expect(() => match.partial<Order>([1n])).toThrow(
+      "match.partial() takes a struct's fields as an object; for arrays, use match.where().",
+    );
+  });
+});
+
 describe("messages", () => {
   test("matchers are named in registered lists and unused mocks", async () => {
     const { mock, usdc, balanceOf } = setup();
@@ -234,6 +335,11 @@ describe("registration", () => {
       usdc.read.balanceOf([alice]).returns(match.any());
     }).toThrow("any is a matcher; matchers go in args or params, not in return values.");
 
+    expect(() => {
+      // The types allow it: `partial` takes the resolver function's type from `.returns()`.
+      usdc.read.balanceOf([alice]).returns(match.partial({}));
+    }).toThrow("{ … } is a matcher");
+
     usdc.read.balanceOf([bob]).returns(() => match.any());
     const error = expectCause(await rejectionOf(balanceOf(bob)), MockResolverError);
     expect(error.shortMessage).toContain("matchers go in args or params");
@@ -275,6 +381,15 @@ describe("overloads", () => {
         "  price(address)",
         "  price(uint256)",
       ].join("\n"),
+    );
+  });
+
+  test("partials don't tell overloads apart, even by field names", () => {
+    const { book } = setupBook();
+    // Only Order has `maker`, but partials are skipped when choosing an overload.
+    // @ts-expect-error -- the types can't pick the overload either
+    expect(() => book.read.place([match.partial({ maker: alice })])).toThrow(
+      "Ambiguous overload for place({ maker: 0x00000000000000000000000000000000000a11ce, … })",
     );
   });
 
