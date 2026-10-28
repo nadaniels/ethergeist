@@ -1,0 +1,247 @@
+import {
+  BaseError,
+  ContractFunctionRevertedError,
+  createPublicClient,
+  defineChain,
+  erc20Abi,
+  multicall3Abi,
+  parseAbi,
+} from "viem";
+import { mainnet } from "viem/chains";
+import { describe, expect, test } from "vite-plus/test";
+import { MockNotFoundError, createMockRpc, multicall3Address } from "../src/index.js";
+
+const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+const FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
+const alice = "0x00000000000000000000000000000000000a11ce";
+
+// Chainlink's AggregatorV3Interface, plus a custom error for revert cases.
+const feedAbi = parseAbi([
+  "function latestRoundData() view returns (uint80 roundId, int256 answer, uint256 startedAt, uint256 updatedAt, uint80 answeredInRound)",
+  "function decimals() view returns (uint8)",
+  "error StalePrice(uint256 updatedAt)",
+]);
+
+function setup({ batch = false }: { batch?: boolean } = {}) {
+  const mock = createMockRpc();
+  const client = createPublicClient({
+    chain: mainnet,
+    transport: mock.transport(),
+    ...(batch ? { batch: { multicall: true } } : {}),
+  });
+  const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+  const feed = mock.contract({ abi: feedAbi, address: FEED });
+  usdc.read.decimals().returns(6);
+  usdc.read.balanceOf([alice]).returns(500n);
+  feed.read.decimals().returns(8);
+  feed.read.latestRoundData().returns({ roundId: 1n, answer: 2000_00000000n });
+  const ethCalls = () => mock.requests.filter((r) => r.method === "eth_call");
+  return { mock, client, usdc, feed, ethCalls };
+}
+
+describe("client.multicall", () => {
+  test("answers every call in one aggregate3 request", async () => {
+    const { client, ethCalls } = setup();
+
+    const results = await client.multicall({
+      contracts: [
+        { abi: erc20Abi, address: USDC, functionName: "decimals" },
+        { abi: erc20Abi, address: USDC, functionName: "balanceOf", args: [alice] },
+        { abi: feedAbi, address: FEED, functionName: "latestRoundData" },
+      ],
+      allowFailure: false,
+    });
+
+    expect(results).toEqual([6, 500n, [1n, 2000_00000000n, 0n, 0n, 0n]]);
+    expect(ethCalls()).toHaveLength(1);
+  });
+
+  test("contract.calls records order and batch across functions", async () => {
+    const { client, feed } = setup();
+
+    await client.multicall({
+      contracts: [
+        { abi: feedAbi, address: FEED, functionName: "latestRoundData" },
+        { abi: feedAbi, address: FEED, functionName: "decimals" },
+      ],
+    });
+
+    expect(feed.calls.map((c) => c.functionName)).toEqual(["latestRoundData", "decimals"]);
+    const [first, second] = feed.calls;
+    expect(first?.batch?.id).toBeDefined();
+    expect(first?.batch?.id).toBe(second?.batch?.id);
+    expect([first?.batch?.index, second?.batch?.index]).toEqual([0, 1]);
+  });
+
+  test("sub-calls come from the Multicall3 address; the batch keeps the sender", async () => {
+    const { client, usdc } = setup();
+
+    await client.multicall({
+      contracts: [{ abi: erc20Abi, address: USDC, functionName: "decimals" }],
+      account: alice,
+    });
+
+    const [call] = usdc.calls;
+    expect(call?.from).toBe(multicall3Address);
+    expect(call?.batch?.from).toBe(alice);
+  });
+
+  test("a revert fails only its own call when failure is allowed", async () => {
+    const { client, feed } = setup();
+    feed.read.latestRoundData().reverts({ errorName: "StalePrice", args: [100n] });
+
+    const [round, decimals] = await client.multicall({
+      contracts: [
+        { abi: feedAbi, address: FEED, functionName: "latestRoundData" },
+        { abi: feedAbi, address: FEED, functionName: "decimals" },
+      ],
+    });
+
+    expect(decimals).toEqual({ status: "success", result: 8 });
+    if (round?.status !== "failure") return expect.unreachable("expected a failure");
+    const revert = (round.error as BaseError).walk(
+      (e) => e instanceof ContractFunctionRevertedError,
+    ) as ContractFunctionRevertedError;
+    expect(revert.data?.errorName).toBe("StalePrice");
+  });
+
+  test("a revert throws when failure is not allowed", async () => {
+    const { client, feed } = setup();
+    feed.read.latestRoundData().reverts("stale");
+
+    const error = await client
+      .multicall({
+        contracts: [
+          { abi: feedAbi, address: FEED, functionName: "latestRoundData" },
+          { abi: feedAbi, address: FEED, functionName: "decimals" },
+        ],
+        allowFailure: false,
+      })
+      .then(
+        () => expect.unreachable("expected a revert"),
+        (e: BaseError) => e,
+      );
+    const revert = error.walk(
+      (e) => e instanceof ContractFunctionRevertedError,
+    ) as ContractFunctionRevertedError;
+    expect(revert.reason).toBe("stale");
+  });
+
+  test("a missing mock surfaces as MockNotFoundError, not a revert", async () => {
+    const { client } = setup();
+
+    const [result] = await client.multicall({
+      contracts: [{ abi: erc20Abi, address: USDC, functionName: "symbol" }],
+    });
+
+    // viem reports a failed aggregate3 request as a failure for each call in it.
+    if (result?.status !== "failure") return expect.unreachable("expected a failure");
+    const error = result.error as BaseError;
+    expect(error.walk((e) => e instanceof MockNotFoundError)).toBeInstanceOf(MockNotFoundError);
+    expect(error.walk((e) => e instanceof ContractFunctionRevertedError)).toBeNull();
+  });
+});
+
+describe("aggregate3 called directly", () => {
+  test("a sub-call that may not fail reverts the whole call", async () => {
+    const { client, feed } = setup();
+    feed.read.decimals().reverts();
+
+    const error = await client
+      .readContract({
+        abi: multicall3Abi,
+        address: multicall3Address,
+        functionName: "aggregate3",
+        args: [[{ target: FEED, allowFailure: false, callData: "0x313ce567" }]],
+      })
+      .then(
+        () => expect.unreachable("expected a revert"),
+        (e: BaseError) => e,
+      );
+    const revert = error.walk(
+      (e) => e instanceof ContractFunctionRevertedError,
+    ) as ContractFunctionRevertedError;
+    expect(revert.reason).toBe("Multicall3: call failed");
+  });
+});
+
+describe("batch.multicall", () => {
+  const readAll = (client: ReturnType<typeof setup>["client"]) =>
+    Promise.all([
+      client.readContract({ abi: erc20Abi, address: USDC, functionName: "decimals" }),
+      client.readContract({
+        abi: erc20Abi,
+        address: USDC,
+        functionName: "balanceOf",
+        args: [alice],
+      }),
+      client.readContract({ abi: feedAbi, address: FEED, functionName: "latestRoundData" }),
+    ]);
+
+  test("concurrent reads go out as one aggregate3 request", async () => {
+    const { client, ethCalls, usdc } = setup({ batch: true });
+
+    await readAll(client);
+    expect(ethCalls()).toHaveLength(1);
+    expect(usdc.calls.every((c) => c.batch !== undefined)).toBe(true);
+  });
+
+  test("results are the same with batching on and off", async () => {
+    const batched = setup({ batch: true });
+    const unbatched = setup();
+
+    expect(await readAll(batched.client)).toEqual(await readAll(unbatched.client));
+    expect(batched.ethCalls()).toHaveLength(1);
+    expect(unbatched.ethCalls()).toHaveLength(3);
+  });
+
+  test("reverts decode the same with batching on and off", async () => {
+    const revertOf = async (batch: boolean) => {
+      const { client, feed } = setup({ batch });
+      feed.read.latestRoundData().reverts({ errorName: "StalePrice", args: [100n] });
+      const error = await client
+        .readContract({ abi: feedAbi, address: FEED, functionName: "latestRoundData" })
+        .then(
+          () => expect.unreachable("expected a revert"),
+          (e: BaseError) => e,
+        );
+      const revert = error.walk(
+        (e) => e instanceof ContractFunctionRevertedError,
+      ) as ContractFunctionRevertedError;
+      return { errorName: revert.data?.errorName, args: revert.data?.args };
+    };
+
+    expect(await revertOf(true)).toEqual(await revertOf(false));
+    expect(await revertOf(true)).toEqual({ errorName: "StalePrice", args: [100n] });
+  });
+});
+
+describe("configuration", () => {
+  test("multicallAddress points the mock at a chain's own Multicall3", async () => {
+    const address = "0x0000000000000000000000000000000000ca11ca";
+    const mock = createMockRpc({ multicallAddress: address });
+    const chain = defineChain({
+      ...mainnet,
+      contracts: { multicall3: { address } },
+    });
+    const client = createPublicClient({ chain, transport: mock.transport() });
+    mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
+
+    const [decimals] = await client.multicall({
+      contracts: [{ abi: erc20Abi, address: USDC, functionName: "decimals" }],
+      allowFailure: false,
+    });
+    expect(decimals).toBe(6);
+  });
+
+  test("deployless multicall explains that it isn't supported", async () => {
+    const { client } = setup();
+
+    const [result] = await client.multicall({
+      contracts: [{ abi: erc20Abi, address: USDC, functionName: "decimals" }],
+      deployless: true,
+    });
+    if (result?.status !== "failure") return expect.unreachable("expected a failure");
+    expect(result.error.message).toContain("Deployless");
+  });
+});

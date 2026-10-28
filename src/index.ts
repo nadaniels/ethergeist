@@ -11,4 +11,5 @@ export type {
   ResolverContext,
 } from "./contract.js";
 export { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
+export { type MockBatch, multicall3Address } from "./multicall.js";
 export type { RevertFn, RevertSpec } from "./revert.js";

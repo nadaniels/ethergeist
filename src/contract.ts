@@ -14,6 +14,7 @@ import {
   toFunctionSelector,
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
+import type { MockBatch } from "./multicall.js";
 import { type MockReturnType, normalizeResult } from "./result.js";
 import { type RevertFn, type RevertSpec, createRevertError } from "./revert.js";
 
@@ -25,10 +26,15 @@ export type CallContext = {
   /** Wei sent with the call; `0n` when none. */
   value: bigint;
   blockNumber: bigint;
+  /** Set when the call arrived inside a Multicall3 `aggregate3`. */
+  batch: MockBatch | undefined;
 };
 
-export type MockCall<args = readonly unknown[]> = CallContext & {
-  functionName: string;
+export type MockCall<
+  args = readonly unknown[],
+  functionName extends string = string,
+> = CallContext & {
+  functionName: functionName;
   args: args;
 };
 
@@ -76,8 +82,16 @@ export type MockContractFunction<
     >
   >;
   /** Every call to this function the mock has received, in order. */
-  readonly calls: MockCall<ContractFunctionArgs<abi, mutability, functionName>>[];
+  readonly calls: MockCall<ContractFunctionArgs<abi, mutability, functionName>, functionName>[];
 };
+
+/** A call to any function in a namespace, discriminated by `functionName`. */
+type NamespaceCall<abi extends Abi, mutability extends ReadMutability | WriteMutability> = {
+  [functionName in ContractFunctionName<abi, mutability>]: MockCall<
+    ContractFunctionArgs<abi, mutability, functionName>,
+    functionName
+  >;
+}[ContractFunctionName<abi, mutability>];
 
 export type MockReadFunction<
   abi extends Abi,
@@ -92,6 +106,8 @@ export type MockSimulateFunction<
 export type MockContract<abi extends Abi> = {
   address: Address;
   abi: abi;
+  /** Every call to any of this contract's functions, in order. */
+  readonly calls: (NamespaceCall<abi, ReadMutability> | NamespaceCall<abi, WriteMutability>)[];
   /** View and pure functions. */
   read: {
     [functionName in ContractFunctionName<abi, ReadMutability>]: MockReadFunction<
@@ -213,6 +229,9 @@ export function createMockContract<const abi extends Abi>(
   const contract = {
     address,
     abi,
+    get calls() {
+      return [...history];
+    },
     read: namespace(readFunctions),
     simulate: namespace(simulateFunctions),
   } as unknown as MockContract<abi>;

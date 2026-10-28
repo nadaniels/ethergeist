@@ -1,6 +1,6 @@
 import { type Address, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
-import { createMockRpc } from "../src/index.js";
+import { type MockBatch, createMockRpc } from "../src/index.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
@@ -245,5 +245,30 @@ describe("returns: named outputs and partial structs", () => {
     store.read.position().returns({ ownr: USDC });
     // @ts-expect-error wrong field type
     store.read.position().returns({ amount: "1" });
+  });
+});
+
+describe("contract.calls", () => {
+  test("is a union over every function, discriminated by functionName", () => {
+    const call = usdc.calls[0]!;
+    expectTypeOf(call.functionName).toEqualTypeOf<
+      | "allowance"
+      | "balanceOf"
+      | "decimals"
+      | "name"
+      | "symbol"
+      | "totalSupply"
+      | "approve"
+      | "transfer"
+      | "transferFrom"
+    >();
+    if (call.functionName === "allowance")
+      expectTypeOf(call.args).toEqualTypeOf<readonly [Address, Address]>();
+    if (call.functionName === "transfer")
+      expectTypeOf(call.args).toEqualTypeOf<readonly [Address, bigint]>();
+  });
+
+  test("calls carry batch info", () => {
+    expectTypeOf(usdc.calls[0]!.batch).toEqualTypeOf<MockBatch | undefined>();
   });
 });
