@@ -8,7 +8,7 @@ export type Matcher =
   | {
       readonly [matcherKey]: true;
       readonly type: "where";
-      readonly label: string | undefined;
+      readonly label: string;
       readonly predicate: (value: unknown) => boolean;
     }
   | {
@@ -35,14 +35,14 @@ export const match = {
   /**
    * Matches when `predicate` returns `true`. It gets the decoded value, in
    * viem's types; addresses arrive checksummed, so compare them with
-   * `isAddressEqual`, not `===`. Messages show `label`, or the predicate's
-   * name: `where(isLarge)`.
+   * `isAddressEqual`, not `===`. Messages show `label`, the predicate's name
+   * (`where(isLarge)`), or the start of its source (`where((n) => n > 5n)`).
    */
   where<value>(predicate: (value: value) => boolean, label?: string): value {
     return asValue({
       [matcherKey]: true,
       type: "where",
-      label: label ?? (predicate.name === "" ? undefined : predicate.name),
+      label: label ?? (predicate.name === "" ? sourceOf(predicate) : predicate.name),
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- called only with the value at its position
       predicate: predicate as (value: unknown) => boolean,
     });
@@ -75,6 +75,29 @@ export function partialMatcher(fields: unknown): Matcher {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- checked to be a non-array object above
     fields: fields as Record<string, unknown>,
   });
+}
+
+/**
+ * A function's source on one line, cut to 40 characters, for an unnamed
+ * predicate's label. Test runners compile ES modules, so an imported name
+ * reads back as a property of a module object. Calls take the same shape
+ * everywhere, `(0, module.name)(…)` (Vite, Babel, TypeScript, swc, esbuild,
+ * webpack/Rspack, Rolldown), and go back to the plain name. Other references
+ * lose only prefixes no one writes by hand: Vite's, webpack's/Rspack's, and
+ * esbuild's. Babel's `_viem.` or TypeScript's `viem_1.` look like real code
+ * (`order.maker`), so they stay.
+ */
+function sourceOf(fn: (value: never) => boolean): string {
+  const source = fn
+    .toString()
+    .replaceAll(/\(0,\s*[\w$]+\.([\w$]+)\)/gu, "$1")
+    .replaceAll(
+      /\b(?:__vite_ssr_import_\d+__|[\w$]+__WEBPACK_IMPORTED_MODULE_\d+__|import_[\w$]+)\./gu,
+      "",
+    )
+    .replaceAll(/\s+/gu, " ")
+    .trim();
+  return source.length > 40 ? `${source.slice(0, 39)}…` : source;
 }
 
 /** A matcher stands in for a value of whatever type is at its position. */

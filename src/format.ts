@@ -54,12 +54,12 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
 }
 
 /**
- * A matcher for messages: `any`, `where(isLarge)` (`where(…)` without a name),
- * or a partial's fields followed by `…`.
+ * A matcher for messages: `any`, `where(isLarge)` (or the predicate's
+ * source, without a name), or a partial's fields followed by `…`.
  */
 function formatMatcher(matcher: Matcher, options: FormatOptions): string {
   if (matcher.type === "any") return "any";
-  if (matcher.type === "where") return `where(${matcher.label ?? "…"})`;
+  if (matcher.type === "where") return `where(${matcher.label})`;
   const fields = Object.entries(matcher.fields).map(
     ([key, v]) => `${key}: ${formatValue(v, options)}`,
   );

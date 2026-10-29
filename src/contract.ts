@@ -258,6 +258,9 @@ export function createMockContract<const abi extends Abi>(
     read: functionsOf(["view", "pure"]),
     simulate: functionsOf(["nonpayable", "payable"]),
   };
+  const functionsBySelector = new Map(
+    [...functionsIn.read, ...functionsIn.simulate].map((f) => [toFunctionSelector(f), f]),
+  );
 
   /** For a name that isn't in `namespace`: says where it is instead, if anywhere. */
   function notInNamespaceError(namespace: Namespace, functionName: string) {
@@ -410,14 +413,21 @@ export function createMockContract<const abi extends Abi>(
     context: CallContext,
     report?: (record: MockCallRecord) => void,
   ): Promise<Hex> {
-    const decoded: { call?: MockCall } = {};
+    const decoded: Decoded = { abiItem: undefined, call: undefined };
+    const record = (outcome: MockOutcome): MockCallRecord => ({
+      address,
+      name,
+      abiItem: decoded.abiItem,
+      call: decoded.call,
+      outcome,
+    });
     try {
       const { hex, abiItem } = await answer(data, context, decoded);
       const value = decodeFunctionResult({ abi: [abiItem], functionName: abiItem.name, data: hex });
-      report?.({ address, name, call: decoded.call, outcome: { type: "result", value } });
+      report?.(record({ type: "result", value }));
       return hex;
     } catch (error) {
-      report?.({ address, name, call: decoded.call, outcome: outcomeOf(error) });
+      report?.(record(outcomeOf(error)));
       throw error;
     }
   }
@@ -428,11 +438,14 @@ export function createMockContract<const abi extends Abi>(
     return errorOutcome(error);
   }
 
-  /** Decodes and answers a call, leaving the decoded call in `decoded` for reporting. */
+  /** What a call decoded to, for reporting however it ends. */
+  type Decoded = { abiItem: AbiFunction | undefined; call: MockCall | undefined };
+
+  /** Decodes and answers a call, leaving what it decoded in `decoded` for reporting. */
   async function answer(
     data: Hex,
     context: CallContext,
-    decoded: { call?: MockCall },
+    decoded: Decoded,
   ): Promise<{ hex: Hex; abiItem: AbiFunction }> {
     const selector = slice(data, 0, 4);
 
@@ -448,6 +461,7 @@ export function createMockContract<const abi extends Abi>(
 
     const call: MockCall = { ...context, address, ...fn };
     decoded.call = call;
+    decoded.abiItem = functionsBySelector.get(selector);
     history.push(call);
     onCall(call);
 

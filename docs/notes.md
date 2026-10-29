@@ -43,8 +43,12 @@ features land; tick them off as pages get written.
   - Predicates should be cheap and pure. They run only for a mock still in
     contention (its exact values match, every better mock failed); one that
     throws is reported as unhandled, naming it.
-  - Names in messages: `where(isLarge)` from the function's name, the
-    `label`, or `where(…)`.
+  - Names in messages: the `label`, the function's name (`where(isLarge)`),
+    or the start of an inline arrow's source (`where((n) => n > 5n)`).
+  - Matchers choose which answer a call gets; they aren't assertions. To
+    check what the app sent, use `.calls` with `expect`, which gives a real
+    diff. Pinning args and relying on `assertAllUsed()` works, but its
+    message doesn't show what arrived yet.
   - `partial` for "only these struct fields": at any depth, in structs inside
     arrays, with matchers as field values. Struct args are complete without
     it: omitting a field is a type error, not a wildcard. It ranks by what its
@@ -147,7 +151,12 @@ features land; tick them off as pages get written.
       winston-style loggers and `process.stdout`. Warn that entries contain
       bigints, which `JSON.stringify` rejects.
 - [ ] When to use which: `formatHistory()` after a failure, `debug` when a
-      test times out before it could print anything.
+      test times out before it could print anything. Under Vitest, `debug`
+      gets a `stdout | file > test` header per line, so printing history only
+      when a test fails reads better (the Vitest helper, once it exists).
+- [ ] What history shows: `(retry)` after a fault, named outputs by name
+      (the value stays the tuple viem returns), `(no outputs)`, and
+      `abiItem` on each contract call record.
 
 ## 8. Sharing setup across tests: `checkpoint()` and `restore()`
 
@@ -229,3 +238,7 @@ features land; tick them off as pages get written.
       tests reuse.
 - [ ] Replacing hand-built `vi.mock` fakes of `getTransactionReceipt` and
       `getBlock` with receipts and generated blocks.
+- [ ] An answer that changes during a suite (a live price): a default whose
+      resolver reads the current value on every call, rather than per-test
+      overrides outside `defaults`, which `assertAllUsed()` reports when a
+      test doesn't use them.

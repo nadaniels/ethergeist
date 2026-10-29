@@ -68,7 +68,7 @@ export type MockRestoreOptions = {
 /** One part of the mock's checkpoint: a contract, or the actions. */
 export type PartCheckpoint = {
   restore(): void;
-  /** Mocks registered since the checkpoint, with args, that haven't answered a call. */
+  /** Mocks registered since the checkpoint that haven't answered a call, except defaults. */
   unusedSince(): string[];
 };
 

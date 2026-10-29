@@ -1,4 +1,5 @@
 import {
+  type AbiFunction,
   type Address,
   type Hex,
   decodeFunctionResult,
@@ -35,6 +36,8 @@ export type MockCallRecord = {
   address: Address;
   /** The contract's name, if it was registered with one. */
   name: string | undefined;
+  /** The function called, from the contract's ABI; `undefined` when it couldn't be decoded. */
+  abiItem: AbiFunction | undefined;
   /** The decoded call, or `undefined` if it couldn't be decoded (no contract, unknown selector, an empty address). */
   call: MockCall | undefined;
   outcome: MockOutcome;
@@ -183,9 +186,10 @@ export function formatEntry(entries: readonly MockHistoryEntry[], index: number)
     const lines = entry.calls.map(
       (record, i) => `   ${i === entry.calls.length - 1 ? "└" : "├"} ${formatRecord(record)}`,
     );
-    return [`${head}multicall${batch} (${entry.calls.length} calls)${outcome}`, ...lines].join(
-      "\n",
-    );
+    return [
+      `${head}multicall${batch} (${entry.calls.length} ${entry.calls.length === 1 ? "call" : "calls"})${outcome}`,
+      ...lines,
+    ].join("\n");
   }
   if (entry.type === "action")
     return `${head}${formatCall(entry.action, entry.call, { short: true })} ${formatOutcome(
@@ -196,12 +200,26 @@ export function formatEntry(entries: readonly MockHistoryEntry[], index: number)
   return `${head.trimEnd()}${formatParams(entry.params)} ${formatOutcome(entry.outcome)}`;
 }
 
-function formatRecord({ address, name, call, outcome }: MockCallRecord): string {
+function formatRecord({ address, name, abiItem, call, outcome }: MockCallRecord): string {
   const label = name ?? formatValue(address, { short: true });
   const text = call
     ? `${label}.${formatCall(call.functionName, call.args, { short: true })}`
     : label;
+  if (outcome.type === "result" && abiItem)
+    return `${text} → ${formatResult(abiItem, outcome.value)}`;
   return `${text} ${formatOutcome(outcome)}`;
+}
+
+/**
+ * A contract call's result: `(no outputs)`, or, when two or more outputs are
+ * all named, an object keyed by name (the value stays a tuple, as viem returns it).
+ */
+function formatResult({ outputs }: AbiFunction, value: unknown): string {
+  if (outputs.length === 0) return "(no outputs)";
+  const named = outputs.length > 1 && outputs.every((output) => output.name);
+  if (!named || !Array.isArray(value)) return formatValue(value, { short: true });
+  const fields = outputs.map((output, i) => [output.name!, value[i]] as const);
+  return formatValue(Object.fromEntries(fields), { short: true });
 }
 
 function formatParams(params: unknown): string {

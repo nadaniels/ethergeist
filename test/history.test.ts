@@ -16,6 +16,12 @@ const alice = "0x00000000000000000000000000000000000a11ce";
 
 // OpenZeppelin's Pausable error, alongside the ERC-20.
 const tokenAbi = [...erc20Abi, ...parseAbi(["error EnforcedPause()"])];
+// Uniswap V2's pair (named outputs) and WETH9's deposit (no outputs).
+const pairAbi = parseAbi([
+  "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
+  "function price() view returns (uint256, uint256)",
+  "function deposit() payable",
+]);
 
 function setup({
   retryCount = 0,
@@ -65,6 +71,7 @@ describe("history entries", () => {
       outcome: { type: "result", value: 6 },
     });
     expect(entry.outcome).toEqual({ type: "result", value: 6 });
+    expect(entry.call?.abiItem).toMatchObject({ type: "function", name: "decimals" });
   });
 
   test("reverts are decoded: custom errors and reason strings", async () => {
@@ -293,6 +300,37 @@ describe("formatHistory()", () => {
         "#2 eth_getTransactionReceipt getTransactionReceipt({ hash: 0x0000…0000 }) → success, block 10n, 1 log(s)",
       ].join("\n"),
     );
+  });
+
+  test("named outputs show by name; functions without outputs say so", async () => {
+    const { mock, client } = setup();
+    const pair = mock.contract({ abi: pairAbi, address: DAI, name: "Pair" });
+    pair.read.getReserves().returns({ reserve0: 5n, reserve1: 7n });
+    pair.read.price().returns([1n, 2n]);
+    pair.simulate.deposit().returns();
+
+    await client.readContract({ abi: pairAbi, address: DAI, functionName: "getReserves" });
+    await client.readContract({ abi: pairAbi, address: DAI, functionName: "price" });
+    await client.simulateContract({ abi: pairAbi, address: DAI, functionName: "deposit" });
+    expect(mock.formatHistory({ builtIns: false })).toBe(
+      [
+        "#1 eth_call Pair.getReserves() → { reserve0: 5n, reserve1: 7n, blockTimestampLast: 0 }",
+        "#2 eth_call Pair.price() → [1n, 2n]",
+        "#3 eth_call Pair.deposit() → (no outputs)",
+      ].join("\n"),
+    );
+    // The value stays what viem returns: a tuple.
+    expect(mock.history[0]?.outcome).toEqual({ type: "result", value: [5n, 7n, 0] });
+  });
+
+  test("a multicall of one says 1 call", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: tokenAbi, address: USDC, name: "USDC" }).read.decimals().returns(6);
+
+    await client.multicall({
+      contracts: [{ abi: tokenAbi, address: USDC, functionName: "decimals" }],
+    });
+    expect(mock.formatHistory({ builtIns: false })).toContain("multicall, batch 1 (1 call)");
   });
 
   test("resolver errors show what threw", async () => {

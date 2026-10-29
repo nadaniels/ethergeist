@@ -302,7 +302,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     const contract = contracts.find((c) => c.matches(target));
     if (contract)
       return contract.resolve(data, context, (record) => report.call?.(record, context));
-    const unknown = { address: target, name: undefined, call: undefined };
+    const unknown = { address: target, name: undefined, abiItem: undefined, call: undefined };
     // A real node answers a call to an address without code with empty data.
     if (emptyAddresses.has(target)) {
       report.call?.({ ...unknown, outcome: { type: "result", value: "0x" } }, context);
@@ -556,7 +556,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       const entry = { valid: true };
       checkpoints.push(entry);
 
-      /** Mocks with args registered since this checkpoint that never answered. */
+      /** Mocks registered since this checkpoint that never answered, except defaults. */
       const unusedSince = () => [
         ...savedContracts.flatMap((saved) => saved.unusedSince()),
         ...contracts.slice(contractCount).flatMap((contract) => contract.unusedMocks()),

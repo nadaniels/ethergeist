@@ -299,6 +299,11 @@ describe("messages", () => {
     usdc.read.balanceOf([match.where(isCarol)]).returns(1n);
     usdc.read.balanceOf([match.where(() => false)]).returns(2n);
     usdc.read.balanceOf([match.where(() => false, "isTreasury")]).returns(3n);
+    usdc.read
+      .balanceOf([
+        match.where((account) => isAddressEqual(account, carol) || isAddressEqual(account, bob)),
+      ])
+      .returns(4n);
     usdc.read.allowance([alice, match.any()]).returns(4n);
 
     const error = expectCause(await rejectionOf(balanceOf(alice)), MockNotFoundError);
@@ -306,14 +311,66 @@ describe("messages", () => {
       [
         "Registered:",
         "  balanceOf(where(isCarol))",
-        "  balanceOf(where(…))",
+        "  balanceOf(where(() => false))",
         "  balanceOf(where(isTreasury))",
+        // Unnamed: the source on one line, cut to 40 characters.
+        "  balanceOf(where((account) => isAddressEqual(account, ca…))",
       ].join("\n"),
     );
     // Matchers are pinned args, so unused ones are reported, `any` included.
     expect(() => {
       mock.assertAllUsed();
     }).toThrow(`allowance(${getAddress(alice)}, any) on USDC (${USDC})`);
+  });
+});
+
+/** The labels of predicates with exactly these sources, as `assertAllUsed()` lists them. */
+function labelsOf(sources: readonly string[]) {
+  const { mock, usdc } = setup();
+  for (const source of sources) {
+    // oxlint-disable-next-line typescript/no-implied-eval, typescript/no-unsafe-type-assertion -- builds a function with exactly this source; it's never called
+    const make = new Function(`return ${source}`) as () => (value: `0x${string}`) => boolean;
+    usdc.read.balanceOf([match.where(make())]).returns(1n);
+  }
+  let message = "";
+  try {
+    mock.assertAllUsed();
+  } catch (error) {
+    message = String(error);
+  }
+  return [...message.matchAll(/balanceOf\(where\((.*)\)\) on/gu)].map((m) => m[1]);
+}
+
+describe("predicate labels from source", () => {
+  // How each tool's compiled modules read back an imported `isAddressEqual`.
+  const modules = {
+    vite: "__vite_ssr_import_0__",
+    babel: "_viem",
+    typescript: "viem_1",
+    esbuild: "import_viem",
+    webpack: "viem__WEBPACK_IMPORTED_MODULE_0__",
+    rolldown: "viem",
+  };
+
+  test("calls lose the module object, whichever tool compiled them", () => {
+    const sources = Object.values(modules).map((m) => `(a) => (0, ${m}.isAddressEqual)(a, x)`);
+    expect(labelsOf(sources)).toEqual(
+      Object.values(modules).map(() => "(a) => isAddressEqual(a, x)"),
+    );
+  });
+
+  test("other references lose only prefixes no one writes by hand", () => {
+    const sources = Object.values(modules).map((m) => `(a) => [a].some(${m}.isAddressEqual)`);
+    expect(labelsOf([...sources, "(order) => order.maker === x"])).toEqual([
+      "(a) => [a].some(isAddressEqual)",
+      // Babel's, TypeScript's and Rolldown's look like real code, so they stay.
+      "(a) => [a].some(_viem.isAddressEqual)",
+      "(a) => [a].some(viem_1.isAddressEqual)",
+      "(a) => [a].some(isAddressEqual)",
+      "(a) => [a].some(isAddressEqual)",
+      "(a) => [a].some(viem.isAddressEqual)",
+      "(order) => order.maker === x",
+    ]);
   });
 });
 
