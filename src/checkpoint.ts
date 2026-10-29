@@ -71,8 +71,3 @@ export type PartCheckpoint = {
   /** Mocks registered since the checkpoint that haven't answered a call, except defaults. */
   unusedSince(): string[];
 };
-
-/** For a builder whose mock a `restore()` or `reset()` removed. */
-export function removedMockError(): Error {
-  return new Error("This mock was removed by restore() or reset(); register a new one.");
-}

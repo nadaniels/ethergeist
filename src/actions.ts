@@ -5,7 +5,9 @@ import {
   type Hex,
   type RpcBlock,
   type RpcTransactionReceipt,
+  type RpcLog,
   formatBlock,
+  formatLog,
   formatTransactionReceipt,
   getAddress,
   hexToBigInt,
@@ -14,10 +16,11 @@ import {
   zeroHash,
 } from "viem";
 import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
-import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
+import type { PartCheckpoint } from "./checkpoint.js";
 import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
-import { MockNotFoundError, MockResolverError } from "./errors.js";
+import { MockNotFoundError, MockResolverError, removedMockError } from "./errors.js";
 import { type MockOutcome, errorOutcome } from "./history.js";
+import { type LogsCall, createLogStore } from "./logs.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
 import {
   type ReceivedCall,
@@ -112,6 +115,7 @@ export type ActionCalls = {
   getCode: CodeCall;
   getBlock: BlockCall;
   getTransactionReceipt: ReceiptCall;
+  getLogs: LogsCall;
 };
 
 /** What a table tells the rpc about a call it answered, for history. */
@@ -360,8 +364,21 @@ export function createActions(options: {
   blockNumber: () => bigint;
   /** Block `number` as generated, before any mock's fields. */
   generateBlock: (number: bigint) => MockBlock;
+  /** Mines one block. */
+  mine: () => void;
+  /** Whether a contract is registered at `address`, which is checksummed. */
+  isContract: (address: Address) => boolean;
 }) {
-  const { resolveBlock, codeAt, blockNumber, generateBlock } = options;
+  const { resolveBlock, codeAt, blockNumber, generateBlock, mine, isContract } = options;
+  // Emitted logs, which answer `eth_getLogs`.
+  const logStore = createLogStore({
+    blockNumber,
+    mine,
+    timestamp: (number) => generateBlock(number).timestamp,
+    resolveBlock,
+    isContract,
+    isKnown: (address) => codeAt(address) !== undefined,
+  });
   /** `eth_getBlockByNumber` takes a number or tag; `eth_getBlockByHash` a hash. */
   function decodeBlock([block, includeTransactions]: readonly unknown[], rpcMethod: string) {
     const include = includeTransactions === true;
@@ -454,6 +471,17 @@ export function createActions(options: {
         return toRpcBlock(generateBlock(number));
       },
     }),
+    getLogs: createTable({
+      name: "getLogs",
+      hint: "mock.emit(…)",
+      decode: (params) => logStore.decode(params),
+      zero: [],
+      encode: (value) => value,
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by logStore.decode
+      fallback: (call) => logStore.query(call as LogsCall),
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- answered by logStore.query
+      view: (rpc) => (rpc as RpcLog[]).map((log) => formatLog(log)),
+    }),
   };
   const typedMethods = new Map<string, keyof typeof typed>([
     ["eth_getBalance", "getBalance"],
@@ -461,6 +489,7 @@ export function createActions(options: {
     ["eth_getBlockByNumber", "getBlock"],
     ["eth_getBlockByHash", "getBlock"],
     ["eth_getTransactionReceipt", "getTransactionReceipt"],
+    ["eth_getLogs", "getLogs"],
   ]);
   const typedTable = (name: string) => {
     const action = typedMethods.get(name);
@@ -487,6 +516,8 @@ export function createActions(options: {
     const builtIn = builtIns.get(name);
     if (builtIn !== undefined) throw new Error(`"${name}" can't be mocked raw: ${builtIn}.`);
     const action = typedMethods.get(name);
+    if (action === "getLogs")
+      throw new Error(`"${name}" is answered from emitted logs: use mock.emit().`);
     if (action !== undefined)
       throw new Error(`"${name}" has a typed mock: use mock.actions.${action}().`);
 
@@ -515,6 +546,7 @@ export function createActions(options: {
   return {
     actions,
     method,
+    logStore,
     /** Answers a request with a typed or raw mock, or returns `undefined` if none applies. */
     answer(
       name: string,

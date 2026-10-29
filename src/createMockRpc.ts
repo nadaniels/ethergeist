@@ -27,7 +27,8 @@ import {
   type MockContract,
   createMockContract,
 } from "./contract.js";
-import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
+import { MockNotFoundError, MockResolverError, MockRevertError, MockRpcError } from "./errors.js";
+import type { EmittedLog } from "./events.js";
 import {
   type ActiveFault,
   type FailRequestsOptions,
@@ -40,6 +41,7 @@ import {
   createRevertRpcError,
 } from "./faults.js";
 import {
+  type FormatContext,
   type FormatHistoryOptions,
   type MockHistoryEntry,
   type MockOutcome,
@@ -157,7 +159,10 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
    * runner points at the test, not into the mock.
    */
   function checkFailed(check: (...args: never[]) => unknown, message: string): Error {
-    const recent = historyOnFailure === false ? undefined : formatRecent(history, historyOnFailure);
+    const recent =
+      historyOnFailure === false
+        ? undefined
+        : formatRecent(history, historyOnFailure, formatContext);
     const error = new Error(recent === undefined ? message : `${message}\n\n${recent}`);
     // Not every engine has it (Node's types say it's always there).
     if ("captureStackTrace" in Error) Error.captureStackTrace(error, check);
@@ -176,7 +181,20 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     codeAt,
     blockNumber: () => blockNumber,
     generateBlock: (number) => generateBlock(number, clock),
+    mine: () => {
+      blockNumber += 1n;
+    },
+    isContract: (address) => contracts.some((c) => c.matches(address)),
   });
+  const { logStore } = actions;
+  // History names a getLogs filter's events with the registered contracts' ABIs.
+  const formatContext: FormatContext = {
+    describeLogs: (call) =>
+      logStore.describe(
+        call,
+        contracts.map(({ contract }) => contract),
+      ),
+  };
 
   /** `retryCount` is the transport's, when the request came through `transport()`. */
   async function request(rpcRequest: RpcRequest, retryCount?: number): Promise<unknown> {
@@ -205,8 +223,10 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       settle(record, outcomeOf(record, error));
       // A mock's `.fails()` or `fail()`: deliberate, like `failRequests`.
       if (error instanceof MockFailure) throw createFaultError(error.fault, entry);
-      // A revert reaches viem the way a node's would.
+      // A revert reaches viem the way a node's would, and so does a node's refusal.
       if (error instanceof MockRevertError) throw createRevertRpcError(error, entry);
+      if (error instanceof MockRpcError)
+        throw createFaultError({ code: error.code, message: error.shortMessage }, entry);
       // Recorded because callers can swallow these: app code with a fallback,
       // or viem's multicall turning a failed batch into per-call failures.
       if (error instanceof MockNotFoundError || error instanceof MockResolverError)
@@ -239,7 +259,12 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     if (!log) return;
     const index = history.indexOf(entry);
     // Cleared while it was in flight: still worth a line, just without its number.
-    log(index === -1 ? formatEntry([entry], 0) : formatEntry(history, index), entry);
+    log(
+      index === -1
+        ? formatEntry([entry], 0, formatContext)
+        : formatEntry(history, index, formatContext),
+      entry,
+    );
   }
 
   async function answer(
@@ -454,6 +479,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     const contractCount = contracts.length;
     const savedContracts = contracts.map((contract) => contract.checkpoint());
     const savedActions = actions.checkpoint();
+    const savedLogs = logStore.checkpoint();
     const savedEmpty = new Set(emptyAddresses);
     const savedFaults = faults.map((fault) => [fault, fault.remaining, fault.count] as const);
     const savedBlockNumber = blockNumber;
@@ -490,6 +516,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       contracts.length = contractCount;
       for (const saved of savedContracts) saved.restore();
       savedActions.restore();
+      savedLogs.restore();
       emptyAddresses.clear();
       for (const address of savedEmpty) emptyAddresses.add(address);
       faults.length = savedFaults.length;
@@ -530,7 +557,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       contractParameters: CreateMockContractParameters<abi>,
     ): MockContract<abi> {
       assertUnregistered(contractParameters.address);
-      const internal = createMockContract(contractParameters, onCall);
+      const internal = createMockContract(contractParameters, { onCall, emit: logStore.emit });
       contracts.push(internal);
       return internal.contract;
     },
@@ -540,6 +567,17 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * are in viem's own types; the mock encodes them for JSON-RPC.
      */
     actions: actions.actions,
+    /**
+     * Emits logs as one transaction, for `getLogs` and watchers to find:
+     * values from a contract's `events`, in the current block, or in a newly
+     * mined one with `{ mine: true }`. Returns the placed logs, e.g. for a
+     * mocked receipt. See `EmitOptions` for choosing the block and transaction.
+     */
+    emit: logStore.emit,
+    /** Every emitted log, by block and log index, as `getLogs` would answer them. */
+    get logs(): EmittedLog[] {
+      return logStore.logs;
+    },
     /**
      * Mocks a JSON-RPC method that has no typed mock, answering with raw JSON-RPC
      * values. Pinned `params` match a prefix of the request's params.
@@ -603,7 +641,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * `eth_chainId` and `eth_blockNumber`.
      */
     formatHistory(options?: FormatHistoryOptions) {
-      return formatHistory(history, options);
+      return formatHistory(history, options, formatContext);
     },
     /** Every raw JSON-RPC request the mock has received, in order. */
     get requests() {
@@ -646,6 +684,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       for (const contract of contracts) contract.detach();
       contracts.length = 0;
       actions.reset();
+      logStore.reset();
       emptyAddresses.clear();
       faults.length = 0;
       calls.length = 0;

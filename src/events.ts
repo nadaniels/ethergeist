@@ -32,11 +32,24 @@ export type MockEventLog = {
   data: Hex;
 };
 
-/** Where a log goes: its block and transaction. Left out, they're zero. */
+/**
+ * Where a log goes: its block and transaction. Left out, `buildLog` uses
+ * zeros, and `emit` the current block and the block's next transaction.
+ */
 export type LogPlacement = {
   blockNumber?: bigint;
   transactionHash?: Hash;
   transactionIndex?: number;
+};
+
+/**
+ * Where `emit` puts a transaction's logs: `LogPlacement`, or `mine: true` for
+ * a newly mined block, as for a transaction that just happened. Watchers only
+ * see logs in blocks mined after they last polled.
+ */
+export type EmitOptions = LogPlacement & {
+  /** Mine a block and put the logs in it. Defaults to `false`: the current block. */
+  mine?: boolean;
 };
 
 /** An indexed input's value is required; a non-indexed one may be a partial struct. */
@@ -88,6 +101,19 @@ export type MockContractEvents<abi extends Abi> = {
   [eventName in ContractEventName<abi>]: (
     ...args: MockEventArgsParameter<abi, eventName>
   ) => MockEventLog;
+};
+
+/**
+ * A log `emit` placed, as `getLogs` answers it. Frozen: it's the mock's own
+ * copy, so changing it throws; spread it to make a changed one.
+ */
+export type EmittedLog = Readonly<Log<bigint, number, false>>;
+
+/** A contract's events by name, each emitting its log as one transaction; see `EmitOptions`. */
+export type MockContractEmit<abi extends Abi> = {
+  [eventName in ContractEventName<abi>]: (
+    ...params: [...MockEventArgsParameter<abi, eventName>, options?: EmitOptions]
+  ) => EmittedLog;
 };
 
 export type BuildLogParameters<

@@ -1,0 +1,29 @@
+{
+  "description": "eth_getLogs with both a blockHash and a fromBlock",
+  "client": "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu",
+  "chainId": 1,
+  "endpoint": "https://ethereum-rpc.publicnode.com",
+  "capturedAt": "2026-10-29",
+  "head": "26300455",
+  "request": {
+    "method": "eth_getLogs",
+    "params": [
+      {
+        "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "blockHash": "0x097cb904ba8450fb30b9a2a9859be66813725ba3206a21aa666fab1702e1ed3f",
+        "fromBlock": "0x1915027"
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "error": {
+        "code": -32602,
+        "message": "invalid argument 0: cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other"
+      }
+    }
+  }
+}

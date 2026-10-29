@@ -10,9 +10,10 @@ import {
 } from "viem";
 import type { ActionCalls } from "./actions.js";
 import type { CallContext, MockCall } from "./contract.js";
-import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
+import { MockNotFoundError, MockResolverError, MockRevertError, MockRpcError } from "./errors.js";
 import { MockFailure, type MockFault } from "./faults.js";
 import { formatCall, formatValue } from "./format.js";
+import type { LogsCall } from "./logs.js";
 import { isPlainObject } from "./result.js";
 import { revertOutcome } from "./revert.js";
 
@@ -26,6 +27,11 @@ export type MockOutcome =
   | { type: "revert"; data: Hex; errorName?: string; args?: readonly unknown[]; reason?: string }
   /** Failed at the network level, by `failRequests()` or a mock's `.fails()`/`fail()`. */
   | { type: "fault"; fault: MockFault; source: "failRequests" | "mock" }
+  /**
+   * Refused with the JSON-RPC error a node gives for the same request, e.g. a
+   * `getLogs` block range past the head. An answer, not unhandled.
+   */
+  | { type: "rpcError"; code: number; message: string }
   /** Not answered: nothing was mocked, or a resolver threw. */
   | { type: "unhandled"; error: MockNotFoundError | MockResolverError }
   /** The mock itself failed unexpectedly, e.g. on a malformed request. */
@@ -74,10 +80,17 @@ export type FormatHistoryOptions = {
   builtIns?: boolean;
 };
 
+/** Internal: what formatting needs from the rpc, e.g. ABIs to name a filter's events. */
+export type FormatContext = {
+  describeLogs?: (call: LogsCall) => string;
+};
+
 /** The outcome of an error thrown while answering, other than reverts and faults. */
 export function errorOutcome(error: unknown): MockOutcome {
   if (error instanceof MockNotFoundError || error instanceof MockResolverError)
     return { type: "unhandled", error };
+  if (error instanceof MockRpcError)
+    return { type: "rpcError", code: error.code, message: error.shortMessage };
   return { type: "error", error };
 }
 
@@ -126,9 +139,12 @@ export function valueOf(entry: MockHistoryEntry, rpc: unknown): unknown {
 export function formatHistory(
   entries: readonly MockHistoryEntry[],
   { builtIns = true }: FormatHistoryOptions = {},
+  context: FormatContext = {},
 ): string {
   return entries
-    .map((entry, i) => (builtIns || entry.type !== "builtIn" ? formatEntry(entries, i) : undefined))
+    .map((entry, i) =>
+      builtIns || entry.type !== "builtIn" ? formatEntry(entries, i, context) : undefined,
+    )
     .filter((line) => line !== undefined)
     .join("\n");
 }
@@ -140,6 +156,7 @@ export function formatHistory(
 export function formatRecent(
   entries: readonly MockHistoryEntry[],
   count: number,
+  context: FormatContext = {},
 ): string | undefined {
   const indexes = entries.flatMap((entry, i) => (entry.type === "builtIn" ? [] : [i]));
   const shown = indexes.slice(-count);
@@ -150,7 +167,7 @@ export function formatRecent(
       ? "Requests so far:"
       : `${shown.length === 1 ? "Last request" : `Last ${shown.length} requests`} ` +
         `(${earlier} earlier; see mock.formatHistory()):`;
-  return [heading, ...shown.map((i) => formatEntry(entries, i))].join("\n");
+  return [heading, ...shown.map((i) => formatEntry(entries, i, context))].join("\n");
 }
 
 /** The fault that entry `index` retries, if it's a retry: the same request, right after a fault. */
@@ -191,7 +208,11 @@ export function retryHint(
 }
 
 /** Entry `index` of `entries`, formatted; earlier entries tell retries apart. */
-export function formatEntry(entries: readonly MockHistoryEntry[], index: number): string {
+export function formatEntry(
+  entries: readonly MockHistoryEntry[],
+  index: number,
+  context: FormatContext = {},
+): string {
   const entry = entries[index]!;
   const retry = faultRetried(entries, index) ? "(retry) " : "";
   const head = `#${index + 1} ${entry.method} ${retry}`;
@@ -211,6 +232,8 @@ export function formatEntry(entries: readonly MockHistoryEntry[], index: number)
       ...lines,
     ].join("\n");
   }
+  if (entry.type === "action" && entry.action === "getLogs" && entry.call !== undefined)
+    return `${head}${context.describeLogs?.(entry.call) ?? formatCall("getLogs", entry.call, { short: true })} ${formatOutcome(entry.outcome, entry.action)}`;
   if (entry.type === "action")
     return `${head}${formatCall(entry.action, entry.call, { short: true })} ${formatOutcome(
       entry.outcome,
@@ -259,6 +282,7 @@ function formatOutcome(outcome: MockOutcome, action?: string): string {
   }
   if (outcome.type === "fault")
     return `✗ fault: ${formatFault(outcome.fault)}${outcome.source === "failRequests" ? " (failRequests)" : ""}`;
+  if (outcome.type === "rpcError") return `✗ rpc error ${outcome.code}: ${outcome.message}`;
   if (outcome.type === "error")
     return `✗ error: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`;
   // "unhandled"
@@ -276,6 +300,8 @@ function summarize(value: unknown, action: string | undefined): string {
     const logs = Array.isArray(value.logs) ? value.logs.length : 0;
     return `${String(value.status)}, block ${formatValue(value.blockNumber)}, ${logs} log(s)`;
   }
+  if (action === "getLogs" && Array.isArray(value))
+    return `${value.length} ${value.length === 1 ? "log" : "logs"}`;
   return formatValue(value, { short: true });
 }
 

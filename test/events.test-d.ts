@@ -1,6 +1,7 @@
 import { type Address, type Log, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
 import {
+  type LogsCall,
   type MockEventArgs,
   type MockEventLog,
   buildLog,
@@ -117,5 +118,38 @@ describe("buildLog()", () => {
     buildLog({ abi: erc20Abi, address: USDC, eventName: "Transfer" });
     // @ts-expect-error -- `to` is indexed, so required
     buildLog({ abi: erc20Abi, address: USDC, eventName: "Transfer", args: { from: alice } });
+  });
+});
+
+describe("emit", () => {
+  const mock = createMockRpc();
+  const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+  const shapes = mock.contract({ abi: shapesAbi, address: testAddress("shapes") });
+
+  test("contract.emit takes the event's args, then options, and returns the placed log", () => {
+    expectTypeOf(usdc.emit.Transfer({ from: alice, to: bob }, { mine: true })).toEqualTypeOf<
+      Readonly<Log<bigint, number, false>>
+    >();
+    shapes.emit.Paused();
+    shapes.emit.Paused(undefined, { blockNumber: 3n });
+    // @ts-expect-error -- `to` is indexed, so required
+    usdc.emit.Transfer({ from: alice });
+    // @ts-expect-error -- not an option
+    usdc.emit.Transfer({ from: alice, to: bob }, { logIndex: 2 });
+  });
+
+  test("mock.emit returns one log for one, and an array for an array", () => {
+    const log = usdc.events.Transfer({ from: alice, to: bob });
+    const emitted = mock.emit(log);
+    expectTypeOf(emitted).toEqualTypeOf<Readonly<Log<bigint, number, false>>>();
+    expectTypeOf(mock.emit([log, log])).toEqualTypeOf<Readonly<Log<bigint, number, false>>[]>();
+    // Read-only, yet it goes wherever a log does, e.g. a mocked receipt.
+    mock.actions.getTransactionReceipt().returns({ logs: [emitted] });
+  });
+
+  test("history entries for getLogs carry the decoded filter", () => {
+    const [entry] = mock.history;
+    if (entry?.type === "action" && entry.action === "getLogs")
+      expectTypeOf(entry.call).toEqualTypeOf<LogsCall | undefined>();
   });
 });

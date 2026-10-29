@@ -35,13 +35,17 @@ export type {
 export type { MockBlock } from "./blocks.js";
 export {
   type BuildLogParameters,
+  type EmitOptions,
+  type EmittedLog,
   type LogPlacement,
+  type MockContractEmit,
   type MockContractEvents,
   type MockEventArgs,
   type MockEventLog,
   buildLog,
 } from "./events.js";
 export { type MockLog, type MockReceipt, buildReceipt } from "./receipts.js";
+export type { LogsCall, LogsTopic } from "./logs.js";
 export type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
 export type {
   FormatHistoryOptions,

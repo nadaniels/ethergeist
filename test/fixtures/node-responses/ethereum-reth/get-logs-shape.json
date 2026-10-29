@@ -1,0 +1,59 @@
+{
+  "description": "eth_getLogs for one block, to compare the fields of a log",
+  "client": "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu",
+  "chainId": 1,
+  "endpoint": "https://ethereum-rpc.publicnode.com",
+  "capturedAt": "2026-10-29",
+  "head": "26300455",
+  "request": {
+    "method": "eth_getLogs",
+    "params": [
+      {
+        "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "fromBlock": "0x1915025",
+        "toBlock": "0x1915025"
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": [
+        {
+          "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+          "topics": [
+            "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+            "0x000000000000000000000000000000000004444c5dc75cb358380d2e3de08a90",
+            "0x0000000000000000000000000000000aa232009084bd71a5797d089aa4edfad4"
+          ],
+          "data": "0x000000000000000000000000000000000000000000000000000000000001c1ff",
+          "blockNumber": "0x1915025",
+          "transactionHash": "0x20cde4477a04d49ce2242d1e8abedf7c4c77b25cc31a25a8904a003ec633c064",
+          "transactionIndex": "0x0",
+          "blockHash": "0x77084e693b3b38a71afb65e1d69cc5ce4e1be01848e1b43c78248423ca50e48c",
+          "logIndex": "0x0",
+          "removed": false,
+          "blockTimestamp": "0x6ae39c83"
+        },
+        {
+          "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+          "topics": [
+            "0xddf252ad1be2c89b69c2b068fc378daa952ba7f163c4a11628f55a4df523b3ef",
+            "0x0000000000000000000000000000000aa232009084bd71a5797d089aa4edfad4",
+            "0x000000000000000000000000000000000004444c5dc75cb358380d2e3de08a90"
+          ],
+          "data": "0x000000000000000000000000000000000000000000000000000000006ef80af7",
+          "blockNumber": "0x1915025",
+          "transactionHash": "0x20cde4477a04d49ce2242d1e8abedf7c4c77b25cc31a25a8904a003ec633c064",
+          "transactionIndex": "0x0",
+          "blockHash": "0x77084e693b3b38a71afb65e1d69cc5ce4e1be01848e1b43c78248423ca50e48c",
+          "logIndex": "0x4",
+          "removed": false,
+          "blockTimestamp": "0x6ae39c83"
+        }
+      ]
+    }
+  }
+}

@@ -1,0 +1,29 @@
+{
+  "description": "eth_getLogs whose toBlock is past the head",
+  "client": "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu",
+  "chainId": 1,
+  "endpoint": "https://ethereum-rpc.publicnode.com",
+  "capturedAt": "2026-10-29",
+  "head": "26300455",
+  "request": {
+    "method": "eth_getLogs",
+    "params": [
+      {
+        "address": "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
+        "fromBlock": "0x1915022",
+        "toBlock": "0x1915031"
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "error": {
+        "code": -32602,
+        "message": "block range extends beyond current head block"
+      }
+    }
+  }
+}

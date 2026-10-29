@@ -5,6 +5,11 @@ import { BaseError, type Hex } from "viem";
 // `UnknownRpcError` (code -1) and retries it with backoff, so a broken test
 // fails slowly and repeatedly.
 
+/** For a builder whose mock a `restore()` or `reset()` removed. */
+export function removedMockError(): Error {
+  return new Error("This mock was removed by restore() or reset(); register a new one.");
+}
+
 /** Thrown when a request reaches the mock with nothing registered to answer it. */
 export class MockNotFoundError extends BaseError {
   override name = "MockNotFoundError";
@@ -47,5 +52,20 @@ export class MockRevertError extends BaseError {
   constructor(data: Hex, reason?: string) {
     super(reason === undefined ? "execution reverted" : `execution reverted: ${reason}`);
     this.data = data;
+  }
+}
+
+/**
+ * Internal: a node's JSON-RPC error answer, e.g. reth's `-32602 "invalid
+ * block range params"`. It's an answer, not a missing mock: the rpc converts
+ * it to the `RpcRequestError` viem's `http` transport would throw.
+ */
+export class MockRpcError extends BaseError {
+  override name = "MockRpcError";
+  code: number;
+
+  constructor(code: number, message: string) {
+    super(message);
+    this.code = code;
   }
 }

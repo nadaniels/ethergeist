@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { type Server, createServer } from "node:http";
 import {
   type Abi,
@@ -101,14 +102,16 @@ function httpError(status: number, body: string, headers: Record<string, string>
  * Each error in the cause chain, as the fields error handling looks at.
  * `portable` leaves out what varies by node without changing what it means:
  * the human-readable text, and whether empty revert data is sent as "0x".
+ * `details` adds the node's own message, where viem keeps it for RPC errors.
  */
-function layers(error: unknown, { portable = false } = {}) {
+function layers(error: unknown, { portable = false, details = false } = {}) {
   const result: Record<string, unknown>[] = [];
   for (let e: unknown = error; e instanceof Error; e = e.cause) {
     const fields = e as Error & {
       code?: unknown;
       status?: unknown;
       shortMessage?: unknown;
+      details?: unknown;
       data?: unknown;
     };
     let { data } = fields;
@@ -122,6 +125,7 @@ function layers(error: unknown, { portable = false } = {}) {
       code: fields.code,
       status: fields.status,
       ...(portable ? {} : { shortMessage: fields.shortMessage }),
+      ...(details ? { details: fields.details } : {}),
       data,
     });
   }
@@ -342,6 +346,87 @@ describe("reverts match other nodes' on classes, codes, and decoded data", () =>
     expect(names(await rejectionOf(real.readContract(read)))).not.toContain(
       "ContractFunctionRevertedError",
     );
+  });
+});
+
+/**
+ * A response captured from Ethereum's reth (publicnode) by
+ * `scripts/capture-node-responses.ts`. Rerun it with `--write` to refresh them.
+ */
+function nodeResponse(name: string): { client: string; answer: Answer; body: unknown } {
+  const fixture: unknown = JSON.parse(
+    readFileSync(
+      new URL(`fixtures/node-responses/ethereum-reth/${name}.json`, import.meta.url),
+      "utf8",
+    ),
+  );
+  if (typeof fixture !== "object" || fixture === null || !("response" in fixture))
+    throw new Error(`Malformed fixture ${name}`);
+  const { response } = fixture;
+  if (typeof response !== "object" || response === null || !("status" in response))
+    throw new Error(`Malformed fixture ${name}`);
+  const body = "body" in response ? response.body : undefined;
+  return {
+    client: "client" in fixture ? String(fixture.client) : "",
+    answer: {
+      status: Number(response.status),
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+    body,
+  };
+}
+
+/** The sorted field names of the first log in a list of JSON-RPC logs. */
+function logKeys(logs: unknown): string[] {
+  const first: unknown = Array.isArray(logs) ? logs[0] : undefined;
+  return typeof first === "object" && first !== null ? Object.keys(first).toSorted() : [];
+}
+
+describe("getLogs errors match reth's exactly", () => {
+  // Filters the mock refuses as the captured node did, at the mock's head (block 10).
+  const refusals: { fixture: string; filter: Record<string, unknown> }[] = [
+    { fixture: "get-logs-range-past-head", filter: { fromBlock: "0x5", toBlock: "0x14" } },
+    { fixture: "get-logs-range-backwards", filter: { fromBlock: "0x5", toBlock: "0x1" } },
+    {
+      fixture: "get-logs-block-hash-with-range",
+      filter: { blockHash: `0x${"22".repeat(32)}`, fromBlock: "0xa" },
+    },
+    { fixture: "get-logs-unknown-block-hash", filter: { blockHash: `0x${"11".repeat(32)}` } },
+    {
+      fixture: "get-logs-too-many-topics",
+      filter: { fromBlock: "0xa", toBlock: "0xa", topics: [null, null, null, null, null] },
+    },
+  ];
+
+  test.each(refusals)("$fixture", async ({ fixture, filter }) => {
+    const mock = createMockRpc({ blockNumber: 10n });
+    mock.contract({ abi, address: TOKEN });
+    answer = nodeResponse(fixture).answer;
+    // Sent through the transports themselves: some of these filters are ones
+    // viem's typed actions never send.
+    const request = { method: "eth_getLogs", params: [{ address: TOKEN, ...filter }] };
+    const options = { retryCount: 0, retryDelay: 0 };
+    const real = http(url, options)({ chain: mainnet });
+    const mocked = mock.transport(options)({ chain: mainnet });
+
+    const realError = await rejectionOf(real.request(request));
+    const mockError = await rejectionOf(mocked.request(request));
+    // The node's message is in `details`; viem's own wording is in `shortMessage`.
+    expect(layers(mockError, { details: true })).toEqual(layers(realError, { details: true }));
+    expect(mock.unhandled).toEqual([]);
+  });
+
+  test("a log has the fields reth sends", async () => {
+    const { body, client } = nodeResponse("get-logs-shape");
+    expect(client).toMatch(/^reth\//u);
+    const mock = createMockRpc({ blockNumber: 10n });
+    mock.contract({ abi, address: TOKEN }).emit.Transfer({ from: alice, to: TOKEN, value: 1n });
+
+    const logs = await mock.request({ method: "eth_getLogs", params: [{ address: TOKEN }] });
+    const realLogs =
+      typeof body === "object" && body !== null && "result" in body ? body.result : undefined;
+    expect(logKeys(logs)).toEqual(logKeys(realLogs));
   });
 });
 

@@ -18,9 +18,20 @@ import {
   toFunctionSelector,
   toFunctionSignature,
 } from "viem";
-import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
-import { type MockContractEvents, encodeEventLog } from "./events.js";
-import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
+import {
+  MockNotFoundError,
+  MockResolverError,
+  MockRevertError,
+  removedMockError,
+} from "./errors.js";
+import {
+  type EmitOptions,
+  type MockContractEmit,
+  type MockContractEvents,
+  type MockEventLog,
+  encodeEventLog,
+} from "./events.js";
+import type { PartCheckpoint } from "./checkpoint.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
 import {
   type ReceivedCall,
@@ -199,6 +210,13 @@ export type MockContract<abi extends Abi> = {
    * receipt's `logs`. Indexed args are required; the rest are zero-filled.
    */
   events: MockContractEvents<abi>;
+  /**
+   * Emits one of the contract's events, as a transaction of its own, e.g.
+   * `emit.Transfer({ from, to, value }, { mine: true })`, for `getLogs` and
+   * watchers to find. Returns the placed log. Shorthand for
+   * `mock.emit(contract.events.X(args), options)`.
+   */
+  emit: MockContractEmit<abi>;
 };
 
 /**
@@ -261,9 +279,14 @@ export type InternalMockContract<abi extends Abi = Abi> = {
 
 export function createMockContract<const abi extends Abi>(
   parameters: CreateMockContractParameters<abi>,
-  /** Called with every decoded call, so the rpc can keep a log across contracts. */
-  onCall: (call: MockCall) => void = () => {},
+  hooks: {
+    /** Called with every decoded call, so the rpc can keep a log across contracts. */
+    onCall?: (call: MockCall) => void;
+    /** Places a transaction's logs in the rpc's log store. */
+    emit?: (logs: readonly MockEventLog[], options?: EmitOptions) => readonly unknown[];
+  } = {},
 ): InternalMockContract<abi> {
+  const { onCall = () => {}, emit = () => [] } = hooks;
   const { abi, name, defaults = {} } = parameters;
   // Also validates the address at registration.
   const address = getAddress(parameters.address);
@@ -453,6 +476,24 @@ export function createMockContract<const abi extends Abi>(
       (abi as Abi).flatMap((item) =>
         item.type === "event"
           ? [[item.name, (args?: unknown) => encodeEventLog(abi, address, item.name, args)]]
+          : [],
+      ),
+    ),
+    emit: Object.fromEntries(
+      (abi as Abi).flatMap((item) =>
+        item.type === "event"
+          ? [
+              [
+                item.name,
+                (args?: unknown, options?: EmitOptions) => {
+                  if (detached)
+                    throw new Error(
+                      `The contract at ${label} was removed by restore() or reset(); register it again.`,
+                    );
+                  return emit([encodeEventLog(abi, address, item.name, args)], options)[0];
+                },
+              ],
+            ]
           : [],
       ),
     ),

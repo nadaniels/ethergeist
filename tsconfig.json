@@ -15,5 +15,5 @@
     "moduleDetection": "force",
     "skipLibCheck": true
   },
-  "include": ["src", "test", "vite.config.ts"]
+  "include": ["src", "test", "scripts", "vite.config.ts"]
 }

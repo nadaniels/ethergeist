@@ -161,10 +161,43 @@ features land; tick them off as pages get written.
   - Overloaded events use the overload the args fit; "ambiguous" when
     several do.
   - `buildLog({ abi, address, eventName, args, blockNumber, … })` for a
-    complete viem log without a mock, and `buildReceipt(fields)` for the
+    complete viem log where no mock places it (`toEqual`, Storybook props,
+    a function that parses logs). Inside a mock, receipts and `emit` place
+    logs themselves, so they take `contract.events` values; for a contract
+    whose functions aren't mocked, register it anyway (`mock.contract({ abi,
+    address })`, no mocks needed): only contracts emit logs. And `buildReceipt(fields)` for the
     receipt `.returns(fields)` answers (pass `transactionHash` and
     `blockNumber` to match the mock's). Both share the mock's encoding and
     defaults, so `toEqual` against what the app got works.
+- [ ] Emitting logs for `getLogs`: `contract.emit.Transfer(args, options)`, or
+      `mock.emit(logs, options)` for several logs in one transaction
+      (e.g. a swap's transfers and its `Swap`). Show:
+  - One call is one transaction in one block: the current block, a
+    `blockNumber`, or a newly mined one with `{ mine: true }` (what a
+    watcher needs: it only reads blocks mined after its last poll). Logs
+    in a block after the head appear once `mine()` reaches it.
+  - Positions are assigned: `logIndex` counts per block, each call is the
+    block's next transaction, with a generated hash. Pass `transactionHash`
+    to match a mocked receipt, or to add logs to the block's last
+    transaction. A block's transactions go in order.
+  - `emit` returns the placed logs, which equal what `getLogs` answers and
+    can go into a mocked receipt.
+  - Logs come only from registered contracts; `getLogs` for an address
+    with no mocked contract is unhandled (a real node would quietly answer
+    `[]`, hiding the wrong address; viem checks a result's event and args,
+    never its address). `empty()` addresses have no logs.
+  - Filtering is a node's: addresses, topics (`null` for any, arrays for
+    any of several), and blocks. Without a range, only the current block
+    (a common production bug the mock reproduces).
+  - Refusals are reth's, as viem's errors: a range past the head or
+    ending before it starts, a block hash with a range, an unknown block
+    hash, more than 4 topics. They're answers, not unhandled; history shows
+    `✗ rpc error`.
+  - `mock.logs` lists every emitted log. `restore()` removes logs emitted
+    since the checkpoint; `clearCalls()` keeps them.
+  - Logs carry `blockTimestamp` (reth sends it; some nodes don't), from the
+    generated block. A `getBlock` mock with another timestamp doesn't
+    change it.
 - [ ] Strict by default for data the test owns (balances, receipts), and how
       to opt into real-node defaults with args-less mocks.
 - [ ] `mock.method()` for any other method, with raw JSON-RPC values.
