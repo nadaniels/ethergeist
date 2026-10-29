@@ -4,12 +4,12 @@ import {
   type Hash,
   type Log,
   type TransactionReceipt,
-  getAddress,
   zeroAddress,
   zeroHash,
 } from "viem";
 import { blockHash } from "./blocks.js";
 import { formatValue } from "./format.js";
+import { nodeAddress } from "./result.js";
 
 /**
  * A log in a mocked receipt. Fields left out come from the receipt, or are
@@ -28,7 +28,7 @@ const zeroBloom = `0x${"00".repeat(256)}` as const;
  * A receipt for `hash` with `receipt`'s fields over useful defaults: `status`
  * is `"success"` (zero would mean reverted), the block is `blockNumber` unless
  * given, and each log's position, block, and transaction come from the receipt.
- * Everything else is zero. Addresses are checksummed, which also validates them.
+ * Everything else is zero. Addresses are validated, and lowercase as nodes send them.
  * `hash` is `undefined` while it isn't known yet, e.g. at registration.
  */
 export function completeReceipt(
@@ -53,9 +53,9 @@ export function completeReceipt(
     type: "eip1559",
     ...fields,
   };
-  complete.from = getAddress(complete.from);
-  if (complete.to) complete.to = getAddress(complete.to);
-  if (complete.contractAddress) complete.contractAddress = getAddress(complete.contractAddress);
+  complete.from = nodeAddress(complete.from);
+  if (complete.to) complete.to = nodeAddress(complete.to);
+  if (complete.contractAddress) complete.contractAddress = nodeAddress(complete.contractAddress);
   // Only a hash given now can be checked; a pinned request's arrives later.
   const known = receipt.transactionHash ?? hash;
   logs.forEach((log, i) => {
@@ -99,7 +99,7 @@ export type LogPosition = Pick<
 /**
  * A complete log: `log`'s fields over `position`, with zeros for the rest.
  * Fields the log sets win, so a receipt's log can name its own position.
- * The address is checksummed, which also validates it.
+ * The address is validated, and lowercase as nodes send it.
  */
 export function placeLog(log: MockLog, position: LogPosition): Log<bigint, number, false> {
   return Object.assign(
@@ -115,7 +115,7 @@ export function placeLog(log: MockLog, position: LogPosition): Log<bigint, numbe
       removed: false,
     } satisfies Log<bigint, number, false>,
     log,
-    log.address === undefined ? {} : { address: getAddress(log.address) },
+    log.address === undefined ? {} : { address: nodeAddress(log.address) },
     // viem's tuple type only says "empty or not"; the hashes are the same.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- same values, viem's narrower type
     log.topics === undefined ? {} : { topics: [...log.topics] as Log["topics"] },

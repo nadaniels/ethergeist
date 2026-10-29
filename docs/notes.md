@@ -233,6 +233,12 @@ features land; tick them off as pages get written.
       the mock, so the runner's code frame points at the test.
 - [ ] Addresses in messages are always checksummed. Address args are
       normalized at registration, which also rejects malformed ones.
+- [ ] Addresses in answers (receipts, their logs, emitted logs, blocks) are
+      lowercase, as nodes send them; viem passes them through as is. So
+      `log.address === USDC` fails against the mock as it does in
+      production: compare with `isAddressEqual`. Builders' logs and receipts
+      are lowercase too, so they still equal what the app got. Decoded
+      values (event args, call results) are checksummed by viem.
 - [ ] `contract({ …, name: "USDC" })`: names show in every message (and in
       history), next to the address.
 

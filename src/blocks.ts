@@ -1,4 +1,5 @@
 import { Block as OxBlock } from "ox";
+import { nodeAddress } from "./result.js";
 import {
   type Block,
   type Hash,
@@ -84,6 +85,7 @@ export function toRpcBlock({ withdrawals, ...block }: MockBlock) {
   return {
     ...OxBlock.toRpc({
       ...block,
+      miner: nodeAddress(block.miner),
       baseFeePerGas: block.baseFeePerGas ?? undefined,
       totalDifficulty: block.totalDifficulty ?? undefined,
     }),

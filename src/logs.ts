@@ -16,7 +16,7 @@ import { MockNotFoundError, MockRpcError } from "./errors.js";
 import type { EmitOptions, EmittedLog, MockEventLog } from "./events.js";
 import { formatValue } from "./format.js";
 import { placeLog } from "./receipts.js";
-import { isPlainObject } from "./result.js";
+import { isPlainObject, lowercase } from "./result.js";
 import { testHash } from "./testValues.js";
 
 /** A topic position in a filter: one hash, any of several, or `null` for any. */
@@ -226,7 +226,7 @@ export function createLogStore(hooks: {
         (log) =>
           log.blockNumber >= from &&
           log.blockNumber <= to &&
-          (addresses.length === 0 || addresses.includes(log.address)) &&
+          (addresses.length === 0 || addresses.includes(getAddress(log.address))) &&
           topicsMatch(call.topics, log.topics),
       )
       .toSorted((a, b) =>
@@ -280,11 +280,6 @@ function decodeTopic(topic: unknown): LogsTopic {
   if (Array.isArray(topic))
     return topic.filter((each) => isHex(each)).map((each) => lowercase(each));
   return null;
-}
-
-function lowercase(hash: Hash): Hash {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- lowercase hex is still a hash
-  return hash.toLowerCase() as Hash;
 }
 
 /**

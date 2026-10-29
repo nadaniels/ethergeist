@@ -383,6 +383,14 @@ function logKeys(logs: unknown): string[] {
   return typeof first === "object" && first !== null ? Object.keys(first).toSorted() : [];
 }
 
+/** The address of the first log in a list of JSON-RPC logs. */
+function firstAddress(logs: unknown): string | undefined {
+  const first: unknown = Array.isArray(logs) ? logs[0] : undefined;
+  return typeof first === "object" && first !== null && "address" in first
+    ? String(first.address)
+    : undefined;
+}
+
 describe("getLogs errors match reth's exactly", () => {
   // Filters the mock refuses as the captured node did, at the mock's head (block 10).
   const refusals: { fixture: string; filter: Record<string, unknown> }[] = [
@@ -427,6 +435,18 @@ describe("getLogs errors match reth's exactly", () => {
     const realLogs =
       typeof body === "object" && body !== null && "result" in body ? body.result : undefined;
     expect(logKeys(logs)).toEqual(logKeys(realLogs));
+  });
+
+  test("addresses are lowercase, as reth sends them", async () => {
+    const { body } = nodeResponse("get-logs-shape");
+    const mock = createMockRpc({ blockNumber: 10n });
+    mock.contract({ abi, address: TOKEN }).emit.Transfer({ from: alice, to: TOKEN, value: 1n });
+
+    const logs = await mock.request({ method: "eth_getLogs", params: [{ address: TOKEN }] });
+    const realLogs =
+      typeof body === "object" && body !== null && "result" in body ? body.result : undefined;
+    expect(firstAddress(realLogs)).toBe(firstAddress(realLogs)?.toLowerCase());
+    expect(firstAddress(logs)).toBe(TOKEN.toLowerCase());
   });
 });
 

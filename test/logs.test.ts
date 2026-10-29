@@ -9,7 +9,7 @@ import {
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 import { MockNotFoundError, buildLog, createMockRpc, testAddress, testHash } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -216,9 +216,9 @@ describe("getLogs filters", () => {
     ]);
     const both = await client.getLogs({ address: [USDC, DAI], ...range });
     expect(both.map((l) => [l.address, l.blockNumber])).toEqual([
-      [USDC, 6n],
-      [DAI, 7n],
-      [USDC, 8n],
+      [lowercase(USDC), 6n],
+      [lowercase(DAI), 7n],
+      [lowercase(USDC), 8n],
     ]);
   });
 

@@ -268,10 +268,10 @@ describe("buildLog()", () => {
   });
 
   test("defaults its position to zero", () => {
-    const log = buildLog({ abi: shapesAbi, address: lowercase(SHAPES), eventName: "Paused" });
+    const log = buildLog({ abi: shapesAbi, address: SHAPES, eventName: "Paused" });
 
     expect(log).toMatchObject({
-      address: SHAPES,
+      address: lowercase(SHAPES),
       blockNumber: 0n,
       transactionHash: zeroHash,
       transactionIndex: 0,

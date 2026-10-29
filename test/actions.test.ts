@@ -355,7 +355,7 @@ describe("getTransactionReceipt", () => {
     const receipt = await client.getTransactionReceipt({ hash: txHash });
     expect(receipt).toMatchObject({
       status: "reverted",
-      from: getAddress(alice),
+      from: lowercase(alice),
       gasUsed: 21_000n,
       blockNumber: 7n,
       blockHash: (await client.getBlock({ blockNumber: 7n })).hash,
@@ -370,8 +370,8 @@ describe("getTransactionReceipt", () => {
 
     const { logs } = await client.getTransactionReceipt({ hash: txHash });
     expect(logs.map((log) => [log.address, log.logIndex, log.blockNumber])).toEqual([
-      [USDC, 0, 7n],
-      [DAI, 1, 7n],
+      [lowercase(USDC), 0, 7n],
+      [lowercase(DAI), 1, 7n],
     ]);
     expect(logs[0]?.transactionHash).toBe(txHash);
     expect(parseEventLogs({ abi: erc20Abi, logs })[0]).toMatchObject({
@@ -493,6 +493,57 @@ describe("buildReceipt()", () => {
       blockNumber: 0n,
       logs: [],
     });
+  });
+});
+
+// Nodes send every address in their answers lowercase, and viem passes them
+// through as is, so code comparing them with === breaks against a real node.
+describe("addresses in answers are lowercase, as nodes send them", () => {
+  test("in receipts and their logs", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const hash = testHash("transfer");
+    mock.actions.getTransactionReceipt({ hash }).returns({
+      from: alice,
+      to: USDC,
+      contractAddress: bob,
+      logs: [usdc.events.Transfer({ from: alice, to: bob })],
+    });
+
+    const receipt = await client.getTransactionReceipt({ hash });
+    expect([receipt.from, receipt.to, receipt.contractAddress, receipt.logs[0]?.address]).toEqual([
+      lowercase(alice),
+      lowercase(USDC),
+      lowercase(bob),
+      lowercase(USDC),
+    ]);
+  });
+
+  test("in blocks", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBlock().returns({ miner: alice });
+
+    expect((await client.getBlock()).miner).toBe(lowercase(alice));
+  });
+
+  test("in emitted logs, and in what emit returns", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+
+    const log = usdc.emit.Transfer({ from: alice, to: bob });
+    expect(log.address).toBe(lowercase(USDC));
+    expect((await client.getLogs({ address: USDC }))[0]?.address).toBe(lowercase(USDC));
+  });
+
+  test("in builders, which equal what the mock answers", () => {
+    const log = buildLog({
+      abi: erc20Abi,
+      address: USDC,
+      eventName: "Transfer",
+      args: { from: alice, to: bob },
+    });
+    expect(log.address).toBe(lowercase(USDC));
+    expect(buildReceipt({ from: alice }).from).toBe(lowercase(alice));
   });
 });
 
