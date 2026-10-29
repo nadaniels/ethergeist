@@ -160,6 +160,10 @@ features land; tick them off as pages get written.
     aren't supported yet.
   - Overloaded events use the overload the args fit; "ambiguous" when
     several do.
+  - A receipt's log that names another block or transaction throws (e.g. a
+    `buildLog()` result, which sits in block 0). An emitted log fits the
+    receipt of its own transaction; one emitted as a block's second
+    transaction needs the receipt's `transactionIndex: 1` too.
   - `buildLog({ abi, address, eventName, args, blockNumber, … })` for a
     complete viem log where no mock places it (`toEqual`, Storybook props,
     a function that parses logs). Inside a mock, receipts and `emit` place

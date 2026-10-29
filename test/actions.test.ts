@@ -21,6 +21,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   MockNotFoundError,
   MockResolverError,
+  buildLog,
   buildReceipt,
   createMockRpc,
   multicall3Address,
@@ -418,6 +419,41 @@ describe("getTransactionReceipt", () => {
     const receipt = await client.waitForTransactionReceipt({ hash: txHash });
     expect(receipt.blockNumber).toBe(8n);
     expect(await client.getTransactionConfirmations({ transactionReceipt: receipt })).toBe(3n);
+  });
+
+  test("a log placed elsewhere throws, naming where", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const placed = buildLog({
+      abi: erc20Abi,
+      address: USDC,
+      eventName: "Transfer",
+      args: { from: alice, to: bob },
+    });
+
+    expect(() => {
+      mock.actions.getTransactionReceipt().returns({ blockNumber: 7n, logs: [placed] });
+    }).toThrow(
+      "Receipt log 0 has blockNumber 0n, but the receipt's is 7n. A receipt places its logs: " +
+        "pass only their content, e.g. from contract.events.",
+    );
+    // The hash is known only once a request arrives.
+    mock.actions.getTransactionReceipt({ hash: txHash }).returns({
+      logs: [{ ...usdc.events.Transfer({ from: alice, to: bob }), transactionHash: otherHash }],
+    });
+    expect(String(await rejectionOf(client.getTransactionReceipt({ hash: txHash })))).toContain(
+      `Receipt log 0 has transactionHash ${otherHash}, but the receipt's is ${txHash}.`,
+    );
+  });
+
+  test("a log placed where the receipt is fits, e.g. an emitted one", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const log = usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
+    mock.actions.getTransactionReceipt({ hash: log.transactionHash }).returns({ logs: [log] });
+
+    const receipt = await client.getTransactionReceipt({ hash: log.transactionHash });
+    expect(receipt.logs).toEqual([{ ...log, blockTimestamp: undefined }]);
   });
 
   test("an invalid static value fails at registration", () => {

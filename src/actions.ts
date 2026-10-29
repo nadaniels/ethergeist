@@ -13,7 +13,6 @@ import {
   hexToBigInt,
   isHex,
   numberToHex,
-  zeroHash,
 } from "viem";
 import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
 import type { PartCheckpoint } from "./checkpoint.js";
@@ -439,7 +438,7 @@ export function createActions(options: {
         if (value === null) return null;
         if (!isPlainObject(value))
           throw new TypeError(`A receipt must be an object or null; got ${typeof value}.`);
-        const { hash = zeroHash } = (call ?? {}) as Partial<ReceiptCall>;
+        const { hash } = (call ?? {}) as Partial<ReceiptCall>;
         return toRpcReceipt(completeReceipt(value, { hash, blockNumber: blockNumber() }));
       },
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encoded by toRpcReceipt

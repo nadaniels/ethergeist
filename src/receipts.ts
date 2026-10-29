@@ -9,6 +9,7 @@ import {
   zeroHash,
 } from "viem";
 import { blockHash } from "./blocks.js";
+import { formatValue } from "./format.js";
 
 /**
  * A log in a mocked receipt. Fields left out come from the receipt, or are
@@ -28,10 +29,11 @@ const zeroBloom = `0x${"00".repeat(256)}` as const;
  * is `"success"` (zero would mean reverted), the block is `blockNumber` unless
  * given, and each log's position, block, and transaction come from the receipt.
  * Everything else is zero. Addresses are checksummed, which also validates them.
+ * `hash` is `undefined` while it isn't known yet, e.g. at registration.
  */
 export function completeReceipt(
   receipt: MockReceipt,
-  { hash, blockNumber }: { hash: Hash; blockNumber: bigint },
+  { hash, blockNumber }: { hash: Hash | undefined; blockNumber: bigint },
 ): TransactionReceipt {
   const { logs = [], ...fields } = receipt;
   const number = fields.blockNumber ?? blockNumber;
@@ -46,7 +48,7 @@ export function completeReceipt(
     logsBloom: zeroBloom,
     status: "success",
     to: zeroAddress,
-    transactionHash: hash,
+    transactionHash: hash ?? zeroHash,
     transactionIndex: 0,
     type: "eip1559",
     ...fields,
@@ -54,10 +56,38 @@ export function completeReceipt(
   complete.from = getAddress(complete.from);
   if (complete.to) complete.to = getAddress(complete.to);
   if (complete.contractAddress) complete.contractAddress = getAddress(complete.contractAddress);
+  // Only a hash given now can be checked; a pinned request's arrives later.
+  const known = receipt.transactionHash ?? hash;
+  logs.forEach((log, i) => {
+    assertInReceipt(i, "blockNumber", log.blockNumber, complete.blockNumber);
+    assertInReceipt(i, "blockHash", log.blockHash, complete.blockHash);
+    if (known !== undefined) assertInReceipt(i, "transactionHash", log.transactionHash, known);
+    assertInReceipt(i, "transactionIndex", log.transactionIndex, complete.transactionIndex);
+  });
   return {
     ...complete,
     logs: logs.map((log, logIndex) => placeLog(log, { ...complete, logIndex })),
   };
+}
+
+/** Throws if receipt log `index` names a block or transaction other than the receipt's. */
+function assertInReceipt<value extends bigint | number | string>(
+  index: number,
+  field: string,
+  actual: value | null | undefined,
+  expected: value,
+) {
+  if (actual === undefined || actual === null) return;
+  const same =
+    typeof actual === "string" && typeof expected === "string"
+      ? actual.toLowerCase() === expected.toLowerCase()
+      : actual === expected;
+  if (!same)
+    throw new Error(
+      `Receipt log ${index} has ${field} ${formatValue(actual)}, but the receipt's is ` +
+        `${formatValue(expected)}. A receipt places its logs: pass only their content, e.g. from ` +
+        "contract.events.",
+    );
 }
 
 /** Where a log sits on the chain: its block, transaction, and index in the block. */
