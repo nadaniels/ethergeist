@@ -26,6 +26,7 @@ import {
   formatCall,
   formatContract,
   formatLimit,
+  formatMismatch,
   formatReceived,
 } from "./format.js";
 import { type MockCallRecord, type MockOutcome, errorOutcome } from "./history.js";
@@ -35,8 +36,8 @@ import {
   assertNoMatchers,
   bestMatch,
   findMatcher,
-  firstMismatch,
   isMatch,
+  mismatches,
   setLimit,
   specificity,
 } from "./match.js";
@@ -557,7 +558,8 @@ export function createMockContract<const abi extends Abi>(
     return history
       .filter((call) => selectorOf.get(call) === handler.selector)
       .map((call) => {
-        const index = firstMismatch(handler.args, call.args);
+        const mismatched = handler.args === undefined ? [] : mismatches(handler.args, call.args);
+        const index = mismatched[0];
         // Inputs may be unnamed (`""`); those are numbered from 1.
         const inputName =
           typeof index === "number" ? handler.abiItem.inputs[index]?.name : undefined;
@@ -567,7 +569,7 @@ export function createMockContract<const abi extends Abi>(
             : inputName === undefined || inputName === ""
               ? `arg ${Number(index) + 1}`
               : inputName;
-        return { call: formatCall(call.functionName, call.args), differs };
+        return { call: formatMismatch(call.functionName, call.args, mismatched), differs };
       });
   }
 

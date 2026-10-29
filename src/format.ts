@@ -31,6 +31,25 @@ export function formatLimit(limit: number | undefined, remaining: number | undef
   return remaining === limit ? ` ${count}` : ` ${count}, ${remaining} left`;
 }
 
+/**
+ * A received call for a near-miss message: the args (or fields) at
+ * `mismatched` in full, the rest as `…`. With nothing mismatched, the whole call.
+ */
+export function formatMismatch(
+  name: string,
+  actual: unknown,
+  mismatched: readonly (number | string)[],
+): string {
+  if (mismatched.length === 0) return formatCall(name, actual);
+  if (Array.isArray(actual))
+    return `${name}(${actual.map((v: unknown, i) => (mismatched.includes(i) ? formatValue(v) : "…")).join(", ")})`;
+  if (isPlainObject(actual)) {
+    const fields = mismatched.map((key) => `${key}: ${formatValue(actual[key])}`);
+    return `${name}({ ${[...fields, "…"].join(", ")} })`;
+  }
+  return formatCall(name, actual);
+}
+
 /** A call an unused mock's function received, and where it first differs from the mock. */
 export type ReceivedCall = { call: string; differs: string | undefined };
 

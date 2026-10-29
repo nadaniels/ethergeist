@@ -19,13 +19,19 @@ import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError } from "./errors.js";
 import { type MockOutcome, errorOutcome } from "./history.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
-import { type ReceivedCall, formatCall, formatLimit, formatReceived } from "./format.js";
+import {
+  type ReceivedCall,
+  formatCall,
+  formatLimit,
+  formatMismatch,
+  formatReceived,
+} from "./format.js";
 import {
   type Specificity,
   assertNoMatchers,
   bestMatch,
-  firstMismatch,
   isMatch,
+  mismatches,
   setLimit,
   specificity,
 } from "./match.js";
@@ -231,9 +237,10 @@ function createTable(definition: Definition) {
   /** The calls this table received since the last clear, and where each differs from `handler`. */
   function received(handler: Handler): ReceivedCall[] {
     return history.map((call) => {
-      const key = firstMismatch(handler.pinned, actualOf(handler.pinned, call));
+      const mismatched = mismatches(handler.pinned, actualOf(handler.pinned, call));
+      const [key] = mismatched;
       return {
-        call: formatCall(definition.name, "params" in call ? call.params : call),
+        call: formatMismatch(definition.name, "params" in call ? call.params : call, mismatched),
         differs: typeof key === "number" ? `param ${key + 1}` : key,
       };
     });

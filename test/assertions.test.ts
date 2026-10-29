@@ -354,7 +354,7 @@ describe("assertAllUsed(): what the function received instead", () => {
         "1 mock(s) never answered a call:",
         `  - allowance(${getAddress(alice)}, ${getAddress(bob)}) on USDC (${USDC})`,
         "    received 1 call to allowance:",
-        `      allowance(${getAddress(alice)}, ${DAI})  ← spender didn't match`,
+        `      allowance(…, ${DAI})  ← spender didn't match`,
         "",
         "Requests so far:",
         "#1 eth_call USDC.allowance(0x0000…11cE, 0x6B17…1d0F) → 0n",
@@ -412,7 +412,7 @@ describe("assertAllUsed(): what the function received instead", () => {
     await client.readContract({ abi, address: DAI, functionName: "balanceOf", args: [alice] });
     const message = unusedMessage(mock);
     expect(message).toContain("received 1 call to balanceOf:");
-    expect(message).toContain(`balanceOf(${getAddress(alice)}, 1n)  ← arg 1 didn't match`);
+    expect(message).toContain(`balanceOf(${getAddress(alice)}, …)  ← arg 1 didn't match`);
   });
 
   test("actions name the field; raw methods number the param", async () => {
@@ -427,9 +427,51 @@ describe("assertAllUsed(): what the function received instead", () => {
     const message = unusedMessage(mock);
     expect(message).toContain(
       `getBalance({ address: ${getAddress(bob)} })\n    received 1 call to getBalance:\n` +
-        `      getBalance({ address: ${getAddress(alice)}, blockNumber: `,
+        `      getBalance({ address: ${getAddress(alice)}, … })  ← address didn't match`,
     );
     expect(message).toContain("← address didn't match");
-    expect(message).toContain(`eth_getStorageAt(${USDC}, 0x02, latest)  ← param 2 didn't match`);
+    expect(message).toContain("eth_getStorageAt(…, 0x02, …)  ← param 2 didn't match");
+  });
+});
+
+/** The first stack frame of what `check` throws. */
+function topFrame(check: () => void) {
+  try {
+    check();
+  } catch (error) {
+    const stack = error instanceof Error ? (error.stack ?? "") : "";
+    return stack.split("\n").find((line) => line.trim().startsWith("at ")) ?? "";
+  }
+  return "";
+}
+
+describe("failed checks' stacks", () => {
+  test("start at the caller, not in the mock", async () => {
+    const { mock, balanceOf } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC }).read.balanceOf([bob]).returns(1n);
+    const baseline = mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI }).read.balanceOf([bob]).returns(1n);
+    await rejectionOf(balanceOf(alice));
+
+    expect(
+      topFrame(() => {
+        mock.assertAllUsed();
+      }),
+    ).toContain("assertions.test.ts");
+    expect(
+      topFrame(() => {
+        mock.assertNoUnhandled();
+      }),
+    ).toContain("assertions.test.ts");
+    expect(
+      topFrame(() => {
+        mock.checkpoint();
+      }),
+    ).toContain("assertions.test.ts");
+    expect(
+      topFrame(() => {
+        baseline.restore({ assertAllUsed: true });
+      }),
+    ).toContain("assertions.test.ts");
   });
 });

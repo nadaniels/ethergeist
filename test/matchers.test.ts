@@ -313,8 +313,8 @@ describe("messages", () => {
         "  balanceOf(where(isCarol))",
         "  balanceOf(where(() => false))",
         "  balanceOf(where(isTreasury))",
-        // Unnamed: the source on one line, cut to 40 characters.
-        "  balanceOf(where((account) => isAddressEqual(account, ca…))",
+        // Unnamed: the source on one line, cut to 60 characters.
+        "  balanceOf(where((account) => isAddressEqual(account, carol) || isAddressEqu…))",
       ].join("\n"),
     );
     // Matchers are pinned args, so unused ones are reported, `any` included.

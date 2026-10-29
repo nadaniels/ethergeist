@@ -18,7 +18,7 @@ import {
 import { mainnet } from "viem/chains";
 import { createActions } from "./actions.js";
 import { type BlockClock, generateBlock, numberOfBlockHash } from "./blocks.js";
-import type { MockCheckpoint } from "./checkpoint.js";
+import type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
 import {
   type CallContext,
   type CreateMockContractParameters,
@@ -150,10 +150,17 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       `historyOnFailure takes a count of requests or false; got ${String(historyOnFailure)}.`,
     );
 
-  /** A failed check's error, with the most recent requests after the message. */
-  function checkFailed(message: string): Error {
+  /**
+   * A failed check's error, with the most recent requests after the message.
+   * Its stack starts where `check`, the public method, was called, so a test
+   * runner points at the test, not into the mock.
+   */
+  function checkFailed(check: (...args: never[]) => unknown, message: string): Error {
     const recent = historyOnFailure === false ? undefined : formatRecent(history, historyOnFailure);
-    return new Error(recent === undefined ? message : `${message}\n\n${recent}`);
+    const error = new Error(recent === undefined ? message : `${message}\n\n${recent}`);
+    // Not every engine has it (Node's types say it's always there).
+    if ("captureStackTrace" in Error) Error.captureStackTrace(error, check);
+    return error;
   }
   const log =
     parameters.debug === true
@@ -419,6 +426,83 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     return undefined;
   }
 
+  function assertNoUnhandled() {
+    const [failure] = unhandledFailure(unhandled);
+    if (failure !== undefined) throw checkFailed(assertNoUnhandled, failure);
+  }
+
+  function assertAllUsed() {
+    const [failure] = unusedFailure([
+      ...contracts.flatMap((c) => c.unusedMocks()),
+      ...actions.unusedMocks(),
+    ]);
+    if (failure !== undefined) throw checkFailed(assertAllUsed, failure);
+  }
+
+  function checkpoint(): MockCheckpoint {
+    if (unhandled.length > 0)
+      throw checkFailed(
+        checkpoint,
+        `Can't checkpoint: ${unhandled.length} request(s) since the last clear ` +
+          "went unanswered. Fix the setup, or call clearCalls() first if they were " +
+          `intentional:\n${unhandled.map(({ error }) => `  - ${error.shortMessage}`).join("\n")}`,
+      );
+
+    const contractCount = contracts.length;
+    const savedContracts = contracts.map((contract) => contract.checkpoint());
+    const savedActions = actions.checkpoint();
+    const savedEmpty = new Set(emptyAddresses);
+    const savedFaults = faults.map((fault) => [fault, fault.remaining, fault.count] as const);
+    const savedBlockNumber = blockNumber;
+    const savedBatchCount = batchCount;
+    const entry = { valid: true };
+    checkpoints.push(entry);
+
+    /** Mocks registered since this checkpoint that never answered, except defaults. */
+    const unusedSince = () => [
+      ...savedContracts.flatMap((saved) => saved.unusedSince()),
+      ...contracts.slice(contractCount).flatMap((contract) => contract.unusedMocks()),
+      ...savedActions.unusedSince(),
+    ];
+
+    function restore(options: MockRestoreOptions = {}) {
+      if (!entry.valid)
+        throw new Error(
+          "This checkpoint is no longer valid: an earlier checkpoint was restored, " +
+            "or reset() was called, after it was taken.",
+        );
+      // Checked first, because restoring clears what they look at; thrown
+      // last, so a failed check can't leave the next test unrestored.
+      const failures = [
+        ...(options.assertNoUnhandled === true ? unhandledFailure(unhandled) : []),
+        ...(options.assertAllUsed === true ? unusedFailure(unusedSince()) : []),
+      ];
+      // Built now: restoring clears the history it shows.
+      const failed = failures.length > 0 ? checkFailed(restore, failures.join("\n\n")) : undefined;
+
+      // Checkpoints taken after this one describe state that's about to go away.
+      for (const later of checkpoints.splice(checkpoints.indexOf(entry) + 1)) later.valid = false;
+
+      for (const contract of contracts.slice(contractCount)) contract.detach();
+      contracts.length = contractCount;
+      for (const saved of savedContracts) saved.restore();
+      savedActions.restore();
+      emptyAddresses.clear();
+      for (const address of savedEmpty) emptyAddresses.add(address);
+      faults.length = savedFaults.length;
+      for (const [fault, remaining, count] of savedFaults) {
+        fault.remaining = remaining;
+        fault.count = count;
+      }
+      blockNumber = savedBlockNumber;
+      batchCount = savedBatchCount;
+      clearCalls();
+
+      if (failed) throw failed;
+    }
+    return { restore };
+  }
+
   return {
     /** Answers a JSON-RPC request directly, as `transport()` does for viem. */
     request: (rpcRequest: RpcRequest) => request(rpcRequest),
@@ -530,10 +614,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * Throws if any request went unanswered: a missing mock or a resolver that
      * threw. Catches errors the code under test swallowed. Reverts are answers.
      */
-    assertNoUnhandled() {
-      const [failure] = unhandledFailure(unhandled);
-      if (failure !== undefined) throw checkFailed(failure);
-    },
+    assertNoUnhandled,
     /**
      * Throws if a mock never answered a call: its args are wrong and a broader
      * mock answered instead, or the app no longer makes the call it stands for.
@@ -543,13 +624,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * it and use `restore({ assertAllUsed: true })`, which checks only what
      * was registered since.
      */
-    assertAllUsed() {
-      const [failure] = unusedFailure([
-        ...contracts.flatMap((c) => c.unusedMocks()),
-        ...actions.unusedMocks(),
-      ]);
-      if (failure !== undefined) throw checkFailed(failure);
-    },
+    assertAllUsed,
     /** Clears call and request history and usage; registrations and the block number stay. */
     clearCalls,
     /**
@@ -557,70 +632,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * each test, so shared setup can be registered once. Throws if requests
      * since the last clear went unanswered: a broken setup isn't a baseline. See `MockCheckpoint` for nesting and caveats.
      */
-    checkpoint(): MockCheckpoint {
-      if (unhandled.length > 0)
-        throw checkFailed(
-          `Can't checkpoint: ${unhandled.length} request(s) since the last clear ` +
-            "went unanswered. Fix the setup, or call clearCalls() first if they were " +
-            `intentional:\n${unhandled.map(({ error }) => `  - ${error.shortMessage}`).join("\n")}`,
-        );
-
-      const contractCount = contracts.length;
-      const savedContracts = contracts.map((contract) => contract.checkpoint());
-      const savedActions = actions.checkpoint();
-      const savedEmpty = new Set(emptyAddresses);
-      const savedFaults = faults.map((fault) => [fault, fault.remaining, fault.count] as const);
-      const savedBlockNumber = blockNumber;
-      const savedBatchCount = batchCount;
-      const entry = { valid: true };
-      checkpoints.push(entry);
-
-      /** Mocks registered since this checkpoint that never answered, except defaults. */
-      const unusedSince = () => [
-        ...savedContracts.flatMap((saved) => saved.unusedSince()),
-        ...contracts.slice(contractCount).flatMap((contract) => contract.unusedMocks()),
-        ...savedActions.unusedSince(),
-      ];
-
-      return {
-        restore(options = {}) {
-          if (!entry.valid)
-            throw new Error(
-              "This checkpoint is no longer valid: an earlier checkpoint was restored, " +
-                "or reset() was called, after it was taken.",
-            );
-          // Checked first, because restoring clears what they look at; thrown
-          // last, so a failed check can't leave the next test unrestored.
-          const failures = [
-            ...(options.assertNoUnhandled === true ? unhandledFailure(unhandled) : []),
-            ...(options.assertAllUsed === true ? unusedFailure(unusedSince()) : []),
-          ];
-          // Built now: restoring clears the history it shows.
-          const failed = failures.length > 0 ? checkFailed(failures.join("\n\n")) : undefined;
-
-          // Checkpoints taken after this one describe state that's about to go away.
-          for (const later of checkpoints.splice(checkpoints.indexOf(entry) + 1))
-            later.valid = false;
-
-          for (const contract of contracts.slice(contractCount)) contract.detach();
-          contracts.length = contractCount;
-          for (const saved of savedContracts) saved.restore();
-          savedActions.restore();
-          emptyAddresses.clear();
-          for (const address of savedEmpty) emptyAddresses.add(address);
-          faults.length = savedFaults.length;
-          for (const [fault, remaining, count] of savedFaults) {
-            fault.remaining = remaining;
-            fault.count = count;
-          }
-          blockNumber = savedBlockNumber;
-          batchCount = savedBatchCount;
-          clearCalls();
-
-          if (failed) throw failed;
-        },
-      };
-    },
+    checkpoint,
     /**
      * Returns the mock to its initial state: no contracts, no history, and the
      * starting block number. Handles from before the reset throw if used to

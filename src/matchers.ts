@@ -36,7 +36,7 @@ export const match = {
    * Matches when `predicate` returns `true`. It gets the decoded value, in
    * viem's types; addresses arrive checksummed, so compare them with
    * `isAddressEqual`, not `===`. Messages show `label`, the predicate's name
-   * (`where(isLarge)`), or the start of its source (`where((n) => n > 5n)`).
+   * (`where(isLarge)`), or its source, cut to 60 characters (`where((n) => n > 5n)`).
    */
   where<value>(predicate: (value: value) => boolean, label?: string): value {
     return asValue({
@@ -78,7 +78,7 @@ export function partialMatcher(fields: unknown): Matcher {
 }
 
 /**
- * A function's source on one line, cut to 40 characters, for an unnamed
+ * A function's source on one line, cut to 60 characters, for an unnamed
  * predicate's label. Test runners compile ES modules, so an imported name
  * reads back as a property of a module object. Calls take the same shape
  * everywhere, `(0, module.name)(…)` (Vite, Babel, TypeScript, swc, esbuild,
@@ -97,7 +97,7 @@ function sourceOf(fn: (value: never) => boolean): string {
     )
     .replaceAll(/\s+/gu, " ")
     .trim();
-  return source.length > 40 ? `${source.slice(0, 39)}…` : source;
+  return source.length > 60 ? `${source.slice(0, 59)}…` : source;
 }
 
 /** A matcher stands in for a value of whatever type is at its position. */

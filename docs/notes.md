@@ -44,11 +44,24 @@ features land; tick them off as pages get written.
     contention (its exact values match, every better mock failed); one that
     throws is reported as unhandled, naming it.
   - Names in messages: the `label`, the function's name (`where(isLarge)`),
-    or the start of an inline arrow's source (`where((n) => n > 5n)`).
+    or an inline arrow's source, cut to 60 characters
+    (`where((n) => n > 5n)`).
   - Matchers choose which answer a call gets; they aren't assertions. To
     check what the app sent, use `.calls` with `expect`, which gives a real
     diff. Pinning args and relying on `assertAllUsed()` also works: its
     message lists what the function received instead (section 6).
+  - Say explicitly: a pin checks args only when the test registers it. In
+    shared setup it's exempt from `assertAllUsed` (baseline or `defaults`),
+    and a fallback answers the calls that don't match, so a wrong pin passes
+    silently (measured in dogfooding: 98/98 green with a deliberately wrong
+    shared pin).
+  - Invariants on a shared mock ("every swap uses this token"): loop over
+    `.calls` with `expect` in an `afterEach`, before the `restore()` that
+    clears them. The app still gets its answers, the runner shows a real
+    diff, and the cause is reported even when the test body passed.
+  - The fallback, an `expect` inside a resolver, works but fails the app's
+    call: the first error reported is the symptom (e.g. an HTTP 500 from the
+    app), with the cause second.
   - `partial` for "only these struct fields": at any depth, in structs inside
     arrays, with matchers as field values. Struct args are complete without
     it: omitting a field is a type error, not a wildcard. It ranks by what its
@@ -140,7 +153,10 @@ features land; tick them off as pages get written.
       its function received (up to 3, then a count) and the first arg, field
       or param that didn't match, by its ABI name; "matches; another mock
       answered it" for a shadowed mock; "received no calls" when the app never
-      made it. Show an example.
+      made it. Args that matched show as `…`, so the line shows what differed
+      (the whole call when everything matched). Show an example.
+- [ ] Failed checks' stacks start at the caller (the test or hook), not in
+      the mock, so the runner's code frame points at the test.
 - [ ] Addresses in messages are always checksummed. Address args are
       normalized at registration, which also rejects malformed ones.
 - [ ] `contract({ …, name: "USDC" })`: names show in every message (and in
@@ -195,7 +211,10 @@ features land; tick them off as pages get written.
       hooks are the same; `node:test` names them `before`/`afterEach`):
       `checkpoint()` in `beforeAll`, `restore({ checks })` in `afterEach`, and
       a `beforeEach` backstop guarded by a flag the `afterEach` sets. There's
-      no runner-specific helper; this is the supported way.
+      no runner-specific helper; this is the supported way. Vitest's
+      `afterEach` can read the test's result (`task.result?.state`) to print
+      history only on failure; Jest's can't see the result, so its recipe
+      prints always, or behind an env flag.
 - [ ] Say plainly that the conditional backstop prevents one failure turning
       into many, but doesn't make nesting safe: an outer per-test restore
       still wipes a nested describe's `beforeAll` setup after its first test.
