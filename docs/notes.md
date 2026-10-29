@@ -24,6 +24,13 @@ features land; tick them off as pages get written.
       with it and repeat it in examples.
 - [ ] `read` vs `simulate` namespaces (view/pure vs nonpayable/payable),
       mirroring `getContract`.
+- [ ] Test values: `testAddress("alice")` and `testHash("swap-1")`, stable
+      and realistic (checksummed, full-width). Say why not random (faker):
+      random values rarely find bugs fixed ones miss, and they make messages
+      and snapshots change between runs; why not `0x…0001`: it hides
+      case-comparison and sorting bugs. Several at once:
+      ``Array.from({ length: 3 }, (_, i) => testAddress(`user-${i + 1}`))``.
+      The address belongs to a key derived from the label (signing later).
 
 ## 3. Mocking contract calls
 

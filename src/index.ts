@@ -46,4 +46,5 @@ export type { FailRequestsOptions, MockFault, MockFaultHandle } from "./faults.j
 export { match } from "./matchers.js";
 export { type MockBatch, multicall3Address } from "./multicall.js";
 export { zeroResult } from "./result.js";
+export { testAddress, testHash } from "./testValues.js";
 export type { RevertFn, RevertSpec } from "./revert.js";
