@@ -47,8 +47,8 @@ features land; tick them off as pages get written.
     or the start of an inline arrow's source (`where((n) => n > 5n)`).
   - Matchers choose which answer a call gets; they aren't assertions. To
     check what the app sent, use `.calls` with `expect`, which gives a real
-    diff. Pinning args and relying on `assertAllUsed()` works, but its
-    message doesn't show what arrived yet.
+    diff. Pinning args and relying on `assertAllUsed()` also works: its
+    message lists what the function received instead (section 6).
   - `partial` for "only these struct fields": at any depth, in structs inside
     arrays, with matchers as field values. Struct args are complete without
     it: omitting a field is a type error, not a wildcard. It ranks by what its
@@ -133,6 +133,11 @@ features land; tick them off as pages get written.
       `restore({ assertAllUsed: true })`. That includes a per-test setup
       function: end it with `mock.checkpoint()` and return the checkpoint.
 - [ ] How to read "No mock for …" and its "Registered:" list.
+- [ ] How to read "never answered a call": under each unused mock, the calls
+      its function received (up to 3, then a count) and the first arg, field
+      or param that didn't match, by its ABI name; "matches; another mock
+      answered it" for a shadowed mock; "received no calls" when the app never
+      made it. Show an example.
 - [ ] Addresses in messages are always checksummed. Address args are
       normalized at registration, which also rejects malformed ones.
 - [ ] `contract({ …, name: "USDC" })`: names show in every message (and in

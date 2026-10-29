@@ -31,6 +31,25 @@ export function formatLimit(limit: number | undefined, remaining: number | undef
   return remaining === limit ? ` ${count}` : ` ${count}, ${remaining} left`;
 }
 
+/** A call an unused mock's function received, and where it first differs from the mock. */
+export type ReceivedCall = { call: string; differs: string | undefined };
+
+/**
+ * Under an unused mock, for messages: the calls its function did receive (up
+ * to 3) and where each first differs, or that it received none.
+ */
+export function formatReceived(name: string, received: readonly ReceivedCall[]): string {
+  if (received.length === 0) return `\n    received no calls to ${name}`;
+  const lines = received.slice(0, 3).map(({ call, differs }) => {
+    const why =
+      differs === undefined ? "matches; another mock answered it" : `${differs} didn't match`;
+    return `\n      ${call}  ← ${why}`;
+  });
+  if (received.length > 3) lines.push(`\n      …and ${received.length - 3} more`);
+  const count = received.length === 1 ? "1 call" : `${received.length} calls`;
+  return `\n    received ${count} to ${name}:${lines.join("")}`;
+}
+
 type FormatOptions = {
   /** Shorten long hex (addresses, hashes, data) to `0x1234…abcd`, for overviews. Errors keep it whole. */
   short?: boolean;

@@ -21,7 +21,13 @@ import {
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
-import { formatCall, formatContract, formatLimit } from "./format.js";
+import {
+  type ReceivedCall,
+  formatCall,
+  formatContract,
+  formatLimit,
+  formatReceived,
+} from "./format.js";
 import { type MockCallRecord, type MockOutcome, errorOutcome } from "./history.js";
 import type { MockBatch } from "./multicall.js";
 import {
@@ -29,6 +35,7 @@ import {
   assertNoMatchers,
   bestMatch,
   findMatcher,
+  firstMismatch,
   isMatch,
   setLimit,
   specificity,
@@ -241,6 +248,8 @@ export function createMockContract<const abi extends Abi>(
   const label = formatContract(address, name);
   const handlers: Handler[] = [];
   const history: MockCall[] = [];
+  // Overloads share a name, so unused mocks find their calls by selector.
+  const selectorOf = new WeakMap<MockCall, Hex>();
   let detached = false;
   // Handed to every resolver. RevertFn's generic signature only narrows what
   // callers may pass; createRevertError accepts every RevertSpec.
@@ -463,6 +472,7 @@ export function createMockContract<const abi extends Abi>(
     decoded.call = call;
     decoded.abiItem = functionsBySelector.get(selector);
     history.push(call);
+    selectorOf.set(call, selector);
     onCall(call);
 
     // The most specific matching handler wins; among equally specific ones,
@@ -510,10 +520,29 @@ export function createMockContract<const abi extends Abi>(
       .filter(
         (h) => !h.isDefault && h.resolver !== undefined && h.usedCount === 0 && h.remaining !== 0,
       )
-      .map(
-        (h) =>
-          `${formatCall(h.abiItem.name, h.args)}${formatLimit(h.limit, h.remaining)} on ${label}`,
-      );
+      .map((h) => {
+        const mock = `${formatCall(h.abiItem.name, h.args)}${formatLimit(h.limit, h.remaining)}`;
+        return `${mock} on ${label}${formatReceived(h.abiItem.name, received(h))}`;
+      });
+  }
+
+  /** The calls `handler`'s function received since the last clear, and where each differs. */
+  function received(handler: Handler): ReceivedCall[] {
+    return history
+      .filter((call) => selectorOf.get(call) === handler.selector)
+      .map((call) => {
+        const index = firstMismatch(handler.args, call.args);
+        // Inputs may be unnamed (`""`); those are numbered from 1.
+        const inputName =
+          typeof index === "number" ? handler.abiItem.inputs[index]?.name : undefined;
+        const differs =
+          index === undefined
+            ? undefined
+            : inputName === undefined || inputName === ""
+              ? `arg ${Number(index) + 1}`
+              : inputName;
+        return { call: formatCall(call.functionName, call.args), differs };
+      });
   }
 
   return {

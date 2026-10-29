@@ -1,7 +1,7 @@
 import { InvalidAddressError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { MockNotFoundError, MockResolverError, createMockRpc } from "../src/index.js";
+import { MockNotFoundError, MockResolverError, createMockRpc, match } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -323,5 +323,110 @@ describe("assertAllUsed()", () => {
     expect(() => {
       mock.assertAllUsed();
     }).toThrow(`balanceOf(${getAddress(alice)})`);
+  });
+});
+
+/** `assertAllUsed()`'s message, or `""` if it passed. */
+function unusedMessage(mock: ReturnType<typeof setup>["mock"]) {
+  try {
+    mock.assertAllUsed();
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return "";
+}
+
+describe("assertAllUsed(): what the function received instead", () => {
+  test("each call the function received, with the first arg that didn't match", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
+    usdc.read.allowance([alice, bob]).returns(1n);
+    usdc.read.allowance().returns(0n);
+
+    await client.readContract({
+      abi: erc20Abi,
+      address: USDC,
+      functionName: "allowance",
+      args: [alice, DAI],
+    });
+    expect(unusedMessage(mock)).toBe(
+      [
+        "1 mock(s) never answered a call:",
+        `  - allowance(${getAddress(alice)}, ${getAddress(bob)}) on USDC (${USDC})`,
+        "    received 1 call to allowance:",
+        `      allowance(${getAddress(alice)}, ${DAI})  ← spender didn't match`,
+      ].join("\n"),
+    );
+  });
+
+  test("or that it received none", () => {
+    const { mock } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC }).read.balanceOf([alice]).returns(1n);
+
+    expect(unusedMessage(mock)).toContain(
+      `balanceOf(${getAddress(alice)}) on ${USDC}\n    received no calls to balanceOf`,
+    );
+  });
+
+  test("a call that matched was answered by another mock", async () => {
+    const { mock, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.read.balanceOf().returns(1n);
+    usdc.read.balanceOf([alice]).returns(2n);
+
+    await balanceOf(alice);
+    expect(unusedMessage(mock)).toContain(
+      `      balanceOf(${getAddress(alice)})  ← matches; another mock answered it`,
+    );
+  });
+
+  test("shows the first 3 calls and counts the rest", async () => {
+    const { mock, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.read.balanceOf([bob]).returns(1n);
+    usdc.read.balanceOf().returns(0n);
+
+    await Promise.all(Array.from({ length: 5 }, () => balanceOf(alice)));
+    const message = unusedMessage(mock);
+    expect(message).toContain("received 5 calls to balanceOf:");
+    expect(message.match(/account didn't match/gu)).toHaveLength(3);
+    expect(message).toContain("      …and 2 more");
+  });
+
+  test("unnamed inputs are numbered; other overloads' calls are left out", async () => {
+    const { mock, client } = setup();
+    // ERC-1155-style overloads, with an unnamed input.
+    const abi = parseAbi([
+      "function balanceOf(address, uint256 id) view returns (uint256)",
+      "function balanceOf(address owner) view returns (uint256)",
+    ]);
+    const token = mock.contract({ abi, address: DAI });
+    token.read.balanceOf([bob, 1n]).returns(1n);
+    token.read.balanceOf([match.any(), match.any()]).returns(0n);
+    token.read.balanceOf([match.any()]).returns(0n);
+
+    await client.readContract({ abi, address: DAI, functionName: "balanceOf", args: [alice, 1n] });
+    await client.readContract({ abi, address: DAI, functionName: "balanceOf", args: [alice] });
+    const message = unusedMessage(mock);
+    expect(message).toContain("received 1 call to balanceOf:");
+    expect(message).toContain(`balanceOf(${getAddress(alice)}, 1n)  ← arg 1 didn't match`);
+  });
+
+  test("actions name the field; raw methods number the param", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: bob }).returns(1n);
+    mock.actions.getBalance().returns(0n);
+    mock.method("eth_getStorageAt", [USDC, "0x01"]).returns("0x");
+    mock.method("eth_getStorageAt").returns("0x");
+
+    await client.getBalance({ address: alice });
+    await client.getStorageAt({ address: USDC, slot: "0x02" });
+    const message = unusedMessage(mock);
+    expect(message).toContain(
+      `getBalance({ address: ${getAddress(bob)} })\n    received 1 call to getBalance:\n` +
+        `      getBalance({ address: ${getAddress(alice)}, blockNumber: `,
+    );
+    expect(message).toContain("← address didn't match");
+    expect(message).toContain(`eth_getStorageAt(${USDC}, 0x02, latest)  ← param 2 didn't match`);
   });
 });

@@ -72,6 +72,29 @@ export function bestMatch<candidate extends Rankable>(
   }
 }
 
+/**
+ * Where a call first differs from a mock's pinned args or params, for
+ * messages: the first top-level array index or object key whose value doesn't
+ * match. `undefined` when everything pinned matches (or nothing is). A
+ * predicate that throws counts as not matching.
+ */
+export function firstMismatch(pinned: unknown, actual: unknown): number | string | undefined {
+  const entries: [number | string, unknown][] = Array.isArray(pinned)
+    ? pinned.map((value: unknown, i) => [i, value])
+    : isPlainObject(pinned)
+      ? Object.entries(pinned)
+      : [];
+  const at = (key: number | string): unknown =>
+    Array.isArray(actual) ? actual[Number(key)] : isPlainObject(actual) ? actual[key] : undefined;
+  return entries.find(([key, value]) => {
+    try {
+      return !isMatch(value, at(key));
+    } catch {
+      return true;
+    }
+  })?.[0];
+}
+
 /** A mock's limit: `limit` answers in all, `remaining` of them left. */
 type Limit = { limit: number | undefined; remaining: number | undefined };
 

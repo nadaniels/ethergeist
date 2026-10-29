@@ -19,11 +19,12 @@ import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError } from "./errors.js";
 import { type MockOutcome, errorOutcome } from "./history.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
-import { formatCall, formatLimit } from "./format.js";
+import { type ReceivedCall, formatCall, formatLimit, formatReceived } from "./format.js";
 import {
   type Specificity,
   assertNoMatchers,
   bestMatch,
+  firstMismatch,
   isMatch,
   setLimit,
   specificity,
@@ -221,7 +222,21 @@ function createTable(definition: Definition) {
   function unused(list: Handler[]) {
     return list
       .filter((h) => h.resolver !== undefined && h.usedCount === 0 && h.remaining !== 0)
-      .map((h) => `${formatCall(definition.name, h.pinned)}${formatLimit(h.limit, h.remaining)}`);
+      .map((h) => {
+        const mock = `${formatCall(definition.name, h.pinned)}${formatLimit(h.limit, h.remaining)}`;
+        return `${mock}${formatReceived(definition.name, received(h))}`;
+      });
+  }
+
+  /** The calls this table received since the last clear, and where each differs from `handler`. */
+  function received(handler: Handler): ReceivedCall[] {
+    return history.map((call) => {
+      const key = firstMismatch(handler.pinned, actualOf(handler.pinned, call));
+      return {
+        call: formatCall(definition.name, "params" in call ? call.params : call),
+        differs: typeof key === "number" ? `param ${key + 1}` : key,
+      };
+    });
   }
 
   async function answer(
