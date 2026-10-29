@@ -202,6 +202,23 @@ features land; tick them off as pages get written.
   - Logs carry `blockTimestamp` (reth sends it; some nodes don't), from the
     generated block. A `getBlock` mock with another timestamp doesn't
     change it.
+- [ ] `mock.actions.getLogs(pins)` for one request rather than the logs:
+      faults, limits, and overrides. Show:
+  - Pins match the decoded filter (`address`, `topics`, `fromBlock`,
+    `toBlock` as resolved bigints, `blockHash`), with matchers.
+  - A mock answers before the emitted logs and the node's rules, so an
+    override works for an address without a contract or a range past the
+    head. `.returns([...])` takes placed logs (from `emit()` or
+    `buildLog()`), not `contract.events` content; `.returns()` is `[]`.
+  - Recipes: a block range cap, with a resolver that fails big ranges and
+    answers `logs` (the emitted logs the filter matches) otherwise; a
+    result cap, failing when `logs` is too long; and `.once().fails(…)` for
+    one failed request. Use a real node's error so the app's range-splitting
+    code sees what production sends: reth's `-32602 "query exceeds max
+    results 20000, retry with the range A-B"`, or Linea's `-32602 "range
+    49999 exceeds limit of 10000"`.
+  - Reading `logs` for a filter the store refuses throws that refusal, as
+    if unmocked; it's not reported as the resolver's error.
 - [ ] Strict by default for data the test owns (balances, receipts), and how
       to opt into real-node defaults with args-less mocks.
 - [ ] `mock.method()` for any other method, with raw JSON-RPC values.

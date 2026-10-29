@@ -16,7 +16,7 @@ import { MockNotFoundError, MockRpcError } from "./errors.js";
 import type { EmitOptions, EmittedLog, MockEventLog } from "./events.js";
 import { formatValue } from "./format.js";
 import { placeLog } from "./receipts.js";
-import { isPlainObject, lowercase } from "./result.js";
+import { isPlainObject, lowercase, nodeAddress } from "./result.js";
 import { testHash } from "./testValues.js";
 
 /** A topic position in a filter: one hash, any of several, or `null` for any. */
@@ -188,11 +188,11 @@ export function createLogStore(hooks: {
   }
 
   /**
-   * The logs a call asks for, in JSON-RPC form, sorted by block and log
-   * index. Errors are reth's for the same filter; addresses the mock doesn't
-   * know are reported as unmocked, since a real node would quietly answer `[]`.
+   * The emitted logs a call asks for, sorted by block and log index. Errors
+   * are reth's for the same filter; addresses the mock doesn't know are
+   * reported as unmocked, since a real node would quietly answer `[]`.
    */
-  function query(call: LogsCall): RpcLog[] {
+  function find(call: LogsCall): PlacedLog[] {
     if (call.topics.length > 4)
       throw new MockRpcError(-32602, "query exceeds the maximum of 4 topics");
     const head = blockNumber();
@@ -235,14 +235,14 @@ export function createLogStore(hooks: {
           : a.blockNumber < b.blockNumber
             ? -1
             : 1,
-      )
-      .map((log) => toRpcLog(log));
+      );
   }
 
   return {
     emit,
     decode,
-    query,
+    find,
+    toRpc,
     describe: describeLogsCall,
     /** Every placed log, by block and log index. */
     get logs(): PlacedLog[] {
@@ -298,13 +298,43 @@ function topicsMatch(filter: readonly LogsTopic[], topics: readonly Hash[]): boo
   });
 }
 
-function toRpcLog(log: PlacedLog): RpcLog {
+function toRpcLog(log: EmittedLog): RpcLog {
+  const { blockTimestamp } = log;
   return {
     // ox types a log's topics as non-empty, but a LOG0 log has none; it passes them through.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- ox's type is narrower than its runtime
-    ...OxLog.toRpc(log as OxLog.Log),
-    blockTimestamp: numberToHex(log.blockTimestamp),
+    ...OxLog.toRpc({ ...log, address: nodeAddress(log.address) } as OxLog.Log),
+    ...(typeof blockTimestamp === "bigint" ? { blockTimestamp: numberToHex(blockTimestamp) } : {}),
   };
+}
+
+/** Fields a placed log has, with the types viem gives them. */
+const placedFields = {
+  blockHash: "string",
+  blockNumber: "bigint",
+  transactionHash: "string",
+  transactionIndex: "number",
+  logIndex: "number",
+} as const;
+
+/**
+ * Logs a `getLogs` mock answered with, in JSON-RPC form. They must be placed
+ * (from `emit()` or `buildLog()`): content alone has no block or transaction.
+ */
+function toRpc(value: unknown): RpcLog[] {
+  if (!Array.isArray(value))
+    throw new TypeError(`getLogs answers a list of logs; got ${typeof value}.`);
+  return value.map((log: unknown, i) => {
+    const placed =
+      isPlainObject(log) &&
+      Object.entries(placedFields).every(([field, type]) => typeof log[field] === type);
+    if (!placed)
+      throw new TypeError(
+        `getLogs answers placed logs, e.g. from emit() or buildLog(); log ${i} has no position.`,
+      );
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- checked above
+    return toRpcLog(log as unknown as EmittedLog);
+  });
 }
 
 /**

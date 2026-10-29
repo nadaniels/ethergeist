@@ -17,7 +17,8 @@ import {
 import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
 import type { PartCheckpoint } from "./checkpoint.js";
 import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
-import { MockNotFoundError, MockResolverError, removedMockError } from "./errors.js";
+import { MockNotFoundError, MockResolverError, MockRpcError, removedMockError } from "./errors.js";
+import type { EmittedLog } from "./events.js";
 import { type MockOutcome, errorOutcome } from "./history.js";
 import { type LogsCall, createLogStore } from "./logs.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
@@ -76,34 +77,43 @@ export type ActionContext<call> = call & {
   fail: (fault: MockFault) => never;
 };
 
+/**
+ * What a `getLogs` resolver gets: the filter, `fail`, and `logs`, what the
+ * emitted logs would answer. Reading `logs` for a filter a node would refuse
+ * (a range past the head, an address without a contract) throws that refusal.
+ */
+export type LogsContext = ActionContext<LogsCall> & { readonly logs: EmittedLog[] };
+
 /** How a mock answers: `.returns()` or `.fails()`. */
-export type MockActionAnswers<call, value> = {
+export type MockActionAnswers<call, value, context = ActionContext<call>> = {
   /** With no argument, answers with the zero value, like `.returns(zeroResult)`. */
   returns(): void;
-  returns(
-    value: value | typeof zeroResult | ((context: ActionContext<call>) => value | Promise<value>),
-  ): void;
+  returns(value: value | typeof zeroResult | ((context: context) => value | Promise<value>)): void;
   /** Fail every matching request at the network level. See `MockFault` for the kinds. */
   fails(fault: MockFault): void;
 };
 
-export type MockActionBuilder<call, value> = MockActionAnswers<call, value> & {
+export type MockActionBuilder<call, value, context = ActionContext<call>> = MockActionAnswers<
+  call,
+  value,
+  context
+> & {
   /**
    * Answer only the next matching request, then step aside for the next best
    * mock. Limited mocks go ahead of unlimited ones as specific, oldest first.
    * Retries use up answers too.
    */
-  once(): MockActionAnswers<call, value>;
+  once(): MockActionAnswers<call, value, context>;
   /** Like `.once()`, for the next `count` matching requests. */
-  times(count: number): MockActionAnswers<call, value>;
+  times(count: number): MockActionAnswers<call, value, context>;
 };
 
 /**
  * Mirrors the viem action of the same name, but registers a mock. Pin any of
  * the call's fields to narrow it; with none, it answers every call.
  */
-export type MockAction<call, value> = {
-  (params?: Partial<call>): MockActionBuilder<call, value>;
+export type MockAction<call, value, context = ActionContext<call>> = {
+  (params?: Partial<call>): MockActionBuilder<call, value, context>;
   /** Every call to this action the mock has received, in order. */
   readonly calls: call[];
 };
@@ -143,6 +153,14 @@ export type MockActions = {
    * such transaction". Unmocked hashes aren't answered.
    */
   getTransactionReceipt: MockAction<ReceiptCall, MockReceipt | null>;
+  /**
+   * `eth_getLogs`, for `getLogs` and `getContractEvents`. Unmocked, it's
+   * answered from emitted logs (`mock.emit()`), filtered as a node filters
+   * them. A mock answers first, with placed logs (from `emit()` or
+   * `buildLog()`), or fails, e.g. for a provider's block range cap; its
+   * resolver gets the emitted logs the filter matches as `logs`.
+   */
+  getLogs: MockAction<LogsCall, readonly EmittedLog[], LogsContext>;
 };
 
 export type MockMethodBuilder = MockActionBuilder<MethodCall, RpcValue>;
@@ -181,6 +199,8 @@ type Definition = {
   fallback?: (call: object) => unknown;
   /** A JSON-RPC answer in viem's types, as the action returns it; for history. Defaults to as is. */
   view?: (rpc: unknown) => unknown;
+  /** Adds to what a resolver gets, beyond the call and `fail`. */
+  extendContext?: (context: object, call: object) => void;
 };
 
 type Table = ReturnType<typeof createTable>;
@@ -302,10 +322,18 @@ function createTable(definition: Definition) {
     handler.usedCount += 1;
     if (handler.remaining !== undefined) handler.remaining -= 1;
     try {
-      const value = await handler.resolver({ ...call, fail });
+      const context = { ...call, fail };
+      definition.extendContext?.(context, call);
+      const value = await handler.resolver(context);
       return encode(value === zeroResult ? definition.zero : value, call);
     } catch (error) {
-      if (error instanceof MockFailure) throw error;
+      // A fault, or what the context threw: a node's refusal or an unmocked address.
+      if (
+        error instanceof MockFailure ||
+        error instanceof MockRpcError ||
+        error instanceof MockNotFoundError
+      )
+        throw error;
       throw new MockResolverError(definition.name, error);
     }
   }
@@ -340,11 +368,17 @@ function createTable(definition: Definition) {
   };
 }
 
-/** Checksums a pinned `address`, which also validates it at registration. */
+/** Checksums a pinned `address` (or each of several), which also validates it at registration. */
 function pinAddress(pinned: unknown) {
-  return isPlainObject(pinned) && typeof pinned.address === "string"
-    ? { ...pinned, address: getAddress(pinned.address) }
-    : pinned;
+  if (!isPlainObject(pinned)) return pinned;
+  const { address } = pinned;
+  if (typeof address === "string") return { ...pinned, address: getAddress(address) };
+  if (Array.isArray(address))
+    return {
+      ...pinned,
+      address: address.map((each: unknown) => (typeof each === "string" ? getAddress(each) : each)),
+    };
+  return pinned;
 }
 
 /** Methods answered outside `mock.method()`, with where to mock them instead. */
@@ -472,13 +506,21 @@ export function createActions(options: {
     }),
     getLogs: createTable({
       name: "getLogs",
-      hint: "mock.emit(…)",
+      hint: "mock.actions.getLogs(…).returns(…), or mock.emit(…)",
       decode: (params) => logStore.decode(params),
+      pin: pinAddress,
       zero: [],
-      encode: (value) => value,
+      encode: (value) => logStore.toRpc(value),
+      extendContext(context, call) {
+        Object.defineProperty(context, "logs", {
+          enumerable: true,
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by logStore.decode
+          get: () => logStore.find(call as LogsCall),
+        });
+      },
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by logStore.decode
-      fallback: (call) => logStore.query(call as LogsCall),
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- answered by logStore.query
+      fallback: (call) => logStore.toRpc(logStore.find(call as LogsCall)),
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encoded by logStore.toRpc
       view: (rpc) => (rpc as RpcLog[]).map((log) => formatLog(log)),
     }),
   };
@@ -509,14 +551,13 @@ export function createActions(options: {
     getCode: buildAction(typed.getCode),
     getBlock: buildAction(typed.getBlock),
     getTransactionReceipt: buildAction(typed.getTransactionReceipt),
+    getLogs: buildAction(typed.getLogs),
   } as unknown as MockActions;
 
   function method(name: string, params?: readonly unknown[]): MockMethodBuilder {
     const builtIn = builtIns.get(name);
     if (builtIn !== undefined) throw new Error(`"${name}" can't be mocked raw: ${builtIn}.`);
     const action = typedMethods.get(name);
-    if (action === "getLogs")
-      throw new Error(`"${name}" is answered from emitted logs: use mock.emit().`);
     if (action !== undefined)
       throw new Error(`"${name}" has a typed mock: use mock.actions.${action}().`);
 

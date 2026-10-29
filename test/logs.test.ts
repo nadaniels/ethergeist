@@ -8,7 +8,14 @@ import {
   parseAbiItem,
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
-import { MockNotFoundError, buildLog, createMockRpc, testAddress, testHash } from "../src/index.js";
+import {
+  MockNotFoundError,
+  buildLog,
+  createMockRpc,
+  match,
+  testAddress,
+  testHash,
+} from "../src/index.js";
 import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -432,7 +439,141 @@ describe("state", () => {
   test("eth_getLogs can't be mocked raw", () => {
     const { mock } = setup();
     expect(() => mock.method("eth_getLogs")).toThrow(
-      '"eth_getLogs" is answered from emitted logs: use mock.emit().',
+      '"eth_getLogs" has a typed mock: use mock.actions.getLogs().',
+    );
+  });
+});
+
+// Limits real nodes enforce, as their public endpoints sent them (captured 2026-10-29).
+// Linea's block range cap (geth-based):
+const rangeTooLarge = { code: -32602, message: "range 49999 exceeds limit of 10000" };
+// reth's own cap on results, with a range that would fit (Base's publicnode endpoint):
+const tooManyResults = {
+  code: -32602,
+  message: "query exceeds max results 20000, retry with the range 53247950-53248109",
+};
+
+describe("mock.actions.getLogs", () => {
+  test("a mock's logs replace the emitted ones", async () => {
+    const { mock, client, usdc } = setup();
+    usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
+    const instead = buildLog({
+      abi: erc20Abi,
+      address: USDC,
+      eventName: "Transfer",
+      args: { from: bob, to: carol, value: 2n },
+      blockNumber: 9n,
+    });
+    mock.actions.getLogs({ address: USDC }).returns([instead]);
+
+    // Only the mock's log: a matching mock is the whole answer.
+    const logs = await client.getLogs({ address: USDC, event: transfer });
+    expect(logs.map((log) => log.args.value)).toEqual([2n]);
+  });
+
+  test("returns() answers no logs", async () => {
+    const { mock, client, usdc } = setup();
+    usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
+    mock.actions.getLogs().returns();
+
+    expect(await client.getLogs({ address: USDC })).toEqual([]);
+  });
+
+  test("a resolver gets the filter and the store's logs: a node's block range cap", async () => {
+    const { mock, client, usdc } = setup();
+    const log = usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
+    mock.actions
+      .getLogs()
+      .returns(({ fromBlock = 0n, toBlock = 0n, logs, fail }) =>
+        toBlock - fromBlock > 5n ? fail(rangeTooLarge) : logs,
+      );
+
+    const error = expectCause(
+      await rejectionOf(client.getContractEvents({ abi: erc20Abi, address: USDC, fromBlock: 1n })),
+      InvalidParamsRpcError,
+    );
+    expect(error.details).toBe(rangeTooLarge.message);
+    const events = await client.getContractEvents({ abi: erc20Abi, address: USDC, fromBlock: 6n });
+    expect(events.map((event) => event.transactionHash)).toEqual([log.transactionHash]);
+  });
+
+  test("a resolver can cap results, as reth does", async () => {
+    const { mock, client, usdc } = setup();
+    usdc.emit.Transfer({ from: alice, to: bob, value: 1n }, { blockNumber: 9n });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 2n });
+    mock.actions
+      .getLogs()
+      .returns(({ logs, fail }) => (logs.length > 1 ? fail(tooManyResults) : logs));
+
+    const error = expectCause(
+      await rejectionOf(client.getLogs({ address: USDC, fromBlock: 9n })),
+      InvalidParamsRpcError,
+    );
+    expect(error.details).toBe(tooManyResults.message);
+    expect(await client.getLogs({ address: USDC })).toHaveLength(1);
+  });
+
+  test("once() fails one request, then the store answers", async () => {
+    const { mock, client, usdc } = setup();
+    usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
+    mock.actions.getLogs().once().fails(rangeTooLarge);
+
+    await rejectionOf(client.getLogs({ address: USDC }));
+    expect(await client.getLogs({ address: USDC })).toHaveLength(1);
+  });
+
+  test("a mock answers before the store's rules", async () => {
+    const { mock, client } = setup();
+    mock.actions.getLogs({ address: carol }).returns([]);
+    mock.actions.getLogs({ fromBlock: 5n }).returns([]);
+
+    expect(await client.getLogs({ address: carol })).toEqual([]);
+    expect(await client.getLogs({ address: USDC, fromBlock: 5n, toBlock: 20n })).toEqual([]);
+    expect(mock.unhandled).toEqual([]);
+  });
+
+  test("reading logs the store refuses throws its refusal, not a resolver error", async () => {
+    const { mock, client } = setup();
+    mock.actions.getLogs().returns(({ logs }) => logs);
+
+    const refused = expectCause(
+      await rejectionOf(client.getLogs({ address: USDC, fromBlock: 8n, toBlock: 7n })),
+      RpcRequestError,
+    );
+    expect(refused.details).toBe("invalid block range params");
+    expectCause(await rejectionOf(client.getLogs({ address: carol })), MockNotFoundError);
+    expect(mock.history.map((entry) => entry.outcome.type)).toEqual(["rpcError", "unhandled"]);
+  });
+
+  test("pins match the decoded filter, with matchers", async () => {
+    const { mock, client } = setup();
+    mock.actions
+      .getLogs({ fromBlock: match.where((block: bigint) => block < 5n, "early") })
+      .fails(rangeTooLarge);
+
+    expect(await client.getLogs({ address: USDC, fromBlock: 5n })).toEqual([]);
+    await rejectionOf(client.getLogs({ address: USDC, fromBlock: 1n }));
+    expect(mock.actions.getLogs.calls.map((call) => call.fromBlock)).toEqual([5n, 1n]);
+  });
+
+  test("assertAllUsed() reports an unused mock with the filters it received", async () => {
+    const { mock, client } = setup();
+    mock.actions.getLogs({ address: DAI }).returns([]);
+
+    await client.getLogs({ address: USDC });
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`getLogs({ address: ${DAI} })`);
+  });
+
+  test("refuses log content: nothing would place it", () => {
+    const { mock, usdc } = setup();
+
+    expect(() => {
+      // @ts-expect-error -- content, not a placed log
+      mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: bob })]);
+    }).toThrow(
+      "getLogs answers placed logs, e.g. from emit() or buildLog(); log 0 has no position.",
     );
   });
 });

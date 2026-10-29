@@ -1,6 +1,14 @@
-import type { Address, Hex } from "viem";
+import { type Address, type Hex, erc20Abi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
-import { type RpcValue, createMockRpc, zeroResult, testAddress } from "../src/index.js";
+import {
+  type EmittedLog,
+  type LogsCall,
+  type RpcValue,
+  buildLog,
+  createMockRpc,
+  zeroResult,
+  testAddress,
+} from "../src/index.js";
 
 const mock = createMockRpc();
 const alice = testAddress("alice");
@@ -89,6 +97,37 @@ describe("getTransactionReceipt", () => {
       expectTypeOf(hash).toEqualTypeOf<Hex>();
       return {};
     });
+  });
+});
+
+describe("getLogs", () => {
+  const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
+
+  test("pins the decoded filter", () => {
+    mock.actions.getLogs({ address: usdc.address, fromBlock: 1n });
+    mock.actions.getLogs({ address: [usdc.address], topics: [null] });
+    // @ts-expect-error blocks are bigints
+    mock.actions.getLogs({ fromBlock: "0x1" });
+  });
+
+  test("returns placed logs, or a resolver with the store's logs", () => {
+    mock.actions.getLogs().returns([usdc.emit.Transfer({ from: alice, to: alice })]);
+    mock.actions.getLogs().returns([
+      buildLog({
+        abi: erc20Abi,
+        address: usdc.address,
+        eventName: "Approval",
+        args: { owner: alice, spender: alice },
+      }),
+    ]);
+    mock.actions.getLogs().returns((context) => {
+      expectTypeOf(context.logs).toEqualTypeOf<EmittedLog[]>();
+      expectTypeOf(context.fromBlock).toEqualTypeOf<bigint | undefined>();
+      return context.logs.slice(0, 1);
+    });
+    // @ts-expect-error content isn't placed
+    mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: alice })]);
+    expectTypeOf(mock.actions.getLogs.calls).toEqualTypeOf<LogsCall[]>();
   });
 });
 
