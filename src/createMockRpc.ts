@@ -48,6 +48,7 @@ import {
   formatHistory,
   outcomeOf,
   reporterFor,
+  formatRecent,
   retryHint,
   valueOf,
 } from "./history.js";
@@ -79,6 +80,13 @@ export type CreateMockRpcParameters = {
    * rejects, so pass loggers the line or chosen fields.
    */
   debug?: boolean | ((line: string, entry: MockHistoryEntry) => void);
+  /**
+   * How many of the most recent requests to append to the errors of the
+   * mock's own checks (`assertNoUnhandled()`, `assertAllUsed()`, `restore()`'s
+   * checks, `checkpoint()`), formatted like `formatHistory()` without
+   * built-ins. `false` (or `0`) leaves them out. Defaults to 10.
+   */
+  historyOnFailure?: number | false;
 };
 
 /** Public client options, minus the chain and transport, which come from the mock. */
@@ -136,6 +144,17 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   };
   const checkpoints: { valid: boolean }[] = [];
   const history: MockHistoryEntry[] = [];
+  const historyOnFailure = parameters.historyOnFailure ?? 10;
+  if (historyOnFailure !== false && (!Number.isInteger(historyOnFailure) || historyOnFailure < 0))
+    throw new RangeError(
+      `historyOnFailure takes a count of requests or false; got ${String(historyOnFailure)}.`,
+    );
+
+  /** A failed check's error, with the most recent requests after the message. */
+  function checkFailed(message: string): Error {
+    const recent = historyOnFailure === false ? undefined : formatRecent(history, historyOnFailure);
+    return new Error(recent === undefined ? message : `${message}\n\n${recent}`);
+  }
   const log =
     parameters.debug === true
       ? (line: string) => {
@@ -513,7 +532,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      */
     assertNoUnhandled() {
       const [failure] = unhandledFailure(unhandled);
-      if (failure !== undefined) throw new Error(failure);
+      if (failure !== undefined) throw checkFailed(failure);
     },
     /**
      * Throws if a mock never answered a call: its args are wrong and a broader
@@ -529,7 +548,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         ...contracts.flatMap((c) => c.unusedMocks()),
         ...actions.unusedMocks(),
       ]);
-      if (failure !== undefined) throw new Error(failure);
+      if (failure !== undefined) throw checkFailed(failure);
     },
     /** Clears call and request history and usage; registrations and the block number stay. */
     clearCalls,
@@ -540,7 +559,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      */
     checkpoint(): MockCheckpoint {
       if (unhandled.length > 0)
-        throw new Error(
+        throw checkFailed(
           `Can't checkpoint: ${unhandled.length} request(s) since the last clear ` +
             "went unanswered. Fix the setup, or call clearCalls() first if they were " +
             `intentional:\n${unhandled.map(({ error }) => `  - ${error.shortMessage}`).join("\n")}`,
@@ -576,6 +595,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
             ...(options.assertNoUnhandled === true ? unhandledFailure(unhandled) : []),
             ...(options.assertAllUsed === true ? unusedFailure(unusedSince()) : []),
           ];
+          // Built now: restoring clears the history it shows.
+          const failed = failures.length > 0 ? checkFailed(failures.join("\n\n")) : undefined;
 
           // Checkpoints taken after this one describe state that's about to go away.
           for (const later of checkpoints.splice(checkpoints.indexOf(entry) + 1))
@@ -596,7 +617,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
           batchCount = savedBatchCount;
           clearCalls();
 
-          if (failures.length > 0) throw new Error(failures.join("\n\n"));
+          if (failed) throw failed;
         },
       };
     },

@@ -133,6 +133,26 @@ export function formatHistory(
     .join("\n");
 }
 
+/**
+ * The last `count` requests, built-ins left out, for a failed check's message.
+ * Numbered as in `formatHistory()`; `undefined` with no requests to show.
+ */
+export function formatRecent(
+  entries: readonly MockHistoryEntry[],
+  count: number,
+): string | undefined {
+  const indexes = entries.flatMap((entry, i) => (entry.type === "builtIn" ? [] : [i]));
+  const shown = indexes.slice(-count);
+  if (shown.length === 0) return undefined;
+  const earlier = indexes.length - shown.length;
+  const heading =
+    earlier === 0
+      ? "Requests so far:"
+      : `${shown.length === 1 ? "Last request" : `Last ${shown.length} requests`} ` +
+        `(${earlier} earlier; see mock.formatHistory()):`;
+  return [heading, ...shown.map((i) => formatEntry(entries, i))].join("\n");
+}
+
 /** The fault that entry `index` retries, if it's a retry: the same request, right after a fault. */
 function faultRetried(
   entries: readonly MockHistoryEntry[],

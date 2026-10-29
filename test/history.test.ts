@@ -381,3 +381,143 @@ describe("debug", () => {
     expect(logged).toEqual([`#1 eth_chainId → 1`]);
   });
 });
+
+function setupWith(historyOnFailure?: number | false) {
+  const mock = createMockRpc(historyOnFailure === undefined ? {} : { historyOnFailure });
+  const client = mock.publicClient();
+  const usdc = mock.contract({ abi: tokenAbi, address: USDC, name: "USDC" });
+  const decimals = () =>
+    client.readContract({ abi: tokenAbi, address: USDC, functionName: "decimals" });
+  return { mock, client, usdc, decimals };
+}
+
+/** The message `check` throws with, or `""`. */
+function messageOf(check: () => void) {
+  try {
+    check();
+  } catch (error) {
+    return error instanceof Error ? error.message : String(error);
+  }
+  return "";
+}
+
+describe("historyOnFailure", () => {
+  test("a failed check ends with the requests so far, without built-ins", async () => {
+    const { mock, client, usdc, decimals } = setupWith();
+    usdc.read.decimals().returns(6);
+    usdc.read.symbol().returns("USDC");
+
+    await client.getBlockNumber();
+    await decimals();
+    expect(
+      messageOf(() => {
+        mock.assertAllUsed();
+      }),
+    ).toBe(
+      [
+        "1 mock(s) never answered a call:",
+        `  - symbol(*) on USDC (${USDC})`,
+        "    received no calls to symbol",
+        "",
+        "Requests so far:",
+        "#2 eth_call USDC.decimals() → 6",
+      ].join("\n"),
+    );
+  });
+
+  test("shows the last 10 by default, numbered as in formatHistory()", async () => {
+    const { mock, usdc, decimals } = setupWith();
+    usdc.read.decimals().returns(6);
+    usdc.read.symbol().returns("USDC");
+
+    await Promise.all(Array.from({ length: 12 }, () => decimals()));
+    const message = messageOf(() => {
+      mock.assertAllUsed();
+    });
+    expect(message).toContain("Last 10 requests (2 earlier; see mock.formatHistory()):\n#3 ");
+    expect(message).toMatch(/#12 eth_call USDC\.decimals\(\) → 6$/u);
+    expect(message).not.toContain("#2 ");
+  });
+
+  test("takes a count, or false to leave it out", async () => {
+    const short = setupWith(1);
+    short.usdc.read.decimals().returns(6);
+    await short.decimals();
+    await short.decimals();
+    expect(
+      messageOf(() => {
+        short.mock.assertAllUsed();
+      }),
+    ).toBe("");
+    short.usdc.read.symbol().returns("USDC");
+    expect(
+      messageOf(() => {
+        short.mock.assertAllUsed();
+      }),
+    ).toContain("Last request (1 earlier; see mock.formatHistory()):\n#2 eth_call");
+
+    const off = setupWith(false);
+    off.usdc.read.symbol().returns("USDC");
+    await rejectionOf(off.decimals());
+    expect(
+      messageOf(() => {
+        off.mock.assertNoUnhandled();
+      }),
+    ).not.toContain("Requests");
+    expect(() => createMockRpc({ historyOnFailure: -1 })).toThrow(RangeError);
+  });
+
+  test("restore() shows the history it's about to clear", async () => {
+    const { mock, usdc, decimals } = setupWith();
+    const baseline = mock.checkpoint();
+    usdc.read.symbol().returns("USDC");
+    await rejectionOf(decimals());
+
+    const message = messageOf(() => {
+      baseline.restore({ assertNoUnhandled: true, assertAllUsed: true });
+    });
+    expect(message).toContain("Requests so far:\n#1 eth_call USDC.decimals() ✗ not mocked");
+    expect(mock.history).toEqual([]);
+  });
+
+  test("assertNoUnhandled() and checkpoint() show it too", async () => {
+    const { mock, decimals } = setupWith();
+    await rejectionOf(decimals());
+
+    expect(
+      messageOf(() => {
+        mock.assertNoUnhandled();
+      }),
+    ).toContain("Requests so far:\n#1 eth_call USDC.decimals() ✗ not mocked");
+    expect(
+      messageOf(() => {
+        mock.checkpoint();
+      }),
+    ).toContain("Requests so far:");
+  });
+
+  test("a retry at the start of the window is still marked", async () => {
+    const { mock, usdc, decimals } = setupWith(1);
+    usdc.read.decimals().returns(6);
+    usdc.read.decimals().once().fails("network");
+    usdc.read.symbol().returns("USDC");
+
+    await decimals();
+    expect(
+      messageOf(() => {
+        mock.assertAllUsed();
+      }),
+    ).toContain("#2 eth_call (retry) USDC.decimals()");
+  });
+
+  test("no requests, no section", () => {
+    const { mock, usdc } = setupWith();
+    usdc.read.symbol().returns("USDC");
+
+    expect(
+      messageOf(() => {
+        mock.assertAllUsed();
+      }),
+    ).not.toContain("Requests");
+  });
+});

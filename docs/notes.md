@@ -161,7 +161,16 @@ features land; tick them off as pages get written.
 - [ ] When to use which: `formatHistory()` after a failure, `debug` when a
       test times out before it could print anything. Under Vitest, `debug`
       gets a `stdout | file > test` header per line, so printing history only
-      when a test fails reads better (the Vitest helper, once it exists).
+      when a test fails reads better.
+- [ ] `historyOnFailure` (default 10, `false` to turn off): the mock's own
+      failed checks (`assertNoUnhandled()`, `assertAllUsed()`, `restore()`'s
+      checks, `checkpoint()`) end with the last requests, numbered as in
+      `formatHistory()`, without built-ins. Request errors ("No mock for …")
+      don't, since they reach the app and already list what's registered.
+- [ ] For a failing `expect` in the test body, which the mock can't see: one
+      line in the runner's failure hook, e.g. Vitest's
+      `onTestFailed(() => console.log(mock.formatHistory({ builtIns: false })))`.
+      Jest has no equivalent hook; print in `afterEach` when needed.
 - [ ] What history shows: `(retry)` after a fault, named outputs by name
       (the value stays the tuple viem returns), `(no outputs)`, and
       `abiItem` on each contract call record.
@@ -182,7 +191,11 @@ features land; tick them off as pages get written.
 - [ ] Other `afterEach` hooks that throw can still skip the restore. Explain
       when a `beforeEach` backstop is safe: only when the previous restore
       didn't run, since an unconditional one wipes nested suites' setup.
-      (Replace this with the vitest helper once it exists.)
+- [ ] The whole pattern as copyable code, Vitest and Jest side by side (the
+      hooks are the same; `node:test` names them `before`/`afterEach`):
+      `checkpoint()` in `beforeAll`, `restore({ checks })` in `afterEach`, and
+      a `beforeEach` backstop guarded by a flag the `afterEach` sets. There's
+      no runner-specific helper; this is the supported way.
 - [ ] Say plainly that the conditional backstop prevents one failure turning
       into many, but doesn't make nesting safe: an outer per-test restore
       still wipes a nested describe's `beforeAll` setup after its first test.

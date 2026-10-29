@@ -355,6 +355,9 @@ describe("assertAllUsed(): what the function received instead", () => {
         `  - allowance(${getAddress(alice)}, ${getAddress(bob)}) on USDC (${USDC})`,
         "    received 1 call to allowance:",
         `      allowance(${getAddress(alice)}, ${DAI})  ← spender didn't match`,
+        "",
+        "Requests so far:",
+        "#1 eth_call USDC.allowance(0x0000…11cE, 0x6B17…1d0F) → 0n",
       ].join("\n"),
     );
   });
