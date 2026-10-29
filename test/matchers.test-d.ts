@@ -65,6 +65,13 @@ describe("matchers take the type of their position", () => {
     ]);
   });
 
+  test("defaults for an overloaded function take the overloads' return type", () => {
+    const mock = createMockRpc();
+    mock.contract({ abi, address: USDC, defaults: { read: { balanceOf: 1n } } });
+    // @ts-expect-error -- balanceOf returns a bigint
+    mock.contract({ abi, address: USDC, defaults: { read: { balanceOf: "1" } } });
+  });
+
   test("overloads resolve by arg count", () => {
     const mock = createMockRpc();
     const token = mock.contract({ abi, address: USDC });

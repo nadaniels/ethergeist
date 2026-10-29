@@ -193,11 +193,25 @@ export type MockContract<abi extends Abi> = {
   };
 };
 
+/**
+ * A function's return type across all its overloads, as a default answers
+ * them all. viem's is `never` for an overloaded function given no args.
+ */
+type OverloadsReturnType<
+  abi extends Abi,
+  mutability extends ReadMutability | WriteMutability,
+  functionName extends ContractFunctionName<abi, mutability>,
+  args = ContractFunctionArgs<abi, mutability, functionName>,
+> =
+  args extends ContractFunctionArgs<abi, mutability, functionName>
+    ? ContractFunctionReturnType<abi, mutability, functionName, args>
+    : never;
+
 type NamespaceDefaults<abi extends Abi, mutability extends ReadMutability | WriteMutability> = {
   [functionName in ContractFunctionName<abi, mutability>]?: Resolver<
     abi,
     ContractFunctionArgs<abi, mutability, functionName>,
-    MockReturnType<abi, functionName, ContractFunctionReturnType<abi, mutability, functionName>>
+    MockReturnType<abi, functionName, OverloadsReturnType<abi, mutability, functionName>>
   >;
 };
 
@@ -297,6 +311,12 @@ export function createMockContract<const abi extends Abi>(
     args: readonly unknown[] | undefined,
   ): AbiFunction {
     const overloads = functionsIn[namespace].filter((f) => f.name === functionName);
+    // viem would pick the first overload; "any args" can't say which one.
+    if (args === undefined && overloads.length > 1)
+      throw new Error(
+        `Ambiguous overload for ${functionName}(*): an args-less mock would answer only one of ` +
+          `them. Pin args to choose one, e.g. with match.any():\n${listSignatures(overloads)}`,
+      );
     if (overloads.length < 2 || findMatcher(args) === undefined) {
       const abiItem = getAbiItem({ abi: functionsIn[namespace], name: functionName, args });
       // viem's type assumes a match, but untyped callers can pass any name.
@@ -322,13 +342,15 @@ export function createMockContract<const abi extends Abi>(
     namespace: Namespace,
     functionName: string,
     args: readonly unknown[] | undefined,
-    isDefault = false,
+    /** For defaults: registered on a given overload, and exempt from `assertAllUsed()`. */
+    asDefault?: { abiItem: AbiFunction },
   ) {
     if (detached)
       throw new Error(
         `The contract at ${label} was removed by restore() or reset(); register it again.`,
       );
-    const abiItem = findFunction(namespace, functionName, args);
+    const abiItem = asDefault?.abiItem ?? findFunction(namespace, functionName, args);
+    const isDefault = asDefault !== undefined;
 
     // Checksummed so messages show addresses one way, and a malformed one fails here.
     const pinned = args?.map((arg, i) => {
@@ -375,10 +397,14 @@ export function createMockContract<const abi extends Abi>(
     return builder;
   }
 
-  for (const [functionName, resolver] of Object.entries(defaults.read ?? {}))
-    register("read", functionName, undefined, true).returns(resolver);
-  for (const [functionName, resolver] of Object.entries(defaults.simulate ?? {}))
-    register("simulate", functionName, undefined, true).returns(resolver);
+  // A default is keyed by name, so it answers every overload of that name.
+  for (const namespace of ["read", "simulate"] as const)
+    for (const [functionName, resolver] of Object.entries(defaults[namespace] ?? {})) {
+      const overloads = functionsIn[namespace].filter((f) => f.name === functionName);
+      if (overloads.length === 0) throw notInNamespaceError(namespace, functionName);
+      for (const abiItem of overloads)
+        register(namespace, functionName, undefined, { abiItem }).returns(resolver);
+    }
 
   // Overloads share one entry, as in viem's `getContract`.
   function buildNamespace(namespace: Namespace) {

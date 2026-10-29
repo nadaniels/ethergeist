@@ -450,6 +450,37 @@ describe("overloads", () => {
     );
   });
 
+  test("an args-less mock on an overloaded function throws", () => {
+    const { token } = setupOverloads();
+    expect(() => token.read.balanceOf()).toThrow(
+      [
+        "Ambiguous overload for balanceOf(*): an args-less mock would answer only one of them. " +
+          "Pin args to choose one, e.g. with match.any():",
+        "  balanceOf(address,uint256)",
+        "  balanceOf(address)",
+      ].join("\n"),
+    );
+  });
+
+  test("defaults for an overloaded function answer every overload", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: multiTokenAbi, address: DAI, defaults: { read: { balanceOf: 7n } } });
+
+    const one = await client.readContract({
+      abi: multiTokenAbi,
+      address: DAI,
+      functionName: "balanceOf",
+      args: [alice],
+    });
+    const two = await client.readContract({
+      abi: multiTokenAbi,
+      address: DAI,
+      functionName: "balanceOf",
+      args: [alice, 1n],
+    });
+    expect([one, two]).toEqual([7n, 7n]);
+  });
+
   test("args no overload takes throw", () => {
     const { token } = setupOverloads();
     // @ts-expect-error -- neither overload of `quote` takes a string second

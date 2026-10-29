@@ -58,6 +58,9 @@ features land; tick them off as pages get written.
   - Overloads: with matchers, the exact args pick the overload; if they can't,
     registration throws "ambiguous overload". A `partial` doesn't help pick,
     even when only one overload's struct has its fields.
+  - An args-less mock (`fn()`) on an overloaded function throws "ambiguous
+    overload": pin args, e.g. `[match.any()]`, to choose one. A default for
+    an overloaded name answers every overload.
   - Matchers can't be return values.
 - [ ] Return values: named outputs as objects, partial structs zero-filled,
       `zeroResult`, resolvers that receive the call.
