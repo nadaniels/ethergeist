@@ -382,16 +382,22 @@ function pinAddress(pinned: unknown) {
 }
 
 /**
- * Filter methods, which the mock doesn't support, like many public nodes:
- * it refuses them with Arbitrum's error unless `mock.method()` mocks them.
+ * Methods the mock doesn't support, refused with Arbitrum's error unless
+ * `mock.method()` mocks them. Clients fall back to methods it does answer:
+ * - Filters, which many public nodes don't support either: watchers poll
+ *   `eth_getLogs` instead.
+ * - `eth_fillTransaction`, which reth and geth support: viem fills a
+ *   transaction's nonce, fees, and gas with their own requests instead, which
+ *   are what tests mock.
  */
-const filterMethods = new Set([
+const refusedMethods = new Set([
   "eth_newFilter",
   "eth_newBlockFilter",
   "eth_newPendingTransactionFilter",
   "eth_getFilterChanges",
   "eth_getFilterLogs",
   "eth_uninstallFilter",
+  "eth_fillTransaction",
 ]);
 
 /** Methods answered outside `mock.method()`, with where to mock them instead. */
@@ -607,8 +613,8 @@ export function createActions(options: {
       report?: (report: ActionReport) => void,
     ): Promise<unknown> | undefined {
       const table = typedTable(name) ?? raw.get(name);
-      // Refused as many public nodes refuse them; clients fall back to polling eth_getLogs.
-      if (table === undefined && filterMethods.has(name))
+      // Refused as unsupported; clients fall back to other methods.
+      if (table === undefined && refusedMethods.has(name))
         return Promise.reject(
           new MockRpcError(-32601, `the method ${name} does not exist/is not available`),
         );

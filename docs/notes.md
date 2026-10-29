@@ -250,6 +250,14 @@ features land; tick them off as pages get written.
 - [ ] Strict by default for data the test owns (balances, receipts), and how
       to opt into real-node defaults with args-less mocks.
 - [ ] `mock.method()` for any other method, with raw JSON-RPC values.
+- [ ] Methods the mock refuses as unsupported (`-32601`, not unhandled), so
+      clients use ones it answers: filters (above) and `eth_fillTransaction`.
+      viem tries `eth_fillTransaction` first when preparing a transaction for
+      a local account (writes, and `estimateGas` with a local account) and,
+      once refused, fills the nonce, fees, and gas with their own requests,
+      which are what tests mock. reth and geth support it, so against them
+      viem sends fewer requests; the transaction it builds is the same. Mock it
+      with `mock.method("eth_fillTransaction")` to test code that relies on it.
 
 ## 6. Assertions and error messages
 

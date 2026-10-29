@@ -7,6 +7,7 @@ import {
   encodeAbiParameters,
   encodeEventTopics,
   createPublicClient,
+  createWalletClient,
   keccak256,
   parseEventLogs,
   parseGwei,
@@ -16,6 +17,7 @@ import {
   parseEther,
   zeroHash,
 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 import {
@@ -45,6 +47,20 @@ function setup() {
     transport: mock.transport({ retryCount: 0 }),
   });
   return { mock, client };
+}
+
+/** A wallet client with a local account, whose prepares try eth_fillTransaction first. */
+function walletSetup() {
+  const { mock } = setup();
+  mock.method("eth_getTransactionCount").returns("0x0");
+  mock.method("eth_maxPriorityFeePerGas").returns("0x1");
+  mock.method("eth_estimateGas").returns("0x5208");
+  const wallet = createWalletClient({
+    account: privateKeyToAccount(keccak256(toHex("alice"))),
+    chain: mock.chain,
+    transport: mock.transport({ retryCount: 0 }),
+  });
+  return { mock, wallet };
 }
 
 describe("getBalance", () => {
@@ -594,6 +610,46 @@ describe("method()", () => {
     mock.method("eth_gasPrice").fails("timeout");
 
     expectCause(await rejectionOf(client.getGasPrice()), TimeoutError);
+  });
+});
+
+describe("eth_fillTransaction", () => {
+  test("is refused as unsupported, so viem fills each field with its own request", async () => {
+    const { mock, wallet } = walletSetup();
+
+    const request = await wallet.prepareTransactionRequest({ to: bob, value: 1n });
+    expect(request).toMatchObject({ nonce: 0, gas: 21_000n });
+    expect(() => {
+      mock.assertNoUnhandled();
+    }).not.toThrow();
+    expect(mock.history[0]).toMatchObject({
+      method: "eth_fillTransaction",
+      outcome: {
+        type: "rpcError",
+        code: -32601,
+        message: "the method eth_fillTransaction does not exist/is not available",
+      },
+    });
+  });
+
+  test("a client tries it once: viem remembers the refusal", async () => {
+    const { mock, wallet } = walletSetup();
+
+    await wallet.prepareTransactionRequest({ to: bob, value: 1n });
+    await wallet.prepareTransactionRequest({ to: bob, value: 2n });
+    const fills = mock.history.filter((entry) => entry.method === "eth_fillTransaction");
+    expect(fills).toHaveLength(1);
+  });
+
+  test("method() answers it instead", async () => {
+    const { mock, wallet } = walletSetup();
+    mock.method("eth_fillTransaction").fails({ code: -32000, message: "custom" });
+
+    await wallet.prepareTransactionRequest({ to: bob, value: 1n });
+    expect(mock.history[0]).toMatchObject({
+      method: "eth_fillTransaction",
+      outcome: { type: "fault" },
+    });
   });
 });
 
