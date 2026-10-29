@@ -11,11 +11,11 @@ import {
   encodeAbiParameters,
   encodeEventTopics,
   getAddress,
-  toEventSignature,
   zeroHash,
 } from "viem";
 import { AbiEvent as OxAbiEvent } from "ox";
 import { blockHash } from "./blocks.js";
+import { formatCall } from "./format.js";
 import { assertNoMatchers } from "./match.js";
 import { placeLog } from "./receipts.js";
 import { type AllNamed, type PartialStructs, fillZeros, isPlainObject } from "./result.js";
@@ -145,19 +145,19 @@ export function encodeEventLog(
 
   const fits = overloads.flatMap((event) => {
     try {
-      return [encodeWith(event, emitter, args)];
+      return [{ event, log: encodeWith(event, emitter, args) }];
     } catch {
       return [];
     }
   });
-  const [log] = fits;
-  if (log !== undefined && fits.length === 1) return log;
-  const signatures = overloads.map((event) => `  ${toEventSignature(event)}`).join("\n");
+  const [fit] = fits;
+  if (fit !== undefined && fits.length === 1) return fit.log;
+  const call = formatCall(eventName, args ?? []);
   throw new Error(
     fits.length === 0
-      ? `No overload of event "${eventName}" takes these args. Overloads:\n${signatures}`
-      : `Ambiguous overload for event "${eventName}": pass an arg only one of them has. ` +
-          `Overloads:\n${signatures}`,
+      ? `No overload of event "${eventName}" takes ${call}. Overloads:\n${listEvents(overloads)}`
+      : `Ambiguous overload for event ${call}: pass an arg that tells them apart. It fits:\n` +
+          listEvents(fits.map(({ event }) => event)),
   );
 }
 
@@ -223,4 +223,8 @@ function argValues(event: AbiEvent, args: unknown): unknown[] {
 
 function isNamed<input extends AbiParameter>(input: input): input is input & { name: string } {
   return input.name !== undefined && input.name !== "";
+}
+
+function listEvents(events: readonly AbiEvent[]): string {
+  return events.map((event) => `  ${OxAbiEvent.format(event)}`).join("\n");
 }

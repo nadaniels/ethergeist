@@ -166,10 +166,9 @@ describe("retries past a limited fault", () => {
       [
         "Registered:",
         "  balanceOf(*) once, used up",
-        "This is a retry after a mock's fault: viem retries a failed request (this " +
-          "transport's `retryCount` is 3), and each attempt uses one of a `.once()`/`.times(n)` " +
-          "mock's answers. Register a mock to answer after it, or use `.fails()` without a " +
-          "limit to fail every attempt.",
+        "This is viem retrying after a `.once()`/`.times(n)` fault (this transport's " +
+          "`retryCount` is 3); each attempt used up an answer. Register a mock to answer " +
+          "after it, or use `.fails()` without a limit to fail every attempt.",
       ].join("\n"),
     );
   });
@@ -190,7 +189,7 @@ describe("retries past a limited fault", () => {
     usdc.read.balanceOf().once().fails("network");
     // fallback() retries itself and gives its transports `retryCount: 0`.
     expect(String(await rejectionOf(read(viaFallback)))).toContain(
-      "viem retries a failed request (`retryCount`, 3 by default)",
+      "(`retryCount` is 3 by default)",
     );
   });
 
@@ -199,7 +198,7 @@ describe("retries past a limited fault", () => {
     mock.actions.getBalance().once().fails("network");
 
     expect(String(await rejectionOf(client.getBalance({ address: alice })))).toContain(
-      "This is a retry after a mock's fault",
+      "This is viem retrying after a `.once()`/`.times(n)` fault",
     );
   });
 

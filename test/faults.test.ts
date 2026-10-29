@@ -195,7 +195,9 @@ describe("lifecycle", () => {
 
   test("times must be a positive integer", () => {
     const { mock } = setup();
-    expect(() => mock.failRequests("timeout", { times: 0 })).toThrow("positive integer");
+    expect(() => mock.failRequests("timeout", { times: 0 })).toThrow(
+      new RangeError("`times` takes a positive integer; got 0."),
+    );
     expect(() => mock.failRequests("timeout", { times: 1.5 })).toThrow("positive integer");
   });
 });

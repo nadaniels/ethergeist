@@ -207,17 +207,29 @@ describe("contract.events", () => {
     const { shapes } = setup();
 
     expect(() => shapes.events.Ping({ a: 1n })).toThrow(
-      'Ambiguous overload for event "Ping": pass an arg only one of them has. Overloads:\n' +
-        "  Ping(uint256)\n  Ping(uint256,uint256)",
+      "Ambiguous overload for event Ping({ a: 1n }): pass an arg that tells them apart. " +
+        "It fits:\n  event Ping(uint256 a)\n  event Ping(uint256 a, uint256 b)",
     );
     expect(() => shapes.events.Ping({ a: 1n, b: 2n })).not.toThrow();
+  });
+
+  test("args that fit no overload throw, listing them all", () => {
+    const { shapes } = setup();
+
+    expect(() =>
+      // @ts-expect-error -- no overload has `c`
+      shapes.events.Ping({ c: 1n }),
+    ).toThrow(
+      'No overload of event "Ping" takes Ping({ c: 1n }). Overloads:\n' +
+        "  event Ping(uint256 a)\n  event Ping(uint256 a, uint256 b)",
+    );
   });
 
   test("matchers aren't args here", () => {
     const { usdc } = setup();
 
     expect(() => usdc.events.Transfer({ from: alice, to: bob, value: match.any() })).toThrow(
-      "any is a matcher; matchers go in args or params, not in event args.",
+      "match.any() can't go in event args; matchers only go in args and params.",
     );
   });
 

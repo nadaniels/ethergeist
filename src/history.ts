@@ -181,12 +181,12 @@ export function retryHint(
   if (faultRetried(entries, index)?.source !== "mock") return undefined;
   const retries =
     retryCount === undefined || retryCount === 0
-      ? "viem retries a failed request (`retryCount`, 3 by default)"
-      : `viem retries a failed request (this transport's \`retryCount\` is ${retryCount})`;
+      ? "`retryCount` is 3 by default"
+      : `this transport's \`retryCount\` is ${retryCount}`;
   return (
-    `This is a retry after a mock's fault: ${retries}, and each attempt uses one of a ` +
-    "`.once()`/`.times(n)` mock's answers. Register a mock to answer after it, or use " +
-    "`.fails()` without a limit to fail every attempt."
+    `This is viem retrying after a \`.once()\`/\`.times(n)\` fault (${retries}); each attempt ` +
+    "used up an answer. Register a mock to answer after it, or use `.fails()` without a " +
+    "limit to fail every attempt."
   );
 }
 

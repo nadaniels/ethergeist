@@ -322,8 +322,8 @@ export function createMockContract<const abi extends Abi>(
     // viem would pick the first overload; "any args" can't say which one.
     if (args === undefined && overloads.length > 1)
       throw new Error(
-        `Ambiguous overload for ${functionName}(*): an args-less mock would answer only one of ` +
-          `them. Pin args to choose one, e.g. with match.any():\n${listSignatures(overloads)}`,
+        `Ambiguous overload for ${functionName}(*): pin args to choose one, e.g. ` +
+          `[match.any()]:\n${listSignatures(overloads)}`,
       );
     if (overloads.length < 2 || findMatcher(args) === undefined) {
       const abiItem = getAbiItem({ abi: functionsIn[namespace], name: functionName, args });

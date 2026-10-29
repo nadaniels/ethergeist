@@ -186,6 +186,6 @@ export function assertNoMatchers(value: unknown, place = "return values"): void 
   const found = findMatcher(value);
   if (found)
     throw new TypeError(
-      `${formatValue(found)} is a matcher; matchers go in args or params, not in ${place}.`,
+      `match.${found.type}() can't go in ${place}; matchers only go in args and params.`,
     );
 }

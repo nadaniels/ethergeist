@@ -65,7 +65,7 @@ export type ActiveFault = {
 export function createActiveFault(fault: MockFault, options: FailRequestsOptions): ActiveFault {
   const { method, times = Infinity } = options;
   if (times !== Infinity && !(Number.isInteger(times) && times > 0))
-    throw new Error(`\`times\` must be a positive integer; got ${times}.`);
+    throw new RangeError(`\`times\` takes a positive integer; got ${times}.`);
   return {
     fault,
     methods: typeof method === "string" ? [method] : method,

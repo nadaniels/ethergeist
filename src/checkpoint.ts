@@ -74,7 +74,5 @@ export type PartCheckpoint = {
 
 /** For a builder whose mock a `restore()` or `reset()` removed. */
 export function removedMockError(): Error {
-  return new Error(
-    "This mock was removed by restore() or reset(); register it again before answering it.",
-  );
+  return new Error("This mock was removed by restore() or reset(); register a new one.");
 }

@@ -396,16 +396,16 @@ describe("registration", () => {
     const { usdc, balanceOf } = setup();
     expect(() => {
       usdc.read.balanceOf([alice]).returns(match.any());
-    }).toThrow("any is a matcher; matchers go in args or params, not in return values.");
+    }).toThrow("match.any() can't go in return values; matchers only go in args and params.");
 
     expect(() => {
       // The types allow it: `partial` takes the resolver function's type from `.returns()`.
       usdc.read.balanceOf([alice]).returns(match.partial({}));
-    }).toThrow("{ … } is a matcher");
+    }).toThrow("match.partial() can't go in return values");
 
     usdc.read.balanceOf([bob]).returns(() => match.any());
     const error = expectCause(await rejectionOf(balanceOf(bob)), MockResolverError);
-    expect(error.shortMessage).toContain("matchers go in args or params");
+    expect(error.shortMessage).toContain("matchers only go in args and params");
   });
 });
 
@@ -460,8 +460,7 @@ describe("overloads", () => {
     const { token } = setupOverloads();
     expect(() => token.read.balanceOf()).toThrow(
       [
-        "Ambiguous overload for balanceOf(*): an args-less mock would answer only one of them. " +
-          "Pin args to choose one, e.g. with match.any():",
+        "Ambiguous overload for balanceOf(*): pin args to choose one, e.g. [match.any()]:",
         "  balanceOf(address,uint256)",
         "  balanceOf(address)",
       ].join("\n"),
