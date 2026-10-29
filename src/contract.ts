@@ -19,6 +19,7 @@ import {
   toFunctionSignature,
 } from "viem";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
+import { type MockContractEvents, encodeEventLog } from "./events.js";
 import { type PartCheckpoint, removedMockError } from "./checkpoint.js";
 import { MockFailure, type MockFault, fail } from "./faults.js";
 import {
@@ -192,6 +193,12 @@ export type MockContract<abi extends Abi> = {
       functionName
     >;
   };
+  /**
+   * The contract's events, each building the log its args would emit at this
+   * address, e.g. `events.Transfer({ from, to, value })`, for a mocked
+   * receipt's `logs`. Indexed args are required; the rest are zero-filled.
+   */
+  events: MockContractEvents<abi>;
 };
 
 /**
@@ -442,6 +449,13 @@ export function createMockContract<const abi extends Abi>(
     },
     read: buildNamespace("read"),
     simulate: buildNamespace("simulate"),
+    events: Object.fromEntries(
+      (abi as Abi).flatMap((item) =>
+        item.type === "event"
+          ? [[item.name, (args?: unknown) => encodeEventLog(abi, address, item.name, args)]]
+          : [],
+      ),
+    ),
   } as unknown as MockContract<abi>;
 
   async function resolve(

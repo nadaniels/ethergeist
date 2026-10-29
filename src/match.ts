@@ -182,10 +182,10 @@ export function findMatcher(value: unknown): Matcher | undefined {
 }
 
 /** Throws if `value` holds a matcher anywhere: they go in args, not in answers. */
-export function assertNoMatchers(value: unknown): void {
+export function assertNoMatchers(value: unknown, place = "return values"): void {
   const found = findMatcher(value);
   if (found)
     throw new TypeError(
-      `${formatValue(found)} is a matcher; matchers go in args or params, not in return values.`,
+      `${formatValue(found)} is a matcher; matchers go in args or params, not in ${place}.`,
     );
 }

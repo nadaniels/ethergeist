@@ -21,10 +21,12 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   MockNotFoundError,
   MockResolverError,
+  buildReceipt,
   createMockRpc,
   multicall3Address,
   zeroResult,
   testAddress,
+  testHash,
 } from "../src/index.js";
 import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
@@ -428,6 +430,33 @@ describe("getTransactionReceipt", () => {
     expect(() => {
       mock.actions.getTransactionReceipt().returns({ logs: [{ address: "0x1234" }] });
     }).toThrow(InvalidAddressError);
+  });
+});
+
+describe("buildReceipt()", () => {
+  test("equals the receipt a mock answers for the same fields", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const hash = testHash("transfer");
+    const fields = {
+      from: alice,
+      gasUsed: 21_000n,
+      logs: [usdc.events.Transfer({ from: alice, to: bob, value: 5n })],
+    };
+    mock.actions.getTransactionReceipt({ hash }).returns(fields);
+
+    expect(await client.getTransactionReceipt({ hash })).toEqual(
+      buildReceipt({ ...fields, transactionHash: hash, blockNumber: 10n }),
+    );
+  });
+
+  test("defaults to a successful receipt with zero hash and block", () => {
+    expect(buildReceipt()).toMatchObject({
+      status: "success",
+      transactionHash: zeroHash,
+      blockNumber: 0n,
+      logs: [],
+    });
   });
 });
 

@@ -18,7 +18,7 @@ export type PartialStructs<value> = value extends readonly unknown[]
     ? { [key in keyof value]?: PartialStructs<value[key]> }
     : value;
 
-type AllNamed<parameters extends readonly AbiParameter[]> = false extends (
+export type AllNamed<parameters extends readonly AbiParameter[]> = false extends (
   parameters[number] extends { name: infer name extends string }
     ? name extends ""
       ? false
@@ -64,24 +64,24 @@ export type MockReturnType<abi extends Abi, functionName extends string, returnT
 export function normalizeResult(outputs: readonly AbiParameter[], value: unknown): unknown {
   if (value === zeroResult) return normalizeResult(outputs, outputs.length > 1 ? [] : undefined);
   if (outputs.length === 0) return value;
-  if (outputs.length === 1) return fill(outputs[0]!, value);
-  if (Array.isArray(value)) return outputs.map((output, i) => fill(output, value[i]));
+  if (outputs.length === 1) return fillZeros(outputs[0]!, value);
+  if (Array.isArray(value)) return outputs.map((output, i) => fillZeros(output, value[i]));
   if (isPlainObject(value) && outputs.every((output) => output.name))
-    return outputs.map((output) => fill(output, value[output.name!]));
+    return outputs.map((output) => fillZeros(output, value[output.name!]));
   return value;
 }
 
-function fill(parameter: AbiParameter, value: unknown): unknown {
+export function fillZeros(parameter: AbiParameter, value: unknown): unknown {
   if (value === undefined) return zeroValue(parameter);
 
   const element = arrayElement(parameter);
-  if (element) return Array.isArray(value) ? value.map((v) => fill(element, v)) : value;
+  if (element) return Array.isArray(value) ? value.map((v) => fillZeros(element, v)) : value;
 
   if (parameter.type === "tuple" && "components" in parameter) {
     const { components } = parameter;
-    if (Array.isArray(value)) return components.map((c, i) => fill(c, value[i]));
+    if (Array.isArray(value)) return components.map((c, i) => fillZeros(c, value[i]));
     if (isPlainObject(value))
-      return Object.fromEntries(components.map((c) => [c.name, fill(c, value[c.name!])]));
+      return Object.fromEntries(components.map((c) => [c.name, fillZeros(c, value[c.name!])]));
   }
   return value;
 }

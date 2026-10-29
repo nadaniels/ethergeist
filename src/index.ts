@@ -33,7 +33,15 @@ export type {
   ResolverContext,
 } from "./contract.js";
 export type { MockBlock } from "./blocks.js";
-export type { MockLog, MockReceipt } from "./receipts.js";
+export {
+  type BuildLogParameters,
+  type LogPlacement,
+  type MockContractEvents,
+  type MockEventArgs,
+  type MockEventLog,
+  buildLog,
+} from "./events.js";
+export { type MockLog, type MockReceipt, buildReceipt } from "./receipts.js";
 export type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
 export type {
   FormatHistoryOptions,

@@ -148,6 +148,23 @@ features land; tick them off as pages get written.
       from `timestamp` and `chain.blockTime`), and what's zero.
 - [ ] Receipts: the defaults (status `"success"`, block, log context), and
       `.returns(null)` for "not found".
+- [ ] Event logs for receipts: `contract.events.Transfer({ from, to, value })`
+      builds a log's content (address, topics, data) with no position; the
+      receipt places it. Show:
+  - Indexed args are required (filters match on them, so a zero would
+    quietly miss); the rest may be left out, at any depth of a struct, and
+    are zero-filled as in `.returns()`. Unnamed inputs take every arg, in
+    order. Args are optional when none is indexed.
+  - Indexed `string` and `bytes` args take the value, but decode as its
+    keccak256 hash (viem's types say `string`). Indexed structs and arrays
+    aren't supported yet.
+  - Overloaded events use the overload the args fit; "ambiguous" when
+    several do.
+  - `buildLog({ abi, address, eventName, args, blockNumber, … })` for a
+    complete viem log without a mock, and `buildReceipt(fields)` for the
+    receipt `.returns(fields)` answers (pass `transactionHash` and
+    `blockNumber` to match the mock's). Both share the mock's encoding and
+    defaults, so `toEqual` against what the app got works.
 - [ ] Strict by default for data the test owns (balances, receipts), and how
       to opt into real-node defaults with args-less mocks.
 - [ ] `mock.method()` for any other method, with raw JSON-RPC values.

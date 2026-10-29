@@ -6,6 +6,7 @@ import {
   type TransactionReceipt,
   getAddress,
   zeroAddress,
+  zeroHash,
 } from "viem";
 import { blockHash } from "./blocks.js";
 
@@ -55,27 +56,53 @@ export function completeReceipt(
   if (complete.contractAddress) complete.contractAddress = getAddress(complete.contractAddress);
   return {
     ...complete,
-    logs: logs.map((log, logIndex) =>
-      Object.assign(
-        {
-          address: zeroAddress,
-          topics: [],
-          data: "0x",
-          blockHash: complete.blockHash,
-          blockNumber: complete.blockNumber,
-          transactionHash: complete.transactionHash,
-          transactionIndex: complete.transactionIndex,
-          logIndex,
-          removed: false,
-        } satisfies Log<bigint, number, false>,
-        log,
-        log.address === undefined ? {} : { address: getAddress(log.address) },
-        // viem's tuple type only says "empty or not"; the hashes are the same.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- same values, viem's narrower type
-        log.topics === undefined ? {} : { topics: [...log.topics] as Log["topics"] },
-      ),
-    ),
+    logs: logs.map((log, logIndex) => placeLog(log, { ...complete, logIndex })),
   };
+}
+
+/** Where a log sits on the chain: its block, transaction, and index in the block. */
+export type LogPosition = Pick<
+  Log<bigint, number, false>,
+  "blockHash" | "blockNumber" | "transactionHash" | "transactionIndex" | "logIndex"
+>;
+
+/**
+ * A complete log: `log`'s fields over `position`, with zeros for the rest.
+ * Fields the log sets win, so a receipt's log can name its own position.
+ * The address is checksummed, which also validates it.
+ */
+export function placeLog(log: MockLog, position: LogPosition): Log<bigint, number, false> {
+  return Object.assign(
+    {
+      address: zeroAddress,
+      topics: [],
+      data: "0x",
+      blockHash: position.blockHash,
+      blockNumber: position.blockNumber,
+      transactionHash: position.transactionHash,
+      transactionIndex: position.transactionIndex,
+      logIndex: position.logIndex,
+      removed: false,
+    } satisfies Log<bigint, number, false>,
+    log,
+    log.address === undefined ? {} : { address: getAddress(log.address) },
+    // viem's tuple type only says "empty or not"; the hashes are the same.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- same values, viem's narrower type
+    log.topics === undefined ? {} : { topics: [...log.topics] as Log["topics"] },
+  );
+}
+
+/**
+ * A receipt as `getTransactionReceipt` answers it when mocked with
+ * `.returns(receipt)`: the same defaults, logs placed the same way. The
+ * mock takes the hash and block from the request and its current block;
+ * here they're `transactionHash` and `blockNumber`, zero when left out.
+ */
+export function buildReceipt(receipt: MockReceipt = {}): TransactionReceipt {
+  return completeReceipt(receipt, {
+    hash: receipt.transactionHash ?? zeroHash,
+    blockNumber: receipt.blockNumber ?? 0n,
+  });
 }
 
 /** A receipt in its JSON-RPC form, logs included. */
