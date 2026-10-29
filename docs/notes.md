@@ -18,7 +18,8 @@ features land; tick them off as pages get written.
 
 - [ ] `createMockRpc({ chain, blockNumber, timestamp })`, then
       `mock.publicClient()`, or `createPublicClient({ transport: mock.transport() })`
-      with the defaults the helper sets (`cacheTime: 0`, `retryDelay: 0`).
+      with the defaults the helper sets (`cacheTime: 0`, `pollingInterval: 50`,
+      `retryDelay: 0`).
 - [ ] Registering a contract, and `defaults: { read: { … }, simulate: { … } }`.
       This is the first setup code everyone writes, so the docs should lead
       with it and repeat it in examples.
@@ -219,6 +220,33 @@ features land; tick them off as pages get written.
     49999 exceeds limit of 10000"`.
   - Reading `logs` for a filter the store refuses throws that refusal, as
     if unmocked; it's not reported as the resolver's error.
+- [ ] Watching events (`watchContractEvent`, `watchEvent`, wagmi's
+      `useWatchContractEvent`). Show:
+  - No websockets needed: on a custom transport viem polls. Filters
+    (`eth_newFilter` and the rest) aren't supported; the mock refuses them
+    as many public RPC endpoints do (`-32601`, not unhandled), so viem's
+    watchers poll `eth_getLogs` for new blocks, as they would against
+    those endpoints. To test code that uses filters directly, mock the
+    methods with `mock.method()` (you keep the filter's state).
+  - A watcher only reads blocks mined after it started: emit with
+    `{ mine: true }`. Logs from before it started aren't delivered, as on
+    a real chain. Several blocks mined between polls arrive together (or
+    one log per call with `batch: false`).
+  - Timing: `mock.publicClient()` polls every 50ms; viem's default is up to
+    4s, longer than `vi.waitFor`'s 1s timeout, so clients you build
+    yourself (wagmi configs) want a short `pollingInterval`. Wait with
+    `vi.waitFor(…)`, or use fake timers and run one poll at a time,
+    whatever the interval: `vi.useFakeTimers()`, then
+    `await vi.runOnlyPendingTimersAsync()` once before emitting (the
+    watcher notes the current block) and once after (it reads the new
+    one). Advancing by a fixed time instead runs one poll per interval.
+  - Pitfall (a viem bug, in production too): viem's polling skips a fetch
+    when the previous block number is `0n` (it checks it for truthiness).
+    Watching from block 0 loses the logs in block 1; later ones arrive.
+    `fromBlock: 1n` loses the whole backfill. The mock starts at block 1,
+    so only `createMockRpc({ blockNumber: 0n })` or `fromBlock: 1n` hit it;
+    use `fromBlock: 0n` to backfill from the start. Remove once viem fixes
+    it (reported upstream; link the issue).
 - [ ] Strict by default for data the test owns (balances, receipts), and how
       to opt into real-node defaults with args-less mocks.
 - [ ] `mock.method()` for any other method, with raw JSON-RPC values.

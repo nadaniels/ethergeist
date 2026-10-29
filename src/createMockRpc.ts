@@ -543,11 +543,18 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     transport,
     /**
      * A viem public client on this mock, with test-friendly defaults: the mock's
-     * chain and `cacheTime: 0`, so `mine()` shows up immediately. Options
-     * override the defaults.
+     * chain, `cacheTime: 0` so `mine()` shows up immediately, and
+     * `pollingInterval: 50` so watchers and `waitForTransactionReceipt` notice
+     * new blocks quickly (viem's default is up to 4s). Options override them.
      */
     publicClient(options: MockPublicClientParameters = {}): PublicClient<CustomTransport, Chain> {
-      return createPublicClient({ cacheTime: 0, ...options, chain, transport: transport() });
+      return createPublicClient({
+        cacheTime: 0,
+        pollingInterval: 50,
+        ...options,
+        chain,
+        transport: transport(),
+      });
     },
     /**
      * Registers a mocked contract. Each address takes one registration; for a

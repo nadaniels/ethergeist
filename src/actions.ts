@@ -381,6 +381,19 @@ function pinAddress(pinned: unknown) {
   return pinned;
 }
 
+/**
+ * Filter methods, which the mock doesn't support, like many public nodes:
+ * it refuses them with Arbitrum's error unless `mock.method()` mocks them.
+ */
+const filterMethods = new Set([
+  "eth_newFilter",
+  "eth_newBlockFilter",
+  "eth_newPendingTransactionFilter",
+  "eth_getFilterChanges",
+  "eth_getFilterLogs",
+  "eth_uninstallFilter",
+]);
+
 /** Methods answered outside `mock.method()`, with where to mock them instead. */
 const builtIns = new Map([
   ["eth_chainId", "it's the chain's id; pass `chain` to createMockRpc()"],
@@ -594,6 +607,11 @@ export function createActions(options: {
       report?: (report: ActionReport) => void,
     ): Promise<unknown> | undefined {
       const table = typedTable(name) ?? raw.get(name);
+      // Refused as many public nodes refuse them; clients fall back to polling eth_getLogs.
+      if (table === undefined && filterMethods.has(name))
+        return Promise.reject(
+          new MockRpcError(-32601, `the method ${name} does not exist/is not available`),
+        );
       // JSON-RPC params are an array for every method viem sends.
       return table?.answer(name, Array.isArray(params) ? params : [], report);
     },
