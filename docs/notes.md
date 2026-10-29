@@ -111,6 +111,19 @@ features land; tick them off as pages get written.
 - [ ] A revert is the contract refusing. It throws
       `ContractFunctionRevertedError`, is never retried, and fails only its
       own result in a multicall.
+- [ ] Errors match a real node's, and how far that's checked: reverts reach
+      viem as the `RpcRequestError` (code 3) a node causes through the `http`
+      transport, worded as reth words them (Ethereum's and Base's public
+      endpoints run reth); faults use the `http` transport's own errors, with
+      the same retries. Tested against responses captured from reth, geth and
+      its forks (Arbitrum, Avalanche, Linea), BSC, zkSync and Scroll.
+- [ ] Classify errors by viem's classes and decoded data
+      (`ContractFunctionRevertedError`, `errorName`, `reason`), never by
+      message text: the wording differs by node (`<empty>` vs an empty
+      reason, panic descriptions, BSC appending the data), in production too.
+- [ ] Known difference: Scroll sends a bare `revert()` (no data) as `-32000`,
+      so viem gives no `ContractFunctionRevertedError` there; the mock, like
+      reth, does.
 - [ ] `failRequests()` for transport-wide faults, versus `.fails()` and
       `fail()` for one function.
 - [ ] Recovering after a failure: `.once().fails(…)` or `.times(n).fails(…)`

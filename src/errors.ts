@@ -34,8 +34,10 @@ export class MockResolverError extends BaseError {
 }
 
 /**
- * A node's "execution reverted" response: code 3 with the revert data, which
- * viem's `getContractError` turns into a decoded `ContractFunctionRevertedError`.
+ * Internal: a mock's revert while answering: code 3 with the revert data. It doesn't
+ * reach viem as is: the rpc converts it to the `RpcRequestError` a reth
+ * node causes through viem's `http` transport, which viem decodes into a
+ * `ContractFunctionRevertedError`.
  */
 export class MockRevertError extends BaseError {
   override name = "MockRevertError";

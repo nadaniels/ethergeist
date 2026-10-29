@@ -1,4 +1,6 @@
 import { HttpRequestError, RpcRequestError, TimeoutError } from "viem";
+import type { MockRevertError } from "./errors.js";
+import { nodeRevertMessage } from "./revert.js";
 
 /** There is no real endpoint; viem's errors require a URL, so faults report this one. */
 const url = "mock://viem-transport-mock";
@@ -74,6 +76,28 @@ export function createActiveFault(fault: MockFault, options: FailRequestsOptions
 
 export function appliesTo(active: ActiveFault, method: string): boolean {
   return active.remaining > 0 && (active.methods?.includes(method) ?? true);
+}
+
+/**
+ * A revert as viem's `http` transport reports it from a reth node: an
+ * `RpcRequestError` with code 3, the node's message for the revert data, and
+ * the data itself, left out when it's empty. Other nodes word the message
+ * differently, but viem builds the same classes and decoded revert from them. viem reads the
+ * reason and the data from it, as in production.
+ */
+export function createRevertRpcError(
+  revert: MockRevertError,
+  request: { method: string; params?: unknown },
+): RpcRequestError {
+  const message = nodeRevertMessage(revert.data);
+  return new RpcRequestError({
+    body: { method: request.method, params: request.params },
+    url,
+    error:
+      revert.data === "0x"
+        ? { code: revert.code, message }
+        : { code: revert.code, message, data: revert.data },
+  });
 }
 
 export function createFaultError(

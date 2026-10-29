@@ -1,0 +1,417 @@
+import { type Server, createServer } from "node:http";
+import {
+  type Abi,
+  type Hex,
+  createPublicClient,
+  encodeErrorResult,
+  erc20Abi,
+  http,
+  parseAbi,
+} from "viem";
+import { mainnet } from "viem/chains";
+import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
+import {
+  type MockContract,
+  type MockFault,
+  type RevertSpec,
+  createMockRpc,
+  testAddress,
+} from "../src/index.js";
+import { nodeRevertMessage } from "../src/revert.js";
+import { rejectionOf } from "./utils.js";
+
+// The mock claims the app gets the error a real node would cause. This checks
+// that against viem's `http` transport and a test server answering the way
+// nodes do. Every revert body here was captured on 2026-10-29 with deployless
+// eth_calls whose code reverts with exactly the data shown.
+//
+// The mock imitates reth exactly (Ethereum's publicnode and mainnet.base.org
+// both run it). Other nodes word their messages differently, so against them
+// only what error handling should rely on is compared: classes, codes, and
+// the decoded revert.
+
+const TOKEN = testAddress("token");
+const abi = [
+  ...erc20Abi,
+  ...parseAbi([
+    "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
+    "error Custom(uint256)",
+  ]),
+] as const satisfies Abi;
+const builtins = parseAbi(["error Error(string)", "error Panic(uint256)"]);
+const alice = "0x00000000000000000000000000000000000a11ce";
+
+/** How the test server answers the next requests. */
+type Answer = {
+  status: number;
+  body: string;
+  headers?: Record<string, string>;
+  /** Wait before answering, past a transport's `timeout`. */
+  delay?: number;
+};
+let answer: Answer;
+let attempts = 0;
+let server: Server;
+let url: string;
+
+beforeAll(async () => {
+  server = createServer((request, response) => {
+    let body = "";
+    request.on("data", (chunk: Buffer) => {
+      body += chunk.toString();
+    });
+    request.on("end", () => {
+      attempts += 1;
+      const parsed: unknown = JSON.parse(body);
+      const id = typeof parsed === "object" && parsed !== null && "id" in parsed ? parsed.id : null;
+      const { status, headers = {}, delay = 0 } = answer;
+      setTimeout(() => {
+        response.writeHead(status, headers);
+        response.end(answer.body.replace('"id":1', `"id":${JSON.stringify(id)}`));
+      }, delay);
+    });
+  });
+  await new Promise<void>((resolve) => {
+    server.listen(0, "127.0.0.1", resolve);
+  });
+  const address = server.address();
+  if (address === null || typeof address === "string") throw new Error("expected a TCP address");
+  url = `http://127.0.0.1:${address.port}`;
+});
+
+afterAll(() => {
+  server.close();
+});
+
+/** A JSON-RPC error response, as the nodes sent it. */
+function rpcError(error: { code: number; message: string; data?: Hex }): Answer {
+  return {
+    status: 200,
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, error }),
+  };
+}
+
+/** An HTTP error page, as providers send them: plain text, not JSON-RPC. */
+function httpError(status: number, body: string, headers: Record<string, string> = {}): Answer {
+  return { status, headers: { "content-type": "text/plain", ...headers }, body };
+}
+
+/**
+ * Each error in the cause chain, as the fields error handling looks at.
+ * `portable` leaves out what varies by node without changing what it means:
+ * the human-readable text, and whether empty revert data is sent as "0x".
+ */
+function layers(error: unknown, { portable = false } = {}) {
+  const result: Record<string, unknown>[] = [];
+  for (let e: unknown = error; e instanceof Error; e = e.cause) {
+    const fields = e as Error & {
+      code?: unknown;
+      status?: unknown;
+      shortMessage?: unknown;
+      data?: unknown;
+    };
+    let { data } = fields;
+    // Decoded revert data is compared by its error name and args.
+    if (typeof data === "object" && data !== null && "errorName" in data)
+      data = { errorName: data.errorName, args: "args" in data ? data.args : undefined };
+    // "0x" and no data both mean an empty revert; nodes differ on which they send.
+    if (portable && data === "0x") data = undefined;
+    result.push({
+      name: e.name,
+      code: fields.code,
+      status: fields.status,
+      ...(portable ? {} : { shortMessage: fields.shortMessage }),
+      data,
+    });
+  }
+  return result;
+}
+
+const read = { abi, address: TOKEN, functionName: "balanceOf", args: [alice] } as const;
+
+/** The class names in an error's cause chain. */
+function names(error: unknown) {
+  return layers(error).map((layer) => layer.name);
+}
+
+/** The same read through viem's `http` transport and through the mock, failing the same way. */
+async function compare(
+  arrange: (token: MockContract<typeof abi>) => void,
+  options: { retryCount?: number; timeout?: number; portable?: boolean } = {},
+) {
+  const { retryCount = 0, timeout, portable = false } = options;
+  const mock = createMockRpc();
+  arrange(mock.contract({ abi, address: TOKEN }));
+  const transportOptions = {
+    retryCount,
+    retryDelay: 0,
+    ...(timeout === undefined ? {} : { timeout }),
+  };
+  const mocked = createPublicClient({
+    chain: mainnet,
+    transport: mock.transport(transportOptions),
+  });
+  const real = createPublicClient({ chain: mainnet, transport: http(url, transportOptions) });
+
+  attempts = 0;
+  const realError = await rejectionOf(real.readContract(read));
+  const mockError = await rejectionOf(mocked.readContract(read));
+  expect(layers(mockError, { portable })).toEqual(layers(realError, { portable }));
+  expect(mock.requests).toHaveLength(attempts);
+}
+
+describe("reverts match reth's exactly", () => {
+  const reverts: { name: string; spec: RevertSpec<typeof abi> | undefined; node: Answer }[] = [
+    {
+      name: "a reason string",
+      spec: "paused",
+      node: rpcError({
+        code: 3,
+        message: "execution reverted: paused",
+        data: encodeErrorResult({ abi: builtins, errorName: "Error", args: ["paused"] }),
+      }),
+    },
+    {
+      name: "an empty reason string",
+      spec: "",
+      node: rpcError({
+        code: 3,
+        message: "execution reverted: <empty>",
+        data: encodeErrorResult({ abi: builtins, errorName: "Error", args: [""] }),
+      }),
+    },
+    {
+      name: "a custom error with args",
+      spec: { errorName: "ERC20InsufficientBalance", args: [alice, 1n, 2n] },
+      node: rpcError({
+        code: 3,
+        message: "execution reverted",
+        data: encodeErrorResult({
+          abi,
+          errorName: "ERC20InsufficientBalance",
+          args: [alice, 1n, 2n],
+        }),
+      }),
+    },
+    {
+      name: "a panic",
+      spec: { panic: 0x11 },
+      node: rpcError({
+        code: 3,
+        message: "execution reverted: panic: arithmetic underflow or overflow (0x11)",
+        data: encodeErrorResult({ abi: builtins, errorName: "Panic", args: [0x11n] }),
+      }),
+    },
+    {
+      name: "an unknown panic code",
+      spec: { panic: 0x100 },
+      node: rpcError({
+        code: 3,
+        message: "execution reverted: panic: unknown code (0x100)",
+        data: encodeErrorResult({ abi: builtins, errorName: "Panic", args: [0x100n] }),
+      }),
+    },
+    {
+      name: "raw data",
+      spec: { data: "0xdeadbeef" },
+      node: rpcError({ code: 3, message: "execution reverted", data: "0xdeadbeef" }),
+    },
+    {
+      // Nodes leave `data` out for an empty revert.
+      name: "no data",
+      spec: undefined,
+      node: rpcError({ code: 3, message: "execution reverted" }),
+    },
+  ];
+
+  test.each(reverts)("$name", async ({ spec, node }) => {
+    answer = node;
+    await compare((token) => {
+      token.read.balanceOf().reverts(spec);
+    });
+  });
+
+  test("through simulateContract", async () => {
+    answer = reverts[0]!.node;
+    const mock = createMockRpc();
+    mock.contract({ abi, address: TOKEN }).simulate.approve().reverts("paused");
+    const simulate = { abi, address: TOKEN, functionName: "approve", args: [alice, 1n] } as const;
+    const real = createPublicClient({ chain: mainnet, transport: http(url, { retryCount: 0 }) });
+
+    expect(layers(await rejectionOf(mock.publicClient().simulateContract(simulate)))).toEqual(
+      layers(await rejectionOf(real.simulateContract(simulate))),
+    );
+  });
+});
+
+describe("reverts match other nodes' on classes, codes, and decoded data", () => {
+  const data = {
+    reason: encodeErrorResult({ abi: builtins, errorName: "Error", args: ["paused"] }),
+    emptyReason: encodeErrorResult({ abi: builtins, errorName: "Error", args: [""] }),
+    custom: encodeErrorResult({ abi, errorName: "Custom", args: [7n] }),
+    panic: encodeErrorResult({ abi: builtins, errorName: "Panic", args: [0x11n] }),
+  };
+  const kinds = ["reason", "emptyReason", "custom", "panic"] as const;
+  const specs: Record<keyof typeof data | "empty", RevertSpec<typeof abi> | undefined> = {
+    reason: "paused",
+    emptyReason: "",
+    custom: { errorName: "Custom", args: [7n] },
+    panic: { panic: 0x11 },
+    empty: undefined,
+  };
+  /** Each node family's messages for the cases above, and its empty revert. */
+  const nodes: {
+    name: string;
+    messages: Record<keyof typeof data, string>;
+    empty: { code: number; message: string; data?: Hex };
+  }[] = [
+    {
+      name: "geth and its forks (Geth 1.16/1.17, Arbitrum Nitro, Avalanche, Linea)",
+      messages: {
+        reason: "execution reverted: paused",
+        emptyReason: "execution reverted: ",
+        custom: "execution reverted",
+        panic: "execution reverted: arithmetic underflow or overflow",
+      },
+      empty: { code: 3, message: "execution reverted", data: "0x" },
+    },
+    {
+      name: "BSC, which appends the data",
+      messages: {
+        reason: `execution reverted: paused: ${data.reason}`,
+        emptyReason: `execution reverted: : ${data.emptyReason}`,
+        custom: `execution reverted: ${data.custom}`,
+        panic: `execution reverted: arithmetic underflow or overflow: ${data.panic}`,
+      },
+      empty: { code: 3, message: "execution reverted: 0x", data: "0x" },
+    },
+    {
+      name: "zkSync Era",
+      messages: {
+        reason: "execution reverted: paused",
+        emptyReason: "execution reverted",
+        custom: "execution reverted",
+        panic: "execution reverted",
+      },
+      empty: { code: 3, message: "execution reverted", data: "0x" },
+    },
+    {
+      // Its bare revert is the known difference, tested below.
+      name: "Scroll, except its empty revert",
+      messages: {
+        reason: "execution reverted: paused",
+        emptyReason: "execution reverted: ",
+        custom: "execution reverted",
+        panic: "execution reverted",
+      },
+      empty: { code: 3, message: "execution reverted", data: "0x" },
+    },
+  ];
+  const cases = nodes.flatMap((node) =>
+    kinds
+      .map((kind): { node: string; kind: keyof typeof specs; error: (typeof node)["empty"] } => ({
+        node: node.name,
+        kind,
+        error: { code: 3, message: node.messages[kind], data: data[kind] },
+      }))
+      .concat({ node: node.name, kind: "empty", error: node.empty }),
+  );
+
+  test.each(cases)("$node: $kind", async ({ kind, error }) => {
+    answer = rpcError(error);
+    await compare(
+      (token) => {
+        token.read.balanceOf().reverts(specs[kind]);
+      },
+      { portable: true },
+    );
+  });
+
+  test("Scroll sends a bare revert as -32000, which viem doesn't classify as a revert", async () => {
+    answer = rpcError({ code: -32000, message: "execution reverted" });
+    const mock = createMockRpc();
+    mock.contract({ abi, address: TOKEN }).read.balanceOf().reverts();
+    const real = createPublicClient({ chain: mainnet, transport: http(url, { retryCount: 0 }) });
+
+    // The mock answers like reth: a revert viem decodes. On Scroll, the app
+    // gets no ContractFunctionRevertedError for an empty revert.
+    expect(names(await rejectionOf(mock.publicClient().readContract(read)))).toContain(
+      "ContractFunctionRevertedError",
+    );
+    expect(names(await rejectionOf(real.readContract(read)))).not.toContain(
+      "ContractFunctionRevertedError",
+    );
+  });
+});
+
+describe("faults match the http transport's, retries included", () => {
+  const faults: { name: string; fault: MockFault; node: Answer; timeout?: number }[] = [
+    {
+      name: "an HTTP error status",
+      fault: { status: 503 },
+      node: httpError(503, "Service Unavailable"),
+    },
+    {
+      name: "a rate limit with Retry-After",
+      fault: { status: 429, retryAfter: 0 },
+      node: httpError(429, "Too Many Requests", { "Retry-After": "0" }),
+    },
+    {
+      name: "a JSON-RPC error viem maps to a class",
+      fault: { code: -32005, message: "limit exceeded" },
+      node: rpcError({ code: -32005, message: "limit exceeded" }),
+    },
+    {
+      name: "a generic JSON-RPC server error",
+      fault: { code: -32000, message: "header not found" },
+      node: rpcError({ code: -32000, message: "header not found" }),
+    },
+    {
+      name: "a timeout",
+      fault: "timeout",
+      node: { ...rpcError({ code: 3, message: "too late" }), delay: 200 },
+      timeout: 50,
+    },
+  ];
+
+  test.each(faults)("$name", async ({ fault, node, timeout }) => {
+    answer = node;
+    await compare(
+      (token) => {
+        token.read.balanceOf().fails(fault);
+      },
+      { retryCount: 2, ...(timeout === undefined ? {} : { timeout }) },
+    );
+  });
+});
+
+describe("revert messages", () => {
+  // Every panic message the reth nodes sent, verbatim.
+  const captured: [number, string][] = [
+    [0x00, "execution reverted: panic: generic/unspecified error (0x00)"],
+    [0x01, "execution reverted: panic: assertion failed (0x01)"],
+    [0x11, "execution reverted: panic: arithmetic underflow or overflow (0x11)"],
+    [0x12, "execution reverted: panic: division or modulo by zero (0x12)"],
+    [0x21, "execution reverted: panic: failed to convert value into enum type (0x21)"],
+    [0x22, "execution reverted: panic: storage byte array incorrectly encoded (0x22)"],
+    [0x31, "execution reverted: panic: called `.pop()` on an empty array (0x31)"],
+    [0x32, "execution reverted: panic: array out-of-bounds access (0x32)"],
+    [0x41, "execution reverted: panic: memory allocation error (0x41)"],
+    [0x51, "execution reverted: panic: called an invalid internal function (0x51)"],
+    [0x100, "execution reverted: panic: unknown code (0x100)"],
+  ];
+
+  test.each(captured.map(([code, message]) => ({ hex: `0x${code.toString(16)}`, code, message })))(
+    "panic $hex matches the nodes' message",
+    ({ code, message }) => {
+      const data = encodeErrorResult({ abi: builtins, errorName: "Panic", args: [BigInt(code)] });
+      expect(nodeRevertMessage(data)).toBe(message);
+    },
+  );
+
+  test("reasons keep newlines, as nodes send them", () => {
+    const data = encodeErrorResult({ abi: builtins, errorName: "Error", args: ["a\nb"] });
+    expect(nodeRevertMessage(data)).toBe("execution reverted: a\nb");
+  });
+});

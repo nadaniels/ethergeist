@@ -27,7 +27,7 @@ import {
   type MockContract,
   createMockContract,
 } from "./contract.js";
-import { MockNotFoundError, MockResolverError } from "./errors.js";
+import { MockNotFoundError, MockResolverError, MockRevertError } from "./errors.js";
 import {
   type ActiveFault,
   type FailRequestsOptions,
@@ -37,6 +37,7 @@ import {
   appliesTo,
   createActiveFault,
   createFaultError,
+  createRevertRpcError,
 } from "./faults.js";
 import {
   type FormatHistoryOptions,
@@ -204,6 +205,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       settle(record, outcomeOf(record, error));
       // A mock's `.fails()` or `fail()`: deliberate, like `failRequests`.
       if (error instanceof MockFailure) throw createFaultError(error.fault, entry);
+      // A revert reaches viem the way a node's would.
+      if (error instanceof MockRevertError) throw createRevertRpcError(error, entry);
       // Recorded because callers can swallow these: app code with a fallback,
       // or viem's multicall turning a failed batch into per-call failures.
       if (error instanceof MockNotFoundError || error instanceof MockResolverError)
