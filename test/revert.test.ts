@@ -8,11 +8,11 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { MockResolverError, createMockRpc } from "../src/index.js";
+import { MockResolverError, createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, findCause, rejectionOf } from "./utils.js";
 
-const NFT = "0x0000000000000000000000000000000000000721";
-const alice = "0x00000000000000000000000000000000000a11ce";
+const NFT = testAddress("nft");
+const alice = testAddress("alice");
 
 // OpenZeppelin ERC-721 with ERC-6093 custom errors and Pausable.
 const erc721Abi = parseAbi([

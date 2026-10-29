@@ -9,11 +9,11 @@ import {
   toHex,
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
-import { MockNotFoundError, createMockRpc } from "../src/index.js";
+import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const alice = "0x00000000000000000000000000000000000a11ce";
+const alice = testAddress("alice");
 const txHash = keccak256(toHex("tx"));
 
 function setup() {

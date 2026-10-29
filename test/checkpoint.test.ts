@@ -1,13 +1,18 @@
 import { HttpRequestError, createPublicClient, erc20Abi, getAddress } from "viem";
 import { base } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vite-plus/test";
-import { type MockCheckpoint, MockNotFoundError, createMockRpc } from "../src/index.js";
+import {
+  type MockCheckpoint,
+  MockNotFoundError,
+  createMockRpc,
+  testAddress,
+} from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const NOWHERE = "0x000000000000000000000000000000000000dEaD";
-const alice = "0x00000000000000000000000000000000000a11ce";
+const alice = testAddress("alice");
 
 function setup() {
   const mock = createMockRpc({ chain: base, blockNumber: 10n });

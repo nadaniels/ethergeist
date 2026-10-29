@@ -8,14 +8,20 @@ import {
   zeroHash,
 } from "viem";
 import { describe, expect, test, vi } from "vite-plus/test";
-import { MockNotFoundError, MockResolverError, createMockRpc, match } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import {
+  MockNotFoundError,
+  MockResolverError,
+  createMockRpc,
+  match,
+  testAddress,
+} from "../src/index.js";
+import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
-const alice = "0x00000000000000000000000000000000000a11ce";
-const bob = "0x0000000000000000000000000000000000000b0b";
-const carol = "0x00000000000000000000000000000000000ca201";
+const alice = testAddress("alice");
+const bob = testAddress("bob");
+const carol = testAddress("carol");
 
 // Generic ABIs for arrays, small integers, and overloads.
 const registryAbi = parseAbi([
@@ -279,7 +285,7 @@ describe("match.partial()", () => {
     );
 
     // Pinned args are only visible in messages: `alice` was checksummed.
-    book.read.filled([match.partial({ sell: { token: alice } })]).returns(true);
+    book.read.filled([match.partial({ sell: { token: lowercase(alice) } })]).returns(true);
     expect(() => {
       mock.assertAllUsed();
     }).toThrow(`filled({ sell: { token: ${getAddress(alice)} }, … }) on Book`);
@@ -379,7 +385,7 @@ describe("registration", () => {
     const { mock, usdc } = setup();
     expect(() => usdc.read.allowance(["0x1234", match.any()])).toThrow(InvalidAddressError);
 
-    usdc.read.allowance([alice, match.any()]).returns(1n);
+    usdc.read.allowance([lowercase(alice), match.any()]).returns(1n);
     // The pinned args are only visible in messages: `alice` was checksummed.
     expect(() => {
       mock.assertAllUsed();
@@ -446,7 +452,7 @@ describe("overloads", () => {
     // Only Order has `maker`, but partials are skipped when choosing an overload.
     // @ts-expect-error -- the types can't pick the overload either
     expect(() => book.read.place([match.partial({ maker: alice })])).toThrow(
-      "Ambiguous overload for place({ maker: 0x00000000000000000000000000000000000a11ce, … })",
+      `Ambiguous overload for place({ maker: ${alice}, … })`,
     );
   });
 

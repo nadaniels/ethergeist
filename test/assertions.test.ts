@@ -1,13 +1,19 @@
 import { InvalidAddressError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { MockNotFoundError, MockResolverError, createMockRpc, match } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import {
+  MockNotFoundError,
+  MockResolverError,
+  createMockRpc,
+  match,
+  testAddress,
+} from "../src/index.js";
+import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
-const alice = "0x00000000000000000000000000000000000a11ce";
-const bob = "0x0000000000000000000000000000000000000b0b";
+const alice = testAddress("alice");
+const bob = testAddress("bob");
 
 function setup() {
   const mock = createMockRpc();
@@ -200,7 +206,7 @@ describe("address args", () => {
       .returns(1n);
     mock
       .contract({ abi: batchAbi, address: DAI })
-      .read.balancesOf([[alice, bob]])
+      .read.balancesOf([[lowercase(alice), lowercase(bob)]])
       .returns([]);
 
     expect(() => {
@@ -357,7 +363,7 @@ describe("assertAllUsed(): what the function received instead", () => {
         `      allowance(…, ${DAI})  ← spender didn't match`,
         "",
         "Requests so far:",
-        "#1 eth_call USDC.allowance(0x0000…11cE, 0x6B17…1d0F) → 0n",
+        "#1 eth_call USDC.allowance(0xa41f…2D9e, 0x6B17…1d0F) → 0n",
       ].join("\n"),
     );
   });

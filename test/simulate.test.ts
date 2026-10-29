@@ -7,15 +7,15 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { MockNotFoundError, createMockRpc } from "../src/index.js";
+import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 
 const TOKEN = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
 // For tests that register their own contract instead of setup()'s token.
-const OTHER = "0x0000000000000000000000000000000000000123";
-const alice = "0x00000000000000000000000000000000000a11ce";
-const bob = "0x0000000000000000000000000000000000000b0b";
+const OTHER = testAddress("other");
+const alice = testAddress("alice");
+const bob = testAddress("bob");
 
 // viem's erc20Abi plus OpenZeppelin's ERC-6093 error.
 const tokenAbi = [

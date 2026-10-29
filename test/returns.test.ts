@@ -1,11 +1,11 @@
 import { createPublicClient, parseAbi, zeroAddress } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { createMockRpc, zeroResult } from "../src/index.js";
+import { createMockRpc, zeroResult, testAddress } from "../src/index.js";
 
 const FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
-const STORE = "0x0000000000000000000000000000000000005703";
-const alice = "0x00000000000000000000000000000000000A11cE";
+const STORE = testAddress("store");
+const alice = testAddress("alice");
 const zeroBytes32 = `0x${"00".repeat(32)}`;
 
 // Chainlink's AggregatorV3Interface.

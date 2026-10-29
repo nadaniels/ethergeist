@@ -1,10 +1,10 @@
 import { defineChain, erc20Abi, multicall3Abi } from "viem";
 import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { createMockRpc, multicall3Address } from "../src/index.js";
+import { createMockRpc, multicall3Address, testAddress } from "../src/index.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const customMulticall = "0x0000000000000000000000000000000000ca11ca";
+const customMulticall = testAddress("custom-multicall");
 
 // A chain whose Multicall3 isn't at the canonical address.
 const customChain = defineChain({

@@ -1,9 +1,9 @@
 import type { Address, Hex } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
-import { type RpcValue, createMockRpc, zeroResult } from "../src/index.js";
+import { type RpcValue, createMockRpc, zeroResult, testAddress } from "../src/index.js";
 
 const mock = createMockRpc();
-const alice = "0x00000000000000000000000000000000000a11ce";
+const alice = testAddress("alice");
 
 describe("actions", () => {
   test("params are partial; any field can be pinned", () => {

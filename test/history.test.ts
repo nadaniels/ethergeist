@@ -6,13 +6,14 @@ import {
   MockNotFoundError,
   MockResolverError,
   createMockRpc,
+  testAddress,
 } from "../src/index.js";
 import { rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const NOWHERE = "0x000000000000000000000000000000000000dEaD";
-const alice = "0x00000000000000000000000000000000000a11ce";
+const alice = testAddress("alice");
 
 // OpenZeppelin's Pausable error, alongside the ERC-20.
 const tokenAbi = [...erc20Abi, ...parseAbi(["error EnforcedPause()"])];
@@ -268,11 +269,11 @@ describe("formatHistory()", () => {
       [
         "#1 eth_call USDC.decimals() → 6",
         "#2 eth_call multicall, batch 1 (2 calls)",
-        "   ├ USDC.balanceOf(0x0000…11cE) → 5n",
+        "   ├ USDC.balanceOf(0xa41f…2D9e) → 5n",
         "   └ 0x6B17…1d0F.decimals() ✗ reverted: EnforcedPause()",
         "#3 eth_call USDC.symbol() ✗ fault: HTTP 503",
         "#4 eth_call (retry) USDC.symbol() ✗ fault: HTTP 503",
-        "#5 eth_getBalance getBalance({ address: 0x0000…11cE, blockNumber: 10n }) → 1000000000000000000n",
+        "#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n }) → 1000000000000000000n",
         "#6 eth_gasPrice ✗ not mocked",
         "#7 eth_blockNumber → 10n",
       ].join("\n"),

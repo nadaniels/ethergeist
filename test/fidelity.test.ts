@@ -39,7 +39,7 @@ const abi = [
   ]),
 ] as const satisfies Abi;
 const builtins = parseAbi(["error Error(string)", "error Panic(uint256)"]);
-const alice = "0x00000000000000000000000000000000000a11ce";
+const alice = testAddress("alice");
 
 /** How the test server answers the next requests. */
 type Answer = {

@@ -10,13 +10,13 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { createMockRpc } from "../src/index.js";
+import { createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, failureOf, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
-const alice = "0x00000000000000000000000000000000000a11ce";
-const bob = "0x0000000000000000000000000000000000000b0b";
+const alice = testAddress("alice");
+const bob = testAddress("bob");
 
 function setup({ retryCount }: { retryCount?: number } = {}) {
   const mock = createMockRpc();

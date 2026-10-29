@@ -8,12 +8,12 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { MockNotFoundError, createMockRpc, multicall3Address } from "../src/index.js";
+import { MockNotFoundError, createMockRpc, multicall3Address, testAddress } from "../src/index.js";
 import { expectCause, failureOf, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
-const alice = "0x00000000000000000000000000000000000a11ce";
+const alice = testAddress("alice");
 
 // Chainlink's AggregatorV3Interface, plus a custom error for revert cases.
 const feedAbi = parseAbi([
@@ -200,7 +200,7 @@ describe("batch.multicall", () => {
 
 describe("configuration", () => {
   test("the chain's Multicall3 address is the one answered", async () => {
-    const address = "0x0000000000000000000000000000000000ca11ca";
+    const address = testAddress("custom-multicall");
     const chain = defineChain({
       ...mainnet,
       contracts: { multicall3: { address } },

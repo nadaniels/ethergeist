@@ -24,14 +24,15 @@ import {
   createMockRpc,
   multicall3Address,
   zeroResult,
+  testAddress,
 } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const NOWHERE = "0x000000000000000000000000000000000000dEaD";
-const alice = "0x00000000000000000000000000000000000a11ce";
-const bob = "0x0000000000000000000000000000000000000b0b";
+const alice = testAddress("alice");
+const bob = testAddress("bob");
 
 function setup() {
   const mock = createMockRpc({ blockNumber: 10n });
@@ -98,7 +99,7 @@ describe("getBalance", () => {
     const { mock, client } = setup();
     mock.actions.getBalance().returns(0n);
 
-    await client.getBalance({ address: alice });
+    await client.getBalance({ address: lowercase(alice) });
     expect(mock.actions.getBalance.calls).toEqual([
       { address: getAddress(alice), blockNumber: 10n },
     ]);

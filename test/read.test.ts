@@ -1,12 +1,12 @@
 import { BaseError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
-import { MockNotFoundError, createMockRpc } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
+import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
-const alice = "0x00000000000000000000000000000000000a11ce";
-const bob = "0x0000000000000000000000000000000000000b0b";
+const alice = testAddress("alice");
+const bob = testAddress("bob");
 
 function setup(parameters?: Parameters<typeof createMockRpc>[0]) {
   const mock = createMockRpc(parameters);
@@ -130,7 +130,7 @@ describe("balanceOf", () => {
       abi: erc20Abi,
       address: "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48",
     });
-    usdc.read.balanceOf(["0x00000000000000000000000000000000000A11CE"]).returns(7n);
+    usdc.read.balanceOf([lowercase(alice)]).returns(7n);
 
     expect(
       await client.readContract({
