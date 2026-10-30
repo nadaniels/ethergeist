@@ -175,8 +175,9 @@ export type MockActions = {
   getCode: MockAction<CodeCall, Hex>;
   /**
    * `eth_getBlockByNumber` and `eth_getBlockByHash`. Unmocked, blocks up to the
-   * current one are generated: number, hash, parent hash, and a timestamp that
-   * follows the chain's `blockTime`, with everything else zero. A mock's fields
+   * current one are generated: number, hash, parent hash, a timestamp that
+   * follows the chain's `blockTime`, and the base fee (see `fees`), with
+   * everything else zero. A mock's fields
    * are merged over the generated block; `null` answers "no such block".
    */
   getBlock: MockAction<BlockCall, Partial<MockBlock> | null>;
@@ -546,10 +547,11 @@ export function createActions(options: {
   mine: () => void;
   /** Whether a contract is registered at `address`, which is checksummed. */
   isContract: (address: Address) => boolean;
-  /** The current block's fees. */
-  fees: () => Fees;
+  /** Block `number`'s fees. */
+  feesAt: (number: bigint) => Fees;
 }) {
-  const { resolveBlock, codeAt, blockNumber, generateBlock, mine, isContract, fees } = options;
+  const { resolveBlock, codeAt, blockNumber, generateBlock, mine, isContract, feesAt } = options;
+  const fees = () => feesAt(blockNumber());
   // Emitted logs, which answer `eth_getLogs`.
   const logStore = createLogStore({
     blockNumber,
@@ -591,7 +593,7 @@ export function createActions(options: {
     };
   }
   const feeHistoryOf = ({ blockCount, blockNumber: newest, rewardPercentiles }: FeeHistoryCall) =>
-    feeHistory({ blockCount, newest, ...(rewardPercentiles && { rewardPercentiles }) }, fees);
+    feeHistory({ blockCount, newest, ...(rewardPercentiles && { rewardPercentiles }) }, feesAt);
   const decodeAddressAtBlock = ([address, block]: readonly unknown[]) => ({
     // JSON-RPC params arrive untyped; viem sends the address first.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary

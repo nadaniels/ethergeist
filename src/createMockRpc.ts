@@ -19,6 +19,7 @@ import { mainnet } from "viem/chains";
 import { createActions } from "./actions.js";
 import {
   type BlockClock,
+  type Fees,
   type MockFees,
   generateBlock,
   numberOfBlockHash,
@@ -159,7 +160,11 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     startTimestamp: parameters.timestamp ?? 1_700_000_000n,
     blockTime: chain.blockTime ?? 12_000,
   };
-  const fees = resolveFees(parameters.fees);
+  const initialFees = resolveFees(parameters.fees);
+  /** `setFees()` changes, oldest first; each applies from its block on. */
+  let feeChanges: readonly { fromBlock: bigint; fees: Fees }[] = [];
+  const feesAt = (number: bigint) =>
+    feeChanges.findLast((change) => change.fromBlock <= number)?.fees ?? initialFees;
   const checkpoints: { valid: boolean }[] = [];
   const history: MockHistoryEntry[] = [];
   const historyOnFailure = parameters.historyOnFailure ?? 10;
@@ -195,8 +200,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     resolveBlock,
     codeAt,
     blockNumber: () => blockNumber,
-    generateBlock: (number) => generateBlock(number, clock, fees),
-    fees: () => fees,
+    generateBlock: (number) => generateBlock(number, clock, feesAt(number)),
+    feesAt,
     mine: () => {
       blockNumber += 1n;
     },
@@ -499,6 +504,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     const savedEmpty = new Set(emptyAddresses);
     const savedFaults = faults.map((fault) => [fault, fault.remaining, fault.count] as const);
     const savedBlockNumber = blockNumber;
+    const savedFeeChanges = feeChanges;
     const savedBatchCount = batchCount;
     const entry = { valid: true };
     checkpoints.push(entry);
@@ -541,6 +547,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         fault.count = count;
       }
       blockNumber = savedBlockNumber;
+      feeChanges = savedFeeChanges;
       batchCount = savedBatchCount;
       clearCalls();
 
@@ -645,6 +652,19 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     mine(blocks = 1n) {
       blockNumber += blocks;
     },
+    /**
+     * Changes the fees from the current block on, e.g. for a fee spike:
+     * blocks, `eth_gasPrice`, `eth_maxPriorityFeePerGas`, and fee histories
+     * follow. Earlier blocks keep the fees they had. Fees left out stay as
+     * they are. `restore()` and `reset()` undo it.
+     */
+    setFees(fees: MockFees) {
+      const changed = resolveFees({ ...feesAt(blockNumber), ...fees });
+      feeChanges = [
+        ...feeChanges.filter((change) => change.fromBlock < blockNumber),
+        { fromBlock: blockNumber, fees: changed },
+      ];
+    },
     /** Every decoded contract call, across all contracts, in the order received. */
     get calls() {
       return [...calls];
@@ -716,6 +736,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       unhandled.length = 0;
       batchCount = 0;
       blockNumber = initialBlockNumber;
+      feeChanges = [];
     },
   };
 }

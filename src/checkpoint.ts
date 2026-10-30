@@ -41,7 +41,7 @@
 export type MockCheckpoint = {
   /**
    * Undoes every registration made since the checkpoint and returns the
-   * mock's own state (block number, batch ids, faults' counts) to what it
+   * mock's own state (block number, fees, batch ids, faults' counts) to what it
    * was, then clears history. Can be called repeatedly, e.g. after each test.
    * Throws if the checkpoint is no longer valid, or, after restoring, if a
    * check in `options` fails.

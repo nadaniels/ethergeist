@@ -225,6 +225,77 @@ describe("getFeeHistory", () => {
   });
 });
 
+describe("setFees()", () => {
+  test("changes the fees from the current block on; earlier blocks keep theirs", async () => {
+    const { mock, client } = setup();
+    mock.setFees({ baseFeePerGas: parseGwei("50") });
+
+    expect((await client.getBlock()).baseFeePerGas).toBe(parseGwei("50"));
+    expect((await client.getBlock({ blockNumber: 9n })).baseFeePerGas).toBe(parseGwei("10"));
+    expect(await client.getGasPrice()).toBe(parseGwei("51"));
+    expect(await client.estimateFeesPerGas()).toEqual({
+      maxFeePerGas: parseGwei("61"),
+      maxPriorityFeePerGas: parseGwei("1"),
+    });
+    mock.mine();
+    expect((await client.getBlock()).baseFeePerGas).toBe(parseGwei("50"));
+  });
+
+  test("fees left out stay as they are", async () => {
+    const { mock, client } = setup({ baseFeePerGas: parseGwei("20") });
+    mock.setFees({ maxPriorityFeePerGas: parseGwei("3") });
+
+    expect(await client.estimateMaxPriorityFeePerGas()).toBe(parseGwei("3"));
+    expect(await client.getGasPrice()).toBe(parseGwei("23"));
+  });
+
+  test("a fee history shows each block's fees", async () => {
+    const { mock, client } = setup();
+    mock.mine();
+    mock.setFees({ baseFeePerGas: parseGwei("50") });
+    mock.mine();
+
+    const history = await client.getFeeHistory({ blockCount: 3, rewardPercentiles: [] });
+    expect(history.oldestBlock).toBe(10n);
+    // one base fee per block (10–12), plus the next block (13)
+    expect(history.baseFeePerGas).toEqual([
+      parseGwei("10"),
+      parseGwei("50"),
+      parseGwei("50"),
+      parseGwei("50"),
+    ]);
+  });
+
+  test("a second change in the same block replaces the first", async () => {
+    const { mock, client } = setup();
+    mock.setFees({ baseFeePerGas: parseGwei("50") });
+    mock.setFees({ baseFeePerGas: parseGwei("60") });
+
+    expect((await client.getBlock()).baseFeePerGas).toBe(parseGwei("60"));
+    expect((await client.getBlock({ blockNumber: 9n })).baseFeePerGas).toBe(parseGwei("10"));
+  });
+
+  test("restore() undoes changes since the checkpoint, and reset() all of them", async () => {
+    const { mock, client } = setup();
+    mock.setFees({ baseFeePerGas: parseGwei("20") });
+    const baseline = mock.checkpoint();
+    mock.setFees({ baseFeePerGas: parseGwei("90") });
+
+    baseline.restore();
+    expect(await client.getGasPrice()).toBe(parseGwei("21"));
+    mock.reset();
+    expect(await client.getGasPrice()).toBe(parseGwei("11"));
+  });
+
+  test("setFees() rejects invalid fees, as in createMockRpc({ fees })", () => {
+    const { mock } = setup();
+
+    expect(() => {
+      mock.setFees({ baseFeePerGas: -1n });
+    }).toThrow("fees.baseFeePerGas can't be negative; got -1.");
+  });
+});
+
 describe("mocking fee answers", () => {
   test("mocked fee answers take precedence over `fees`", async () => {
     const { mock, client } = setup();

@@ -158,6 +158,10 @@ features land; tick them off as pages get written.
   - Set `fees` rather than mocking one answer: a mocked `getGasPrice` doesn't
     change the blocks' base fee, so answers that a node keeps consistent
     stop agreeing.
+  - `mock.setFees({ … })` changes them mid-test or per test on a shared
+    mock (e.g. a fee spike for a "gas is high" warning), from the current
+    block on: earlier blocks keep theirs, so fee histories show the change.
+    Fees left out stay; `restore()` and `reset()` undo it.
   - Mock answers for what `fees` can't say: `mock.actions.getGasPrice()`,
     `estimateMaxPriorityFeePerGas()`, `getBlobBaseFee()`, e.g. `.fails(…)`.
   - Pitfall: viem's `estimateMaxPriorityFeePerGas()` (and so
@@ -405,7 +409,7 @@ features land; tick them off as pages get written.
     afterAll(() => outer.restore());
     ```
 - [ ] What's restored (registrations, baseline builders' answers and limits,
-      `.once()`/`.times(n)` counts, block number, batch ids, fault counts) and what isn't (state that resolvers
+      `.once()`/`.times(n)` counts, block number, fees, batch ids, fault counts) and what isn't (state that resolvers
       close over). History is cleared, not rolled back.
 - [ ] Removed handles throw when used to register. Their `.calls` can still
       be read.
