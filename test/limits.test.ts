@@ -115,8 +115,8 @@ describe("once() and times()", () => {
     const { mock, client } = setup();
     mock.actions.getTransactionReceipt({ hash: txHash }).returns({});
     mock.actions.getTransactionReceipt({ hash: txHash }).once().returns(null);
-    mock.method("eth_gasPrice").returns("0x2");
-    mock.method("eth_gasPrice").once().returns("0x1");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x2");
+    mock.method("eth_getBlockTransactionCountByNumber").once().returns("0x1");
 
     // Pending once, then mined.
     expectCause(
@@ -124,7 +124,10 @@ describe("once() and times()", () => {
       TransactionReceiptNotFoundError,
     );
     expect((await client.getTransactionReceipt({ hash: txHash })).status).toBe("success");
-    expect([await client.getGasPrice(), await client.getGasPrice()]).toEqual([1n, 2n]);
+    expect([
+      await client.getBlockTransactionCount(),
+      await client.getBlockTransactionCount(),
+    ]).toEqual([1, 2]);
   });
 
   test("takes a positive integer, once", () => {

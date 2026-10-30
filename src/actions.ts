@@ -14,7 +14,7 @@ import {
   isHex,
   numberToHex,
 } from "viem";
-import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
+import { type Fees, type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
 import type { PartCheckpoint } from "./checkpoint.js";
 import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError, MockRpcError, removedMockError } from "./errors.js";
@@ -64,6 +64,8 @@ export type RpcValue =
   | readonly RpcValue[]
   | { readonly [key: string]: RpcValue };
 
+/** What a call to an action without params asked for: nothing. */
+export type EmptyCall = Record<string, never>;
 /** What a call to `getTransactionReceipt` asked for. */
 export type ReceiptCall = { hash: Hash };
 /** A raw JSON-RPC request answered by `mock.method()`. */
@@ -118,6 +120,13 @@ export type MockAction<call, value, context = ActionContext<call>> = {
   readonly calls: call[];
 };
 
+/** Like `MockAction`, for an action without params: there's nothing to pin. */
+export type MockActionWithoutParams<value> = {
+  (): MockActionBuilder<EmptyCall, value, ActionContext<object>>;
+  /** Every call to this action the mock has received, in order. */
+  readonly calls: EmptyCall[];
+};
+
 /** Each typed action's decoded call. */
 export type ActionCalls = {
   getBalance: BalanceCall;
@@ -125,6 +134,9 @@ export type ActionCalls = {
   getBlock: BlockCall;
   getTransactionReceipt: ReceiptCall;
   getLogs: LogsCall;
+  getGasPrice: EmptyCall;
+  estimateMaxPriorityFeePerGas: EmptyCall;
+  getBlobBaseFee: EmptyCall;
 };
 
 /** What a table tells the rpc about a call it answered, for history. */
@@ -161,6 +173,23 @@ export type MockActions = {
    * resolver gets the emitted logs the filter matches as `logs`.
    */
   getLogs: MockAction<LogsCall, readonly EmittedLog[], LogsContext>;
+  /**
+   * `eth_gasPrice`. Unmocked, the current block's base fee plus the tip, as
+   * reth suggests (see `fees` in `createMockRpc()`).
+   */
+  getGasPrice: MockActionWithoutParams<bigint>;
+  /**
+   * `eth_maxPriorityFeePerGas`, the tip a node suggests. Unmocked, `fees`'
+   * `maxPriorityFeePerGas`. viem's `estimateMaxPriorityFeePerGas()` and
+   * `estimateFeesPerGas()` don't fail when it fails: they fall back to
+   * `eth_gasPrice` minus the base fee.
+   */
+  estimateMaxPriorityFeePerGas: MockActionWithoutParams<bigint>;
+  /**
+   * `eth_blobBaseFee`. Unmocked, 1 wei, the protocol's minimum: generated
+   * blocks have no excess blob gas.
+   */
+  getBlobBaseFee: MockActionWithoutParams<bigint>;
 };
 
 export type MockMethodBuilder = MockActionBuilder<MethodCall, RpcValue>;
@@ -368,6 +397,18 @@ function createTable(definition: Definition) {
   };
 }
 
+/** Encodes a bigint answer as a JSON-RPC quantity; `what` names it in the error. */
+function encodeQuantity(what: string) {
+  return (value: unknown) => {
+    if (typeof value !== "bigint")
+      throw new TypeError(`${what} must be a bigint; got ${typeof value}.`);
+    return numberToHex(value);
+  };
+}
+
+/** A JSON-RPC quantity as viem's action returns it. */
+const viewQuantity = (rpc: unknown) => (isHex(rpc) ? hexToBigInt(rpc) : rpc);
+
 /** Checksums a pinned `address` (or each of several), which also validates it at registration. */
 function pinAddress(pinned: unknown) {
   if (!isPlainObject(pinned)) return pinned;
@@ -420,8 +461,10 @@ export function createActions(options: {
   mine: () => void;
   /** Whether a contract is registered at `address`, which is checksummed. */
   isContract: (address: Address) => boolean;
+  /** The current block's fees. */
+  fees: () => Fees;
 }) {
-  const { resolveBlock, codeAt, blockNumber, generateBlock, mine, isContract } = options;
+  const { resolveBlock, codeAt, blockNumber, generateBlock, mine, isContract, fees } = options;
   // Emitted logs, which answer `eth_getLogs`.
   const logStore = createLogStore({
     blockNumber,
@@ -461,12 +504,8 @@ export function createActions(options: {
       decode: decodeAddressAtBlock,
       pin: pinAddress,
       zero: 0n,
-      encode(value) {
-        if (typeof value !== "bigint")
-          throw new TypeError(`A balance must be a bigint; got ${typeof value}.`);
-        return numberToHex(value);
-      },
-      view: (rpc) => (isHex(rpc) ? hexToBigInt(rpc) : rpc),
+      encode: encodeQuantity("A balance"),
+      view: viewQuantity,
     }),
     getCode: createTable({
       name: "getCode",
@@ -542,6 +581,36 @@ export function createActions(options: {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encoded by logStore.toRpc
       view: (rpc) => (rpc as RpcLog[]).map((log) => formatLog(log)),
     }),
+    getGasPrice: createTable({
+      name: "getGasPrice",
+      hint: "mock.actions.getGasPrice().returns(…), or `fees` in createMockRpc()",
+      decode: () => ({}),
+      zero: 0n,
+      encode: encodeQuantity("A gas price"),
+      view: viewQuantity,
+      fallback() {
+        const { baseFeePerGas, maxPriorityFeePerGas } = fees();
+        return numberToHex(baseFeePerGas + maxPriorityFeePerGas);
+      },
+    }),
+    estimateMaxPriorityFeePerGas: createTable({
+      name: "estimateMaxPriorityFeePerGas",
+      hint: "mock.actions.estimateMaxPriorityFeePerGas().returns(…), or `fees` in createMockRpc()",
+      decode: () => ({}),
+      zero: 0n,
+      encode: encodeQuantity("A priority fee"),
+      view: viewQuantity,
+      fallback: () => numberToHex(fees().maxPriorityFeePerGas),
+    }),
+    getBlobBaseFee: createTable({
+      name: "getBlobBaseFee",
+      hint: "mock.actions.getBlobBaseFee().returns(…)",
+      decode: () => ({}),
+      zero: 0n,
+      encode: encodeQuantity("A blob base fee"),
+      view: viewQuantity,
+      fallback: () => numberToHex(1n),
+    }),
   };
   const typedMethods = new Map<string, keyof typeof typed>([
     ["eth_getBalance", "getBalance"],
@@ -550,6 +619,9 @@ export function createActions(options: {
     ["eth_getBlockByHash", "getBlock"],
     ["eth_getTransactionReceipt", "getTransactionReceipt"],
     ["eth_getLogs", "getLogs"],
+    ["eth_gasPrice", "getGasPrice"],
+    ["eth_maxPriorityFeePerGas", "estimateMaxPriorityFeePerGas"],
+    ["eth_blobBaseFee", "getBlobBaseFee"],
   ]);
   const typedTable = (name: string) => {
     const action = typedMethods.get(name);
@@ -571,6 +643,9 @@ export function createActions(options: {
     getBlock: buildAction(typed.getBlock),
     getTransactionReceipt: buildAction(typed.getTransactionReceipt),
     getLogs: buildAction(typed.getLogs),
+    getGasPrice: buildAction(typed.getGasPrice),
+    estimateMaxPriorityFeePerGas: buildAction(typed.estimateMaxPriorityFeePerGas),
+    getBlobBaseFee: buildAction(typed.getBlobBaseFee),
   } as unknown as MockActions;
 
   function method(name: string, params?: readonly unknown[]): MockMethodBuilder {

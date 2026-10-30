@@ -6,6 +6,7 @@ import {
   concat,
   hexToBigInt,
   numberToHex,
+  parseGwei,
   size,
   slice,
   zeroAddress,
@@ -23,6 +24,35 @@ export type BlockClock = {
   /** Milliseconds between blocks. */
   blockTime: number;
 };
+
+/**
+ * The fees generated blocks and fee requests answer with: every block's
+ * `baseFeePerGas`, and the tip a node suggests (`eth_maxPriorityFeePerGas`).
+ * `eth_gasPrice` is their sum, as reth suggests it.
+ */
+export type MockFees = {
+  /** Defaults to 10 gwei. */
+  baseFeePerGas?: bigint;
+  /** Defaults to 1 gwei. */
+  maxPriorityFeePerGas?: bigint;
+};
+
+export type Fees = Required<MockFees>;
+
+// Whole gwei, and different, so a swapped or ignored fee shows: viem's
+// estimateFeesPerGas() gives 13 gwei (base × 1.2 + tip), eth_gasPrice 11.
+const defaults: Fees = { baseFeePerGas: parseGwei("10"), maxPriorityFeePerGas: parseGwei("1") };
+
+/** `fees` over the defaults, checked: each is a bigint, zero or more. */
+export function resolveFees(fees: MockFees = {}): Fees {
+  const resolved = { ...defaults, ...fees };
+  for (const [name, value] of Object.entries(resolved)) {
+    if (typeof value !== "bigint")
+      throw new TypeError(`fees.${name} must be a bigint; got ${typeof value}.`);
+    if (value < 0n) throw new RangeError(`fees.${name} can't be negative; got ${value}.`);
+  }
+  return resolved;
+}
 
 // Generated hashes are a marker plus the block number, so a hash maps back to
 // its block without a lookup table. They aren't keccak hashes, but nothing
@@ -42,11 +72,11 @@ export function numberOfBlockHash(hash: Hash): bigint | undefined {
 
 /**
  * Block `number` as the mock generates it: the number, a hash that links to
- * its parent, and a timestamp `blockTime` apart from its neighbors. Everything
- * else is zero or empty; the mock doesn't execute, so there's nothing to fill
- * it with.
+ * its parent, a timestamp `blockTime` apart from its neighbors, and the base
+ * fee. Everything else is zero or empty; the mock doesn't execute, so there's
+ * nothing to fill it with.
  */
-export function generateBlock(number: bigint, clock: BlockClock): MockBlock {
+export function generateBlock(number: bigint, clock: BlockClock, fees: Fees): MockBlock {
   const elapsed = ((number - clock.startBlock) * BigInt(clock.blockTime)) / 1000n;
   const timestamp = clock.startTimestamp + elapsed;
   return {
@@ -54,7 +84,7 @@ export function generateBlock(number: bigint, clock: BlockClock): MockBlock {
     hash: blockHash(number),
     parentHash: number === 0n ? zeroHash : blockHash(number - 1n),
     timestamp: timestamp < 0n ? 0n : timestamp,
-    baseFeePerGas: 0n,
+    baseFeePerGas: fees.baseFeePerGas,
     blobGasUsed: 0n,
     difficulty: 0n,
     excessBlobGas: 0n,

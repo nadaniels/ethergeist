@@ -17,7 +17,13 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { createActions } from "./actions.js";
-import { type BlockClock, generateBlock, numberOfBlockHash } from "./blocks.js";
+import {
+  type BlockClock,
+  type MockFees,
+  generateBlock,
+  numberOfBlockHash,
+  resolveFees,
+} from "./blocks.js";
 import type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
 import {
   type CallContext,
@@ -74,6 +80,14 @@ export type CreateMockRpcParameters = {
    * 1_700_000_000n, so runs are deterministic.
    */
   timestamp?: bigint;
+  /**
+   * The fees generated blocks and fee requests answer with: `baseFeePerGas`
+   * is every block's, `maxPriorityFeePerGas` answers `eth_maxPriorityFeePerGas`,
+   * and their sum `eth_gasPrice`, as reth suggests. Defaults to 10 gwei and
+   * 1 gwei, so viem's `estimateFeesPerGas()` gives a `maxFeePerGas` of 13 gwei.
+   * `mock.actions` mocks answer over them.
+   */
+  fees?: MockFees;
   /**
    * Log each request as it's answered, one line per request (see
    * `formatHistory()`). `true` logs with `console.log`; a function receives
@@ -145,6 +159,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     startTimestamp: parameters.timestamp ?? 1_700_000_000n,
     blockTime: chain.blockTime ?? 12_000,
   };
+  const fees = resolveFees(parameters.fees);
   const checkpoints: { valid: boolean }[] = [];
   const history: MockHistoryEntry[] = [];
   const historyOnFailure = parameters.historyOnFailure ?? 10;
@@ -180,7 +195,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     resolveBlock,
     codeAt,
     blockNumber: () => blockNumber,
-    generateBlock: (number) => generateBlock(number, clock),
+    generateBlock: (number) => generateBlock(number, clock, fees),
+    fees: () => fees,
     mine: () => {
       blockNumber += 1n;
     },

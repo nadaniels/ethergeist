@@ -53,7 +53,6 @@ function setup() {
 function walletSetup() {
   const { mock } = setup();
   mock.method("eth_getTransactionCount").returns("0x0");
-  mock.method("eth_maxPriorityFeePerGas").returns("0x1");
   mock.method("eth_estimateGas").returns("0x5208");
   const wallet = createWalletClient({
     account: privateKeyToAccount(keccak256(toHex("alice"))),
@@ -280,7 +279,7 @@ describe("getBlock", () => {
     expect(await client.getBlock({ blockNumber: 9n })).toMatchObject({
       number: 9n,
       timestamp: 1_234n,
-      baseFeePerGas: 0n,
+      baseFeePerGas: parseGwei("10"),
     });
   });
 
@@ -566,9 +565,9 @@ describe("addresses in answers are lowercase, as nodes send them", () => {
 describe("method()", () => {
   test("answers a method with raw JSON-RPC values", async () => {
     const { mock, client } = setup();
-    mock.method("eth_gasPrice").returns("0x3b9aca00");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x3b9aca00");
 
-    expect(await client.getGasPrice()).toBe(1_000_000_000n);
+    expect(await client.getBlockTransactionCount()).toBe(1_000_000_000);
   });
 
   test("pinned params match a prefix of the request's", async () => {
@@ -591,9 +590,14 @@ describe("method()", () => {
   test("an unmocked method suggests method()", async () => {
     const { mock, client } = setup();
 
-    const error = expectCause(await rejectionOf(client.getGasPrice()), MockNotFoundError);
-    expect(error.message).toContain('RPC method "eth_gasPrice" is not mocked');
-    expect(error.message).toContain('mock.method("eth_gasPrice", …)');
+    const error = expectCause(
+      await rejectionOf(client.getBlockTransactionCount()),
+      MockNotFoundError,
+    );
+    expect(error.message).toContain(
+      'RPC method "eth_getBlockTransactionCountByNumber" is not mocked',
+    );
+    expect(error.message).toContain('mock.method("eth_getBlockTransactionCountByNumber", …)');
     expect(mock.unhandled).toHaveLength(1);
   });
 
@@ -607,9 +611,9 @@ describe("method()", () => {
 
   test("fails() works here too", async () => {
     const { mock, client } = setup();
-    mock.method("eth_gasPrice").fails("timeout");
+    mock.method("eth_getBlockTransactionCountByNumber").fails("timeout");
 
-    expectCause(await rejectionOf(client.getGasPrice()), TimeoutError);
+    expectCause(await rejectionOf(client.getBlockTransactionCount()), TimeoutError);
   });
 });
 
@@ -657,11 +661,11 @@ describe("bookkeeping", () => {
   test("assertAllUsed() reports args-less action and method mocks too", () => {
     const { mock } = setup();
     mock.actions.getBalance().returns(0n);
-    mock.method("eth_gasPrice").returns("0x1");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
 
     expect(() => {
       mock.assertAllUsed();
-    }).toThrow(/getBalance\(\*\)[\s\S]*eth_gasPrice\(\*\)/u);
+    }).toThrow(/getBalance\(\*\)[\s\S]*eth_getBlockTransactionCountByNumber\(\*\)/u);
   });
 
   test("assertAllUsed() reports pinned action mocks that never answered", async () => {
@@ -682,7 +686,7 @@ describe("bookkeeping", () => {
   test("clearCalls() clears history; reset() clears mocks", async () => {
     const { mock, client } = setup();
     mock.actions.getBalance().returns(1n);
-    mock.method("eth_gasPrice").returns("0x1");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
     await client.getBalance({ address: alice });
 
     mock.clearCalls();
@@ -691,6 +695,6 @@ describe("bookkeeping", () => {
 
     mock.reset();
     expectCause(await rejectionOf(client.getBalance({ address: alice })), MockNotFoundError);
-    expectCause(await rejectionOf(client.getGasPrice()), MockNotFoundError);
+    expectCause(await rejectionOf(client.getBlockTransactionCount()), MockNotFoundError);
   });
 });

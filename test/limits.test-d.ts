@@ -15,7 +15,7 @@ describe("once() and times()", () => {
     // @ts-expect-error -- balanceOf returns a bigint
     usdc.read.balanceOf().once().returns("1");
     mock.actions.getBalance().once().returns(1n);
-    mock.method("eth_gasPrice").times(2).returns("0x1");
+    mock.method("eth_getBlockTransactionCountByNumber").times(2).returns("0x1");
   });
 
   test("can't be repeated or come after the answer", () => {

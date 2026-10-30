@@ -3,10 +3,12 @@ export type {
   BalanceCall,
   BlockCall,
   CodeCall,
+  EmptyCall,
   MethodCall,
   MockAction,
   MockActionAnswers,
   MockActionBuilder,
+  MockActionWithoutParams,
   MockActions,
   MockMethodBuilder,
   ReceiptCall,
@@ -32,7 +34,7 @@ export type {
   MockSimulateFunction,
   ResolverContext,
 } from "./contract.js";
-export type { MockBlock } from "./blocks.js";
+export type { MockBlock, MockFees } from "./blocks.js";
 export {
   type BuildLogParameters,
   type EmitOptions,

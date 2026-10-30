@@ -129,14 +129,25 @@ describe("getLogs", () => {
     mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: alice })]);
     expectTypeOf(mock.actions.getLogs.calls).toEqualTypeOf<LogsCall[]>();
   });
+
+  test("fee actions take no params and answer bigints", () => {
+    mock.actions.getGasPrice().returns(1n);
+    mock.actions.estimateMaxPriorityFeePerGas().once().returns(1n);
+    mock.actions.getBlobBaseFee().returns(({ fail }) => fail({ status: 503 }));
+    mock.actions.getGasPrice().returns();
+    // @ts-expect-error there's nothing to pin
+    mock.actions.getGasPrice({});
+    // @ts-expect-error a gas price is a bigint, not hex
+    mock.actions.getGasPrice().returns("0x1");
+  });
 });
 
 describe("method()", () => {
   test("answers with JSON-RPC values, not viem's types", () => {
-    mock.method("eth_gasPrice").returns("0x1");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
     mock.method("eth_feeHistory").returns({ oldestBlock: "0x1", baseFeePerGas: ["0x1"] });
     // @ts-expect-error JSON-RPC carries quantities as hex strings
-    mock.method("eth_gasPrice").returns(1n);
+    mock.method("eth_getBlockTransactionCountByNumber").returns(1n);
   });
 
   test("resolvers get the raw params", () => {
@@ -145,7 +156,7 @@ describe("method()", () => {
       expectTypeOf(params).toEqualTypeOf<readonly RpcValue[]>();
       return null;
     });
-    mock.method("eth_gasPrice").fails({ status: 429 });
+    mock.method("eth_getBlockTransactionCountByNumber").fails({ status: 429 });
   });
 
   test("code is Hex", () => {

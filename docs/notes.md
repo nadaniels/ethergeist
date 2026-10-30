@@ -143,10 +143,30 @@ features land; tick them off as pages get written.
 
 ## 5. Node data: `mock.actions` and `mock.method`
 
-- [ ] `getBalance`, `getCode`, `getBlock` and `getTransactionReceipt`, with
+- [ ] `getBalance`, `getCode`, `getBlock`, `getTransactionReceipt` and the fee actions, with
       values in viem's types.
 - [ ] Generated blocks: what's generated (numbers, linked hashes, timestamps
-      from `timestamp` and `chain.blockTime`), and what's zero.
+      from `timestamp` and `chain.blockTime`, the base fee from `fees`), and
+      what's zero.
+- [ ] Fees: `createMockRpc({ fees: { baseFeePerGas, maxPriorityFeePerGas } })`,
+      default 10 gwei and 1 gwei. Every fee answer follows from them, as on a
+      node: blocks' `baseFeePerGas`, `eth_maxPriorityFeePerGas` (the tip),
+      and `eth_gasPrice` (their sum, as reth suggests). So viem's
+      `estimateFeesPerGas()` works unmocked: `maxFeePerGas` = base × 1.2 + tip
+      = 13 gwei (the multiplier is viem's, or `chain.fees.baseFeeMultiplier`).
+      `eth_blobBaseFee` is 1 wei. Show:
+  - Set `fees` rather than mocking one answer: a mocked `getGasPrice` doesn't
+    change the blocks' base fee, so answers that a node keeps consistent
+    stop agreeing.
+  - Mock answers for what `fees` can't say: `mock.actions.getGasPrice()`,
+    `estimateMaxPriorityFeePerGas()`, `getBlobBaseFee()`, e.g. `.fails(…)`.
+  - Pitfall: viem's `estimateMaxPriorityFeePerGas()` (and so
+    `estimateFeesPerGas()`) doesn't fail when `eth_maxPriorityFeePerGas`
+    does; it falls back to `eth_gasPrice` minus the base fee. To test a
+    failure, fail both.
+  - Chains with their own fee logic in viem (Linea, Celo; HyperEVM's
+    multiplier) send other requests, e.g. `linea_estimateGas`: mock those
+    with `mock.method()`.
 - [ ] Receipts: the defaults (status `"success"`, block, log context), and
       `.returns(null)` for "not found".
 - [ ] Event logs for receipts: `contract.events.Transfer({ from, to, value })`

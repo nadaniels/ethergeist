@@ -179,13 +179,17 @@ describe("history entries", () => {
 
   test("raw methods and built-ins", async () => {
     const { mock, client } = setup();
-    mock.method("eth_gasPrice").returns("0x1");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
 
-    await client.getGasPrice();
+    await client.getBlockTransactionCount();
     await client.getChainId();
     await client.getBlockNumber();
     expect(mock.history).toMatchObject([
-      { type: "method", method: "eth_gasPrice", outcome: { type: "result", value: "0x1" } },
+      {
+        type: "method",
+        method: "eth_getBlockTransactionCountByNumber",
+        outcome: { type: "result", value: "0x1" },
+      },
       { type: "builtIn", method: "eth_chainId", outcome: { type: "result", value: base.id } },
       { type: "builtIn", method: "eth_blockNumber", outcome: { type: "result", value: 10n } },
     ]);
@@ -262,7 +266,7 @@ describe("formatHistory()", () => {
     });
     await rejectionOf(read(USDC, "symbol"));
     await client.getBalance({ address: alice });
-    await rejectionOf(client.getGasPrice());
+    await rejectionOf(client.getBlockTransactionCount());
     await client.getBlockNumber();
 
     expect(mock.formatHistory()).toBe(
@@ -274,7 +278,7 @@ describe("formatHistory()", () => {
         "#3 eth_call USDC.symbol() ✗ fault: HTTP 503",
         "#4 eth_call (retry) USDC.symbol() ✗ fault: HTTP 503",
         "#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n }) → 1000000000000000000n",
-        "#6 eth_gasPrice ✗ not mocked",
+        "#6 eth_getBlockTransactionCountByNumber(latest) ✗ not mocked",
         "#7 eth_blockNumber → 10n",
       ].join("\n"),
     );
@@ -282,11 +286,13 @@ describe("formatHistory()", () => {
 
   test("builtIns: false leaves out eth_chainId and eth_blockNumber, keeping numbers", async () => {
     const { mock, client } = setup();
-    mock.method("eth_gasPrice").returns("0x1");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
 
     await client.getBlockNumber();
-    await client.getGasPrice();
-    expect(mock.formatHistory({ builtIns: false })).toBe("#2 eth_gasPrice → 0x1");
+    await client.getBlockTransactionCount();
+    expect(mock.formatHistory({ builtIns: false })).toBe(
+      "#2 eth_getBlockTransactionCountByNumber(latest) → 0x1",
+    );
   });
 
   test("blocks and receipts are summarized", async () => {

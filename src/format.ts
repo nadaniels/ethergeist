@@ -10,10 +10,12 @@ export function formatContract(address: Address, name: string | undefined): stri
 /**
  * A call for messages, e.g. `balanceOf(0x…)` or `getBalance({ address: 0x… })`.
  * Positional args are listed; anything else is formatted as one value. With
- * nothing pinned (`undefined`), it's `name(*)`: any args.
+ * nothing pinned (`undefined`), it's `name(*)`: any args. A call without
+ * params, e.g. `getGasPrice`, is `name()`.
  */
 export function formatCall(name: string, args: unknown, options: FormatOptions = {}): string {
   if (args === undefined) return `${name}(*)`;
+  if (isPlainObject(args) && Object.keys(args).length === 0) return `${name}()`;
   const list = Array.isArray(args)
     ? args.map((arg: unknown) => formatValue(arg, options))
     : [formatValue(args, options)];

@@ -40,13 +40,13 @@ describe("restore()", () => {
     usdc.read.symbol().fails({ status: 503 });
     mock.empty(NOWHERE);
     mock.actions.getBalance().returns(1n);
-    mock.method("eth_gasPrice").returns("0x1");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
     const baseline = mock.checkpoint();
 
     usdc.read.decimals().returns(18);
     usdc.read.balanceOf([alice]).returns(99n);
     mock.actions.getBalance().returns(2n);
-    mock.method("eth_gasPrice").returns("0x2");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x2");
     baseline.restore();
 
     expect(await read(USDC, "decimals")).toBe(6);
@@ -54,7 +54,7 @@ describe("restore()", () => {
     expectCause(await rejectionOf(read(USDC, "symbol")), HttpRequestError);
     expect(await client.getCode({ address: NOWHERE })).toBeUndefined();
     expect(await client.getBalance({ address: alice })).toBe(1n);
-    expect(await client.getGasPrice()).toBe(1n);
+    expect(await client.getBlockTransactionCount()).toBe(1);
   });
 
   test("puts back a baseline mock's answer when its builder is reused", async () => {
@@ -76,12 +76,12 @@ describe("restore()", () => {
     const dai = mock.contract({ abi: erc20Abi, address: DAI });
     dai.read.decimals().returns(18);
     mock.empty(NOWHERE);
-    mock.method("eth_gasPrice").returns("0x1");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
 
     baseline.restore();
     expectCause(await rejectionOf(read(DAI, "decimals")), MockNotFoundError);
     expectCause(await rejectionOf(client.getCode({ address: NOWHERE })), MockNotFoundError);
-    expectCause(await rejectionOf(client.getGasPrice()), MockNotFoundError);
+    expectCause(await rejectionOf(client.getBlockTransactionCount()), MockNotFoundError);
     // The addresses are free to register again.
     mock.contract({ abi: erc20Abi, address: DAI });
     mock.empty(NOWHERE);
