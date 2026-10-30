@@ -52,7 +52,7 @@ function setup() {
 /** A wallet client with a local account, whose prepares try eth_fillTransaction first. */
 function walletSetup() {
   const { mock } = setup();
-  mock.method("eth_getTransactionCount").returns("0x0");
+  mock.actions.getTransactionCount().returns(0);
   mock.method("eth_estimateGas").returns("0x5208");
   const wallet = createWalletClient({
     account: privateKeyToAccount(keccak256(toHex("alice"))),
@@ -481,6 +481,75 @@ describe("getTransactionReceipt", () => {
     expect(() => {
       mock.actions.getTransactionReceipt().returns({ logs: [{ address: "0x1234" }] });
     }).toThrow(InvalidAddressError);
+  });
+});
+
+describe("getTransactionCount", () => {
+  test("answers a pinned address in viem's types", async () => {
+    const { mock, client } = setup();
+    mock.actions.getTransactionCount({ address: alice }).returns(7);
+
+    expect(await client.getTransactionCount({ address: alice })).toBe(7);
+  });
+
+  test("unmocked addresses aren't answered", async () => {
+    const { mock, client } = setup();
+
+    const error = expectCause(
+      await rejectionOf(client.getTransactionCount({ address: alice })),
+      MockNotFoundError,
+    );
+    expect(error.message).toContain("No mock for getTransactionCount(");
+    expect(mock.unhandled).toHaveLength(1);
+  });
+
+  test('"pending" can be pinned apart from "latest": it counts transactions not mined yet', async () => {
+    const { mock, client } = setup();
+    mock.actions.getTransactionCount({ address: alice }).returns(7);
+    mock.actions.getTransactionCount({ address: alice, blockTag: "pending" }).returns(9);
+
+    expect(await client.getTransactionCount({ address: alice })).toBe(7);
+    expect(await client.getTransactionCount({ address: alice, blockTag: "pending" })).toBe(9);
+    expect(mock.actions.getTransactionCount.calls).toEqual([
+      { address: alice, blockNumber: 10n, blockTag: "latest" },
+      { address: alice, blockNumber: 10n, blockTag: "pending" },
+    ]);
+  });
+
+  test("a block number has no tag", async () => {
+    const { mock, client } = setup();
+    mock.actions.getTransactionCount().returns(({ blockNumber }) => Number(blockNumber));
+
+    expect(await client.getTransactionCount({ address: alice, blockNumber: 5n })).toBe(5);
+    expect(mock.actions.getTransactionCount.calls).toEqual([{ address: alice, blockNumber: 5n }]);
+  });
+
+  test('preparing a transaction asks for "pending"', async () => {
+    const { mock, wallet } = walletSetup();
+
+    await wallet.prepareTransactionRequest({ to: bob, value: 1n });
+    expect(mock.actions.getTransactionCount.calls).toMatchObject([{ blockTag: "pending" }]);
+  });
+
+  test("a count is a whole number, zero or more", () => {
+    const { mock } = setup();
+
+    for (const value of [-1, 1.5])
+      expect(() => {
+        mock.actions.getTransactionCount().returns(value);
+      }).toThrow(`A transaction count must be a whole number, zero or more; got ${value}.`);
+    expect(() => {
+      // @ts-expect-error -- viem's count is a number
+      mock.actions.getTransactionCount().returns(1n);
+    }).toThrow("A transaction count must be a whole number, zero or more; got 1n.");
+  });
+
+  test("it's a typed action, so method() refuses it", () => {
+    const { mock } = setup();
+
+    expect(() => mock.method("eth_getTransactionCount")).toThrow(
+      "use mock.actions.getTransactionCount()",
+    );
   });
 });
 

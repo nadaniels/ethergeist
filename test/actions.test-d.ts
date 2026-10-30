@@ -1,4 +1,4 @@
-import { type Address, type Hex, erc20Abi } from "viem";
+import { type Address, type BlockTag, type Hex, erc20Abi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
 import {
   type EmittedLog,
@@ -139,6 +139,17 @@ describe("getLogs", () => {
     mock.actions.getGasPrice({});
     // @ts-expect-error a gas price is a bigint, not hex
     mock.actions.getGasPrice().returns("0x1");
+  });
+
+  test("transaction counts pin an address and tag, and answer numbers", () => {
+    mock.actions.getTransactionCount({ address: alice, blockTag: "pending" }).returns(1);
+    mock.actions.getTransactionCount().returns(({ address, blockTag }) => {
+      expectTypeOf(address).toEqualTypeOf<Address>();
+      expectTypeOf(blockTag).toEqualTypeOf<BlockTag | undefined>();
+      return 0;
+    });
+    // @ts-expect-error viem's count is a number
+    mock.actions.getTransactionCount().returns(1n);
   });
 
   test("fee history pins the call's fields and answers partial histories", () => {

@@ -143,7 +143,7 @@ features land; tick them off as pages get written.
 
 ## 5. Node data: `mock.actions` and `mock.method`
 
-- [ ] `getBalance`, `getCode`, `getBlock`, `getTransactionReceipt` and the fee actions, with
+- [ ] `getBalance`, `getCode`, `getBlock`, `getTransactionReceipt`, `getTransactionCount` and the fee actions, with
       values in viem's types.
 - [ ] Generated blocks: what's generated (numbers, linked hashes, timestamps
       from `timestamp` and `chain.blockTime`, the base fee from `fees`), and
@@ -286,8 +286,13 @@ features land; tick them off as pages get written.
     so only `createMockRpc({ blockNumber: 0n })` or `fromBlock: 1n` hit it;
     use `fromBlock: 0n` to backfill from the start. Remove once viem fixes
     it (reported upstream; link the issue).
-- [ ] Strict by default for data the test owns (balances, receipts), and how
+- [ ] Strict by default for data the test owns (balances, receipts, nonces), and how
       to opt into real-node defaults with args-less mocks.
+- [ ] Nonces: `getTransactionCount` keeps the block tag, so pin
+      `{ address, blockTag: "pending" }` apart from `"latest"` (a node counts
+      transactions waiting to be mined in `"pending"`), e.g. for a stuck
+      transaction. viem asks for `"pending"` when preparing a transaction
+      for a local account. Nonces don't follow sends yet: mock them.
 - [ ] `mock.method()` for any other method, with raw JSON-RPC values.
 - [ ] Methods the mock refuses as unsupported (`-32601`, not unhandled), so
       clients use ones it answers: filters (above) and `eth_fillTransaction`.

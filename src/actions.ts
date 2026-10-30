@@ -38,6 +38,7 @@ import {
   formatLimit,
   formatMismatch,
   formatReceived,
+  formatValue,
 } from "./format.js";
 import {
   type Specificity,
@@ -85,6 +86,12 @@ export type FeeHistoryCall = {
   blockTag?: BlockTag;
   rewardPercentiles?: readonly number[];
 };
+/**
+ * What a call to `getTransactionCount` asked for. A tag resolves to the
+ * mock's block number and is kept, so `"pending"` can be pinned apart from
+ * `"latest"`: a node counts transactions waiting to be mined in `"pending"`.
+ */
+export type TransactionCountCall = { address: Address; blockNumber: bigint; blockTag?: BlockTag };
 /** What a call to an action without params asked for: nothing. */
 export type EmptyCall = Record<string, never>;
 /** What a call to `getTransactionReceipt` asked for. */
@@ -159,6 +166,7 @@ export type ActionCalls = {
   estimateMaxPriorityFeePerGas: EmptyCall;
   getBlobBaseFee: EmptyCall;
   getFeeHistory: FeeHistoryCall;
+  getTransactionCount: TransactionCountCall;
 };
 
 /** What a table tells the rpc about a call it answered, for history. */
@@ -221,6 +229,12 @@ export type MockActions = {
    * reth refuses them.
    */
   getFeeHistory: MockAction<FeeHistoryCall, MockFeeHistory>;
+  /**
+   * `eth_getTransactionCount`, an account's nonce: the transactions it has
+   * sent. Unmocked addresses aren't answered. viem asks for `"pending"`
+   * when preparing a transaction, and `"latest"` by default.
+   */
+  getTransactionCount: MockAction<TransactionCountCall, number>;
 };
 
 export type MockMethodBuilder = MockActionBuilder<MethodCall, RpcValue>;
@@ -594,6 +608,16 @@ export function createActions(options: {
   }
   const feeHistoryOf = ({ blockCount, blockNumber: newest, rewardPercentiles }: FeeHistoryCall) =>
     feeHistory({ blockCount, newest, ...(rewardPercentiles && { rewardPercentiles }) }, feesAt);
+  /** Like `decodeAddressAtBlock`, keeping a tag. */
+  function decodeTransactionCount(params: readonly unknown[]): TransactionCountCall {
+    const [, block = "latest"] = params;
+    const isTag = typeof block === "string" && !isHex(block);
+    return {
+      ...decodeAddressAtBlock(params),
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a tag, per JSON-RPC
+      ...(isTag && { blockTag: block as BlockTag }),
+    };
+  }
   const decodeAddressAtBlock = ([address, block]: readonly unknown[]) => ({
     // JSON-RPC params arrive untyped; viem sends the address first.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
@@ -685,6 +709,21 @@ export function createActions(options: {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encoded by logStore.toRpc
       view: (rpc) => (rpc as RpcLog[]).map((log) => formatLog(log)),
     }),
+    getTransactionCount: createTable({
+      name: "getTransactionCount",
+      hint: "mock.actions.getTransactionCount({ address }).returns(…)",
+      decode: decodeTransactionCount,
+      pin: pinAddress,
+      zero: 0,
+      encode(value) {
+        if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
+          throw new TypeError(
+            `A transaction count must be a whole number, zero or more; got ${formatValue(value)}.`,
+          );
+        return numberToHex(value);
+      },
+      view: (rpc) => (isHex(rpc) ? hexToNumber(rpc) : rpc),
+    }),
     getGasPrice: createTable({
       name: "getGasPrice",
       hint: "mock.actions.getGasPrice().returns(…), or `fees` in createMockRpc()",
@@ -756,6 +795,7 @@ export function createActions(options: {
     ["eth_maxPriorityFeePerGas", "estimateMaxPriorityFeePerGas"],
     ["eth_blobBaseFee", "getBlobBaseFee"],
     ["eth_feeHistory", "getFeeHistory"],
+    ["eth_getTransactionCount", "getTransactionCount"],
   ]);
   const typedTable = (name: string) => {
     const action = typedMethods.get(name);
@@ -781,6 +821,7 @@ export function createActions(options: {
     estimateMaxPriorityFeePerGas: buildAction(typed.estimateMaxPriorityFeePerGas),
     getBlobBaseFee: buildAction(typed.getBlobBaseFee),
     getFeeHistory: buildAction(typed.getFeeHistory),
+    getTransactionCount: buildAction(typed.getTransactionCount),
   } as unknown as MockActions;
 
   function method(name: string, params?: readonly unknown[]): MockMethodBuilder {

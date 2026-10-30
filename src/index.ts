@@ -14,6 +14,7 @@ export type {
   MockMethodBuilder,
   ReceiptCall,
   RpcValue,
+  TransactionCountCall,
 } from "./actions.js";
 export {
   createMockRpc,
