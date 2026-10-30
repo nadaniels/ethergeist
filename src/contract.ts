@@ -14,6 +14,8 @@ import {
   encodeFunctionResult,
   getAbiItem,
   getAddress,
+  hexToBigInt,
+  numberToHex,
   slice,
   toFunctionSelector,
   toFunctionSignature,
@@ -31,6 +33,7 @@ import {
   type MockEventLog,
   encodeEventLog,
 } from "./events.js";
+import type { MockEstimateAnswers } from "./actions.js";
 import type { PartCheckpoint } from "./checkpoint.js";
 import { MockFailure, type MockFault, type MockNodeFault, fail } from "./faults.js";
 import {
@@ -40,6 +43,7 @@ import {
   formatLimit,
   formatMismatch,
   formatReceived,
+  formatValue,
 } from "./format.js";
 import { type MockCallRecord, type MockOutcome, errorOutcome } from "./history.js";
 import type { MockBatch } from "./multicall.js";
@@ -57,8 +61,10 @@ import { type MockReturnType, checksumAddresses, normalizeResult, zeroResult } f
 import { type RevertFn, type RevertSpec, createRevertError, revertOutcome } from "./revert.js";
 
 type ReadMutability = "pure" | "view";
-type Namespace = "read" | "simulate";
+type Namespace = "read" | "simulate" | "estimateGas";
 type WriteMutability = "nonpayable" | "payable";
+/** What a contract answers: an `eth_call`, or an `eth_estimateGas`. */
+type Kind = "call" | "estimate";
 /** What a namespace's mocks can fail with: a node refuses only transactions by name. */
 type FaultOf<mutability> = [mutability] extends [ReadMutability] ? MockFault : MockNodeFault;
 
@@ -98,6 +104,7 @@ type Resolver<abi extends Abi, args, result, fault = MockFault> =
   | ((context: ResolverContext<abi, args, fault>) => result | Promise<result>);
 
 type Handler = {
+  namespace: Namespace;
   abiItem: AbiFunction;
   selector: Hex;
   args: readonly unknown[] | undefined;
@@ -173,6 +180,36 @@ export type MockContractFunction<
   readonly calls: MockCall<ContractFunctionArgs<abi, mutability, functionName>, functionName>[];
 };
 
+/** How a contract's estimate answers: with gas, `.reverts()`, or `.fails()`. */
+export type MockContractEstimateAnswers<abi extends Abi, args> = MockEstimateAnswers<
+  ResolverContext<abi, args, MockNodeFault>
+> & {
+  /** Revert every matching estimate, as `simulate` reverts. See `RevertSpec` for the forms. */
+  reverts<errorName extends ContractErrorName<abi> = ContractErrorName<abi>>(
+    spec?: RevertSpec<abi, errorName>,
+  ): void;
+};
+
+/** Mirrors `estimateContractGas` for one function, but registers a mock. */
+export type MockEstimateGasFunction<
+  abi extends Abi,
+  functionName extends ContractFunctionName<abi, WriteMutability>,
+> = {
+  <const args extends ContractFunctionArgs<abi, WriteMutability, functionName>>(
+    args?: args,
+  ): MockContractEstimateAnswers<abi, args> & {
+    /** See `MockFunction`'s `once()`. */
+    once(): MockContractEstimateAnswers<abi, args>;
+    /** Like `.once()`, for the next `count` matching estimates. */
+    times(count: number): MockContractEstimateAnswers<abi, args>;
+  };
+  /** Every estimate of this function the mock has received, in order. */
+  readonly calls: MockCall<
+    ContractFunctionArgs<abi, WriteMutability, functionName>,
+    functionName
+  >[];
+};
+
 /** A call to any function in a namespace, discriminated by `functionName`. */
 type NamespaceCall<abi extends Abi, mutability extends ReadMutability | WriteMutability> = {
   [functionName in ContractFunctionName<abi, mutability>]: MockCall<
@@ -196,7 +233,7 @@ export type MockContract<abi extends Abi> = {
   /** The name given at registration, if any. */
   name: string | undefined;
   abi: abi;
-  /** Every call to any of this contract's functions, in order. */
+  /** Every call to any of this contract's functions, in order. Estimates aren't calls. */
   readonly calls: (NamespaceCall<abi, ReadMutability> | NamespaceCall<abi, WriteMutability>)[];
   /** View and pure functions. */
   read: {
@@ -211,6 +248,18 @@ export type MockContract<abi extends Abi> = {
    */
   simulate: {
     [functionName in ContractFunctionName<abi, WriteMutability>]: MockSimulateFunction<
+      abi,
+      functionName
+    >;
+  };
+  /**
+   * Nonpayable and payable functions' gas, answered over `eth_estimateGas`
+   * as `estimateContractGas` sends them, and as viem prepares a write. A
+   * `simulate` mock doesn't answer estimates. These answer before
+   * `mock.actions.estimateGas`, which answers what they don't.
+   */
+  estimateGas: {
+    [functionName in ContractFunctionName<abi, WriteMutability>]: MockEstimateGasFunction<
       abi,
       functionName
     >;
@@ -255,12 +304,36 @@ type NamespaceDefaults<abi extends Abi, mutability extends ReadMutability | Writ
 
 /**
  * One resolver per function, keyed by namespace like `MockContract`. Defaults
- * are registered before any other mock, so `read`/`simulate` mocks always
- * override them.
+ * are registered before any other mock, so `read`/`simulate`/`estimateGas`
+ * mocks always override them.
  */
 export type MockContractDefaults<abi extends Abi> = {
   read?: NamespaceDefaults<abi, ReadMutability>;
   simulate?: NamespaceDefaults<abi, WriteMutability>;
+  estimateGas?: {
+    [functionName in ContractFunctionName<abi, WriteMutability>]?:
+      | bigint
+      | ((
+          context: ResolverContext<
+            abi,
+            ContractFunctionArgs<abi, WriteMutability, functionName>,
+            MockNodeFault
+          >,
+        ) => bigint | Promise<bigint>);
+  };
+};
+
+/**
+ * An estimate's turn at a contract, prepared when the estimate arrives: the
+ * call is decoded and recorded then, and answered only if it gets its turn.
+ */
+export type ContractEstimate = {
+  /** Answers with the best matching mock; `undefined` when none matches. */
+  answer(): Promise<Hex> | undefined;
+  /** The error for the estimate when nothing else answers it either. */
+  miss: MockNotFoundError;
+  /** The estimated call, for history; its outcome is the contract's, once it answers. */
+  record: MockCallRecord;
 };
 
 export type CreateMockContractParameters<abi extends Abi> = {
@@ -280,6 +353,8 @@ export type InternalMockContract<abi extends Abi = Abi> = {
   matches(address: Address): boolean;
   /** Answers a call; `report` hears the decoded call and its outcome, however it ends. */
   resolve(data: Hex, context: CallContext, report?: (record: MockCallRecord) => void): Promise<Hex>;
+  /** Prepares an estimate of `data`: see `ContractEstimate`. */
+  estimate(data: Hex, context: CallContext): ContractEstimate;
   clearCalls(): void;
   /** Mocks other than defaults that haven't answered a call, formatted for messages. */
   unusedMocks(): string[];
@@ -305,6 +380,8 @@ export function createMockContract<const abi extends Abi>(
   const label = formatContract(address, name);
   const handlers: Handler[] = [];
   const history: MockCall[] = [];
+  // Estimates aren't calls: `calls` and `mock.calls` are what `eth_call` asked.
+  const estimates: MockCall[] = [];
   // Overloads share a name, so unused mocks find their calls by selector.
   const selectorOf = new WeakMap<MockCall, Hex>();
   let detached = false;
@@ -320,9 +397,11 @@ export function createMockContract<const abi extends Abi>(
       (item): item is AbiFunction =>
         item.type === "function" && mutabilities.includes(item.stateMutability),
     );
+  const writes = functionsOf(["nonpayable", "payable"]);
   const functionsIn = {
     read: functionsOf(["view", "pure"]),
-    simulate: functionsOf(["nonpayable", "payable"]),
+    simulate: writes,
+    estimateGas: writes,
   };
   const functionsBySelector = new Map(
     [...functionsIn.read, ...functionsIn.simulate].map((f) => [toFunctionSelector(f), f]),
@@ -332,12 +411,11 @@ export function createMockContract<const abi extends Abi>(
   function notInNamespaceError(namespace: Namespace, functionName: string) {
     const other = namespace === "read" ? "simulate" : "read";
     const elsewhere = functionsIn[other].find((f) => f.name === functionName);
-    return elsewhere
-      ? new Error(
-          `"${functionName}" is a ${elsewhere.stateMutability} function; ` +
-            `register it under ${other}, not ${namespace}.`,
-        )
-      : new Error(`No function "${functionName}" on this contract's ABI.`);
+    if (!elsewhere) return new Error(`No function "${functionName}" on this contract's ABI.`);
+    const kind = `"${functionName}" is a ${elsewhere.stateMutability} function`;
+    return namespace === "estimateGas"
+      ? new Error(`${kind}; viem estimates gas only for nonpayable and payable functions.`)
+      : new Error(`${kind}; register it under ${other}, not ${namespace}.`);
   }
 
   /**
@@ -401,6 +479,7 @@ export function createMockContract<const abi extends Abi>(
       return input ? checksumAddresses(input, arg) : arg;
     });
     const handler: Handler = {
+      namespace,
       abiItem,
       selector: toFunctionSelector(abiItem),
       args: pinned,
@@ -418,7 +497,7 @@ export function createMockContract<const abi extends Abi>(
       returns(value: unknown = zeroResult) {
         if (handler.removed) throw removedMockError();
         // A static value that can't be encoded fails here, not inside a request.
-        if (typeof value !== "function") encodeResult(abiItem, value);
+        if (typeof value !== "function") encodeAnswer(handler, value);
         handler.resolver =
           // The types guarantee a resolver's signature; it can't be checked at runtime.
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function
@@ -442,7 +521,7 @@ export function createMockContract<const abi extends Abi>(
   }
 
   // A default is keyed by name, so it answers every overload of that name.
-  for (const namespace of ["read", "simulate"] as const)
+  for (const namespace of ["read", "simulate", "estimateGas"] as const)
     for (const [functionName, resolver] of Object.entries(defaults[namespace] ?? {})) {
       const overloads = functionsIn[namespace].filter((f) => f.name === functionName);
       if (overloads.length === 0) throw notInNamespaceError(namespace, functionName);
@@ -453,12 +532,13 @@ export function createMockContract<const abi extends Abi>(
   // Overloads share one entry, as in viem's `getContract`.
   function buildNamespace(namespace: Namespace) {
     const entries: Record<string, unknown> = {};
+    const callsIn = namespace === "estimateGas" ? estimates : history;
     for (const { name: functionName } of functionsIn[namespace]) {
       if (functionName in entries) continue;
       entries[functionName] = Object.defineProperty(
         (args?: readonly unknown[]) => register(namespace, functionName, args),
         "calls",
-        { get: () => history.filter((call) => call.functionName === functionName) },
+        { get: () => callsIn.filter((call) => call.functionName === functionName) },
       );
     }
     // Untyped callers reaching for the other namespace's functions get a pointer
@@ -485,6 +565,7 @@ export function createMockContract<const abi extends Abi>(
     },
     read: buildNamespace("read"),
     simulate: buildNamespace("simulate"),
+    estimateGas: buildNamespace("estimateGas"),
     events: Object.fromEntries(
       (abi as Abi).flatMap((item) =>
         item.type === "event"
@@ -536,6 +617,43 @@ export function createMockContract<const abi extends Abi>(
     }
   }
 
+  function estimate(data: Hex, context: CallContext): ContractEstimate {
+    const record: MockCallRecord = {
+      address,
+      name,
+      abiItem: undefined,
+      call: undefined,
+      outcome: { type: "pending" },
+    };
+    let call: MockCall;
+    try {
+      call = decode(data, context, "estimate");
+    } catch (error) {
+      if (!(error instanceof MockNotFoundError)) throw error;
+      return { answer: () => undefined, miss: error, record };
+    }
+    record.call = call;
+    record.abiItem = functionsBySelector.get(slice(data, 0, 4));
+    const handler = match(call, "estimate");
+    return {
+      answer() {
+        if (!handler) return undefined;
+        return run(handler, call).then(
+          (hex) => {
+            record.outcome = { type: "result", value: hexToBigInt(hex) };
+            return hex;
+          },
+          (error: unknown) => {
+            record.outcome = outcomeOf(error);
+            throw error;
+          },
+        );
+      },
+      miss: missError(call, "estimate"),
+      record,
+    };
+  }
+
   function outcomeOf(error: unknown): MockOutcome {
     if (error instanceof MockRevertError) return revertOutcome(abi, error.data);
     if (error instanceof MockFailure) return { type: "fault", fault: error.fault, source: "mock" };
@@ -551,8 +669,17 @@ export function createMockContract<const abi extends Abi>(
     context: CallContext,
     decoded: Decoded,
   ): Promise<{ hex: Hex; abiItem: AbiFunction }> {
-    const selector = slice(data, 0, 4);
+    const call = decode(data, context, "call");
+    decoded.call = call;
+    decoded.abiItem = functionsBySelector.get(slice(data, 0, 4));
+    const handler = match(call, "call");
+    if (!handler) throw missError(call, "call");
+    return { hex: await run(handler, call), abiItem: handler.abiItem };
+  }
 
+  /** Decodes a call and records it as `kind`: an `eth_call` or an estimate. */
+  function decode(data: Hex, context: CallContext, kind: Kind): MockCall {
+    const selector = slice(data, 0, 4);
     let fn: { functionName: string; args: readonly unknown[] };
     try {
       const result = decodeFunctionData<Abi>({ abi, data });
@@ -564,45 +691,58 @@ export function createMockContract<const abi extends Abi>(
     }
 
     const call: MockCall = { ...context, address, ...fn };
-    decoded.call = call;
-    decoded.abiItem = functionsBySelector.get(selector);
-    history.push(call);
     selectorOf.set(call, selector);
-    onCall(call);
-
-    // The most specific matching handler wins; among equally specific ones,
-    // the most recently registered wins, so per-test mocks override defaults.
-    const handler = bestMatch(
-      handlers.filter((h) => h.selector === selector),
-      (h, options) => h.args === undefined || isMatch(h.args, fn.args, options),
-      fn.functionName,
-    );
-    if (!handler?.resolver) {
-      const registered = handlers
-        .filter((h) => h.selector === selector)
-        .map((h) => `  ${formatCall(fn.functionName, h.args)}${formatLimit(h.limit, h.remaining)}`);
-      throw new MockNotFoundError(
-        `No mock for ${formatCall(fn.functionName, fn.args)} on ${label}.`,
-        {
-          details:
-            registered.length > 0
-              ? `Registered:\n${registered.join("\n")}`
-              : `No mocks registered for "${fn.functionName}".`,
-        },
-      );
+    if (kind === "estimate") {
+      estimates.push(call);
+    } else {
+      history.push(call);
+      onCall(call);
     }
+    return call;
+  }
 
+  /** The handlers that answer `kind` for the function `call` decoded to. */
+  const candidates = (call: MockCall, kind: Kind) =>
+    handlers.filter(
+      (h) =>
+        h.selector === selectorOf.get(call) &&
+        (h.namespace === "estimateGas") === (kind === "estimate"),
+    );
+
+  // The most specific matching handler wins; among equally specific ones,
+  // the most recently registered wins, so per-test mocks override defaults.
+  function match(call: MockCall, kind: Kind): Handler | undefined {
+    const handler = bestMatch(
+      candidates(call, kind),
+      (h, options) => h.args === undefined || isMatch(h.args, call.args, options),
+      call.functionName,
+    );
+    return handler?.resolver ? handler : undefined;
+  }
+
+  function missError(call: MockCall, kind: Kind): MockNotFoundError {
+    const registered = candidates(call, kind).map(
+      (h) => `  ${formatCall(call.functionName, h.args)}${formatLimit(h.limit, h.remaining)}`,
+    );
+    const what = kind === "estimate" ? "estimateGas mock" : "mock";
+    const none =
+      kind === "estimate"
+        ? `No estimateGas mocks registered for "${call.functionName}"; a simulate mock doesn't answer estimates.`
+        : `No mocks registered for "${call.functionName}".`;
+    return new MockNotFoundError(
+      `No ${what} for ${formatCall(call.functionName, call.args)} on ${label}.`,
+      { details: registered.length > 0 ? `Registered:\n${registered.join("\n")}` : none },
+    );
+  }
+
+  async function run(handler: Handler, call: MockCall): Promise<Hex> {
     handler.usedCount += 1;
     if (handler.remaining !== undefined) handler.remaining -= 1;
-    const { abiItem } = handler;
     try {
-      return {
-        hex: encodeResult(abiItem, await handler.resolver({ ...call, revert, fail })),
-        abiItem,
-      };
+      return encodeAnswer(handler, await handler.resolver!({ ...call, revert, fail }));
     } catch (error) {
       if (error instanceof MockRevertError || error instanceof MockFailure) throw error;
-      throw new MockResolverError(fn.functionName, error);
+      throw new MockResolverError(call.functionName, error);
     }
   }
 
@@ -623,7 +763,7 @@ export function createMockContract<const abi extends Abi>(
 
   /** The calls `handler`'s function received since the last clear, and where each differs. */
   function received(handler: Handler): ReceivedCall[] {
-    return history
+    return (handler.namespace === "estimateGas" ? estimates : history)
       .filter((call) => selectorOf.get(call) === handler.selector)
       .map((call) => {
         const mismatched = handler.args === undefined ? [] : mismatches(handler.args, call.args);
@@ -646,8 +786,10 @@ export function createMockContract<const abi extends Abi>(
     label,
     matches: (other) => other === address,
     resolve,
+    estimate,
     clearCalls() {
       history.length = 0;
+      estimates.length = 0;
       for (const handler of handlers) handler.usedCount = 0;
     },
     unusedMocks: () => unused(handlers),
@@ -682,6 +824,16 @@ function isOfType(parameter: AbiParameter, value: unknown): boolean {
   } catch {
     return false;
   }
+}
+
+/** Answers a contract call `eth_call`'s way, or an estimate as gas, as a JSON-RPC quantity. */
+function encodeAnswer({ namespace, abiItem }: Handler, value: unknown): Hex {
+  if (namespace !== "estimateGas") return encodeResult(abiItem, value);
+  if (typeof value !== "bigint" || value < 0n)
+    throw new TypeError(
+      `A gas estimate must be a bigint, zero or more; got ${formatValue(value === zeroResult ? undefined : value)}.`,
+    );
+  return numberToHex(value);
 }
 
 function encodeResult(abiItem: AbiFunction, value: unknown): Hex {

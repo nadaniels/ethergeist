@@ -20,11 +20,18 @@ features land; tick them off as pages get written.
       `mock.publicClient()`, or `createPublicClient({ transport: mock.transport() })`
       with the defaults the helper sets (`cacheTime: 0`, `pollingInterval: 50`,
       `retryDelay: 0`).
-- [ ] Registering a contract, and `defaults: { read: { … }, simulate: { … } }`.
+- [ ] Registering a contract, and
+      `defaults: { read: { … }, simulate: { … }, estimateGas: { … } }`.
       This is the first setup code everyone writes, so the docs should lead
       with it and repeat it in examples.
 - [ ] `read` vs `simulate` namespaces (view/pure vs nonpayable/payable),
-      mirroring `getContract`.
+      mirroring `getContract`, and `estimateGas` (the same functions as
+      `simulate`, for `estimateContractGas` and a write's prepare). A
+      `simulate` mock doesn't answer estimates: a node runs them
+      separately, and the mock doesn't derive one answer from another.
+      Estimates answer gas (`.returns(65_000n)`), revert like `simulate`,
+      and are their own calls: `estimateGas.transfer.calls`, not
+      `contract.calls`.
 - [ ] Test values: `testAddress("alice")` and `testHash("swap-1")`, stable
       and realistic (checksummed, full-width). Say why not random (faker):
       random values rarely find bugs fixed ones miss, and they make messages
@@ -320,8 +327,13 @@ features land; tick them off as pages get written.
     matches those.
   - Answers are gas, a bigint: there's no `.returns()` without a value,
     since a node never estimates zero.
-  - A pinned mock answers before one without pins, so an args-less
-    `estimateGas().returns(100_000n)` works as a fallback.
+  - A registered contract owns its functions: its `estimateGas` mocks and
+    defaults answer estimates of them first, and action mocks answer the
+    rest, by the usual rules. So an args-less
+    `mock.actions.estimateGas().returns(100_000n)` in shared setup is a
+    fallback for every write, and a test's contract mock overrides it. To
+    fail an estimate of a function the contract mocks, fail it there:
+    `token.estimateGas.transfer().fails("insufficientFunds")`.
   - Estimating with a local account first prepares the transaction, which
     asks for the nonce: mock `getTransactionCount` too.
 - [ ] `mock.method()` for any other method, with raw JSON-RPC values.

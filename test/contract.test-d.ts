@@ -252,6 +252,41 @@ describe("simulate", () => {
   });
 });
 
+describe("estimateGas", () => {
+  const token = createMockRpc().contract({
+    abi: parseAbi([
+      "function transfer(address to, uint256 amount) returns (bool)",
+      "function balanceOf(address owner) view returns (uint256)",
+      "error Paused(address by)",
+    ]),
+    address: USDC,
+    defaults: { estimateGas: { transfer: ({ fail }) => fail("insufficientFunds") } },
+  });
+
+  test("takes write functions' args and answers gas", () => {
+    token.estimateGas.transfer([USDC, 1n]).returns(65_000n);
+    token.estimateGas.transfer().once().fails("feeCapTooLow");
+    token.estimateGas.transfer().returns(({ args, from }) => {
+      expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
+      expectTypeOf(from).toEqualTypeOf<Address | undefined>();
+      return 65_000n;
+    });
+    token.estimateGas.transfer().reverts({ errorName: "Paused", args: [USDC] });
+    expectTypeOf(token.estimateGas.transfer.calls[0]!.args).toEqualTypeOf<
+      readonly [Address, bigint]
+    >();
+
+    // @ts-expect-error an estimate is gas, not the function's return type
+    token.estimateGas.transfer().returns(true);
+    // @ts-expect-error args are the function's
+    token.estimateGas.transfer(["0x1"]);
+    // @ts-expect-error not an error on the ABI
+    token.estimateGas.transfer().reverts({ errorName: "Nope" });
+    // @ts-expect-error viem estimates only writes
+    token.estimateGas.balanceOf; // oxlint-disable-line typescript/no-unused-expressions -- a type test
+  });
+});
+
 describe("returns: named outputs and partial structs", () => {
   const feed = mock.contract({
     abi: parseAbi([

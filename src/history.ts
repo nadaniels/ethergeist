@@ -64,7 +64,12 @@ export type MockHistoryEntry =
       [action in keyof ActionCalls]: EntryBase<"action"> & {
         action: action;
         call: ActionCalls[action] | undefined;
-      };
+      } & (action extends "estimateGas"
+          ? {
+              /** The registered contract's function estimated, decoded, if `to` is one. */
+              contract?: MockCallRecord;
+            }
+          : unknown);
     }[keyof ActionCalls]
   | EntryBase<"method">
   | EntryBase<"builtIn">;
@@ -97,10 +102,14 @@ export function errorOutcome(error: unknown): MockOutcome {
 export function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
   if (error instanceof MockFailure) return { type: "fault", fault: error.fault, source: "mock" };
   if (error instanceof MockRevertError)
-    // A direct call's record already decoded it against the contract's ABI.
+    // A contract's record already decoded it against the contract's ABI.
     return entry.type === "call" && entry.call?.outcome.type === "revert"
       ? entry.call.outcome
-      : revertOutcome([], error.data);
+      : entry.type === "action" &&
+          entry.action === "estimateGas" &&
+          entry.contract?.outcome.type === "revert"
+        ? entry.contract.outcome
+        : revertOutcome([], error.data);
   return errorOutcome(error);
 }
 
@@ -234,6 +243,8 @@ export function formatEntry(
   }
   if (entry.type === "action" && entry.action === "getLogs" && entry.call !== undefined)
     return `${head}${context.describeLogs?.(entry.call) ?? formatCall("getLogs", entry.call, { short: true })} ${formatOutcome(entry.outcome, entry.action)}`;
+  if (entry.type === "action" && entry.action === "estimateGas" && entry.contract?.call)
+    return `${head}estimateGas ${formatLabel(entry.contract)} ${formatOutcome(entry.outcome)}`;
   if (entry.type === "action")
     return `${head}${formatCall(entry.action, entry.call, { short: true })} ${formatOutcome(
       entry.outcome,
@@ -243,11 +254,15 @@ export function formatEntry(
   return `${head.trimEnd()}${formatParams(entry.params)} ${formatOutcome(entry.outcome)}`;
 }
 
-function formatRecord({ address, name, abiItem, call, outcome }: MockCallRecord): string {
+/** A contract call as `USDC.transfer(…)`, or the contract alone when it didn't decode. */
+function formatLabel({ address, name, call }: MockCallRecord): string {
   const label = name ?? formatValue(address, { short: true });
-  const text = call
-    ? `${label}.${formatCall(call.functionName, call.args, { short: true })}`
-    : label;
+  return call ? `${label}.${formatCall(call.functionName, call.args, { short: true })}` : label;
+}
+
+function formatRecord(record: MockCallRecord): string {
+  const { abiItem, outcome } = record;
+  const text = formatLabel(record);
   if (outcome.type === "result" && abiItem)
     return `${text} → ${formatResult(abiItem, outcome.value)}`;
   return `${text} ${formatOutcome(outcome)}`;

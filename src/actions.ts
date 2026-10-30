@@ -26,10 +26,11 @@ import {
   toRpcFeeHistory,
 } from "./blocks.js";
 import type { PartCheckpoint } from "./checkpoint.js";
+import type { ContractEstimate } from "./contract.js";
 import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError, MockRpcError, removedMockError } from "./errors.js";
 import type { EmittedLog } from "./events.js";
-import { type MockOutcome, errorOutcome } from "./history.js";
+import { type MockCallRecord, type MockOutcome, errorOutcome } from "./history.js";
 import { type LogsCall, createLogStore } from "./logs.js";
 import { MockFailure, type MockFault, type MockNodeFault, fail } from "./faults.js";
 import {
@@ -223,8 +224,16 @@ export type ActionCalls = {
   estimateGas: EstimateGasCall;
 };
 
-/** What a table tells the rpc about a call it answered, for history. */
-export type ActionReport = { action: string; call: object; outcome: MockOutcome };
+/**
+ * What a table tells the rpc about a call it answered, for history. An
+ * estimate of a registered contract's function also has its decoded call.
+ */
+export type ActionReport = {
+  action: string;
+  call: object;
+  outcome: MockOutcome;
+  contract?: MockCallRecord;
+};
 
 /** Mocks for viem's public actions, answered with values in viem's own types. */
 export type MockActions = {
@@ -291,9 +300,11 @@ export type MockActions = {
   getTransactionCount: MockAction<TransactionCountCall, number>;
   /**
    * `eth_estimateGas`, for `estimateGas` and the gas a transaction is
-   * prepared with. Unmocked, a plain transfer, with no data, to an address
-   * without code is 21000 gas, as a node estimates it; anything else isn't
-   * answered. `.fails()` takes a node's refusal by name, e.g.
+   * prepared with. A registered contract's `estimateGas` mocks and defaults
+   * answer estimates of its functions first; these answer the rest. Unmocked,
+   * a plain transfer, with no data, to an
+   * address without code is 21000 gas, as a node estimates it; anything else
+   * isn't answered. `.fails()` takes a node's refusal by name, e.g.
    * `"insufficientFunds"`.
    */
   estimateGas: MockEstimateGasAction;
@@ -337,6 +348,11 @@ type Definition = {
   view?: (rpc: unknown) => unknown;
   /** Adds to what a resolver gets, beyond the call and `fail`. */
   extendContext?: (context: object, call: object) => void;
+  /**
+   * For estimates: a registered contract's turn, prepared as the call
+   * arrives. Its mocks answer before this table's: it owns its functions.
+   */
+  contractTurn?: (call: object) => ContractEstimate | undefined;
 };
 
 type Table = ReturnType<typeof createTable>;
@@ -413,17 +429,24 @@ function createTable(definition: Definition) {
   ): Promise<unknown> {
     const call = definition.decode(params, method);
     history.push(call);
+    const turn = definition.contractTurn?.(call);
     const view = definition.view ?? ((rpc: unknown) => rpc);
+    const reportAs = (outcome: MockOutcome) => {
+      const contract = turn?.record;
+      // The contract's own outcome if it answered; otherwise the request's.
+      if (contract?.outcome.type === "pending") contract.outcome = outcome;
+      report?.({ action: definition.name, call, outcome, ...(contract && { contract }) });
+    };
     try {
-      const rpc = await answerCall(call);
-      report?.({ action: definition.name, call, outcome: { type: "result", value: view(rpc) } });
+      const rpc = await answerCall(call, turn);
+      reportAs({ type: "result", value: view(rpc) });
       return rpc;
     } catch (error) {
-      const outcome: MockOutcome =
+      reportAs(
         error instanceof MockFailure
           ? { type: "fault", fault: error.fault, source: "mock" }
-          : errorOutcome(error);
-      report?.({ action: definition.name, call, outcome });
+          : errorOutcome(error),
+      );
       throw error;
     }
   }
@@ -433,7 +456,9 @@ function createTable(definition: Definition) {
     return definition.encode(value, call);
   }
 
-  async function answerCall(call: object): Promise<unknown> {
+  async function answerCall(call: object, turn: ContractEstimate | undefined): Promise<unknown> {
+    const answered = turn?.answer();
+    if (answered) return await answered;
     // The most specific matching handler wins; among equally specific ones,
     // the most recently registered wins.
     const handler = bestMatch(
@@ -445,6 +470,7 @@ function createTable(definition: Definition) {
     if (!handler?.resolver) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
+      if (turn) throw turn.miss;
       const registered = handlers.map(
         (h) => `  ${formatCall(definition.name, h.pinned)}${formatLimit(h.limit, h.remaining)}`,
       );
@@ -640,8 +666,11 @@ export function createActions(options: {
   isContract: (address: Address) => boolean;
   /** Block `number`'s fees. */
   feesAt: (number: bigint) => Fees;
+  /** A registered contract's turn at an estimate of one of its functions, if it's one. */
+  estimateAt: (call: EstimateGasCall) => ContractEstimate | undefined;
 }) {
-  const { resolveBlock, codeAt, blockNumber, generateBlock, mine, isContract, feesAt } = options;
+  const { resolveBlock, codeAt, blockNumber, generateBlock, mine, isContract, feesAt, estimateAt } =
+    options;
   const fees = () => feesAt(blockNumber());
   // Emitted logs, which answer `eth_getLogs`.
   const logStore = createLogStore({
@@ -850,6 +879,8 @@ export function createActions(options: {
         return numberToHex(value);
       },
       view: viewQuantity,
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeEstimateGas
+      contractTurn: (call) => estimateAt(call as EstimateGasCall),
       // A plain transfer to an address without code costs the base 21000 gas.
       fallback(call) {
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeEstimateGas

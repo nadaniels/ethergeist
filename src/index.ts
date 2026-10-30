@@ -34,6 +34,8 @@ export type {
   MockCall,
   MockContract,
   MockContractDefaults,
+  MockContractEstimateAnswers,
+  MockEstimateGasFunction,
   MockFunction,
   MockFunctionAnswers,
   MockContractFunction,

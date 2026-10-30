@@ -1,23 +1,39 @@
 import {
+  ContractFunctionRevertedError,
   EstimateGasExecutionError,
+  HttpRequestError,
   FeeCapTooLowError,
   InsufficientFundsError,
   RpcRequestError,
   TipAboveFeeCapError,
   createPublicClient,
+  type Address,
   createWalletClient,
+  encodeFunctionData,
   erc20Abi,
   keccak256,
+  parseAbi,
   parseGwei,
   toHex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test } from "vite-plus/test";
-import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
+import {
+  type MockContractDefaults,
+  MockNotFoundError,
+  createMockRpc,
+  testAddress,
+} from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
+const tokenAbi = parseAbi([
+  "function transfer(address to, uint256 amount) returns (bool)",
+  "function mint(uint256 amount) payable",
+  "function balanceOf(address owner) view returns (uint256)",
+  "error Paused(address by)",
+]);
 
 function setup() {
   const mock = createMockRpc({ blockNumber: 10n });
@@ -251,5 +267,204 @@ describe("named node errors", () => {
 
     expectCause(error, InsufficientFundsError);
     expect(mock.unhandled).toEqual([]);
+  });
+});
+
+/** A token contract, and estimates of its write functions from alice. */
+function tokenSetup(defaults?: MockContractDefaults<typeof tokenAbi>) {
+  const { mock, client } = setup();
+  const token = mock.contract({
+    abi: tokenAbi,
+    address: testAddress("token"),
+    name: "Token",
+    ...(defaults && { defaults }),
+  });
+  const transfer = (account: Address = alice) =>
+    client.estimateContractGas({
+      abi: tokenAbi,
+      address: token.address,
+      functionName: "transfer",
+      args: [bob, 1n],
+      account,
+    });
+  const mint = (amount: bigint, value = 0n) =>
+    client.estimateContractGas({
+      abi: tokenAbi,
+      address: token.address,
+      functionName: "mint",
+      args: [amount],
+      account: alice,
+      value,
+    });
+  return { mock, token, transfer, mint };
+}
+
+describe("contract estimates", () => {
+  test("answer estimateContractGas for a function, as their own calls", async () => {
+    const { mock, token, transfer, mint } = tokenSetup();
+    token.estimateGas.transfer([bob, 1n]).returns(65_000n);
+    token.estimateGas.mint().returns(({ args: [amount], value }) => 50_000n + amount + value);
+
+    expect(await transfer()).toBe(65_000n);
+    expect(await mint(5n, 2n)).toBe(50_007n);
+    expect(token.estimateGas.transfer.calls).toEqual([
+      {
+        address: token.address,
+        functionName: "transfer",
+        args: [bob, 1n],
+        from: alice,
+        value: 0n,
+        blockNumber: 10n,
+        batch: undefined,
+      },
+    ]);
+    // Estimates aren't eth_calls.
+    expect(token.simulate.transfer.calls).toEqual([]);
+    expect(token.calls).toEqual([]);
+    expect(mock.calls).toEqual([]);
+  });
+
+  test("reverts decode against the contract's ABI, as viem decodes a node's", async () => {
+    const { mock, token, transfer } = tokenSetup();
+    token.estimateGas.transfer().reverts({ errorName: "Paused", args: [bob] });
+
+    const error = await rejectionOf(transfer());
+
+    expect(expectCause(error, ContractFunctionRevertedError).data).toMatchObject({
+      errorName: "Paused",
+      args: [bob],
+    });
+    expect(mock.unhandled).toEqual([]);
+    expect(mock.formatHistory()).toBe(
+      "#1 eth_estimateGas estimateGas Token.transfer(0x4292…207f, 1n) ✗ reverted: Paused(0x4292…207f)",
+    );
+  });
+
+  test("named node errors and faults fail the estimate", async () => {
+    const { mock, token, transfer, mint } = tokenSetup();
+    token.estimateGas.mint().fails("insufficientFunds");
+    token.estimateGas.transfer().returns(({ fail }) => fail({ status: 503 }));
+
+    expectCause(await rejectionOf(mint(1n, 1n)), InsufficientFundsError);
+    expect(expectCause(await rejectionOf(transfer()), HttpRequestError).status).toBe(503);
+    expect(mock.unhandled).toEqual([]);
+  });
+
+  test("unmocked, a function isn't answered, even with a simulate mock", async () => {
+    const { mock, token, transfer } = tokenSetup();
+    token.simulate.transfer().returns(true);
+
+    const error = expectCause(await rejectionOf(transfer()), MockNotFoundError);
+
+    expect(error.shortMessage).toBe(
+      `No estimateGas mock for transfer(${bob}, 1n) on Token (${token.address}).`,
+    );
+    expect(error.details).toBe(
+      'No estimateGas mocks registered for "transfer"; a simulate mock doesn\'t answer estimates.',
+    );
+    expect(mock.unhandled).toHaveLength(1);
+  });
+
+  test("history shows the function estimated", async () => {
+    const { mock, token, transfer } = tokenSetup();
+    token.estimateGas.transfer().returns(65_000n);
+
+    await transfer();
+
+    expect(mock.formatHistory()).toBe(
+      "#1 eth_estimateGas estimateGas Token.transfer(0x4292…207f, 1n) → 65000n",
+    );
+  });
+
+  test("a write's prepare uses the contract's estimate", async () => {
+    const { mock, wallet } = walletSetup();
+    const token = mock.contract({ abi: tokenAbi, address: testAddress("token") });
+    token.estimateGas.transfer().returns(65_000n);
+
+    const request = await wallet.prepareTransactionRequest({
+      to: token.address,
+      data: encodeFunctionData({ abi: tokenAbi, functionName: "transfer", args: [bob, 1n] }),
+    });
+
+    expect(request.gas).toBe(65_000n);
+  });
+});
+
+describe("estimate precedence", () => {
+  test("a contract's mocks answer estimates of its functions before action mocks", async () => {
+    const { mock, token, transfer } = tokenSetup();
+    token.estimateGas.transfer().returns(65_000n);
+    mock.actions.estimateGas({ account: alice }).fails("insufficientFunds");
+    mock.actions.estimateGas({ to: token.address }).returns(1n);
+
+    expect(await transfer()).toBe(65_000n);
+  });
+
+  test("defaults answer too, and a contract mock overrides them", async () => {
+    const { mock, token, transfer } = tokenSetup({ estimateGas: { transfer: 60_000n } });
+    mock.actions.estimateGas().returns(100_000n);
+
+    expect(await transfer()).toBe(60_000n);
+    token.estimateGas.transfer().once().returns(65_000n);
+    expect(await transfer()).toBe(65_000n);
+    expect(await transfer()).toBe(60_000n);
+  });
+
+  test("action mocks answer functions the contract doesn't mock, by their own rules", async () => {
+    const { mock, mint } = tokenSetup({ estimateGas: { transfer: 60_000n } });
+    mock.actions.estimateGas().returns(100_000n);
+    mock.actions.estimateGas({ value: 1n }).fails("insufficientFunds");
+
+    expect(await mint(1n)).toBe(100_000n);
+    expectCause(await rejectionOf(mint(1n, 1n)), InsufficientFundsError);
+    expect(mock.formatHistory()).toBe(
+      "#1 eth_estimateGas estimateGas Token.mint(1n) → 100000n\n" +
+        "#2 eth_estimateGas estimateGas Token.mint(1n) ✗ fault: insufficientFunds",
+    );
+  });
+});
+
+describe("contract estimate mocks", () => {
+  test("are checked by assertAllUsed and removed by restore, except defaults", async () => {
+    const { mock, token, transfer } = tokenSetup({ estimateGas: { mint: 1n } });
+    const checkpoint = mock.checkpoint();
+    token.estimateGas.transfer([alice, 1n]).returns(65_000n);
+
+    await rejectionOf(transfer());
+
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`transfer(${alice}, 1n) on Token`);
+    checkpoint.restore();
+    expect(() => {
+      mock.assertAllUsed();
+    }).not.toThrow();
+  });
+
+  test("answers are gas, and only write functions estimate", () => {
+    const { mock, token } = tokenSetup();
+
+    expect(() => {
+      // @ts-expect-error an estimate is a bigint
+      token.estimateGas.transfer().returns(1);
+    }).toThrow("A gas estimate must be a bigint, zero or more; got 1.");
+    expect(() => {
+      // @ts-expect-error there's no zero estimate
+      token.estimateGas.transfer().returns();
+    }).toThrow("A gas estimate must be a bigint, zero or more; got undefined.");
+    expect(() => {
+      // @ts-expect-error viem estimates only writes
+      token.estimateGas.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
+    }).toThrow(
+      '"balanceOf" is a view function; viem estimates gas only for nonpayable and payable functions.',
+    );
+    expect(() =>
+      mock.contract({
+        abi: tokenAbi,
+        address: testAddress("other"),
+        // @ts-expect-error viem estimates only writes
+        defaults: { estimateGas: { balanceOf: 1n } },
+      }),
+    ).toThrow('"balanceOf" is a view function');
   });
 });

@@ -206,6 +206,16 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       blockNumber += 1n;
     },
     isContract: (address) => contracts.some((c) => c.matches(address)),
+    estimateAt({ to, data, account, value, blockNumber: number }) {
+      if (to === undefined || data === undefined || data === "0x") return undefined;
+      const contract = contracts.find((c) => c.matches(to));
+      return contract?.estimate(data, {
+        from: account,
+        value,
+        blockNumber: number,
+        batch: undefined,
+      });
+    },
   });
   const { logStore } = actions;
   // History names a getLogs filter's events with the registered contracts' ABIs.
@@ -344,6 +354,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
           if (entry.type !== "action") return;
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the table for entry.action decoded it
           entry.call = report.call as typeof entry.call;
+          if (entry.action === "estimateGas" && report.contract) entry.contract = report.contract;
           onAction(report.outcome);
         });
         if (answered) return await answered;
