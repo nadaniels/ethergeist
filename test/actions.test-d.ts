@@ -140,6 +140,21 @@ describe("getLogs", () => {
     // @ts-expect-error a gas price is a bigint, not hex
     mock.actions.getGasPrice().returns("0x1");
   });
+
+  test("fee history pins the call's fields and answers partial histories", () => {
+    mock.actions
+      .getFeeHistory({ blockCount: 4, blockTag: "latest" })
+      .returns({ gasUsedRatio: [0.5] });
+    mock.actions.getFeeHistory().returns(({ blockNumber, rewardPercentiles }) => {
+      expectTypeOf(blockNumber).toEqualTypeOf<bigint>();
+      expectTypeOf(rewardPercentiles).toEqualTypeOf<readonly number[] | undefined>();
+      return { oldestBlock: blockNumber, baseFeePerBlobGas: [1n] };
+    });
+    // @ts-expect-error a count is a number
+    mock.actions.getFeeHistory({ blockCount: 4n });
+    // @ts-expect-error rewards are lists of bigints, one per block
+    mock.actions.getFeeHistory().returns({ reward: [1n] });
+  });
 });
 
 describe("method()", () => {

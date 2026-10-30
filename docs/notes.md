@@ -164,6 +164,21 @@ features land; tick them off as pages get written.
     `estimateFeesPerGas()`) doesn't fail when `eth_maxPriorityFeePerGas`
     does; it falls back to `eth_gasPrice` minus the base fee. To test a
     failure, fail both.
+  - `getFeeHistory`: the generated blocks' base fees (plus the next
+    block's), no gas used, and zero rewards, as a node reports empty
+    blocks. reth's shape: blob fields too, `reward` only
+    with `rewardPercentiles`, counts capped at 1024 and at block 0. Refused
+    as reth refuses them: a newest block past the head, percentiles out of
+    order or outside 0–100. Mock fields merge over the generated history,
+    e.g. `.returns({ gasUsedRatio: [0.9] })`.
+  - Recipe for apps with their own fee estimator, which reads rewards (and
+    would suggest a zero tip unmocked, as on a quiet chain):
+    `mock.actions.getFeeHistory().returns(({ blockCount }) => ({ reward:
+    Array.from({ length: blockCount }, () => [parseGwei("1")]) }))`, for
+    counts within the cap and the chain's length.
+  - Pitfall (in production too): `getFeeHistory({ blockCount: 0 })` throws
+    a `TypeError` in viem: reth answers a count of 0 without `baseFeePerGas`,
+    which viem's formatter reads.
   - Chains with their own fee logic in viem (Linea, Celo; HyperEVM's
     multiplier) send other requests, e.g. `linea_estimateGas`: mock those
     with `mock.method()`.

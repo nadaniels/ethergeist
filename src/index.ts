@@ -4,6 +4,7 @@ export type {
   BlockCall,
   CodeCall,
   EmptyCall,
+  FeeHistoryCall,
   MethodCall,
   MockAction,
   MockActionAnswers,
@@ -34,7 +35,7 @@ export type {
   MockSimulateFunction,
   ResolverContext,
 } from "./contract.js";
-export type { MockBlock, MockFees } from "./blocks.js";
+export type { MockBlock, MockFeeHistory, MockFees } from "./blocks.js";
 export {
   type BuildLogParameters,
   type EmitOptions,

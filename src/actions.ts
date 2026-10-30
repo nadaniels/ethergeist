@@ -11,10 +11,20 @@ import {
   formatTransactionReceipt,
   getAddress,
   hexToBigInt,
+  hexToNumber,
   isHex,
   numberToHex,
 } from "viem";
-import { type Fees, type MockBlock, numberOfBlockHash, toRpcBlock } from "./blocks.js";
+import {
+  type Fees,
+  type MockBlock,
+  type MockFeeHistory,
+  blobBaseFee,
+  feeHistory,
+  numberOfBlockHash,
+  toRpcBlock,
+  toRpcFeeHistory,
+} from "./blocks.js";
 import type { PartCheckpoint } from "./checkpoint.js";
 import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
 import { MockNotFoundError, MockResolverError, MockRpcError, removedMockError } from "./errors.js";
@@ -64,6 +74,17 @@ export type RpcValue =
   | readonly RpcValue[]
   | { readonly [key: string]: RpcValue };
 
+/**
+ * What a call to `getFeeHistory` asked for. `blockNumber` is the newest
+ * block: a tag resolves to the mock's block number. `rewardPercentiles` is
+ * left out when the request has none.
+ */
+export type FeeHistoryCall = {
+  blockCount: number;
+  blockNumber: bigint;
+  blockTag?: BlockTag;
+  rewardPercentiles?: readonly number[];
+};
 /** What a call to an action without params asked for: nothing. */
 export type EmptyCall = Record<string, never>;
 /** What a call to `getTransactionReceipt` asked for. */
@@ -137,6 +158,7 @@ export type ActionCalls = {
   getGasPrice: EmptyCall;
   estimateMaxPriorityFeePerGas: EmptyCall;
   getBlobBaseFee: EmptyCall;
+  getFeeHistory: FeeHistoryCall;
 };
 
 /** What a table tells the rpc about a call it answered, for history. */
@@ -190,6 +212,14 @@ export type MockActions = {
    * blocks have no excess blob gas.
    */
   getBlobBaseFee: MockActionWithoutParams<bigint>;
+  /**
+   * `eth_feeHistory`. Unmocked, the generated blocks' history, as reth
+   * answers it for empty blocks: their base fees from `fees`, no gas used,
+   * and zero rewards. A mock's fields are merged over it. Unmocked, a newest
+   * block past the current one and unordered percentiles are refused, as
+   * reth refuses them.
+   */
+  getFeeHistory: MockAction<FeeHistoryCall, MockFeeHistory>;
 };
 
 export type MockMethodBuilder = MockActionBuilder<MethodCall, RpcValue>;
@@ -409,6 +439,61 @@ function encodeQuantity(what: string) {
 /** A JSON-RPC quantity as viem's action returns it. */
 const viewQuantity = (rpc: unknown) => (isHex(rpc) ? hexToBigInt(rpc) : rpc);
 
+const isList = (value: unknown, type: string) =>
+  Array.isArray(value) && value.every((each) => typeof each === type);
+
+/** Throws unless `history`'s fields have viem's types: bigints, and numbers for ratios. */
+function assertFeeHistory(history: Record<string, unknown>) {
+  const kinds: Record<string, "bigints" | "numbers" | "bigint" | "rewards"> = {
+    baseFeePerGas: "bigints",
+    baseFeePerBlobGas: "bigints",
+    gasUsedRatio: "numbers",
+    blobGasUsedRatio: "numbers",
+    oldestBlock: "bigint",
+    reward: "rewards",
+  };
+  for (const [field, value] of Object.entries(history)) {
+    const kind = kinds[field];
+    if (kind === undefined)
+      throw new TypeError(
+        `A fee history has no field "${field}". Its fields: ${Object.keys(kinds).join(", ")}.`,
+      );
+    const valid =
+      kind === "bigint"
+        ? typeof value === "bigint"
+        : kind === "rewards"
+          ? Array.isArray(value) && value.every((block) => isList(block, "bigint"))
+          : isList(value, kind === "bigints" ? "bigint" : "number");
+    if (!valid) {
+      const expected = {
+        bigints: "bigints",
+        numbers: "numbers",
+        bigint: "a bigint",
+        rewards: "lists of bigints, one per block",
+      }[kind];
+      throw new TypeError(`A fee history's ${field} must be ${expected}.`);
+    }
+  }
+}
+
+/** JSON-RPC quantities as bigints, leaving anything else as is. */
+const bigints = (list: unknown) =>
+  Array.isArray(list)
+    ? list.map((value: unknown) => (isHex(value) ? hexToBigInt(value) : value))
+    : list;
+
+/** A JSON-RPC fee history as viem's `getFeeHistory` returns it. */
+function viewFeeHistory(rpc: unknown) {
+  if (!isPlainObject(rpc)) return rpc;
+  return {
+    ...rpc,
+    ...("baseFeePerGas" in rpc && { baseFeePerGas: bigints(rpc.baseFeePerGas) }),
+    ...("baseFeePerBlobGas" in rpc && { baseFeePerBlobGas: bigints(rpc.baseFeePerBlobGas) }),
+    ...(isHex(rpc.oldestBlock) && { oldestBlock: hexToBigInt(rpc.oldestBlock) }),
+    ...(Array.isArray(rpc.reward) && { reward: rpc.reward.map(bigints) }),
+  };
+}
+
 /** Checksums a pinned `address` (or each of several), which also validates it at registration. */
 function pinAddress(pinned: unknown) {
   if (!isPlainObject(pinned)) return pinned;
@@ -490,6 +575,23 @@ export function createActions(options: {
     const blockTag = (block ?? "latest") as BlockTag;
     return { blockNumber: resolveBlock(blockTag), blockTag, includeTransactions: include };
   }
+  /** `eth_feeHistory` takes a count (hex, or a number), the newest block, and maybe percentiles. */
+  function decodeFeeHistory([count, newest, percentiles]: readonly unknown[]): FeeHistoryCall {
+    const blockCount = isHex(count) ? hexToNumber(count) : Number(count);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a tag, per JSON-RPC
+    const blockTag = (newest ?? "latest") as BlockTag;
+    const block = isHex(newest)
+      ? { blockNumber: hexToBigInt(newest) }
+      : { blockNumber: resolveBlock(blockTag), blockTag };
+    return {
+      blockCount,
+      ...block,
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- percentiles, per JSON-RPC
+      ...(Array.isArray(percentiles) && { rewardPercentiles: percentiles as number[] }),
+    };
+  }
+  const feeHistoryOf = ({ blockCount, blockNumber: newest, rewardPercentiles }: FeeHistoryCall) =>
+    feeHistory({ blockCount, newest, ...(rewardPercentiles && { rewardPercentiles }) }, fees);
   const decodeAddressAtBlock = ([address, block]: readonly unknown[]) => ({
     // JSON-RPC params arrive untyped; viem sends the address first.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
@@ -609,7 +711,36 @@ export function createActions(options: {
       zero: 0n,
       encode: encodeQuantity("A blob base fee"),
       view: viewQuantity,
-      fallback: () => numberToHex(1n),
+      fallback: () => numberToHex(blobBaseFee),
+    }),
+    getFeeHistory: createTable({
+      name: "getFeeHistory",
+      hint: "mock.actions.getFeeHistory(…).returns(…), or `fees` in createMockRpc()",
+      decode: decodeFeeHistory,
+      zero: {},
+      encode(value, call) {
+        if (!isPlainObject(value))
+          throw new TypeError(`A fee history must be an object; got ${typeof value}.`);
+        assertFeeHistory(value);
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeFeeHistory
+        const derived = call === undefined ? {} : feeHistoryOf(call as FeeHistoryCall);
+        return toRpcFeeHistory({ ...derived, ...value });
+      },
+      view: viewFeeHistory,
+      fallback(call) {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeFeeHistory
+        const feeCall = call as FeeHistoryCall;
+        const head = blockNumber();
+        if (feeCall.blockCount > 0 && feeCall.blockNumber > head)
+          throw new MockRpcError(
+            -32602,
+            `request beyond head block: requested ${feeCall.blockNumber}, head ${head}`,
+          );
+        const percentiles = feeCall.rewardPercentiles ?? [];
+        if (percentiles.some((p, i) => p < 0 || p > 100 || p < (percentiles[i - 1] ?? 0)))
+          throw new MockRpcError(-32602, "invalid reward percentiles");
+        return toRpcFeeHistory(feeHistoryOf(feeCall));
+      },
     }),
   };
   const typedMethods = new Map<string, keyof typeof typed>([
@@ -622,6 +753,7 @@ export function createActions(options: {
     ["eth_gasPrice", "getGasPrice"],
     ["eth_maxPriorityFeePerGas", "estimateMaxPriorityFeePerGas"],
     ["eth_blobBaseFee", "getBlobBaseFee"],
+    ["eth_feeHistory", "getFeeHistory"],
   ]);
   const typedTable = (name: string) => {
     const action = typedMethods.get(name);
@@ -646,6 +778,7 @@ export function createActions(options: {
     getGasPrice: buildAction(typed.getGasPrice),
     estimateMaxPriorityFeePerGas: buildAction(typed.estimateMaxPriorityFeePerGas),
     getBlobBaseFee: buildAction(typed.getBlobBaseFee),
+    getFeeHistory: buildAction(typed.getFeeHistory),
   } as unknown as MockActions;
 
   function method(name: string, params?: readonly unknown[]): MockMethodBuilder {

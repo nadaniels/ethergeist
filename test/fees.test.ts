@@ -1,6 +1,7 @@
-import { createPublicClient, parseGwei } from "viem";
+import { RpcRequestError, createPublicClient, parseGwei } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 import { type MockFees, createMockRpc } from "../src/index.js";
+import { expectCause, rejectionOf } from "./utils.js";
 
 function setup(fees: MockFees = {}) {
   const mock = createMockRpc({ blockNumber: 10n, fees });
@@ -64,6 +65,163 @@ describe("fees", () => {
     const { client } = setup();
 
     expect(await client.getBlobBaseFee()).toBe(1n);
+  });
+});
+
+/** An `eth_feeHistory` request as the node gets it. */
+function feeHistoryRaw(mock: ReturnType<typeof setup>["mock"], params: unknown[]) {
+  return mock.request({ method: "eth_feeHistory", params });
+}
+
+/** The RPC error a request rejects with, after checking it isn't counted as unhandled. */
+async function refusal(mock: ReturnType<typeof setup>["mock"], promise: Promise<unknown>) {
+  const error = expectCause(await rejectionOf(promise), RpcRequestError);
+  expect(mock.unhandled).toEqual([]);
+  return { code: error.code, message: error.details };
+}
+
+describe("getFeeHistory", () => {
+  test("answers for generated blocks: base fees from `fees`, and zero rewards as they're empty", async () => {
+    const { client } = setup();
+
+    expect(await client.getFeeHistory({ blockCount: 2, rewardPercentiles: [25, 75] })).toEqual({
+      baseFeePerGas: [parseGwei("10"), parseGwei("10"), parseGwei("10")],
+      gasUsedRatio: [0, 0],
+      oldestBlock: 9n,
+      reward: [
+        [0n, 0n],
+        [0n, 0n],
+      ],
+    });
+  });
+
+  test("in reth's shape: blob fields too, one more base fee than blocks (the next block's)", async () => {
+    const { mock } = setup();
+
+    expect(await feeHistoryRaw(mock, ["0x2", "latest", [50]])).toEqual({
+      baseFeePerGas: ["0x2540be400", "0x2540be400", "0x2540be400"],
+      gasUsedRatio: [0, 0],
+      baseFeePerBlobGas: ["0x1", "0x1", "0x1"],
+      blobGasUsedRatio: [0, 0],
+      oldestBlock: "0x9",
+      reward: [["0x0"], ["0x0"]],
+    });
+  });
+
+  test("percentiles decide reward: none leaves it out, an empty list gives empty ones", async () => {
+    const { mock } = setup();
+
+    expect(await feeHistoryRaw(mock, [2, "latest"])).not.toHaveProperty("reward");
+    expect(await feeHistoryRaw(mock, ["0x2", "latest", []])).toMatchObject({ reward: [[], []] });
+  });
+
+  test("the count stops at block 0, and at 1024 blocks", async () => {
+    const { mock, client } = setup();
+    mock.mine(2000n);
+
+    const early = await client.getFeeHistory({
+      blockCount: 20,
+      blockNumber: 3n,
+      rewardPercentiles: [],
+    });
+    expect(early.oldestBlock).toBe(0n);
+    expect(early.gasUsedRatio).toHaveLength(4);
+    const long = await client.getFeeHistory({ blockCount: 2000, rewardPercentiles: [] });
+    expect(long.gasUsedRatio).toHaveLength(1024);
+    expect(long.baseFeePerGas).toHaveLength(1025);
+  });
+
+  test("a count of 0 has two fields, as on reth, which viem's formatter can't read", async () => {
+    const { mock, client } = setup();
+
+    expect(await feeHistoryRaw(mock, ["0x0", "latest", []])).toEqual({
+      gasUsedRatio: [],
+      oldestBlock: "0x0",
+    });
+    // viem maps baseFeePerGas, which reth leaves out.
+    await expect(client.getFeeHistory({ blockCount: 0, rewardPercentiles: [] })).rejects.toThrow(
+      TypeError,
+    );
+  });
+
+  test("a newest block past the head is refused, in reth's words", async () => {
+    const { mock, client } = setup();
+
+    expect(
+      await refusal(
+        mock,
+        client.getFeeHistory({ blockCount: 2, blockNumber: 12n, rewardPercentiles: [] }),
+      ),
+    ).toEqual({ code: -32602, message: "request beyond head block: requested 12, head 10" });
+  });
+
+  test("percentiles out of order or past 100 are refused", async () => {
+    const { mock, client } = setup();
+
+    for (const rewardPercentiles of [[75, 25], [101], [-1]])
+      expect(
+        // oxlint-disable-next-line eslint/no-await-in-loop -- one case at a time
+        await refusal(mock, client.getFeeHistory({ blockCount: 1, rewardPercentiles })),
+      ).toEqual({ code: -32602, message: "invalid reward percentiles" });
+    await expect(
+      client.getFeeHistory({ blockCount: 1, rewardPercentiles: [50, 50] }),
+    ).resolves.toBeDefined();
+  });
+
+  test("a mock's fields merge over the generated history", async () => {
+    const { mock, client } = setup();
+    mock.actions
+      .getFeeHistory({ blockCount: 2 })
+      .returns({ gasUsedRatio: [0.5, 0.9], reward: [[parseGwei("2")], [parseGwei("3")]] });
+
+    expect(await client.getFeeHistory({ blockCount: 2, rewardPercentiles: [50] })).toEqual({
+      baseFeePerGas: [parseGwei("10"), parseGwei("10"), parseGwei("10")],
+      gasUsedRatio: [0.5, 0.9],
+      oldestBlock: 9n,
+      reward: [[parseGwei("2")], [parseGwei("3")]],
+    });
+    expect(mock.actions.getFeeHistory.calls).toEqual([
+      { blockCount: 2, blockNumber: 10n, blockTag: "latest", rewardPercentiles: [50] },
+    ]);
+  });
+
+  test("a mock answers before the refusals", async () => {
+    const { mock, client } = setup();
+    mock.actions.getFeeHistory().returns(({ blockNumber }) => ({ oldestBlock: blockNumber }));
+
+    const history = await client.getFeeHistory({
+      blockCount: 1,
+      blockNumber: 50n,
+      rewardPercentiles: [],
+    });
+    expect(history.oldestBlock).toBe(50n);
+  });
+
+  test("a mock's fields must have viem's types", () => {
+    const { mock } = setup();
+
+    expect(() => {
+      // @ts-expect-error -- base fees are bigints
+      mock.actions.getFeeHistory().returns({ baseFeePerGas: ["0x1"] });
+    }).toThrow("A fee history's baseFeePerGas must be bigints.");
+    expect(() => {
+      // @ts-expect-error -- not a field
+      mock.actions.getFeeHistory().returns({ baseFee: [1n] });
+    }).toThrow('A fee history has no field "baseFee".');
+  });
+
+  test("history shows the call and the answer in viem's types", async () => {
+    const { mock, client } = setup();
+
+    await client.getFeeHistory({ blockCount: 1, rewardPercentiles: [] });
+    expect(mock.history[0]).toMatchObject({
+      type: "action",
+      action: "getFeeHistory",
+      outcome: {
+        type: "result",
+        value: { oldestBlock: 10n, baseFeePerGas: [parseGwei("10"), parseGwei("10")] },
+      },
+    });
   });
 });
 
