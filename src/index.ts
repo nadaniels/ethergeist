@@ -4,6 +4,8 @@ export type {
   BlockCall,
   CodeCall,
   EmptyCall,
+  EstimateGasCall,
+  EstimateGasContext,
   FeeHistoryCall,
   MethodCall,
   MockAction,
@@ -11,6 +13,9 @@ export type {
   MockActionBuilder,
   MockActionWithoutParams,
   MockActions,
+  MockEstimateAnswers,
+  MockEstimateBuilder,
+  MockEstimateGasAction,
   MockMethodBuilder,
   ReceiptCall,
   RpcValue,
@@ -58,7 +63,13 @@ export type {
   MockOutcome,
 } from "./history.js";
 export { MockNotFoundError, MockResolverError } from "./errors.js";
-export type { FailRequestsOptions, MockFault, MockFaultHandle } from "./faults.js";
+export type {
+  FailRequestsOptions,
+  MockFault,
+  MockFaultHandle,
+  MockNodeFault,
+  NodeErrorName,
+} from "./faults.js";
 export { match } from "./matchers.js";
 export { type MockBatch, multicall3Address } from "./multicall.js";
 export { zeroResult } from "./result.js";

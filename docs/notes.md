@@ -125,6 +125,23 @@ features land; tick them off as pages get written.
 - [ ] Known difference: Scroll sends a bare `revert()` (no data) as `-32000`,
       so viem gives no `ContractFunctionRevertedError` there; the mock, like
       reth, does.
+- [ ] A node's refusals by name, where a node refuses a transaction:
+      `.fails("insufficientFunds" | "feeCapTooLow" | "tipAboveFeeCap")` (and
+      `fail(name)` in resolvers) on `estimateGas` mocks and `simulate` mocks.
+      Each sends reth's code and message, which is what viem names them by
+      (`InsufficientFundsError`, `FeeCapTooLowError`, `TipAboveFeeCapError`);
+      writing the text by hand gets you `UnknownNodeError` if it's off.
+  - `"insufficientFunds"` words it as reth does: `EVM error: OutOfFunds`
+    for a request without fees, and `insufficient funds for gas * price +
+    value: have 0 want <value>` for one with them (a local account's
+    always has them). The balance it reports is always 0: it doesn't read
+    `getBalance` mocks. viem names both the same.
+  - Not on reads or other actions, where no node says them. For anything
+    else a node says, `fails({ code, message })`.
+  - Assert the class, e.g. `err.walk((e) => e instanceof
+    InsufficientFundsError)`, not the code or text: those are reth's, and
+    geth and its forks send other codes and wordings that viem names the
+    same. (To confirm across clients with the step 9 captures.)
 - [ ] `failRequests()` for transport-wide faults, versus `.fails()` and
       `fail()` for one function.
 - [ ] Recovering after a failure: `.once().fails(…)` or `.times(n).fails(…)`
@@ -293,6 +310,20 @@ features land; tick them off as pages get written.
       transactions waiting to be mined in `"pending"`), e.g. for a stuck
       transaction. viem asks for `"pending"` when preparing a transaction
       for a local account. Nonces don't follow sends yet: mock them.
+- [ ] Gas estimates: `mock.actions.estimateGas({ account, to, value, data })`
+      answers `estimateGas` and the gas viem prepares a transaction with.
+      Unmocked, a plain transfer (no data) to an address without code is
+      21000 gas, as a node estimates it, so sending ETH needs no mock;
+      anything else isn't answered.
+  - The call has the request's fees and nonce when it sent them, e.g. for
+    a resolver; `value` is `0n` when it sent none, so pinning `value: 0n`
+    matches those.
+  - Answers are gas, a bigint: there's no `.returns()` without a value,
+    since a node never estimates zero.
+  - A pinned mock answers before one without pins, so an args-less
+    `estimateGas().returns(100_000n)` works as a fallback.
+  - Estimating with a local account first prepares the transaction, which
+    asks for the nonce: mock `getTransactionCount` too.
 - [ ] `mock.method()` for any other method, with raw JSON-RPC values.
 - [ ] Methods the mock refuses as unsupported (`-32601`, not unhandled), so
       clients use ones it answers: filters (above) and `eth_fillTransaction`.

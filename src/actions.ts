@@ -31,7 +31,7 @@ import { MockNotFoundError, MockResolverError, MockRpcError, removedMockError } 
 import type { EmittedLog } from "./events.js";
 import { type MockOutcome, errorOutcome } from "./history.js";
 import { type LogsCall, createLogStore } from "./logs.js";
-import { MockFailure, type MockFault, fail } from "./faults.js";
+import { MockFailure, type MockFault, type MockNodeFault, fail } from "./faults.js";
 import {
   type ReceivedCall,
   formatCall,
@@ -92,6 +92,25 @@ export type FeeHistoryCall = {
  * `"latest"`: a node counts transactions waiting to be mined in `"pending"`.
  */
 export type TransactionCountCall = { address: Address; blockNumber: bigint; blockTag?: BlockTag };
+/**
+ * What a call to `estimateGas` asked for: the transaction, and the block it's
+ * estimated at. `account` is the sender, sent as `from`; `value` is `0n` when
+ * the request has none. Other fields are left out when the request has none.
+ * A tag resolves to the mock's block number and is kept; no block is `"latest"`.
+ */
+export type EstimateGasCall = {
+  account?: Address;
+  to?: Address;
+  value: bigint;
+  data?: Hex;
+  gas?: bigint;
+  gasPrice?: bigint;
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
+  nonce?: number;
+  blockNumber: bigint;
+  blockTag?: BlockTag;
+};
 /** What a call to an action without params asked for: nothing. */
 export type EmptyCall = Record<string, never>;
 /** What a call to `getTransactionReceipt` asked for. */
@@ -113,6 +132,40 @@ export type ActionContext<call> = call & {
  * (a range past the head, an address without a contract) throws that refusal.
  */
 export type LogsContext = ActionContext<LogsCall> & { readonly logs: EmittedLog[] };
+
+/**
+ * What an estimate's resolver gets: the call, and `fail`, which also takes a
+ * node's refusal by name, e.g. `fail("insufficientFunds")`.
+ */
+export type EstimateGasContext = EstimateGasCall & { fail: (fault: MockNodeFault) => never };
+
+/**
+ * How an estimate answers: with gas, or `.fails()`, which also takes a node's
+ * refusal by name. There's no zero answer: a node never estimates zero gas.
+ */
+export type MockEstimateAnswers<context> = {
+  returns(value: bigint | ((context: context) => bigint | Promise<bigint>)): void;
+  /**
+   * Fail every matching request: a node's refusal by name, e.g.
+   * `"insufficientFunds"` (see `NodeErrorName`), or any `MockFault`.
+   */
+  fails(fault: MockNodeFault): void;
+};
+
+/** Like `MockActionBuilder`, for an estimate. */
+export type MockEstimateBuilder<context> = MockEstimateAnswers<context> & {
+  /** See `MockActionBuilder`'s `once()`. */
+  once(): MockEstimateAnswers<context>;
+  /** Like `.once()`, for the next `count` matching requests. */
+  times(count: number): MockEstimateAnswers<context>;
+};
+
+/** `MockAction` for `estimateGas`. */
+export type MockEstimateGasAction = {
+  (params?: Partial<EstimateGasCall>): MockEstimateBuilder<EstimateGasContext>;
+  /** Every call to this action the mock has received, in order. */
+  readonly calls: EstimateGasCall[];
+};
 
 /** How a mock answers: `.returns()` or `.fails()`. */
 export type MockActionAnswers<call, value, context = ActionContext<call>> = {
@@ -167,6 +220,7 @@ export type ActionCalls = {
   getBlobBaseFee: EmptyCall;
   getFeeHistory: FeeHistoryCall;
   getTransactionCount: TransactionCountCall;
+  estimateGas: EstimateGasCall;
 };
 
 /** What a table tells the rpc about a call it answered, for history. */
@@ -235,6 +289,14 @@ export type MockActions = {
    * when preparing a transaction, and `"latest"` by default.
    */
   getTransactionCount: MockAction<TransactionCountCall, number>;
+  /**
+   * `eth_estimateGas`, for `estimateGas` and the gas a transaction is
+   * prepared with. Unmocked, a plain transfer, with no data, to an address
+   * without code is 21000 gas, as a node estimates it; anything else isn't
+   * answered. `.fails()` takes a node's refusal by name, e.g.
+   * `"insufficientFunds"`.
+   */
+  estimateGas: MockEstimateGasAction;
 };
 
 export type MockMethodBuilder = MockActionBuilder<MethodCall, RpcValue>;
@@ -308,7 +370,8 @@ function createTable(definition: Definition) {
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function
           typeof resolved === "function" ? (resolved as Handler["resolver"]) : () => resolved;
       },
-      fails(fault: MockFault) {
+      // Named node errors are typed only where a node can refuse with them.
+      fails(fault: MockNodeFault) {
         builder.returns(() => fail(fault));
       },
       once: () => builder.times(1),
@@ -509,6 +572,20 @@ function viewFeeHistory(rpc: unknown) {
   };
 }
 
+/** A JSON-RPC quantity in a transaction, as a bigint; `undefined` when it's missing. */
+const quantity = (value: unknown) => (isHex(value) ? hexToBigInt(value) : undefined);
+
+/** Checksums a pinned `account` and `to`, which also validates them at registration. */
+function pinTransaction(pinned: unknown) {
+  if (!isPlainObject(pinned)) return pinned;
+  const { account, to } = pinned;
+  return {
+    ...pinned,
+    ...(typeof account === "string" && { account: getAddress(account) }),
+    ...(typeof to === "string" && { to: getAddress(to) }),
+  };
+}
+
 /** Checksums a pinned `address` (or each of several), which also validates it at registration. */
 function pinAddress(pinned: unknown) {
   if (!isPlainObject(pinned)) return pinned;
@@ -618,6 +695,40 @@ export function createActions(options: {
       ...(isTag && { blockTag: block as BlockTag }),
     };
   }
+  /** `eth_estimateGas` takes a transaction and maybe a block. */
+  function decodeEstimateGas([tx, block = "latest"]: readonly unknown[]): EstimateGasCall {
+    const {
+      from,
+      to,
+      value,
+      data,
+      input,
+      gas,
+      gasPrice,
+      maxFeePerGas,
+      maxPriorityFeePerGas,
+      nonce,
+    } = isPlainObject(tx) ? tx : {};
+    const isTag = typeof block === "string" && !isHex(block);
+    const fields = {
+      account: typeof from === "string" ? getAddress(from) : undefined,
+      to: typeof to === "string" ? getAddress(to) : undefined,
+      value: quantity(value) ?? 0n,
+      data: isHex(data) ? data : isHex(input) ? input : undefined,
+      gas: quantity(gas),
+      gasPrice: quantity(gasPrice),
+      maxFeePerGas: quantity(maxFeePerGas),
+      maxPriorityFeePerGas: quantity(maxPriorityFeePerGas),
+      nonce: isHex(nonce) ? hexToNumber(nonce) : undefined,
+      blockNumber: resolveBlock(block),
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a tag, per JSON-RPC
+      blockTag: isTag ? (block as BlockTag) : undefined,
+    };
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
+    return Object.fromEntries(
+      Object.entries(fields).filter(([, each]) => each !== undefined),
+    ) as EstimateGasCall;
+  }
   const decodeAddressAtBlock = ([address, block]: readonly unknown[]) => ({
     // JSON-RPC params arrive untyped; viem sends the address first.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
@@ -724,6 +835,30 @@ export function createActions(options: {
       },
       view: (rpc) => (isHex(rpc) ? hexToNumber(rpc) : rpc),
     }),
+    estimateGas: createTable({
+      name: "estimateGas",
+      hint: "mock.actions.estimateGas({ to }).returns(…)",
+      decode: decodeEstimateGas,
+      pin: pinTransaction,
+      // `.returns()` without a value isn't typed: there's no zero estimate.
+      zero: undefined,
+      encode(value) {
+        if (typeof value !== "bigint" || value < 0n)
+          throw new TypeError(
+            `A gas estimate must be a bigint, zero or more; got ${formatValue(value)}.`,
+          );
+        return numberToHex(value);
+      },
+      view: viewQuantity,
+      // A plain transfer to an address without code costs the base 21000 gas.
+      fallback(call) {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeEstimateGas
+        const { to, data = "0x" } = call as EstimateGasCall;
+        if (to === undefined || data !== "0x") return undefined;
+        const code = codeAt(to);
+        return code === undefined || code === "0x" ? numberToHex(21_000n) : undefined;
+      },
+    }),
     getGasPrice: createTable({
       name: "getGasPrice",
       hint: "mock.actions.getGasPrice().returns(…), or `fees` in createMockRpc()",
@@ -796,6 +931,7 @@ export function createActions(options: {
     ["eth_blobBaseFee", "getBlobBaseFee"],
     ["eth_feeHistory", "getFeeHistory"],
     ["eth_getTransactionCount", "getTransactionCount"],
+    ["eth_estimateGas", "estimateGas"],
   ]);
   const typedTable = (name: string) => {
     const action = typedMethods.get(name);
@@ -822,6 +958,7 @@ export function createActions(options: {
     getBlobBaseFee: buildAction(typed.getBlobBaseFee),
     getFeeHistory: buildAction(typed.getFeeHistory),
     getTransactionCount: buildAction(typed.getTransactionCount),
+    estimateGas: buildAction(typed.estimateGas),
   } as unknown as MockActions;
 
   function method(name: string, params?: readonly unknown[]): MockMethodBuilder {

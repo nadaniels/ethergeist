@@ -49,11 +49,13 @@ function setup() {
   return { mock, client };
 }
 
-/** A wallet client with a local account, whose prepares try eth_fillTransaction first. */
+/**
+ * A wallet client with a local account, whose prepares try eth_fillTransaction
+ * first. Plain transfers' gas is the mock's own estimate.
+ */
 function walletSetup() {
   const { mock } = setup();
   mock.actions.getTransactionCount().returns(0);
-  mock.method("eth_estimateGas").returns("0x5208");
   const wallet = createWalletClient({
     account: privateKeyToAccount(keccak256(toHex("alice"))),
     chain: mock.chain,

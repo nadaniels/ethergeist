@@ -2,6 +2,7 @@ import { type Address, type BlockTag, type Hex, erc20Abi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
 import {
   type EmittedLog,
+  type EstimateGasCall,
   type LogsCall,
   type RpcValue,
   buildLog,
@@ -150,6 +151,25 @@ describe("getLogs", () => {
     });
     // @ts-expect-error viem's count is a number
     mock.actions.getTransactionCount().returns(1n);
+  });
+
+  test("estimates pin a transaction, answer gas, and fail with node errors by name", () => {
+    mock.actions.estimateGas({ account: alice, to: alice, value: 1n, data: "0x" }).returns(21_000n);
+    mock.actions.estimateGas().once().fails("insufficientFunds");
+    mock.actions.estimateGas().returns(({ maxFeePerGas, nonce, fail }) => {
+      expectTypeOf(maxFeePerGas).toEqualTypeOf<bigint | undefined>();
+      expectTypeOf(nonce).toEqualTypeOf<number | undefined>();
+      return fail("feeCapTooLow");
+    });
+    expectTypeOf(mock.actions.estimateGas.calls).toEqualTypeOf<EstimateGasCall[]>();
+    // @ts-expect-error an estimate is a bigint
+    mock.actions.estimateGas().returns(21_000);
+    // @ts-expect-error there's no zero estimate
+    mock.actions.estimateGas().returns(zeroResult);
+    // @ts-expect-error not a node error
+    mock.actions.estimateGas().fails("nonceTooLow");
+    // @ts-expect-error a node doesn't refuse a balance read by name
+    mock.actions.getBalance().fails("insufficientFunds");
   });
 
   test("fee history pins the call's fields and answers partial histories", () => {

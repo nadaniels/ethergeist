@@ -11,7 +11,7 @@ import {
 import type { ActionCalls } from "./actions.js";
 import type { CallContext, MockCall } from "./contract.js";
 import { MockNotFoundError, MockResolverError, MockRevertError, MockRpcError } from "./errors.js";
-import { MockFailure, type MockFault } from "./faults.js";
+import { MockFailure, type MockNodeFault } from "./faults.js";
 import { formatCall, formatValue } from "./format.js";
 import type { LogsCall } from "./logs.js";
 import { isPlainObject } from "./result.js";
@@ -26,7 +26,7 @@ export type MockOutcome =
   /** Reverted, decoded against the contract's ABI where possible. */
   | { type: "revert"; data: Hex; errorName?: string; args?: readonly unknown[]; reason?: string }
   /** Failed at the network level, by `failRequests()` or a mock's `.fails()`/`fail()`. */
-  | { type: "fault"; fault: MockFault; source: "failRequests" | "mock" }
+  | { type: "fault"; fault: MockNodeFault; source: "failRequests" | "mock" }
   /**
    * Refused with the JSON-RPC error a node gives for the same request, e.g. a
    * `getLogs` block range past the head. An answer, not unhandled.
@@ -305,9 +305,10 @@ function summarize(value: unknown, action: string | undefined): string {
   return formatValue(value, { short: true });
 }
 
-function formatFault(fault: MockFault): string {
+function formatFault(fault: MockNodeFault): string {
   if (fault === "timeout") return "timeout";
   if (fault === "network") return "network error";
+  if (typeof fault === "string") return fault;
   if ("status" in fault) return `HTTP ${fault.status}`;
   return `RPC error ${fault.code}${fault.message === undefined ? "" : ` (${fault.message})`}`;
 }

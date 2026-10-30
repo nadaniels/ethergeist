@@ -1,4 +1,4 @@
-import { HttpRequestError, RpcRequestError, TimeoutError } from "viem";
+import { HttpRequestError, RpcRequestError, TimeoutError, hexToBigInt, isHex } from "viem";
 import type { MockRevertError } from "./errors.js";
 import { nodeRevertMessage } from "./revert.js";
 
@@ -23,20 +23,36 @@ export type MockFault =
   | "network";
 
 /**
+ * A node's refusal of a transaction it was asked to estimate or simulate,
+ * named, with reth's code and message. viem tells these apart by the
+ * message, as for a real node:
+ * - `"insufficientFunds"`: the sender can't pay the value sent, viem's
+ *   `InsufficientFundsError`. The message says the balance is 0.
+ * - `"feeCapTooLow"`: `maxFeePerGas` is below the block's base fee, viem's
+ *   `FeeCapTooLowError`.
+ * - `"tipAboveFeeCap"`: `maxPriorityFeePerGas` is above `maxFeePerGas`,
+ *   viem's `TipAboveFeeCapError`.
+ */
+export type NodeErrorName = "insufficientFunds" | "feeCapTooLow" | "tipAboveFeeCap";
+
+/** A `MockFault`, or a node's refusal by name, where a node can refuse: see `NodeErrorName`. */
+export type MockNodeFault = MockFault | NodeErrorName;
+
+/**
  * Thrown by a resolver's `fail()` and caught by the rpc, which needs the raw
  * request to build viem's error. Internal: it never reaches viem.
  */
 export class MockFailure extends Error {
-  readonly fault: MockFault;
+  readonly fault: MockNodeFault;
 
-  constructor(fault: MockFault) {
+  constructor(fault: MockNodeFault) {
     super("Mock fault");
     this.fault = fault;
   }
 }
 
 /** Handed to every resolver, contract or action, to fail the request it's answering. */
-export function fail(fault: MockFault): never {
+export function fail(fault: MockNodeFault): never {
   throw new MockFailure(fault);
 }
 
@@ -101,10 +117,12 @@ export function createRevertRpcError(
 }
 
 export function createFaultError(
-  fault: MockFault,
+  fault: MockNodeFault,
   request: { method: string; params?: unknown },
 ): HttpRequestError | RpcRequestError | TimeoutError {
   const body = { method: request.method, params: request.params };
+  if (isNodeErrorName(fault))
+    return new RpcRequestError({ body, url, error: nodeErrors[fault](request.params) });
   if (fault === "timeout") return new TimeoutError({ body, url });
   if (fault === "network")
     return new HttpRequestError({ body, url, details: "The request got no response." });
@@ -127,3 +145,32 @@ export function createFaultError(
     },
   });
 }
+
+function isNodeErrorName(fault: MockNodeFault): fault is NodeErrorName {
+  return typeof fault === "string" && Object.hasOwn(nodeErrors, fault);
+}
+
+/**
+ * Reth's errors for each name, from the request's params: a transaction
+ * first, as `eth_estimateGas` and `eth_call` take it (captured from reth
+ * nodes for Ethereum and Base, 2026-10-29).
+ */
+const nodeErrors: Record<NodeErrorName, (params: unknown) => { code: number; message: string }> = {
+  // Reth checks the balance against the value alone. With fee fields it
+  // reports that check; without them, the EVM's.
+  insufficientFunds(params) {
+    const tx: unknown = Array.isArray(params) ? params[0] : undefined;
+    if (typeof tx !== "object" || tx === null || !("gasPrice" in tx || "maxFeePerGas" in tx))
+      return { code: -32003, message: "EVM error: OutOfFunds" };
+    const value = "value" in tx && isHex(tx.value) ? hexToBigInt(tx.value) : 0n;
+    return {
+      code: -32003,
+      message: `insufficient funds for gas * price + value: have 0 want ${value}`,
+    };
+  },
+  feeCapTooLow: () => ({ code: -32000, message: "max fee per gas less than block base fee" }),
+  tipAboveFeeCap: () => ({
+    code: -32003,
+    message: "max priority fee per gas higher than max fee per gas",
+  }),
+};

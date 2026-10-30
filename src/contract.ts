@@ -32,7 +32,7 @@ import {
   encodeEventLog,
 } from "./events.js";
 import type { PartCheckpoint } from "./checkpoint.js";
-import { MockFailure, type MockFault, fail } from "./faults.js";
+import { MockFailure, type MockFault, type MockNodeFault, fail } from "./faults.js";
 import {
   type ReceivedCall,
   formatCall,
@@ -59,6 +59,8 @@ import { type RevertFn, type RevertSpec, createRevertError, revertOutcome } from
 type ReadMutability = "pure" | "view";
 type Namespace = "read" | "simulate";
 type WriteMutability = "nonpayable" | "payable";
+/** What a namespace's mocks can fail with: a node refuses only transactions by name. */
+type FaultOf<mutability> = [mutability] extends [ReadMutability] ? MockFault : MockNodeFault;
 
 export type CallContext = {
   from: Address | undefined;
@@ -79,20 +81,21 @@ export type MockCall<
   args: args;
 };
 
-export type ResolverContext<abi extends Abi, args> = MockCall<args> & {
+export type ResolverContext<abi extends Abi, args, fault = MockFault> = MockCall<args> & {
   /** Revert this call, e.g. `revert('paused')` or `revert({ errorName, args })`. */
   revert: RevertFn<abi>;
   /**
    * Fail the whole JSON-RPC request with a transport-level fault, e.g.
-   * `fail({ status: 503 })`. See `MockFault` for the kinds.
+   * `fail({ status: 503 })`. See `MockFault` for the kinds. In `simulate`, it
+   * also takes a node's refusal by name, e.g. `fail("insufficientFunds")`.
    */
-  fail: (fault: MockFault) => never;
+  fail: (fault: fault) => never;
 };
 
 /** A static value, or a function answering each call; it may be async. */
-type Resolver<abi extends Abi, args, result> =
+type Resolver<abi extends Abi, args, result, fault = MockFault> =
   | result
-  | ((context: ResolverContext<abi, args>) => result | Promise<result>);
+  | ((context: ResolverContext<abi, args, fault>) => result | Promise<result>);
 
 type Handler = {
   abiItem: AbiFunction;
@@ -113,10 +116,10 @@ type Handler = {
 };
 
 /** How a mock answers: `.returns()`, `.reverts()`, or `.fails()`. */
-export type MockFunctionAnswers<abi extends Abi, args, result> = {
+export type MockFunctionAnswers<abi extends Abi, args, result, fault = MockFault> = {
   /** With no argument, answers with zero values, like `.returns(zeroResult)`. */
   returns(): void;
-  returns(value: Resolver<abi, args, result>): void;
+  returns(value: Resolver<abi, args, result, fault>): void;
   /** Revert every matching call. See `RevertSpec` for the accepted forms. */
   reverts<errorName extends ContractErrorName<abi> = ContractErrorName<abi>>(
     spec?: RevertSpec<abi, errorName>,
@@ -125,20 +128,27 @@ export type MockFunctionAnswers<abi extends Abi, args, result> = {
    * Fail every matching call at the network level: the whole JSON-RPC request,
    * including a multicall batch it's in, throws the error viem's `http`
    * transport would, so viem's retries apply. See `MockFault` for the kinds.
+   * In `simulate`, it also takes a node's refusal by name, e.g.
+   * `"insufficientFunds"` (see `NodeErrorName`).
    */
-  fails(fault: MockFault): void;
+  fails(fault: fault): void;
 };
 
-export type MockFunction<abi extends Abi, args, result> = MockFunctionAnswers<abi, args, result> & {
+export type MockFunction<abi extends Abi, args, result, fault = MockFault> = MockFunctionAnswers<
+  abi,
+  args,
+  result,
+  fault
+> & {
   /**
    * Answer only the next matching call, then step aside for the next best
    * mock. Limited mocks go ahead of unlimited ones as specific, oldest first,
    * so `fn().once().fails("network")` beside `fn().returns(1n)` fails once
    * whichever is registered first. Retries use up answers too.
    */
-  once(): MockFunctionAnswers<abi, args, result>;
+  once(): MockFunctionAnswers<abi, args, result, fault>;
   /** Like `.once()`, for the next `count` matching calls. */
-  times(count: number): MockFunctionAnswers<abi, args, result>;
+  times(count: number): MockFunctionAnswers<abi, args, result, fault>;
 };
 
 /** Mirrors `getContract(...).<namespace>.<functionName>(args)`, but registers a mock. */
@@ -156,7 +166,8 @@ export type MockContractFunction<
       abi,
       functionName,
       ContractFunctionReturnType<abi, mutability, functionName, args>
-    >
+    >,
+    FaultOf<mutability>
   >;
   /** Every call to this function the mock has received, in order. */
   readonly calls: MockCall<ContractFunctionArgs<abi, mutability, functionName>, functionName>[];
@@ -237,7 +248,8 @@ type NamespaceDefaults<abi extends Abi, mutability extends ReadMutability | Writ
   [functionName in ContractFunctionName<abi, mutability>]?: Resolver<
     abi,
     ContractFunctionArgs<abi, mutability, functionName>,
-    MockReturnType<abi, functionName, OverloadsReturnType<abi, mutability, functionName>>
+    MockReturnType<abi, functionName, OverloadsReturnType<abi, mutability, functionName>>,
+    FaultOf<mutability>
   >;
 };
 
@@ -415,7 +427,8 @@ export function createMockContract<const abi extends Abi>(
       reverts(spec?: RevertSpec) {
         builder.returns(() => revert(spec));
       },
-      fails(fault: MockFault) {
+      // Named node errors are typed only for `simulate`.
+      fails(fault: MockNodeFault) {
         builder.returns(() => fail(fault));
       },
       once: () => builder.times(1),

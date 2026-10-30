@@ -187,6 +187,24 @@ describe("faults", () => {
     usdc.read.decimals().fails("offline");
   });
 
+  test("simulate mocks also take a node's refusal by name; reads don't", () => {
+    usdc.simulate.transfer().fails("insufficientFunds");
+    usdc.simulate.approve().once().fails("tipAboveFeeCap");
+    usdc.simulate.transfer().returns(({ fail }) => fail("feeCapTooLow"));
+    createMockRpc().contract({
+      abi: erc20Abi,
+      address: USDC,
+      defaults: { simulate: { transfer: ({ fail }) => fail("insufficientFunds") } },
+    });
+
+    // @ts-expect-error a node doesn't refuse a read by name
+    usdc.read.decimals().fails("insufficientFunds");
+    // @ts-expect-error nor in a resolver
+    usdc.read.decimals().returns(({ fail }) => fail("insufficientFunds"));
+    // @ts-expect-error not a node error
+    usdc.simulate.transfer().fails("nonceTooLow");
+  });
+
   test("fail() in a resolver returns never", () => {
     usdc.read.decimals().returns(({ fail }) => {
       expectTypeOf(fail("timeout")).toBeNever();
