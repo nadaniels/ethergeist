@@ -4,13 +4,11 @@ import {
   type Chain,
   type CustomTransport,
   type CustomTransportConfig,
-  type Hex,
   type PublicClient,
   type PublicClientConfig,
   createPublicClient,
   custom,
   getAddress,
-  hexToBigInt,
   isAddress,
   numberToHex,
 } from "viem";
@@ -19,19 +17,13 @@ import { createActions } from "./actions/createActions.js";
 import type { MockFees } from "./chain/fees.js";
 import { createChainState } from "./chain/state.js";
 import type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
-import { createMockContract } from "./contract.js";
+import { createMockContract } from "./contracts/createMockContract.js";
+import { createDispatch } from "./contracts/dispatch.js";
 import { createRegistry } from "./contracts/registry.js";
-import type {
-  CallContext,
-  CreateMockContractParameters,
-  MockCall,
-  MockContract,
-} from "./contracts/types.js";
+import type { CreateMockContractParameters, MockCall, MockContract } from "./contracts/types.js";
 import {
   type FormatContext,
   type FormatHistoryOptions,
-  type Reporter,
-  errorOutcome,
   formatEntry,
   formatHistory,
   outcomeOf,
@@ -45,7 +37,6 @@ import type { EmittedLog } from "./logs/events.js";
 import { createLogStore } from "./logs/store.js";
 import { MockFailure } from "./mocking/faults.js";
 import type { MockFault } from "./mocking/types.js";
-import { resolveMulticall } from "./multicall.js";
 import { createCheckpoints } from "./rpc/checkpoints.js";
 import { type FailRequestsOptions, type MockFaultHandle, createFaults } from "./rpc/faults.js";
 import {
@@ -135,7 +126,6 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   const requests: RpcRequest[] = [];
   const unhandled: UnhandledRequest[] = [];
   const faults = createFaults();
-  let batchCount = 0;
   const history: MockHistoryEntry[] = [];
   const historyOnFailure = parameters.historyOnFailure ?? 10;
   if (historyOnFailure !== false && (!Number.isInteger(historyOnFailure) || historyOnFailure < 0))
@@ -167,17 +157,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         ? undefined
         : parameters.debug;
   const actions = createActions({ state, registry, logStore });
-  /** Multicall batch ids, which count up across requests. */
-  const batches: Part = {
-    checkpoint() {
-      const saved = batchCount;
-      return {
-        restore() {
-          batchCount = saved;
-        },
-      };
-    },
-  };
+  const dispatcher = createDispatch({ state, registry });
   /** What the mock records about requests; cleared, never saved. */
   const records: Part = {
     clearCalls() {
@@ -194,7 +174,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     actions,
     logStore,
     faults,
-    batches,
+    dispatcher,
     records,
   ]);
   // History names a getLogs filter's events with the registered contracts' ABIs.
@@ -298,34 +278,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         return numberToHex(state.chainId);
       case "eth_blockNumber":
         return numberToHex(state.blockNumber);
-      case "eth_call": {
-        // JSON-RPC params arrive untyped; this is the shape viem sends for eth_call.
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
-        const [tx, block] = params as [
-          { to?: Address; from?: Address; value?: Hex; data?: Hex; input?: Hex },
-          unknown,
-        ];
-        const data = tx.data ?? tx.input;
-        if (!data) throw new MockNotFoundError("eth_call without `data` is not supported.");
-        if (!tx.to)
-          throw new MockNotFoundError("eth_call without `to` is not supported.", {
-            details:
-              "Deployless calls (including deployless multicall) need bytecode execution. " +
-              "Give the client's chain a Multicall3 address, or use `mock.publicClient()`.",
-          });
-
-        return await dispatch(
-          tx.to,
-          data,
-          {
-            from: tx.from,
-            value: tx.value ? hexToBigInt(tx.value) : 0n,
-            blockNumber: state.resolveBlock(block),
-            batch: undefined,
-          },
-          reporterFor(entry),
-        );
-      }
+      case "eth_call":
+        return await dispatcher.call(params, reporterFor(entry));
       default: {
         const answered = actions.answer(method, params, (report) => {
           if (entry.type !== "action") return;
@@ -340,44 +294,6 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         });
       }
     }
-  }
-
-  function dispatch(
-    to: Address,
-    data: Hex,
-    context: CallContext,
-    report: Reporter = {},
-  ): Promise<Hex> {
-    // Checksummed once here; lookups below compare checksummed addresses.
-    const target = getAddress(to);
-    if (target === state.multicallAddress) {
-      const batchId = ++batchCount;
-      report.batch?.(batchId);
-      return resolveMulticall(data, {
-        address: state.multicallAddress,
-        batchId,
-        context,
-        dispatch: (subTarget, subData, subContext) =>
-          dispatch(subTarget, subData, subContext, report),
-      });
-    }
-
-    const contract = registry.contractAt(target);
-    if (contract)
-      return contract.resolve(data, context, (record) => report.call?.(record, context));
-    const unknown = { address: target, name: undefined, abiItem: undefined, call: undefined };
-    // A real node answers a call to an address without code with empty data.
-    if (registry.isEmpty(target)) {
-      report.call?.({ ...unknown, outcome: { type: "result", value: "0x" } }, context);
-      return Promise.resolve("0x");
-    }
-    const error = new MockNotFoundError(`No mocked contract at ${to}.`, {
-      details:
-        `Call data: ${data}\n` +
-        "Register it with contract(), or mark it empty() for an address without code.",
-    });
-    report.call?.({ ...unknown, outcome: errorOutcome(error) }, context);
-    throw error;
   }
 
   function onCall(call: MockCall) {

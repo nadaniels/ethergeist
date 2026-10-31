@@ -6,7 +6,7 @@ import { withCalls } from "../mocking/handlers.js";
 import { MockRpcError } from "../shared/errors.js";
 import type { PartCheckpoint } from "../shared/parts.js";
 import { encodeTransaction } from "./getTransaction.js";
-import { createMethods } from "./method.js";
+import { createMethods } from "./methods.js";
 import { type ActionReport, type Table, createTable, type ActionsContext } from "./table.js";
 import { type MockActions, type ActionName, typedActions } from "./typedActions.js";
 

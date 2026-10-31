@@ -8,7 +8,7 @@ import {
   multicall3Abi,
 } from "viem";
 
-import { revertOutcome } from "./contracts/revert.js";
+import { revertOutcome } from "./contracts/answers.js";
 import type { CallContext } from "./contracts/types.js";
 import type { MockCallRecord, MockHistoryEntry, MockOutcome } from "./history/types.js";
 import type { LogsCall } from "./logs/filter.js";

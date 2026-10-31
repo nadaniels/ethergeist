@@ -35,9 +35,9 @@ export default defineConfig({
         plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise", "vitest"],
       },
       {
-        // Temporary: these are split up later in the refactor (contracts/, rpc/,
-        // viem/); remove this override when they're gone.
-        files: ["src/createMockRpc.ts", "src/contract.ts"],
+        // Temporary: split up later in the refactor (rpc/, viem/); remove this
+        // override when it's done.
+        files: ["src/createMockRpc.ts"],
         rules: { "import/max-dependencies": "off" },
       },
       {

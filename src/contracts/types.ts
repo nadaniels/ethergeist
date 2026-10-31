@@ -7,11 +7,14 @@ import type {
   ContractFunctionName,
   ContractFunctionReturnType,
   Hex,
+  AbiParameter,
+  AbiParameterToPrimitiveType,
 } from "viem";
 
 import type { MockContractEmit, MockContractEvents } from "../logs/events.js";
 import type { MockEstimateAnswers, MockFault, MockNodeFault } from "../mocking/types.js";
-import type { MockReturnType } from "./results.js";
+import type { zeroResult } from "../mocking/zeroResult.js";
+import type { AllNamed, PartialStructs } from "../shared/abiValues.js";
 
 type ReadMutability = "pure" | "view";
 type WriteMutability = "nonpayable" | "payable";
@@ -296,3 +299,25 @@ export type CreateMockContractParameters<abi extends Abi> = {
   name?: string;
   defaults?: MockContractDefaults<abi>;
 };
+
+/**
+ * A multi-output function's outputs as an object keyed by output name, for
+ * functions with two or more outputs that are all named.
+ */
+type NamedOutputs<abiFunction> = abiFunction extends {
+  outputs: infer outputs extends readonly [AbiParameter, AbiParameter, ...AbiParameter[]];
+}
+  ? AllNamed<outputs> extends true
+    ? {
+        [output in outputs[number] as output["name"] & string]?: PartialStructs<
+          AbiParameterToPrimitiveType<output, "outputs">
+        >;
+      }
+    : never
+  : never;
+
+/** What `.returns()` accepts for a function: viem's return type, or named outputs. */
+export type MockReturnType<abi extends Abi, functionName extends string, returnType> =
+  | PartialStructs<returnType>
+  | NamedOutputs<Extract<abi[number], { type: "function"; name: functionName }>>
+  | typeof zeroResult;

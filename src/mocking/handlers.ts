@@ -2,7 +2,7 @@ import { MockResolverError, removedMockError } from "../shared/errors.js";
 import type { PartCheckpoint } from "../shared/parts.js";
 import { fail } from "./faults.js";
 import { formatLimit } from "./format.js";
-import { type Specificity, bestMatch, setLimit, specificity } from "./matching.js";
+import { type Specificity, bestMatch, isMatch, setLimit, specificity } from "./matching.js";
 import type { MockNodeFault } from "./types.js";
 import { zeroResult } from "./zeroResult.js";
 
@@ -105,15 +105,21 @@ export function createHandlers<context, extra>() {
 
   /**
    * The best of `candidates` that matches and has an answer: the most
-   * specific; among equally specific ones, see `bestMatch`. `name` names the
-   * function or action when a predicate throws.
+   * specific; among equally specific ones, see `bestMatch`. A handler matches
+   * when it pins nothing, or when what it pins matches `actual(handler)`, what
+   * the call has for it. `name` names the function or action when a
+   * predicate throws.
    */
   function best(
     candidates: readonly Handler<context, extra>[],
-    matches: (handler: Handler<context, extra>, options: { predicates?: boolean }) => boolean,
+    actual: (handler: Handler<context, extra>) => unknown,
     name: string,
   ): Handler<context, extra> | undefined {
-    const handler = bestMatch(candidates, matches, name);
+    const handler = bestMatch(
+      candidates,
+      (h, options) => h.pinned === undefined || isMatch(h.pinned, actual(h), options),
+      name,
+    );
     return handler?.resolver ? handler : undefined;
   }
 

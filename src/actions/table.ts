@@ -1,5 +1,5 @@
 import type { ChainState } from "../chain/state.js";
-import type { ContractEstimate } from "../contract.js";
+import type { ContractEstimate } from "../contracts/createMockContract.js";
 import type { Registry } from "../contracts/registry.js";
 import { failureOutcome } from "../history.js";
 import type { MockCallRecord, MockOutcome } from "../history/types.js";
@@ -12,7 +12,7 @@ import {
   formatReceived,
 } from "../mocking/format.js";
 import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
-import { assertNoMatchers, isMatch, mismatches } from "../mocking/matching.js";
+import { assertNoMatchers, mismatches } from "../mocking/matching.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockNotFoundError, MockRpcError } from "../shared/errors.js";
 import type { PartCheckpoint } from "../shared/parts.js";
@@ -141,12 +141,7 @@ export function createTable(definition: Definition) {
     if (answered) return await answered;
     // The most specific matching handler wins; among equally specific ones,
     // the most recently registered wins.
-    const handler = mocks.best(
-      mocks.handlers,
-      (h, options) =>
-        h.pinned === undefined || isMatch(h.pinned, actualOf(h.pinned, call), options),
-      definition.name,
-    );
+    const handler = mocks.best(mocks.handlers, (h) => actualOf(h.pinned, call), definition.name);
     if (!handler) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
