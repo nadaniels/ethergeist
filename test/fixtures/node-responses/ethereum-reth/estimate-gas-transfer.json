@@ -1,0 +1,26 @@
+{
+  "description": "eth_estimateGas for a plain transfer of nothing, to compare with 21000",
+  "client": "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu",
+  "chainId": 1,
+  "endpoint": "https://ethereum-rpc.publicnode.com",
+  "capturedAt": "2026-10-31",
+  "head": "26314731",
+  "request": {
+    "method": "eth_estimateGas",
+    "params": [
+      {
+        "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
+        "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67"
+      },
+      "latest"
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": "0x5208"
+    }
+  }
+}

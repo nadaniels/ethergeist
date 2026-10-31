@@ -1,0 +1,31 @@
+{
+  "description": "eth_estimateGas with a tip above its max fee",
+  "client": "reth/v2.5.2-7134be3/x86_64-unknown-linux-gnu/base/v1.5.0",
+  "chainId": 8453,
+  "endpoint": "https://mainnet.base.org",
+  "capturedAt": "2026-10-31",
+  "head": "53342154",
+  "request": {
+    "method": "eth_estimateGas",
+    "params": [
+      {
+        "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
+        "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
+        "maxFeePerGas": "0x989680",
+        "maxPriorityFeePerGas": "0xe4e1c0"
+      },
+      "latest"
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "error": {
+        "code": -32003,
+        "message": "max priority fee per gas higher than max fee per gas"
+      }
+    }
+  }
+}

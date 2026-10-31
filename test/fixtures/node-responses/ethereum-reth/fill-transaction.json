@@ -1,0 +1,45 @@
+{
+  "description": "eth_fillTransaction for a plain transfer: supported, or how it's refused",
+  "client": "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu",
+  "chainId": 1,
+  "endpoint": "https://ethereum-rpc.publicnode.com",
+  "capturedAt": "2026-10-31",
+  "head": "26314731",
+  "request": {
+    "method": "eth_fillTransaction",
+    "params": [
+      {
+        "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
+        "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
+        "value": "0x0"
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "raw": "0x02e6018016840b05f84482520894e023cd5ae4146512f9ba0cbd4523f463603ecd678080c0808080",
+        "tx": {
+          "type": "0x2",
+          "chainId": "0x1",
+          "nonce": "0x0",
+          "gas": "0x5208",
+          "maxFeePerGas": "0xb05f844",
+          "maxPriorityFeePerGas": "0x16",
+          "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
+          "value": "0x0",
+          "accessList": [],
+          "input": "0x",
+          "r": "0x0",
+          "s": "0x0",
+          "yParity": "0x0",
+          "v": "0x0",
+          "hash": "0x503d9926e9bc5471a97f907fd9b7887a54fe618aa4d3fe92b054db1ef68c885e"
+        }
+      }
+    }
+  }
+}

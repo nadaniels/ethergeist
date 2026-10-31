@@ -1,0 +1,32 @@
+{
+  "description": "eth_estimateGas sending 1 wei from an unfunded address, with fee fields",
+  "client": "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu",
+  "chainId": 1,
+  "endpoint": "https://ethereum-rpc.publicnode.com",
+  "capturedAt": "2026-10-31",
+  "head": "26314731",
+  "request": {
+    "method": "eth_estimateGas",
+    "params": [
+      {
+        "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
+        "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
+        "value": "0x1",
+        "maxFeePerGas": "0xb05f82e",
+        "maxPriorityFeePerGas": "0x0"
+      },
+      "latest"
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "error": {
+        "code": -32003,
+        "message": "insufficient funds for gas * price + value: have 0 want 1"
+      }
+    }
+  }
+}

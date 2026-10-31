@@ -4,7 +4,7 @@
  * head, so captures stay valid as the chain moves on.
  *
  * Usage:
- *   vpx scripts/capture-node-responses.ts [endpoint] [--write] [--name <name>]
+ *   vpx scripts/capture-node-responses.ts [endpoint] [--write] [--name <name>] [--only <prefix>]
  *
  * - `endpoint`: a JSON-RPC URL. Defaults to Ethereum's public reth node
  *   (publicnode), the node the mock imitates. Use any public endpoint to see
@@ -15,9 +15,14 @@
  * - `--name`: the folder's name. Defaults to the chain and the node's client,
  *   e.g. `ethereum-reth` or `arbitrum-one-nitro`; set it to keep two
  *   captures of one apart, e.g. two reth versions.
+ * - `--only`: capture only the cases whose names start with this, e.g.
+ *   `estimate-gas`; repeat it for several. Defaults to every case, so a
+ *   subset can be refreshed without rewriting the rest.
  *
  * It sends a handful of read-only requests, one at a time with a pause in
- * between, and needs no API key. Don't point it at an endpoint with a key in
+ * between, and needs no API key. Gas estimates are sent from an address
+ * nobody holds a key to, which holds nothing (checked before they're sent):
+ * nothing is signed or spent. Don't point it at an endpoint with a key in
  * its URL with `--write`: the endpoint is saved with each fixture.
  */
 import { mkdir, writeFile } from "node:fs/promises";
@@ -33,9 +38,21 @@ const pauseMs = 500;
 // refuse multi-block log queries without an address.
 const usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
 const unknownHash = `0x${"11".repeat(32)}`;
+// The last 20 bytes of keccak256("viem-transport-mock: unfunded sender") and
+// of "…: recipient": addresses nobody holds a key to.
+const unfunded = "0x3ffad175d7e6060d236e450e9bc09bc54be68770";
+const recipient = "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67";
 
-/** The node's head, and a hash of each transaction type in a recent block, by type (`0x2`). */
-type Head = { number: bigint; hash: string; transactions: Record<string, string> };
+/**
+ * The node's head: its number, hash and base fee, and a hash of each
+ * transaction type in a recent block, by type (`0x2`), when a case needs one.
+ */
+type Head = {
+  number: bigint;
+  hash: string;
+  baseFeePerGas: bigint;
+  transactions: Record<string, string>;
+};
 
 /**
  * A capture case: the request, given the node's current head; `undefined`
@@ -97,6 +114,50 @@ const cases: Case[] = [
       params: [usdc, "0x0", hex(head.number - 2n)],
     }),
   },
+  // Named node errors and gas assumptions: what `.fails("insufficientFunds")`
+  // and the others imitate, and the 21000 a plain transfer is estimated at.
+  {
+    name: "estimate-gas-insufficient-funds",
+    description: "eth_estimateGas sending 1 wei from an unfunded address, without fee fields",
+    request: () => estimateGas({ value: "0x1" }),
+  },
+  {
+    name: "estimate-gas-insufficient-funds-with-fees",
+    description: "eth_estimateGas sending 1 wei from an unfunded address, with fee fields",
+    request: (head) =>
+      estimateGas({
+        value: "0x1",
+        maxFeePerGas: hex(head.baseFeePerGas * 2n),
+        maxPriorityFeePerGas: "0x0",
+      }),
+  },
+  {
+    name: "estimate-gas-fee-cap-too-low",
+    description: "eth_estimateGas with a max fee of 1 wei, below the base fee",
+    request: () => estimateGas({ maxFeePerGas: "0x1", maxPriorityFeePerGas: "0x0" }),
+  },
+  {
+    name: "estimate-gas-tip-above-fee-cap",
+    description: "eth_estimateGas with a tip above its max fee",
+    request: (head) =>
+      estimateGas({
+        maxFeePerGas: hex(head.baseFeePerGas * 2n),
+        maxPriorityFeePerGas: hex(head.baseFeePerGas * 3n),
+      }),
+  },
+  {
+    name: "estimate-gas-transfer",
+    description: "eth_estimateGas for a plain transfer of nothing, to compare with 21000",
+    request: () => estimateGas({}),
+  },
+  {
+    name: "fill-transaction",
+    description: "eth_fillTransaction for a plain transfer: supported, or how it's refused",
+    request: () => ({
+      method: "eth_fillTransaction",
+      params: [{ from: unfunded, to: recipient, value: "0x0" }],
+    }),
+  },
   ...(
     [
       ["legacy", "0x0"],
@@ -116,6 +177,14 @@ const cases: Case[] = [
     },
   })),
 ];
+
+/** A transfer from the unfunded address, estimated at the head, with `fields` over it. */
+function estimateGas(fields: Record<string, string>): RpcRequest {
+  return {
+    method: "eth_estimateGas",
+    params: [{ from: unfunded, to: recipient, ...fields }, "latest"],
+  };
+}
 
 function getLogs(filter: Record<string, unknown>): RpcRequest {
   return { method: "eth_getLogs", params: [{ address: usdc, ...filter }] };
@@ -179,9 +248,18 @@ function defaultName(chainId: number, client: string): string {
 async function main() {
   const { values, positionals } = parseArgs({
     allowPositionals: true,
-    options: { write: { type: "boolean", default: false }, name: { type: "string" } },
+    options: {
+      write: { type: "boolean", default: false },
+      name: { type: "string" },
+      only: { type: "string", multiple: true },
+    },
   });
   const endpoint = positionals[0] ?? defaultEndpoint;
+  const selected = cases.filter(
+    ({ name }) =>
+      values.only === undefined || values.only.some((prefix) => name.startsWith(prefix)),
+  );
+  if (selected.length === 0) throw new Error(`No case starts with ${values.only?.join(" or ")}.`);
 
   const client = String(await result(endpoint, { method: "web3_clientVersion", params: [] }));
   await pause();
@@ -194,11 +272,39 @@ async function main() {
   if (typeof block !== "object" || block === null || !("number" in block) || !("hash" in block))
     throw new Error(`Unexpected block: ${JSON.stringify(block)}`);
   const number = BigInt(String(block.number));
+  const baseFeePerGas = "baseFeePerGas" in block ? BigInt(String(block.baseFeePerGas)) : 0n;
+  const transactions = selected.some(({ name }) => name.startsWith("get-transaction-"))
+    ? await recentTransactions(endpoint, number)
+    : {};
+  if (selected.some(({ name }) => name.startsWith("estimate-gas-"))) {
+    await pause();
+    const balance = await result(endpoint, {
+      method: "eth_getBalance",
+      params: [unfunded, "latest"],
+    });
+    if (BigInt(String(balance)) !== 0n)
+      throw new Error(`${unfunded} holds ${String(balance)} here; the estimates need it empty.`);
+  }
+  const head = { number, hash: String(block.hash), baseFeePerGas, transactions };
+  const name = values.name ?? defaultName(chainId, client);
+  console.log(`${endpoint}: ${client}, chain ${chainId} (${name}), head ${head.number}\n`);
+
+  const outDir = values.write ? new URL(`${name}/`, fixturesDir) : undefined;
+  if (outDir !== undefined) await mkdir(outDir, { recursive: true });
+  const context = { endpoint, client, chainId, head, outDir };
+  for (const each of selected)
+    // One at a time, on purpose: public endpoints rate-limit bursts.
+    // oxlint-disable-next-line eslint/no-await-in-loop -- sequential by design
+    await capture(each, context);
+  if (outDir !== undefined) console.log(`Saved to ${outDir.pathname}`);
+}
+
+/** A hash of each transaction type in a block a couple behind the head, by type (`0x2`). */
+async function recentTransactions(endpoint: string, head: bigint) {
   await pause();
-  // A block a couple behind the head, with its transactions: one of each type to capture.
   const recent = await result(endpoint, {
     method: "eth_getBlockByNumber",
-    params: [hex(number - 2n), true],
+    params: [hex(head - 2n), true],
   });
   const transactions: Record<string, string> = {};
   const list: unknown[] =
@@ -208,18 +314,7 @@ async function main() {
   for (const tx of list)
     if (typeof tx === "object" && tx !== null && "type" in tx && "hash" in tx)
       transactions[String(tx.type)] ??= String(tx.hash);
-  const head = { number, hash: String(block.hash), transactions };
-  const name = values.name ?? defaultName(chainId, client);
-  console.log(`${endpoint}: ${client}, chain ${chainId} (${name}), head ${head.number}\n`);
-
-  const outDir = values.write ? new URL(`${name}/`, fixturesDir) : undefined;
-  if (outDir !== undefined) await mkdir(outDir, { recursive: true });
-  const context = { endpoint, client, chainId, head, outDir };
-  for (const each of cases)
-    // One at a time, on purpose: public endpoints rate-limit bursts.
-    // oxlint-disable-next-line eslint/no-await-in-loop -- sequential by design
-    await capture(each, context);
-  if (outDir !== undefined) console.log(`Saved to ${outDir.pathname}`);
+  return transactions;
 }
 
 /** Sends one case after a pause, prints the answer, and saves it to `outDir` if given. */

@@ -3,6 +3,7 @@ import { type Server, createServer } from "node:http";
 import {
   type Abi,
   type Hex,
+  type Transport,
   createPublicClient,
   encodeErrorResult,
   erc20Abi,
@@ -355,12 +356,13 @@ describe("reverts match other nodes' on classes, codes, and decoded data", () =>
  * A response captured from Ethereum's reth (publicnode) by
  * `scripts/capture-node-responses.ts`. Rerun it with `--write` to refresh them.
  */
-function nodeResponse(name: string): { client: string; answer: Answer; body: unknown } {
+/** A captured answer from `node`'s folder of fixtures, Ethereum's reth node by default. */
+function nodeResponse(
+  name: string,
+  node = "ethereum-reth",
+): { client: string; answer: Answer; body: unknown } {
   const fixture: unknown = JSON.parse(
-    readFileSync(
-      new URL(`fixtures/node-responses/ethereum-reth/${name}.json`, import.meta.url),
-      "utf8",
-    ),
+    readFileSync(new URL(`fixtures/node-responses/${node}/${name}.json`, import.meta.url), "utf8"),
   );
   if (typeof fixture !== "object" || fixture === null || !("response" in fixture))
     throw new Error(`Malformed fixture ${name}`);
@@ -469,6 +471,69 @@ describe("getLogs errors match reth's exactly", () => {
       typeof body === "object" && body !== null && "result" in body ? body.result : undefined;
     expect(firstAddress(realLogs)).toBe(firstAddress(realLogs)?.toLowerCase());
     expect(firstAddress(logs)).toBe(TOKEN.toLowerCase());
+  });
+});
+
+describe("named node errors match reth's exactly", () => {
+  // The fixtures' sender and recipient: addresses nobody holds a key to.
+  const unfunded = "0x3FFad175d7E6060D236E450E9Bc09BC54BE68770";
+  const recipient = "0xE023cD5ae4146512f9BA0CBd4523f463603ecd67";
+  const cases = [
+    {
+      fixture: "estimate-gas-insufficient-funds",
+      name: "insufficientFunds",
+      fields: { value: 1n },
+    },
+    {
+      fixture: "estimate-gas-insufficient-funds-with-fees",
+      name: "insufficientFunds",
+      fields: { value: 1n, maxFeePerGas: 2n, maxPriorityFeePerGas: 0n },
+    },
+    {
+      fixture: "estimate-gas-fee-cap-too-low",
+      name: "feeCapTooLow",
+      fields: { maxFeePerGas: 1n, maxPriorityFeePerGas: 0n },
+    },
+    {
+      fixture: "estimate-gas-tip-above-fee-cap",
+      name: "tipAboveFeeCap",
+      fields: { maxFeePerGas: 2n, maxPriorityFeePerGas: 3n },
+    },
+  ] as const;
+  const nodes = ["ethereum-reth", "base-reth"];
+
+  /** A client estimating through `transport`, and an estimate of the fixtures' transfer. */
+  function estimate(transport: Transport, fields: object) {
+    const client = createPublicClient({ chain: mainnet, transport });
+    return client.estimateGas({ account: unfunded, to: recipient, ...fields });
+  }
+
+  test.each(
+    nodes.flatMap((node) =>
+      cases.map(({ fixture, name, fields }) => ({ node, fixture, name, fields })),
+    ),
+  )("$node: $fixture", async ({ node, fixture, name, fields }) => {
+    const { client } = nodeResponse(fixture, node);
+    expect(client).toMatch(/^reth\//u);
+    answer = nodeResponse(fixture, node).answer;
+    const mock = createMockRpc();
+    mock.actions.estimateGas().fails(name);
+    const options = { retryCount: 0, retryDelay: 0 };
+
+    const realError = await rejectionOf(estimate(http(url, options), fields));
+    const mockError = await rejectionOf(estimate(mock.transport(options), fields));
+
+    expect(layers(mockError, { details: true })).toEqual(layers(realError, { details: true }));
+  });
+
+  test.each(nodes)("%s: a plain transfer is estimated at 21000, as unmocked", async (node) => {
+    answer = nodeResponse("estimate-gas-transfer", node).answer;
+    const mock = createMockRpc();
+    const options = { retryCount: 0, retryDelay: 0 };
+
+    expect(await estimate(mock.transport(options), {})).toBe(
+      await estimate(http(url, options), {}),
+    );
   });
 });
 
