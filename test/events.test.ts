@@ -11,7 +11,7 @@ import {
   zeroHash,
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
-import { buildLog, createMockRpc, match, testAddress, testHash } from "../src/index.js";
+import { createMockRpc, match, testAddress, testHash } from "../src/index.js";
 import { lowercase } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -242,7 +242,7 @@ describe("contract.events", () => {
   });
 });
 
-describe("buildLog()", () => {
+describe("mock.buildLog()", () => {
   test("equals the log a mocked receipt answers, placed the same", async () => {
     const { mock, client, usdc } = setup();
     const hash = testHash("transfer");
@@ -253,7 +253,7 @@ describe("buildLog()", () => {
 
     const { logs } = await client.getTransactionReceipt({ hash });
     expect(logs).toEqual([
-      buildLog({
+      mock.buildLog({
         abi: erc20Abi,
         address: USDC,
         eventName: "Transfer",
@@ -267,12 +267,13 @@ describe("buildLog()", () => {
     expect(logs[0]?.blockHash).toBe((await client.getBlock({ blockNumber: 7n })).hash);
   });
 
-  test("defaults its position to zero", () => {
-    const log = buildLog({ abi: shapesAbi, address: SHAPES, eventName: "Paused" });
+  test("defaults to the current block, and zeros for the rest", () => {
+    const { mock } = setup();
+    const log = mock.buildLog({ abi: shapesAbi, address: SHAPES, eventName: "Paused" });
 
     expect(log).toMatchObject({
       address: lowercase(SHAPES),
-      blockNumber: 0n,
+      blockNumber: 10n,
       transactionHash: zeroHash,
       transactionIndex: 0,
       logIndex: 0,
@@ -281,9 +282,11 @@ describe("buildLog()", () => {
   });
 
   test("throws for an event the ABI doesn't have", () => {
+    const { mock } = setup();
+
     expect(() =>
       // @ts-expect-error not an event of erc20Abi
-      buildLog({ abi: erc20Abi, address: USDC, eventName: "Swap", args: {} }),
+      mock.buildLog({ abi: erc20Abi, address: USDC, eventName: "Swap", args: {} }),
     ).toThrow('No event "Swap" on this ABI.');
   });
 });

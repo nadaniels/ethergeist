@@ -6,14 +6,17 @@ import {
   type RpcBlock,
   type RpcTransactionReceipt,
   type RpcLog,
+  type RpcTransaction,
   formatBlock,
   formatLog,
+  formatTransaction,
   formatTransactionReceipt,
   getAddress,
   hexToBigInt,
   hexToNumber,
   isHex,
   numberToHex,
+  zeroHash,
 } from "viem";
 import {
   type Fees,
@@ -27,7 +30,14 @@ import {
 } from "./blocks.js";
 import type { PartCheckpoint } from "./checkpoint.js";
 import type { ContractEstimate } from "./contract.js";
-import { type MockReceipt, completeReceipt, toRpcReceipt } from "./receipts.js";
+import {
+  type BuiltTransaction,
+  type MockReceipt,
+  type MockTransaction,
+  completeReceipt,
+  toRpcReceipt,
+  toRpcTransaction,
+} from "./receipts.js";
 import { MockNotFoundError, MockResolverError, MockRpcError, removedMockError } from "./errors.js";
 import type { EmittedLog } from "./events.js";
 import { type MockCallRecord, type MockOutcome, errorOutcome } from "./history.js";
@@ -116,6 +126,8 @@ export type EstimateGasCall = {
 export type EmptyCall = Record<string, never>;
 /** What a call to `getTransactionReceipt` asked for. */
 export type ReceiptCall = { hash: Hash };
+/** What a call to `getTransaction` asked for: a transaction by its hash. */
+export type TransactionCall = { hash: Hash };
 /** A raw JSON-RPC request answered by `mock.method()`. */
 export type MethodCall = { method: string; params: readonly RpcValue[] };
 
@@ -215,6 +227,7 @@ export type ActionCalls = {
   getCode: CodeCall;
   getBlock: BlockCall;
   getTransactionReceipt: ReceiptCall;
+  getTransaction: TransactionCall;
   getLogs: LogsCall;
   getGasPrice: EmptyCall;
   estimateMaxPriorityFeePerGas: EmptyCall;
@@ -260,10 +273,19 @@ export type MockActions = {
    */
   getTransactionReceipt: MockAction<ReceiptCall, MockReceipt | null>;
   /**
+   * `eth_getTransactionByHash`. A mock's fields go over defaults: an
+   * `"eip1559"` transaction mined in the current block, at index 0, that paid
+   * the suggested fees (see `fees`), with a zero signature; the rest is zero.
+   * Fields its `type` doesn't have throw, and `blockNumber: null` makes it
+   * pending. `null` answers "no such transaction". Unmocked hashes aren't
+   * answered. `mock.buildTransaction()` builds the same transaction.
+   */
+  getTransaction: MockAction<TransactionCall, MockTransaction | null>;
+  /**
    * `eth_getLogs`, for `getLogs` and `getContractEvents`. Unmocked, it's
    * answered from emitted logs (`mock.emit()`), filtered as a node filters
    * them. A mock answers first, with placed logs (from `emit()` or
-   * `buildLog()`), or fails, e.g. for a provider's block range cap; its
+   * `mock.buildLog()`), or fails, e.g. for a provider's block range cap; its
    * resolver gets the emitted logs the filter matches as `logs`.
    */
   getLogs: MockAction<LogsCall, readonly EmittedLog[], LogsContext>;
@@ -668,9 +690,28 @@ export function createActions(options: {
   feesAt: (number: bigint) => Fees;
   /** A registered contract's turn at an estimate of one of its functions, if it's one. */
   estimateAt: (call: EstimateGasCall) => ContractEstimate | undefined;
+  chainId: number;
 }) {
-  const { resolveBlock, codeAt, blockNumber, generateBlock, mine, isContract, feesAt, estimateAt } =
-    options;
+  const {
+    resolveBlock,
+    codeAt,
+    blockNumber,
+    generateBlock,
+    mine,
+    isContract,
+    feesAt,
+    estimateAt,
+    chainId,
+  } = options;
+  /** A transaction's JSON-RPC form, with the mock's defaults; see `getTransaction`. */
+  const encodeTransaction = (transaction: MockTransaction, hash: Hash) =>
+    toRpcTransaction(transaction, {
+      hash,
+      blockNumber: blockNumber(),
+      chainId,
+      feesAt,
+      timestampAt: (number) => generateBlock(number).timestamp,
+    });
   const fees = () => feesAt(blockNumber());
   // Emitted logs, which answer `eth_getLogs`.
   const logStore = createLogStore({
@@ -803,6 +844,22 @@ export function createActions(options: {
       },
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encoded by toRpcReceipt
       view: (rpc) => (rpc === null ? null : formatTransactionReceipt(rpc as RpcTransactionReceipt)),
+    }),
+    getTransaction: createTable({
+      name: "getTransaction",
+      hint: "mock.actions.getTransaction({ hash }).returns(…)",
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
+      decode: ([hash]) => ({ hash: hash as Hash }),
+      zero: {},
+      encode(value, call) {
+        if (value === null) return null;
+        if (!isPlainObject(value))
+          throw new TypeError(`A transaction must be an object or null; got ${typeof value}.`);
+        const { hash = zeroHash } = (call ?? {}) as Partial<TransactionCall>;
+        return encodeTransaction(value, hash);
+      },
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encoded by toRpcTransaction
+      view: (rpc) => (rpc === null ? null : formatTransaction(rpc as RpcTransaction)),
     }),
     getBlock: createTable({
       name: "getBlock",
@@ -956,6 +1013,7 @@ export function createActions(options: {
     ["eth_getBlockByNumber", "getBlock"],
     ["eth_getBlockByHash", "getBlock"],
     ["eth_getTransactionReceipt", "getTransactionReceipt"],
+    ["eth_getTransactionByHash", "getTransaction"],
     ["eth_getLogs", "getLogs"],
     ["eth_gasPrice", "getGasPrice"],
     ["eth_maxPriorityFeePerGas", "estimateMaxPriorityFeePerGas"],
@@ -983,6 +1041,7 @@ export function createActions(options: {
     getCode: buildAction(typed.getCode),
     getBlock: buildAction(typed.getBlock),
     getTransactionReceipt: buildAction(typed.getTransactionReceipt),
+    getTransaction: buildAction(typed.getTransaction),
     getLogs: buildAction(typed.getLogs),
     getGasPrice: buildAction(typed.getGasPrice),
     estimateMaxPriorityFeePerGas: buildAction(typed.estimateMaxPriorityFeePerGas),
@@ -1025,6 +1084,20 @@ export function createActions(options: {
     actions,
     method,
     logStore,
+    /** The receipt `getTransactionReceipt` answers for `.returns(receipt)`; its hash is zero unless given. */
+    buildReceipt: (receipt: MockReceipt = {}) =>
+      completeReceipt(receipt, {
+        hash: receipt.transactionHash ?? zeroHash,
+        blockNumber: blockNumber(),
+      }),
+    /** The transaction `getTransaction` answers for `.returns(transaction)`, in viem's types. */
+    buildTransaction: <const transaction extends MockTransaction = { type?: "eip1559" }>(
+      transaction?: transaction,
+    ): BuiltTransaction<transaction> =>
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- formatTransaction of the transaction's own type
+      formatTransaction(
+        encodeTransaction(transaction ?? {}, transaction?.hash ?? zeroHash),
+      ) as BuiltTransaction<transaction>,
     /** Answers a request with a typed or raw mock, or returns `undefined` if none applies. */
     answer(
       name: string,

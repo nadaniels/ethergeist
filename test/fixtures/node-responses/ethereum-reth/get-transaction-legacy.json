@@ -1,0 +1,38 @@
+{
+  "description": "eth_getTransactionByHash for a mined legacy transaction",
+  "client": "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu",
+  "chainId": 1,
+  "endpoint": "https://ethereum-rpc.publicnode.com",
+  "capturedAt": "2026-10-31",
+  "head": "26309894",
+  "request": {
+    "method": "eth_getTransactionByHash",
+    "params": ["0xe6821ee3b1e6a3b0777335110694d8156040736b8f4963f39b970210133a9f6c"]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": {
+        "type": "0x0",
+        "chainId": "0x1",
+        "nonce": "0x0",
+        "gasPrice": "0x77359400",
+        "gas": "0x5208",
+        "to": "0xd802302f7f2c727cb2b10c0e210d921ead359e6e",
+        "value": "0x59ea3f2dd4ac00",
+        "input": "0x",
+        "r": "0xafb8c99ae597a74d98c5577962293f09fbfc7f6bd1dbfb37994ea7c9a9b3d4b3",
+        "s": "0xf841eadec4798db80a785a04e8fe1b4808345a4337844ee8e7510646bc35b2a",
+        "v": "0x25",
+        "hash": "0xe6821ee3b1e6a3b0777335110694d8156040736b8f4963f39b970210133a9f6c",
+        "blockHash": "0x947ee3fb9af93c54771231ed264d179f6ec803abb44461d1b95463f32b913a9d",
+        "blockNumber": "0x1917504",
+        "transactionIndex": "0x9",
+        "from": "0xb972ca7d46fcd53f8b798eee7f67cd8956831c1e",
+        "blockTimestamp": "0x6ae5589b"
+      }
+    }
+  }
+}

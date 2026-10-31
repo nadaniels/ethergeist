@@ -23,7 +23,7 @@ import { type AllNamed, type PartialStructs, fillZeros, isPlainObject } from "./
 /**
  * A log's content, encoded from an event and its args: who emitted it, its
  * topics, and its data. It has no position; the receipt, `emit`, or
- * `buildLog` it goes to gives it one.
+ * `mock.buildLog` it goes to gives it one.
  */
 export type MockEventLog = {
   /** The emitting contract, checksummed. */
@@ -33,8 +33,9 @@ export type MockEventLog = {
 };
 
 /**
- * Where a log goes: its block and transaction. Left out, `buildLog` uses
- * zeros, and `emit` the current block and the block's next transaction.
+ * Where a log goes: its block and transaction. Left out, `mock.buildLog` uses
+ * the current block and zeros, and `emit` the current block and the block's
+ * next transaction.
  */
 export type LogPlacement = {
   blockNumber?: bigint;
@@ -75,7 +76,7 @@ type EventInputsArgs<inputs extends readonly AbiParameter[]> =
     : { readonly [index in keyof inputs]: EventInputValue<inputs[index]> };
 
 /**
- * An event's args, as `events.X()` and `buildLog` take them: indexed args
+ * An event's args, as `events.X()` and `mock.buildLog` take them: indexed args
  * are required, since filters match on them and a zero would quietly miss.
  * The rest may be left out, at any depth of a struct, and are zero-filled,
  * as in `.returns()`. Events with unnamed inputs take every arg, in order.
@@ -132,13 +133,14 @@ export type BuildLogParameters<
 /**
  * The log `address` emits for `eventName` with `args`, as a complete viem
  * log: the same encoding as a contract's `events`, and the same placement
- * as a mocked receipt's logs. Position fields left out are zero, and the
- * block hash is the mock's generated hash for `blockNumber`.
+ * as a mocked receipt's logs. The block is `currentBlock` unless given, its
+ * hash is the mock's generated one, and other position fields left out are zero.
  */
 export function buildLog<const abi extends Abi, eventName extends ContractEventName<abi>>(
   parameters: BuildLogParameters<abi, eventName>,
+  currentBlock: bigint,
 ): Log<bigint, number, false> {
-  const { abi, address, eventName, blockNumber = 0n } = parameters;
+  const { abi, address, eventName, blockNumber = currentBlock } = parameters;
   const args: unknown = "args" in parameters ? parameters.args : undefined;
   return placeLog(encodeEventLog(abi, address, eventName, args), {
     blockHash: blockHash(blockNumber),

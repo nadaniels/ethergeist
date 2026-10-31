@@ -34,10 +34,18 @@ const pauseMs = 500;
 const usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
 const unknownHash = `0x${"11".repeat(32)}`;
 
-type Head = { number: bigint; hash: string };
+/** The node's head, and a hash of each transaction type in a recent block, by type (`0x2`). */
+type Head = { number: bigint; hash: string; transactions: Record<string, string> };
 
-/** A capture case: the request, given the node's current head. */
-type Case = { name: string; description: string; request: (head: Head) => RpcRequest };
+/**
+ * A capture case: the request, given the node's current head; `undefined`
+ * skips it, e.g. when the block has no transaction of a type.
+ */
+type Case = {
+  name: string;
+  description: string;
+  request: (head: Head) => RpcRequest | undefined;
+};
 type RpcRequest = { method: string; params: unknown[] };
 
 const hex = (n: bigint) => `0x${n.toString(16)}`;
@@ -81,6 +89,24 @@ const cases: Case[] = [
     request: (head) =>
       getLogs({ fromBlock: hex(head.number - 2n), toBlock: hex(head.number - 2n) }),
   },
+  ...(
+    [
+      ["legacy", "0x0"],
+      ["eip2930", "0x1"],
+      ["eip1559", "0x2"],
+      ["eip4844", "0x3"],
+      ["eip7702", "0x4"],
+    ] as const
+  ).map(([type, typeHex]) => ({
+    name: `get-transaction-${type}`,
+    description: `eth_getTransactionByHash for a mined ${type} transaction`,
+    request: (head: Head) => {
+      const hash = head.transactions[typeHex];
+      return hash === undefined
+        ? undefined
+        : { method: "eth_getTransactionByHash", params: [hash] };
+    },
+  })),
 ];
 
 function getLogs(filter: Record<string, unknown>): RpcRequest {
@@ -159,7 +185,22 @@ async function main() {
   });
   if (typeof block !== "object" || block === null || !("number" in block) || !("hash" in block))
     throw new Error(`Unexpected block: ${JSON.stringify(block)}`);
-  const head = { number: BigInt(String(block.number)), hash: String(block.hash) };
+  const number = BigInt(String(block.number));
+  await pause();
+  // A block a couple behind the head, with its transactions: one of each type to capture.
+  const recent = await result(endpoint, {
+    method: "eth_getBlockByNumber",
+    params: [hex(number - 2n), true],
+  });
+  const transactions: Record<string, string> = {};
+  const list: unknown[] =
+    typeof recent === "object" && recent !== null && "transactions" in recent
+      ? [recent.transactions].flat()
+      : [];
+  for (const tx of list)
+    if (typeof tx === "object" && tx !== null && "type" in tx && "hash" in tx)
+      transactions[String(tx.type)] ??= String(tx.hash);
+  const head = { number, hash: String(block.hash), transactions };
   const name = values.name ?? defaultName(chainId, client);
   console.log(`${endpoint}: ${client}, chain ${chainId} (${name}), head ${head.number}\n`);
 
@@ -187,6 +228,10 @@ async function capture(
   const { endpoint, client, chainId, head, outDir } = context;
   await pause();
   const sent = request(head);
+  if (sent === undefined) {
+    console.log(`${name}: skipped, nothing to ask for at this head\n`);
+    return;
+  }
   const response = await send(endpoint, sent);
   const body = trimmed(response.body);
   console.log(`${name} (HTTP ${response.status}):\n  ${JSON.stringify(body)}\n`);

@@ -1,6 +1,7 @@
 import { Log as OxLog } from "ox";
 import {
   type Abi,
+  type ContractEventName,
   type AbiEvent,
   type Address,
   type Hash,
@@ -13,7 +14,13 @@ import {
 } from "viem";
 import { blockHash, numberOfBlockHash } from "./blocks.js";
 import { MockNotFoundError, MockRpcError } from "./errors.js";
-import type { EmitOptions, EmittedLog, MockEventLog } from "./events.js";
+import {
+  type BuildLogParameters,
+  type EmitOptions,
+  type EmittedLog,
+  type MockEventLog,
+  buildLog,
+} from "./events.js";
 import { formatValue } from "./format.js";
 import { placeLog } from "./receipts.js";
 import { isPlainObject, lowercase, nodeAddress } from "./result.js";
@@ -84,7 +91,7 @@ export function createLogStore(hooks: {
       if (positionFields.some((field) => field in value))
         throw new Error(
           "emit() places logs itself, but this one already has a position (e.g. from " +
-            "buildLog()). Pass a log from contract.events, and set its block or transaction " +
+            "mock.buildLog()). Pass a log from contract.events, and set its block or transaction " +
             "in emit()'s options.",
         );
       if (!isContract(getAddress(value.address)))
@@ -254,6 +261,10 @@ export function createLogStore(hooks: {
             : 1,
       );
     },
+    /** A finished log, in the current block unless given; see `buildLog`. */
+    buildLog: <const abi extends Abi, eventName extends ContractEventName<abi>>(
+      parameters: BuildLogParameters<abi, eventName>,
+    ) => buildLog(parameters, hooks.blockNumber()),
     reset() {
       logs.length = 0;
     },
@@ -319,7 +330,7 @@ const placedFields = {
 
 /**
  * Logs a `getLogs` mock answered with, in JSON-RPC form. They must be placed
- * (from `emit()` or `buildLog()`): content alone has no block or transaction.
+ * (from `emit()` or `mock.buildLog()`): content alone has no block or transaction.
  */
 function toRpc(value: unknown): RpcLog[] {
   if (!Array.isArray(value))
@@ -330,7 +341,7 @@ function toRpc(value: unknown): RpcLog[] {
       Object.entries(placedFields).every(([field, type]) => typeof log[field] === type);
     if (!placed)
       throw new TypeError(
-        `getLogs answers placed logs, e.g. from emit() or buildLog(); log ${i} has no position.`,
+        `getLogs answers placed logs, e.g. from emit() or mock.buildLog(); log ${i} has no position.`,
       );
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- checked above
     return toRpcLog(log as unknown as EmittedLog);

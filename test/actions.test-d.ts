@@ -1,11 +1,18 @@
-import { type Address, type BlockTag, type Hex, erc20Abi } from "viem";
+import {
+  type Address,
+  type BlockTag,
+  type Hex,
+  type TransactionEIP1559,
+  type TransactionEIP4844,
+  type TransactionLegacy,
+  erc20Abi,
+} from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
 import {
   type EmittedLog,
   type EstimateGasCall,
   type LogsCall,
   type RpcValue,
-  buildLog,
   createMockRpc,
   zeroResult,
   testAddress,
@@ -101,6 +108,32 @@ describe("getTransactionReceipt", () => {
   });
 });
 
+describe("getTransaction", () => {
+  test("takes the fields of its type, mined or pending, or null", () => {
+    mock.actions.getTransaction({ hash: "0x01" }).returns({ type: "legacy", gasPrice: 1n });
+    mock.actions.getTransaction().returns({ maxFeePerGas: 1n, blockNumber: null });
+    mock.actions.getTransaction().returns(null);
+    // @ts-expect-error legacy transactions have no max fee
+    mock.actions.getTransaction().returns({ type: "legacy", maxFeePerGas: 1n });
+    // @ts-expect-error a pending transaction has no block hash
+    mock.actions.getTransaction().returns({ blockNumber: null, blockHash: "0x01" });
+    // @ts-expect-error only a pending transaction has a null block hash
+    mock.actions.getTransaction().returns({ blockHash: null });
+  });
+
+  test("buildTransaction returns viem's transaction of that type", () => {
+    expectTypeOf(mock.buildTransaction()).toEqualTypeOf<
+      TransactionEIP1559<bigint, number, false>
+    >();
+    expectTypeOf(mock.buildTransaction({ type: "legacy" })).toEqualTypeOf<
+      TransactionLegacy<bigint, number, false>
+    >();
+    expectTypeOf(mock.buildTransaction({ type: "eip4844", blockNumber: null })).toEqualTypeOf<
+      TransactionEIP4844<bigint, number, true>
+    >();
+  });
+});
+
 describe("getLogs", () => {
   const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
 
@@ -114,7 +147,7 @@ describe("getLogs", () => {
   test("returns placed logs, or a resolver with the store's logs", () => {
     mock.actions.getLogs().returns([usdc.emit.Transfer({ from: alice, to: alice })]);
     mock.actions.getLogs().returns([
-      buildLog({
+      mock.buildLog({
         abi: erc20Abi,
         address: usdc.address,
         eventName: "Approval",

@@ -315,6 +315,11 @@ function summarize(value: unknown, action: string | undefined): string {
     const logs = Array.isArray(value.logs) ? value.logs.length : 0;
     return `${String(value.status)}, block ${formatValue(value.blockNumber)}, ${logs} log(s)`;
   }
+  if (action === "getTransaction" && isPlainObject(value)) {
+    const where =
+      value.blockNumber === null ? "pending" : `block ${formatValue(value.blockNumber)}`;
+    return `${String(value.type)}, ${where}`;
+  }
   if (action === "getLogs" && Array.isArray(value))
     return `${value.length} ${value.length === 1 ? "log" : "logs"}`;
   return formatValue(value, { short: true });

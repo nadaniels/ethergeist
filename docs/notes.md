@@ -167,7 +167,7 @@ features land; tick them off as pages get written.
 
 ## 5. Node data: `mock.actions` and `mock.method`
 
-- [ ] `getBalance`, `getCode`, `getBlock`, `getTransactionReceipt`, `getTransactionCount` and the fee actions, with
+- [ ] `getBalance`, `getCode`, `getBlock`, `getTransactionReceipt`, `getTransaction`, `getTransactionCount` and the fee actions, with
       values in viem's types.
 - [ ] Generated blocks: what's generated (numbers, linked hashes, timestamps
       from `timestamp` and `chain.blockTime`, the base fee from `fees`), and
@@ -212,6 +212,32 @@ features land; tick them off as pages get written.
     with `mock.method()`.
 - [ ] Receipts: the defaults (status `"success"`, block, log context), and
       `.returns(null)` for "not found".
+- [ ] Transactions: `mock.actions.getTransaction({ hash }).returns(fields)`,
+      by hash only. Defaults: an `"eip1559"` transaction mined in the current
+      block at index 0, with the block's timestamp, that paid the suggested
+      fees from `fees` (tip, and a max fee of base + tip, so its effective
+      `gasPrice` is base + tip), a zero signature, and zero for the rest.
+  - Typed by `type`: each of viem's five types takes only its own fields
+    (`{ type: "legacy", maxFeePerGas }` is a type error, and throws for
+    untyped callers). The type is never guessed from the fields.
+  - viem types an EIP-1559 transaction's `gasPrice` as `undefined`, though
+    nodes send it and viem returns it; it's derived from the fees here.
+  - Pending: `blockNumber: null`, with a null block hash and index and no
+    timestamp; it's priced at its max fee, as a node can't know the
+    effective one yet (not captured from a node yet).
+  - `mock.buildTransaction(fields)` is what `.returns(fields)` answers, typed
+    as viem's transaction of that type, for `toEqual` and props. Like
+    every builder it's on the mock, because its defaults come from the
+    mock: the current block, its timestamp and fees, and the chain. Where
+    there's no mock (props, a parser's unit test), `createMockRpc()` needs
+    no client or transport.
+  - Pitfall: a transaction and its receipt are separate mocks; pin both to
+    the same hash and keep their fields consistent yourself (the mock
+    doesn't sync them). `waitForTransactionReceipt` asks for the
+    transaction only while the receipt is missing, and
+    `getTransactionConfirmations` whenever it's given a hash.
+  - Lookups by block and index, or by sender and nonce, aren't typed yet:
+    `mock.method()`.
 - [ ] Event logs for receipts: `contract.events.Transfer({ from, to, value })`
       builds a log's content (address, topics, data) with no position; the
       receipt places it. Show:
@@ -225,17 +251,18 @@ features land; tick them off as pages get written.
   - Overloaded events use the overload the args fit; "ambiguous" when
     several do.
   - A receipt's log that names another block or transaction throws (e.g. a
-    `buildLog()` result, which sits in block 0). An emitted log fits the
+    `mock.buildLog()` result for another block). An emitted log fits the
     receipt of its own transaction; one emitted as a block's second
     transaction needs the receipt's `transactionIndex: 1` too.
-  - `buildLog({ abi, address, eventName, args, blockNumber, … })` for a
+  - `mock.buildLog({ abi, address, eventName, args, blockNumber, … })` for a
     complete viem log where no mock places it (`toEqual`, Storybook props,
     a function that parses logs). Inside a mock, receipts and `emit` place
     logs themselves, so they take `contract.events` values; for a contract
     whose functions aren't mocked, register it anyway (`mock.contract({ abi,
-    address })`, no mocks needed): only contracts emit logs. And `buildReceipt(fields)` for the
-    receipt `.returns(fields)` answers (pass `transactionHash` and
-    `blockNumber` to match the mock's). Both share the mock's encoding and
+    address })`, no mocks needed): only contracts emit logs. And
+    `mock.buildReceipt(fields)` for the receipt `.returns(fields)` answers
+    (pass `transactionHash` to match the request's). Both default to the
+    mock's current block. Both share the mock's encoding and
     defaults, so `toEqual` against what the app got works.
 - [ ] Emitting logs for `getLogs`: `contract.emit.Transfer(args, options)`, or
       `mock.emit(logs, options)` for several logs in one transaction
@@ -273,7 +300,7 @@ features land; tick them off as pages get written.
   - A mock answers before the emitted logs and the node's rules, so an
     override works for an address without a contract or a range past the
     head. `.returns([...])` takes placed logs (from `emit()` or
-    `buildLog()`), not `contract.events` content; `.returns()` is `[]`.
+    `mock.buildLog()`), not `contract.events` content; `.returns()` is `[]`.
   - Recipes: a block range cap, with a resolver that fails big ranges and
     answers `logs` (the emitted logs the filter matches) otherwise; a
     result cap, failing when `logs` is too long; and `.once().fails(…)` for

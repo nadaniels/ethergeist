@@ -23,8 +23,6 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   MockNotFoundError,
   MockResolverError,
-  buildLog,
-  buildReceipt,
   createMockRpc,
   multicall3Address,
   zeroResult,
@@ -441,7 +439,7 @@ describe("getTransactionReceipt", () => {
   test("a log placed elsewhere throws, naming where", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });
-    const placed = buildLog({
+    const placed = mock.buildLog({
       abi: erc20Abi,
       address: USDC,
       eventName: "Transfer",
@@ -451,7 +449,7 @@ describe("getTransactionReceipt", () => {
     expect(() => {
       mock.actions.getTransactionReceipt().returns({ blockNumber: 7n, logs: [placed] });
     }).toThrow(
-      "Receipt log 0 has blockNumber 0n, but the receipt's is 7n. A receipt places its logs: " +
+      "Receipt log 0 has blockNumber 10n, but the receipt's is 7n. A receipt places its logs: " +
         "pass only their content, e.g. from contract.events.",
     );
     // The hash is known only once a request arrives.
@@ -555,7 +553,7 @@ describe("getTransactionCount", () => {
   });
 });
 
-describe("buildReceipt()", () => {
+describe("mock.buildReceipt()", () => {
   test("equals the receipt a mock answers for the same fields", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });
@@ -568,15 +566,17 @@ describe("buildReceipt()", () => {
     mock.actions.getTransactionReceipt({ hash }).returns(fields);
 
     expect(await client.getTransactionReceipt({ hash })).toEqual(
-      buildReceipt({ ...fields, transactionHash: hash, blockNumber: 10n }),
+      mock.buildReceipt({ ...fields, transactionHash: hash }),
     );
   });
 
-  test("defaults to a successful receipt with zero hash and block", () => {
-    expect(buildReceipt()).toMatchObject({
+  test("defaults to a successful receipt in the current block, with a zero hash", () => {
+    const { mock } = setup();
+
+    expect(mock.buildReceipt()).toMatchObject({
       status: "success",
       transactionHash: zeroHash,
-      blockNumber: 0n,
+      blockNumber: 10n,
       logs: [],
     });
   });
@@ -622,14 +622,15 @@ describe("addresses in answers are lowercase, as nodes send them", () => {
   });
 
   test("in builders, which equal what the mock answers", () => {
-    const log = buildLog({
+    const { mock } = setup();
+    const log = mock.buildLog({
       abi: erc20Abi,
       address: USDC,
       eventName: "Transfer",
       args: { from: alice, to: bob },
     });
     expect(log.address).toBe(lowercase(USDC));
-    expect(buildReceipt({ from: alice }).from).toBe(lowercase(alice));
+    expect(mock.buildReceipt({ from: alice }).from).toBe(lowercase(alice));
   });
 });
 

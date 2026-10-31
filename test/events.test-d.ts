@@ -4,7 +4,6 @@ import {
   type LogsCall,
   type MockEventArgs,
   type MockEventLog,
-  buildLog,
   createMockRpc,
   testAddress,
 } from "../src/index.js";
@@ -102,9 +101,10 @@ describe("contract.events", () => {
   });
 });
 
-describe("buildLog()", () => {
+describe("mock.buildLog()", () => {
   test("infers the event from the ABI and returns a viem log", () => {
-    const log = buildLog({
+    const mock = createMockRpc();
+    const log = mock.buildLog({
       abi: erc20Abi,
       address: USDC,
       eventName: "Transfer",
@@ -113,11 +113,11 @@ describe("buildLog()", () => {
     });
     expectTypeOf(log).toEqualTypeOf<Log<bigint, number, false>>();
 
-    buildLog({ abi: shapesAbi, address: USDC, eventName: "Paused" });
+    mock.buildLog({ abi: shapesAbi, address: USDC, eventName: "Paused" });
     // @ts-expect-error -- args are required when an arg is indexed
-    buildLog({ abi: erc20Abi, address: USDC, eventName: "Transfer" });
+    mock.buildLog({ abi: erc20Abi, address: USDC, eventName: "Transfer" });
     // @ts-expect-error -- `to` is indexed, so required
-    buildLog({ abi: erc20Abi, address: USDC, eventName: "Transfer", args: { from: alice } });
+    mock.buildLog({ abi: erc20Abi, address: USDC, eventName: "Transfer", args: { from: alice } });
   });
 });
 

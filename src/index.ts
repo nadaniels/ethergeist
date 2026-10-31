@@ -19,6 +19,7 @@ export type {
   MockMethodBuilder,
   ReceiptCall,
   RpcValue,
+  TransactionCall,
   TransactionCountCall,
 } from "./actions.js";
 export {
@@ -53,9 +54,14 @@ export {
   type MockContractEvents,
   type MockEventArgs,
   type MockEventLog,
-  buildLog,
 } from "./events.js";
-export { type MockLog, type MockReceipt, buildReceipt } from "./receipts.js";
+export {
+  type BuiltTransaction,
+  type MockLog,
+  type MockReceipt,
+  type MockTransaction,
+  type TransactionType,
+} from "./receipts.js";
 export type { LogsCall, LogsTopic } from "./logs.js";
 export type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
 export type {

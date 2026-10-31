@@ -197,6 +197,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         ? undefined
         : parameters.debug;
   const actions = createActions({
+    chainId,
     resolveBlock,
     codeAt,
     blockNumber: () => blockNumber,
@@ -608,6 +609,27 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * are in viem's own types; the mock encodes them for JSON-RPC.
      */
     actions: actions.actions,
+    /**
+     * The transaction `mock.actions.getTransaction()` answers when mocked with
+     * `.returns(transaction)`, in viem's types, with the same defaults: the
+     * current block and fees, and the mock's chain. Its hash is zero unless
+     * given. For `toEqual` against what the app got, and for props.
+     */
+    buildTransaction: actions.buildTransaction,
+    /**
+     * The receipt `mock.actions.getTransactionReceipt()` answers when mocked
+     * with `.returns(receipt)`: the same defaults, logs placed the same way,
+     * in the current block unless given. Its hash is zero unless given
+     * (`transactionHash`). For `toEqual` against what the app got, and for props.
+     */
+    buildReceipt: actions.buildReceipt,
+    /**
+     * The log `address` emits for `eventName` with `args`, as a complete viem
+     * log, for where no mock places it: `toEqual`, props, a function that
+     * parses logs. The same encoding as a contract's `events`, in the current
+     * block unless given, with other position fields zero.
+     */
+    buildLog: logStore.buildLog,
     /**
      * Emits logs as one transaction, for `getLogs` and watchers to find:
      * values from a contract's `events`, in the current block, or in a newly

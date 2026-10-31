@@ -8,14 +8,7 @@ import {
   parseAbiItem,
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
-import {
-  MockNotFoundError,
-  buildLog,
-  createMockRpc,
-  match,
-  testAddress,
-  testHash,
-} from "../src/index.js";
+import { MockNotFoundError, createMockRpc, match, testAddress, testHash } from "../src/index.js";
 import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -168,7 +161,7 @@ describe("emit", () => {
     );
     expect(() =>
       mock.emit(
-        buildLog({
+        mock.buildLog({
           abi: erc20Abi,
           address: USDC,
           eventName: "Transfer",
@@ -176,7 +169,7 @@ describe("emit", () => {
         }),
       ),
     ).toThrow(
-      "emit() places logs itself, but this one already has a position (e.g. from buildLog()). " +
+      "emit() places logs itself, but this one already has a position (e.g. from mock.buildLog()). " +
         "Pass a log from contract.events, and set its block or transaction in emit()'s options.",
     );
     expect(() => mock.emit(other.events.Transfer({ from: alice, to: bob }))).toThrow(
@@ -457,7 +450,7 @@ describe("mock.actions.getLogs", () => {
   test("a mock's logs replace the emitted ones", async () => {
     const { mock, client, usdc } = setup();
     usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
-    const instead = buildLog({
+    const instead = mock.buildLog({
       abi: erc20Abi,
       address: USDC,
       eventName: "Transfer",
@@ -573,7 +566,7 @@ describe("mock.actions.getLogs", () => {
       // @ts-expect-error -- content, not a placed log
       mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: bob })]);
     }).toThrow(
-      "getLogs answers placed logs, e.g. from emit() or buildLog(); log 0 has no position.",
+      "getLogs answers placed logs, e.g. from emit() or mock.buildLog(); log 0 has no position.",
     );
   });
 });

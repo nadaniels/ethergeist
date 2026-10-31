@@ -14,6 +14,7 @@ import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
 import {
   type MockContract,
   type MockFault,
+  type MockTransaction,
   type RevertSpec,
   createMockRpc,
   testAddress,
@@ -383,6 +384,26 @@ function logKeys(logs: unknown): string[] {
   return typeof first === "object" && first !== null ? Object.keys(first).toSorted() : [];
 }
 
+/** A JSON-RPC body's result, if it has one. */
+function resultOf(body: unknown): unknown {
+  return typeof body === "object" && body !== null && "result" in body ? body.result : undefined;
+}
+
+/** An object's keys, in order; none for anything else. */
+function keysOf(value: unknown): string[] {
+  return typeof value === "object" && value !== null ? Object.keys(value) : [];
+}
+
+/** A JSON-RPC transaction's first authorization, if it has any. */
+function firstAuthorization(transaction: unknown): unknown {
+  return typeof transaction === "object" &&
+    transaction !== null &&
+    "authorizationList" in transaction &&
+    Array.isArray(transaction.authorizationList)
+    ? transaction.authorizationList[0]
+    : undefined;
+}
+
 /** The address of the first log in a list of JSON-RPC logs. */
 function firstAddress(logs: unknown): string | undefined {
   const first: unknown = Array.isArray(logs) ? logs[0] : undefined;
@@ -448,6 +469,36 @@ describe("getLogs errors match reth's exactly", () => {
     expect(firstAddress(realLogs)).toBe(firstAddress(realLogs)?.toLowerCase());
     expect(firstAddress(logs)).toBe(TOKEN.toLowerCase());
   });
+});
+
+describe("transactions", () => {
+  const transactions = {
+    legacy: { type: "legacy" },
+    eip1559: { type: "eip1559" },
+    eip4844: { type: "eip4844" },
+    eip7702: {
+      type: "eip7702",
+      authorizationList: [{ address: TOKEN, chainId: 1, nonce: 0, r: "0x1", s: "0x1", yParity: 0 }],
+    },
+  } satisfies Record<string, MockTransaction>;
+
+  // eip2930 is rare on mainnet; none was in the captured block.
+  test.each(["legacy", "eip1559", "eip4844", "eip7702"] as const)(
+    "an %s transaction has reth's fields, in its order",
+    async (type) => {
+      const { body, client } = nodeResponse(`get-transaction-${type}`);
+      expect(client).toMatch(/^reth\//u);
+      const mock = createMockRpc({ blockNumber: 10n });
+      const hash = `0x${"ab".repeat(32)}` as const;
+      mock.actions.getTransaction({ hash }).returns(transactions[type]);
+
+      const mocked = await mock.request({ method: "eth_getTransactionByHash", params: [hash] });
+      const real = resultOf(body);
+
+      expect(keysOf(mocked)).toEqual(keysOf(real));
+      expect(keysOf(firstAuthorization(mocked))).toEqual(keysOf(firstAuthorization(real)));
+    },
+  );
 });
 
 describe("faults match the http transport's, retries included", () => {
