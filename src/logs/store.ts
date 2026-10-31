@@ -7,8 +7,14 @@ import {
   getAddress,
   numberToHex,
 } from "viem";
+
 import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
+import { placeLog } from "../chain/receipts.js";
+import type { ChainState } from "../chain/state.js";
+import type { Registry } from "../contracts/registry.js";
 import { MockNotFoundError, MockRpcError } from "../shared/errors.js";
+import { testHash } from "../shared/testValues.js";
+import { isPlainObject, nodeAddress } from "../shared/values.js";
 import {
   type BuildLogParameters,
   type EmitOptions,
@@ -16,11 +22,6 @@ import {
   type MockEventLog,
   buildLog,
 } from "./events.js";
-import { placeLog } from "../chain/receipts.js";
-import { isPlainObject, nodeAddress } from "../shared/values.js";
-import { testHash } from "../shared/testValues.js";
-import type { ChainState } from "../chain/state.js";
-import type { Registry } from "../contracts/registry.js";
 import { type LogsCall, decodeLogsCall, describeLogsCall, topicsMatch } from "./filter.js";
 
 /** A placed log: viem's, with the block's timestamp, as reth includes it. */

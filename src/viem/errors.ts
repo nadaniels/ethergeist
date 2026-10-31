@@ -1,7 +1,8 @@
 import { HttpRequestError, RpcRequestError, TimeoutError } from "viem";
-import type { MockRevertError } from "../shared/errors.js";
-import type { MockNodeFault } from "../mocking/types.js";
+
 import { isNodeErrorName, nodeErrors, nodeRevertMessage } from "../chain/nodeErrors.js";
+import type { MockNodeFault } from "../mocking/types.js";
+import type { MockRevertError } from "../shared/errors.js";
 
 /** There is no real endpoint; viem's errors require a URL, so faults report this one. */
 const url = "mock://viem-transport-mock";

@@ -1,22 +1,11 @@
 import type { Hex } from "viem";
+
 import type { MockBlock } from "../chain/blocks.js";
 import type { MockFeeHistory } from "../chain/fees.js";
 import type { MockReceipt } from "../chain/receipts.js";
 import type { MockTransaction } from "../chain/transactions.js";
 import type { EmittedLog } from "../logs/events.js";
 import type { LogsCall } from "../logs/filter.js";
-import type {
-  BalanceCall,
-  BlockCall,
-  CodeCall,
-  FeeHistoryCall,
-  ReceiptCall,
-  StorageCall,
-  TransactionCall,
-  TransactionCountCall,
-  MockAction,
-  MockActionWithoutParams,
-} from "./types.js";
 import { estimateGas, type MockEstimateGasAction } from "./estimateGas.js";
 import { estimateMaxPriorityFeePerGas } from "./estimateMaxPriorityFeePerGas.js";
 import { getBalance } from "./getBalance.js";
@@ -31,6 +20,18 @@ import { getTransaction } from "./getTransaction.js";
 import { getTransactionCount } from "./getTransactionCount.js";
 import { getTransactionReceipt } from "./getTransactionReceipt.js";
 import type { ActionsContext, Definition } from "./table.js";
+import type {
+  BalanceCall,
+  BlockCall,
+  CodeCall,
+  FeeHistoryCall,
+  ReceiptCall,
+  StorageCall,
+  TransactionCall,
+  TransactionCountCall,
+  MockAction,
+  MockActionWithoutParams,
+} from "./types.js";
 
 /**
  * Every typed action: its definition, and the JSON-RPC methods it answers.

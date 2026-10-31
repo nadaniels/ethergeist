@@ -1,6 +1,7 @@
 import { getAddress, isAddress, isHash, keccak256, toHex } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test } from "vite-plus/test";
+
 import { testAddress, testHash } from "../src/index.js";
 
 describe("testAddress()", () => {

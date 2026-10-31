@@ -1,3 +1,4 @@
+import { AbiEvent as OxAbiEvent } from "ox";
 import {
   type Abi,
   type AbiEvent,
@@ -13,11 +14,11 @@ import {
   getAddress,
   zeroHash,
 } from "viem";
-import { AbiEvent as OxAbiEvent } from "ox";
+
 import { blockHash } from "../chain/blocks.js";
+import { placeLog } from "../chain/receipts.js";
 import { formatCall } from "../mocking/format.js";
 import { assertNoMatchers } from "../mocking/matching.js";
-import { placeLog } from "../chain/receipts.js";
 import { type AllNamed, type PartialStructs, fillZeros } from "../shared/abiValues.js";
 import { isPlainObject } from "../shared/values.js";
 

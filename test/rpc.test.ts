@@ -1,6 +1,7 @@
 import { InvalidAddressError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
 import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
+
 import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 

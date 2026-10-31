@@ -8,6 +8,7 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
+
 import { MockResolverError, createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, findCause, rejectionOf } from "./utils.js";
 

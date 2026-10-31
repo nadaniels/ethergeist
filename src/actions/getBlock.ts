@@ -1,10 +1,11 @@
 import { type RpcBlock, formatBlock, isHex } from "viem";
+
 import { numberOfBlockHash, toRpcBlock } from "../chain/blocks.js";
 import type { ChainState } from "../chain/state.js";
 import { isPlainObject } from "../shared/values.js";
-import type { BlockCall } from "./types.js";
 import { blockAt } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
+import type { BlockCall } from "./types.js";
 
 /** `eth_getBlockByNumber` takes a number or tag; `eth_getBlockByHash` a hash. */
 function decodeBlock(

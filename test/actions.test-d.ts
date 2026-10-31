@@ -8,6 +8,7 @@ import {
   erc20Abi,
 } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
+
 import {
   type EmittedLog,
   type EstimateGasCall,

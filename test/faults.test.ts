@@ -10,6 +10,7 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
+
 import { createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, failureOf, findCause, rejectionOf } from "./utils.js";
 

@@ -1,9 +1,10 @@
 import { type RpcLog, formatLog } from "viem";
+
 import type { EmittedLog } from "../logs/events.js";
 import type { LogsCall } from "../logs/filter.js";
 import { pinAddress } from "./decode.js";
-import type { ActionContext } from "./types.js";
 import type { ActionsContext, Definition } from "./table.js";
+import type { ActionContext } from "./types.js";
 
 /**
  * What a `getLogs` resolver gets: the filter, `fail`, and `logs`, what the

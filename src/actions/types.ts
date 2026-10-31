@@ -1,4 +1,5 @@
 import type { Address, BlockTag, Hash, Hex } from "viem";
+
 import type { LogsCall } from "../logs/filter.js";
 import type { MockFault } from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";

@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { type Server, createServer } from "node:http";
+
 import {
   type Abi,
   type Hex,
@@ -13,6 +14,8 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { afterAll, beforeAll, describe, expect, test } from "vite-plus/test";
+
+import { nodeRevertMessage } from "../src/chain/nodeErrors.js";
 import {
   type MockContract,
   type MockFault,
@@ -22,7 +25,6 @@ import {
   createMockRpc,
   testAddress,
 } from "../src/index.js";
-import { nodeRevertMessage } from "../src/chain/nodeErrors.js";
 import { rejectionOf } from "./utils.js";
 
 // The mock claims the app gets the error a real node would cause. This checks

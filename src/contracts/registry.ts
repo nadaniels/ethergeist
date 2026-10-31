@@ -1,6 +1,7 @@
 import { type Address, type Hex, getAddress } from "viem";
-import type { PartCheckpoint } from "../shared/parts.js";
+
 import type { InternalMockContract } from "../contract.js";
+import type { PartCheckpoint } from "../shared/parts.js";
 
 /** What's registered at addresses: see `createRegistry`. */
 export type Registry = ReturnType<typeof createRegistry>;

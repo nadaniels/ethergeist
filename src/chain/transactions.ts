@@ -13,9 +13,10 @@ import {
   numberToHex,
   zeroAddress,
 } from "viem";
-import { type Fees, blobBaseFee } from "./fees.js";
-import { blockHash } from "./blocks.js";
+
 import { nodeAddress } from "../shared/values.js";
+import { blockHash } from "./blocks.js";
+import { type Fees, blobBaseFee } from "./fees.js";
 
 /** The transaction types viem knows. */
 export type TransactionType = "legacy" | "eip2930" | "eip1559" | "eip4844" | "eip7702";

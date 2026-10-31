@@ -1,8 +1,9 @@
 import { isHex } from "viem";
+
 import { MockResolverError } from "../shared/errors.js";
+import { isPlainObject } from "../shared/values.js";
 import { formatValue } from "./format.js";
 import { type Matcher, isMatcher } from "./matchers.js";
-import { isPlainObject } from "../shared/values.js";
 
 /**
  * How narrowly a mock's pinned args or params constrain a call:

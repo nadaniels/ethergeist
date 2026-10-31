@@ -1,4 +1,5 @@
 import { numberToHex } from "viem";
+
 import { blobBaseFee } from "../chain/fees.js";
 import { encodeQuantity, viewQuantity } from "./decode.js";
 import type { Definition } from "./table.js";

@@ -1,5 +1,6 @@
 import { RpcRequestError, createPublicClient, parseGwei } from "viem";
 import { describe, expect, test } from "vite-plus/test";
+
 import { type MockFees, createMockRpc } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 

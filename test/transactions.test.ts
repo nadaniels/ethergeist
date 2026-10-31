@@ -1,5 +1,6 @@
 import { TransactionNotFoundError, createPublicClient, parseGwei } from "viem";
 import { describe, expect, test } from "vite-plus/test";
+
 import { MockNotFoundError, createMockRpc, testAddress, testHash } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 

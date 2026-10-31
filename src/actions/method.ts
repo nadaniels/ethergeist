@@ -1,6 +1,6 @@
 import type { PartCheckpoint } from "../shared/parts.js";
-import type { MethodCall, MockMethodBuilder } from "./types.js";
 import { type Table, createTable } from "./table.js";
+import type { MethodCall, MockMethodBuilder } from "./types.js";
 
 /**
  * Methods the mock doesn't support, refused with Arbitrum's error unless

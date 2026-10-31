@@ -11,6 +11,7 @@ import {
   zeroHash,
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
+
 import { createMockRpc, match, testAddress, testHash } from "../src/index.js";
 import { lowercase } from "./utils.js";
 

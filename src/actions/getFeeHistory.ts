@@ -1,10 +1,11 @@
 import { hexToBigInt, hexToNumber, isHex } from "viem";
+
 import { feeHistory, toRpcFeeHistory } from "../chain/fees.js";
 import { MockRpcError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-import type { FeeHistoryCall } from "./types.js";
 import { blockAt } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
+import type { FeeHistoryCall } from "./types.js";
 
 const isList = (value: unknown, type: string) =>
   Array.isArray(value) && value.every((each) => typeof each === type);

@@ -1,5 +1,5 @@
-import type { PartCheckpoint } from "../shared/parts.js";
 import { MockResolverError, removedMockError } from "../shared/errors.js";
+import type { PartCheckpoint } from "../shared/parts.js";
 import { fail } from "./faults.js";
 import { formatLimit } from "./format.js";
 import { type Specificity, bestMatch, setLimit, specificity } from "./matching.js";

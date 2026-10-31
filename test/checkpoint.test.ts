@@ -1,6 +1,7 @@
 import { HttpRequestError, createPublicClient, erc20Abi, getAddress } from "viem";
 import { base } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vite-plus/test";
+
 import {
   type MockCheckpoint,
   MockNotFoundError,

@@ -1,7 +1,8 @@
 import type { Abi, AbiParameter, AbiParameterToPrimitiveType } from "viem";
+
+import { zeroResult } from "../mocking/zeroResult.js";
 import { type AllNamed, type PartialStructs, fillZeros } from "../shared/abiValues.js";
 import { isPlainObject } from "../shared/values.js";
-import { zeroResult } from "../mocking/zeroResult.js";
 
 /**
  * A multi-output function's outputs as an object keyed by output name, for

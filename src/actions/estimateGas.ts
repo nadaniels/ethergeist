@@ -1,10 +1,11 @@
 import { getAddress, hexToNumber, isHex, numberToHex } from "viem";
+
 import { encodeGas } from "../mocking/gas.js";
 import type { MockEstimateAnswers, MockNodeFault } from "../mocking/types.js";
 import { isPlainObject } from "../shared/values.js";
-import type { EstimateGasCall } from "./types.js";
 import { blockAt, quantity, viewQuantity } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
+import type { EstimateGasCall } from "./types.js";
 
 /**
  * What an estimate's resolver gets: the call, and `fail`, which also takes a

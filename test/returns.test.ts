@@ -1,6 +1,7 @@
 import { createPublicClient, parseAbi, zeroAddress } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
+
 import { createMockRpc, zeroResult, testAddress } from "../src/index.js";
 
 const FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";

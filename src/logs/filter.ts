@@ -8,8 +8,9 @@ import {
   isHex,
   toEventSelector,
 } from "viem";
-import { MockRpcError } from "../shared/errors.js";
+
 import { formatValue } from "../mocking/format.js";
+import { MockRpcError } from "../shared/errors.js";
 import { isPlainObject, lowercase } from "../shared/values.js";
 
 /** A topic position in a filter: one hash, any of several, or `null` for any. */

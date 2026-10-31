@@ -1,9 +1,10 @@
 import { type Hash, type RpcTransaction, formatTransaction, zeroHash } from "viem";
+
 import type { ChainState } from "../chain/state.js";
 import { type MockTransaction, toRpcTransaction } from "../chain/transactions.js";
 import { isPlainObject } from "../shared/values.js";
-import type { TransactionCall } from "./types.js";
 import type { ActionsContext, Definition } from "./table.js";
+import type { TransactionCall } from "./types.js";
 
 /** A transaction's JSON-RPC form, with the mock's defaults: the current block and its fees. */
 export const encodeTransaction = (state: ChainState, transaction: MockTransaction, hash: Hash) =>

@@ -1,5 +1,6 @@
 import { type Address, type Log, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
+
 import {
   type LogsCall,
   type MockEventArgs,

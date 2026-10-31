@@ -1,8 +1,9 @@
 import { type Abi, type Hex, decodeErrorResult, encodeErrorResult } from "viem";
-import type { RevertSpec } from "./types.js";
-import { MockRevertError } from "../shared/errors.js";
-import type { MockOutcome } from "../history/types.js";
+
 import { builtinErrors } from "../chain/nodeErrors.js";
+import type { MockOutcome } from "../history/types.js";
+import { MockRevertError } from "../shared/errors.js";
+import type { RevertSpec } from "./types.js";
 
 export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError {
   if (spec === undefined) return new MockRevertError("0x");

@@ -1,5 +1,4 @@
 import { Block as OxBlock } from "ox";
-import { nodeAddress } from "../shared/values.js";
 import {
   type Block,
   type Hash,
@@ -11,6 +10,8 @@ import {
   zeroAddress,
   zeroHash,
 } from "viem";
+
+import { nodeAddress } from "../shared/values.js";
 import type { Fees } from "./fees.js";
 
 /** A block as `getBlock` returns it, with transaction hashes rather than objects. */

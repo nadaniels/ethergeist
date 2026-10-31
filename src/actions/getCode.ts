@@ -1,7 +1,8 @@
 import { isHex } from "viem";
-import type { CodeCall } from "./types.js";
+
 import { decodeAddressAtBlock, pinAddress } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
+import type { CodeCall } from "./types.js";
 
 /** `eth_getCode`: unmocked, what the registry knows, contracts' placeholder code and empty addresses'. */
 export const getCode = ({ state, registry }: ActionsContext): Definition => ({

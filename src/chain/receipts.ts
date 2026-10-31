@@ -7,9 +7,10 @@ import {
   zeroAddress,
   zeroHash,
 } from "viem";
-import { blockHash } from "./blocks.js";
+
 import { formatValue } from "../mocking/format.js";
 import { nodeAddress } from "../shared/values.js";
+import { blockHash } from "./blocks.js";
 
 /**
  * A log in a mocked receipt. Fields left out come from the receipt, or are

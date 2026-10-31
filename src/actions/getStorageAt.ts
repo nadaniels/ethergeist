@@ -1,9 +1,10 @@
 import { type Hex, isHex, pad, size } from "viem";
+
 import { formatValue } from "../mocking/format.js";
 import { isPlainObject, lowercase } from "../shared/values.js";
-import type { StorageCall } from "./types.js";
 import { decodeAddressAtBlock, pinAddress } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
+import type { StorageCall } from "./types.js";
 
 /** A storage slot or value as 32 bytes, lowercase; `what` names it in the error. */
 function toWord(value: unknown, what: string): Hex {

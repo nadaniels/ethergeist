@@ -11,6 +11,7 @@ import {
   zeroHash,
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
+
 import { MockNotFoundError, createMockRpc, match, testAddress } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 

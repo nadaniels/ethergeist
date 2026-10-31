@@ -1,6 +1,7 @@
 import { type BlockTag, createPublicClient, erc20Abi, getAddress, parseAbi, zeroHash } from "viem";
 import { base } from "viem/chains";
 import { describe, expect, expectTypeOf, test } from "vite-plus/test";
+
 import {
   type MockHistoryEntry,
   MockNotFoundError,

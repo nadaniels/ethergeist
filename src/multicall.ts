@@ -5,9 +5,10 @@ import {
   encodeFunctionResult,
   multicall3Abi,
 } from "viem";
+
+import { createRevertError } from "./contracts/revert.js";
 import type { CallContext } from "./contracts/types.js";
 import { MockNotFoundError, MockRevertError } from "./shared/errors.js";
-import { createRevertError } from "./contracts/revert.js";
 
 type Dispatch = (to: Address, data: Hex, context: CallContext) => Promise<Hex>;
 

@@ -4,7 +4,7 @@ export default defineConfig({
   staged: {
     "*": "vp check --fix",
   },
-  fmt: { sortPackageJson: true },
+  fmt: { sortImports: true, sortPackageJson: true },
   lint: {
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: {

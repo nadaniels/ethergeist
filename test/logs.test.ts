@@ -8,6 +8,7 @@ import {
   parseAbiItem,
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
+
 import { MockNotFoundError, createMockRpc, match, testAddress, testHash } from "../src/index.js";
 import { expectCause, lowercase, rejectionOf } from "./utils.js";
 

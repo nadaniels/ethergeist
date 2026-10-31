@@ -8,6 +8,7 @@ import type {
   ContractFunctionReturnType,
   Hex,
 } from "viem";
+
 import type { MockContractEmit, MockContractEvents } from "../logs/events.js";
 import type { MockEstimateAnswers, MockFault, MockNodeFault } from "../mocking/types.js";
 import type { MockReturnType } from "./results.js";

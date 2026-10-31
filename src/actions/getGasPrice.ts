@@ -1,4 +1,5 @@
 import { numberToHex } from "viem";
+
 import { encodeQuantity, viewQuantity } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 

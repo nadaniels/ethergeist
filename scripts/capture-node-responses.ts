@@ -31,6 +31,7 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
+
 import {
   type PublicClient,
   createPublicClient,

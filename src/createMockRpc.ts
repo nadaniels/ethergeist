@@ -14,29 +14,19 @@ import {
   isAddress,
   numberToHex,
 } from "viem";
+
 import { createActions } from "./actions/createActions.js";
 import type { MockFees } from "./chain/fees.js";
+import { createChainState } from "./chain/state.js";
 import type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
 import { createMockContract } from "./contract.js";
+import { createRegistry } from "./contracts/registry.js";
 import type {
   CallContext,
   CreateMockContractParameters,
   MockCall,
   MockContract,
 } from "./contracts/types.js";
-import {
-  MockNotFoundError,
-  MockResolverError,
-  MockRevertError,
-  MockRpcError,
-} from "./shared/errors.js";
-import type { EmittedLog } from "./logs/events.js";
-import { type FailRequestsOptions, type MockFaultHandle, createFaults } from "./rpc/faults.js";
-import { createCheckpoints } from "./rpc/checkpoints.js";
-import type { Part } from "./shared/parts.js";
-import { MockFailure } from "./mocking/faults.js";
-import { createFaultError, createRevertRpcError } from "./viem/errors.js";
-import type { MockFault } from "./mocking/types.js";
 import {
   type FormatContext,
   type FormatHistoryOptions,
@@ -51,11 +41,22 @@ import {
   valueOf,
 } from "./history.js";
 import type { MockHistoryEntry, MockOutcome } from "./history/types.js";
-import { createChainState } from "./chain/state.js";
-import { createRegistry } from "./contracts/registry.js";
+import type { EmittedLog } from "./logs/events.js";
 import { createLogStore } from "./logs/store.js";
+import { MockFailure } from "./mocking/faults.js";
+import type { MockFault } from "./mocking/types.js";
 import { resolveMulticall } from "./multicall.js";
+import { createCheckpoints } from "./rpc/checkpoints.js";
+import { type FailRequestsOptions, type MockFaultHandle, createFaults } from "./rpc/faults.js";
+import {
+  MockNotFoundError,
+  MockResolverError,
+  MockRevertError,
+  MockRpcError,
+} from "./shared/errors.js";
+import type { Part } from "./shared/parts.js";
 import { isPlainObject } from "./shared/values.js";
+import { createFaultError, createRevertRpcError } from "./viem/errors.js";
 
 export type CreateMockRpcParameters = {
   /**

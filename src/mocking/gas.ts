@@ -1,4 +1,5 @@
 import { type Hex, numberToHex } from "viem";
+
 import { formatValue } from "./format.js";
 import { zeroResult } from "./zeroResult.js";
 

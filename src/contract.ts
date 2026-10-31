@@ -15,9 +15,10 @@ import {
   toFunctionSelector,
   toFunctionSignature,
 } from "viem";
-import { MockNotFoundError, MockRevertError } from "./shared/errors.js";
-import { type EmitOptions, type MockEventLog, encodeEventLog } from "./logs/events.js";
-import type { PartCheckpoint } from "./shared/parts.js";
+
+import { checksumAddresses } from "./contracts/pins.js";
+import { normalizeResult } from "./contracts/results.js";
+import { createRevertError } from "./contracts/revert.js";
 import type {
   CallContext,
   CreateMockContractParameters,
@@ -27,9 +28,10 @@ import type {
   RevertFn,
   RevertSpec,
 } from "./contracts/types.js";
+import { failureOutcome } from "./history.js";
+import type { MockCallRecord, MockOutcome } from "./history/types.js";
+import { type EmitOptions, type MockEventLog, encodeEventLog } from "./logs/events.js";
 import { MockFailure, fail } from "./mocking/faults.js";
-import { encodeGas } from "./mocking/gas.js";
-import { type Handler as MockHandler, createHandlers, withCalls } from "./mocking/handlers.js";
 import {
   type ReceivedCall,
   formatCall,
@@ -37,12 +39,11 @@ import {
   formatMismatch,
   formatReceived,
 } from "./mocking/format.js";
-import { failureOutcome } from "./history.js";
-import type { MockCallRecord, MockOutcome } from "./history/types.js";
+import { encodeGas } from "./mocking/gas.js";
+import { type Handler as MockHandler, createHandlers, withCalls } from "./mocking/handlers.js";
 import { assertNoMatchers, findMatcher, isMatch, mismatches } from "./mocking/matching.js";
-import { checksumAddresses } from "./contracts/pins.js";
-import { normalizeResult } from "./contracts/results.js";
-import { createRevertError } from "./contracts/revert.js";
+import { MockNotFoundError, MockRevertError } from "./shared/errors.js";
+import type { PartCheckpoint } from "./shared/parts.js";
 
 type Namespace = "read" | "simulate" | "estimateGas";
 /** What a contract answers: an `eth_call`, or an `eth_estimateGas`. */

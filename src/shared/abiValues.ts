@@ -1,4 +1,5 @@
 import { type AbiParameter, zeroAddress } from "viem";
+
 import { isPlainObject } from "./values.js";
 
 /**

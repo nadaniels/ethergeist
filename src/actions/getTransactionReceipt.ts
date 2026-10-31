@@ -1,8 +1,9 @@
 import { type Hash, type RpcTransactionReceipt, formatTransactionReceipt } from "viem";
+
 import { completeReceipt, toRpcReceipt } from "../chain/receipts.js";
 import { isPlainObject } from "../shared/values.js";
-import type { ReceiptCall } from "./types.js";
 import type { ActionsContext, Definition } from "./table.js";
+import type { ReceiptCall } from "./types.js";
 
 /** `eth_getTransactionReceipt`: a mock's fields over a successful receipt in the current block. */
 export const getTransactionReceipt = ({ state }: ActionsContext): Definition => ({
