@@ -1,5 +1,5 @@
 import { type Address, type Hex, getAddress } from "viem";
-import type { PartCheckpoint } from "../checkpoint.js";
+import type { PartCheckpoint } from "../shared/parts.js";
 import type { InternalMockContract } from "../contract.js";
 
 /** What's registered at addresses: see `createRegistry`. */
@@ -63,7 +63,7 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
      * Saves the contracts, their mocks, and the empty addresses. `restore()`
      * removes contracts registered since, which then throw if used.
      */
-    checkpoint(): PartCheckpoint {
+    checkpoint(): Required<PartCheckpoint> {
       const count = contracts.length;
       const saved = contracts.map((contract) => contract.checkpoint());
       const savedEmpty = new Set(emptyAddresses);
@@ -81,12 +81,6 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
           ...contracts.slice(count).flatMap((contract) => contract.unusedMocks()),
         ],
       };
-    },
-    /** Removes every contract, which then throw if used, and every empty address. */
-    reset() {
-      for (const contract of contracts) contract.detach();
-      contracts.length = 0;
-      emptyAddresses.clear();
     },
   };
 }

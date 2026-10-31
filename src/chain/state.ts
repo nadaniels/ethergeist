@@ -105,10 +105,5 @@ export function createChainState(parameters: {
         },
       };
     },
-    /** Back to the starting block and fees. */
-    reset() {
-      blockNumber = initialBlockNumber;
-      feeChanges = [];
-    },
   };
 }

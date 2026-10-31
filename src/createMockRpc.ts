@@ -31,13 +31,9 @@ import {
   MockRpcError,
 } from "./shared/errors.js";
 import type { EmittedLog } from "./logs/events.js";
-import {
-  type ActiveFault,
-  type FailRequestsOptions,
-  type MockFaultHandle,
-  appliesTo,
-  createActiveFault,
-} from "./rpc/faults.js";
+import { type FailRequestsOptions, type MockFaultHandle, createFaults } from "./rpc/faults.js";
+import { createCheckpoints } from "./rpc/checkpoints.js";
+import type { Part } from "./shared/parts.js";
 import { MockFailure } from "./mocking/faults.js";
 import { createFaultError, createRevertRpcError } from "./viem/errors.js";
 import type { MockFault } from "./mocking/types.js";
@@ -137,9 +133,8 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   const calls: MockCall[] = [];
   const requests: RpcRequest[] = [];
   const unhandled: UnhandledRequest[] = [];
-  const faults: ActiveFault[] = [];
+  const faults = createFaults();
   let batchCount = 0;
-  const checkpoints: { valid: boolean }[] = [];
   const history: MockHistoryEntry[] = [];
   const historyOnFailure = parameters.historyOnFailure ?? 10;
   if (historyOnFailure !== false && (!Number.isInteger(historyOnFailure) || historyOnFailure < 0))
@@ -171,6 +166,36 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         ? undefined
         : parameters.debug;
   const actions = createActions({ state, registry, logStore });
+  /** Multicall batch ids, which count up across requests. */
+  const batches: Part = {
+    checkpoint() {
+      const saved = batchCount;
+      return {
+        restore() {
+          batchCount = saved;
+        },
+      };
+    },
+  };
+  /** What the mock records about requests; cleared, never saved. */
+  const records: Part = {
+    clearCalls() {
+      calls.length = 0;
+      history.length = 0;
+      requests.length = 0;
+      unhandled.length = 0;
+    },
+  };
+  // Saved first, before anything is registered: reset() restores it.
+  const checkpoints = createCheckpoints([
+    state,
+    registry,
+    actions,
+    logStore,
+    faults,
+    batches,
+    records,
+  ]);
   // History names a getLogs filter's events with the registered contracts' ABIs.
   const formatContext: FormatContext = {
     describeLogs: (call) =>
@@ -190,12 +215,10 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
 
     // The most recent fault wins, like mocks. A fault is a deliberate answer, so
     // it isn't recorded as unhandled.
-    const fault = faults.findLast((f) => appliesTo(f, method));
-    if (fault) {
-      fault.remaining -= 1;
-      fault.count += 1;
-      settle(record, { type: "fault", fault: fault.fault, source: "failRequests" });
-      throw createFaultError(fault.fault, entry);
+    const fault = faults.take(method);
+    if (fault !== undefined) {
+      settle(record, { type: "fault", fault, source: "failRequests" });
+      throw createFaultError(fault, entry);
     }
 
     try {
@@ -360,15 +383,6 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     calls.push(call);
   }
 
-  function clearCalls() {
-    calls.length = 0;
-    history.length = 0;
-    requests.length = 0;
-    unhandled.length = 0;
-    registry.clearCalls();
-    actions.clearCalls();
-  }
-
   /** A "not mocked" error, explained when it's viem retrying past a limited mock's fault. */
   function withRetryHint(error: unknown, record: MockHistoryEntry, retryCount: number | undefined) {
     if (!(error instanceof MockNotFoundError)) return error;
@@ -399,7 +413,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   }
 
   function assertAllUsed() {
-    const [failure] = unusedFailure([...registry.unusedMocks(), ...actions.unusedMocks()]);
+    const [failure] = unusedFailure(checkpoints.unusedMocks());
     if (failure !== undefined) throw checkFailed(assertAllUsed, failure);
   }
 
@@ -412,20 +426,10 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
           `intentional:\n${unhandled.map(({ error }) => `  - ${error.shortMessage}`).join("\n")}`,
       );
 
-    const savedRegistry = registry.checkpoint();
-    const savedActions = actions.checkpoint();
-    const savedLogs = logStore.checkpoint();
-    const savedFaults = faults.map((fault) => [fault, fault.remaining, fault.count] as const);
-    const savedState = state.checkpoint();
-    const savedBatchCount = batchCount;
-    const entry = { valid: true };
-    checkpoints.push(entry);
-
-    /** Mocks registered since this checkpoint that never answered, except defaults. */
-    const unusedSince = () => [...savedRegistry.unusedSince(), ...savedActions.unusedSince()];
+    const saved = checkpoints.take();
 
     function restore(options: MockRestoreOptions = {}) {
-      if (!entry.valid)
+      if (!saved.valid)
         throw new Error(
           "This checkpoint is no longer valid: an earlier checkpoint was restored, " +
             "or reset() was called, after it was taken.",
@@ -434,25 +438,12 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       // last, so a failed check can't leave the next test unrestored.
       const failures = [
         ...(options.assertNoUnhandled === true ? unhandledFailure(unhandled) : []),
-        ...(options.assertAllUsed === true ? unusedFailure(unusedSince()) : []),
+        ...(options.assertAllUsed === true ? unusedFailure(saved.unusedSince()) : []),
       ];
       // Built now: restoring clears the history it shows.
       const failed = failures.length > 0 ? checkFailed(restore, failures.join("\n\n")) : undefined;
 
-      // Checkpoints taken after this one describe state that's about to go away.
-      for (const later of checkpoints.splice(checkpoints.indexOf(entry) + 1)) later.valid = false;
-
-      savedRegistry.restore();
-      savedActions.restore();
-      savedLogs.restore();
-      faults.length = savedFaults.length;
-      for (const [fault, remaining, count] of savedFaults) {
-        fault.remaining = remaining;
-        fault.count = count;
-      }
-      savedState.restore();
-      batchCount = savedBatchCount;
-      clearCalls();
+      saved.restore();
 
       if (failed) throw failed;
     }
@@ -543,16 +534,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * To fail calls to one contract function instead, use `.fails()` on its mock.
      */
     failRequests(fault: MockFault, options: FailRequestsOptions = {}): MockFaultHandle {
-      const active = createActiveFault(fault, options);
-      faults.push(active);
-      return {
-        get count() {
-          return active.count;
-        },
-        clear() {
-          active.remaining = 0;
-        },
-      };
+      return faults.add(fault, options);
     },
     /**
      * Marks an address as having no code: calls to it succeed with empty data,
@@ -630,7 +612,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      */
     assertAllUsed,
     /** Clears call and request history and usage; registrations and the block number stay. */
-    clearCalls,
+    clearCalls: checkpoints.clearCalls,
     /**
      * Saves what's registered now as a baseline to `restore()` to, e.g. after
      * each test, so shared setup can be registered once. Throws if requests
@@ -643,17 +625,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * register, and every checkpoint becomes invalid.
      */
     reset() {
-      for (const entry of checkpoints.splice(0)) entry.valid = false;
-      registry.reset();
-      actions.reset();
-      logStore.reset();
-      faults.length = 0;
-      calls.length = 0;
-      history.length = 0;
-      requests.length = 0;
-      unhandled.length = 0;
-      batchCount = 0;
-      state.reset();
+      checkpoints.reset();
     },
   };
 }

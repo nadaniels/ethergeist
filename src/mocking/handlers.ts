@@ -1,4 +1,4 @@
-import type { PartCheckpoint } from "../checkpoint.js";
+import type { PartCheckpoint } from "../shared/parts.js";
 import { MockResolverError, removedMockError } from "../shared/errors.js";
 import { fail } from "./faults.js";
 import { formatLimit } from "./format.js";
@@ -170,7 +170,9 @@ export function createHandlers<context, extra>() {
      * Saves the registered mocks and their answers and limits. `restore()`
      * removes mocks registered since; `unusedSince` reports their unused ones.
      */
-    checkpoint(describeUnused: (list: Handler<context, extra>[]) => string[]): PartCheckpoint {
+    checkpoint(
+      describeUnused: (list: Handler<context, extra>[]) => string[],
+    ): Required<PartCheckpoint> {
       const saved = handlers.map((h) => [h, h.resolver, h.limit, h.remaining] as const);
       return {
         restore() {

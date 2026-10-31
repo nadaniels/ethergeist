@@ -21,7 +21,7 @@ import {
 } from "viem";
 import { blobBaseFee, feeHistory, toRpcFeeHistory } from "./chain/fees.js";
 import { numberOfBlockHash, toRpcBlock } from "./chain/blocks.js";
-import type { PartCheckpoint } from "./checkpoint.js";
+import type { PartCheckpoint } from "./shared/parts.js";
 import type {
   ActionContext,
   AddressAtBlockCall,
@@ -221,13 +221,14 @@ function createTable(definition: Definition) {
       history.length = 0;
       mocks.clearUsage();
     },
-    reset() {
+    /** Removes every mock, whose builders then throw, and forgets the calls. */
+    remove() {
       mocks.removeAll();
       history.length = 0;
     },
     unusedMocks: () => describeUnused(mocks.unused(mocks.handlers)),
     /** Saves the registered mocks and their answers, to put back or compare against. */
-    checkpoint: (): PartCheckpoint => mocks.checkpoint(describeUnused),
+    checkpoint: (): Required<PartCheckpoint> => mocks.checkpoint(describeUnused),
   };
 }
 
@@ -808,13 +809,9 @@ export function createActions({
     clearCalls() {
       for (const table of tables()) table.clearCalls();
     },
-    reset() {
-      for (const table of tables()) table.reset();
-      raw.clear();
-    },
     unusedMocks: () => tables().flatMap((table) => table.unusedMocks()),
     /** Saves every table's mocks, typed and raw, to put back or compare against. */
-    checkpoint(): PartCheckpoint {
+    checkpoint(): Required<PartCheckpoint> {
       const typedSaved = Object.values(typed).map((table) => table.checkpoint());
       const rawSaved = new Map([...raw].map(([name, table]) => [name, table.checkpoint()]));
       return {
@@ -826,7 +823,7 @@ export function createActions({
               saved.restore();
             } else {
               // Created since the checkpoint.
-              table.reset();
+              table.remove();
               raw.delete(name);
             }
           }

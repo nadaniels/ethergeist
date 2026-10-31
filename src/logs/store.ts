@@ -218,9 +218,6 @@ export function createLogStore({
     buildLog: <const abi extends Abi, eventName extends ContractEventName<abi>>(
       parameters: BuildLogParameters<abi, eventName>,
     ) => buildLog(parameters, state.blockNumber),
-    reset() {
-      logs.length = 0;
-    },
     /** Saves the logs emitted so far; `restore()` removes later ones. */
     checkpoint() {
       const count = logs.length;

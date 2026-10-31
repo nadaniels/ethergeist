@@ -17,7 +17,7 @@ import {
 } from "viem";
 import { MockNotFoundError, MockRevertError } from "./shared/errors.js";
 import { type EmitOptions, type MockEventLog, encodeEventLog } from "./logs/events.js";
-import type { PartCheckpoint } from "./checkpoint.js";
+import type { PartCheckpoint } from "./shared/parts.js";
 import type {
   CallContext,
   CreateMockContractParameters,
@@ -81,7 +81,7 @@ export type InternalMockContract<abi extends Abi = Abi> = {
   /** Mocks other than defaults that haven't answered a call, formatted for messages. */
   unusedMocks(): string[];
   /** Saves the registered mocks and their answers, to put back or compare against. */
-  checkpoint(): PartCheckpoint;
+  checkpoint(): Required<PartCheckpoint>;
   /** Marks the contract removed: registering on it, or answering its mocks, throws. */
   detach(): void;
 };

@@ -64,10 +64,3 @@ export type MockRestoreOptions = {
    */
   assertAllUsed?: boolean;
 };
-
-/** One part of the mock's checkpoint: a contract, or the actions. */
-export type PartCheckpoint = {
-  restore(): void;
-  /** Mocks registered since the checkpoint that haven't answered a call, except defaults. */
-  unusedSince(): string[];
-};
