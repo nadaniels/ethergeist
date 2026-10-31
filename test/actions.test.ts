@@ -23,6 +23,7 @@ import { describe, expect, test } from "vite-plus/test";
 import {
   MockNotFoundError,
   MockResolverError,
+  type RpcValue,
   createMockRpc,
   multicall3Address,
   zeroResult,
@@ -659,19 +660,25 @@ describe("method()", () => {
 
   test("pinned params match a prefix of the request's", async () => {
     const { mock, client } = setup();
-    const slot = `0x${"00".repeat(31)}01` as const;
-    mock.method("eth_getStorageAt", [USDC, slot]).returns(`0x${"00".repeat(31)}2a`);
-    mock.method("eth_getStorageAt").returns(zeroHash);
+    mock.method("eth_getProof", [USDC, ["0x1"]]).returns({ balance: "0x2a" });
+    mock.method("eth_getProof").returns({ balance: "0x0" });
 
-    expect(await client.getStorageAt({ address: USDC, slot })).toBe(`0x${"00".repeat(31)}2a`);
-    expect(await client.getStorageAt({ address: USDC, slot: zeroHash })).toBe(zeroHash);
+    const pinned = await client.getProof({ address: USDC, storageKeys: ["0x1"] });
+    const other = await client.getProof({ address: USDC, storageKeys: ["0x2"] });
+    expect(pinned.balance).toBe(42n);
+    expect(other.balance).toBe(0n);
   });
 
   test("resolvers get the raw params", async () => {
     const { mock, client } = setup();
-    mock.method("eth_getStorageAt").returns(({ params }) => params[1] ?? null);
+    const received: (readonly RpcValue[])[] = [];
+    mock.method("eth_getProof").returns(({ params }) => {
+      received.push(params);
+      return {};
+    });
 
-    expect(await client.getStorageAt({ address: USDC, slot: zeroHash })).toBe(zeroHash);
+    await client.getProof({ address: USDC, storageKeys: ["0x1"] });
+    expect(received).toEqual([[USDC, ["0x1"], "latest"]]);
   });
 
   test("an unmocked method suggests method()", async () => {
@@ -759,7 +766,7 @@ describe("bookkeeping", () => {
     const { mock, client } = setup();
     mock.actions.getBalance({ address: bob }).returns(1n);
     mock.actions.getBalance().returns(0n);
-    mock.method("eth_getStorageAt", [USDC]).returns(zeroHash);
+    mock.method("eth_getProof", [USDC]).returns({});
 
     await client.getBalance({ address: alice });
     expect(() => {
@@ -767,7 +774,7 @@ describe("bookkeeping", () => {
     }).toThrow(`getBalance({ address: ${getAddress(bob)} })`);
     expect(() => {
       mock.assertAllUsed();
-    }).toThrow(`eth_getStorageAt(${USDC})`);
+    }).toThrow(`eth_getProof(${USDC})`);
   });
 
   test("clearCalls() clears history; reset() clears mocks", async () => {

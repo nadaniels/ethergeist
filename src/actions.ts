@@ -16,6 +16,8 @@ import {
   hexToNumber,
   isHex,
   numberToHex,
+  pad,
+  size,
   zeroHash,
 } from "viem";
 import {
@@ -60,7 +62,7 @@ import {
   setLimit,
   specificity,
 } from "./match.js";
-import { isPlainObject, zeroResult } from "./result.js";
+import { isPlainObject, lowercase, zeroResult } from "./result.js";
 
 /**
  * What a call about an address at a block asked for. A tag resolves to the
@@ -129,6 +131,11 @@ export type EstimateGasCall = {
 };
 /** What a call to an action without params asked for: nothing. */
 export type EmptyCall = Record<string, never>;
+/**
+ * What a call to `getStorageAt` asked for; see `AddressAtBlockCall`. `slot`
+ * is 32 bytes, lowercase, however the request wrote it (e.g. `"0x0"`).
+ */
+export type StorageCall = AddressAtBlockCall & { slot: Hex };
 /** What a call to `getTransactionReceipt` asked for. */
 export type ReceiptCall = { hash: Hash };
 /** What a call to `getTransaction` asked for: a transaction by its hash. */
@@ -239,6 +246,7 @@ export type ActionCalls = {
   getBlobBaseFee: EmptyCall;
   getFeeHistory: FeeHistoryCall;
   getTransactionCount: TransactionCountCall;
+  getStorageAt: StorageCall;
   estimateGas: EstimateGasCall;
 };
 
@@ -325,6 +333,15 @@ export type MockActions = {
    * when preparing a transaction, and `"latest"` by default.
    */
   getTransactionCount: MockAction<TransactionCountCall, number>;
+  /**
+   * `eth_getStorageAt`, one storage slot of an address. Slots in pins and
+   * requests are compared as 32 bytes, so `"0x0"` matches a request for slot
+   * zero written in full. Answers are up to 32 bytes, padded to 32 as a node
+   * sends them, so `.returns("0x1")` works. Unmocked, an `empty()` address's
+   * storage is all zero, as for any address without code; other addresses
+   * aren't answered.
+   */
+  getStorageAt: MockAction<StorageCall, Hex>;
   /**
    * `eth_estimateGas`, for `estimateGas` and the gas a transaction is
    * prepared with. A registered contract's `estimateGas` mocks and defaults
@@ -639,6 +656,27 @@ function pinTransaction(pinned: unknown) {
   };
 }
 
+/** A storage slot or value as 32 bytes, lowercase; `what` names it in the error. */
+function toWord(value: unknown, what: string): Hex {
+  if (!isHex(value))
+    throw new TypeError(`${what} must be hex of up to 32 bytes; got ${formatValue(value)}.`);
+  if (size(value) > 32)
+    throw new TypeError(
+      `${what} must be hex of up to 32 bytes; got ${size(value)} bytes: ${value}.`,
+    );
+  return pad(lowercase(value), { size: 32 });
+}
+
+/**
+ * Checksums a pinned `address` and pads a pinned `slot` to 32 bytes, as calls
+ * have them. Anything else, like a matcher, is left as is.
+ */
+function pinStorage(pinned: unknown) {
+  const pinnedAddress = pinAddress(pinned);
+  if (!isPlainObject(pinnedAddress) || typeof pinnedAddress.slot !== "string") return pinnedAddress;
+  return { ...pinnedAddress, slot: toWord(pinnedAddress.slot, "A storage slot") };
+}
+
 /** Checksums a pinned `address` (or each of several), which also validates it at registration. */
 function pinAddress(pinned: unknown) {
   if (!isPlainObject(pinned)) return pinned;
@@ -951,6 +989,21 @@ export function createActions(options: {
         return code === undefined || code === "0x" ? numberToHex(21_000n) : undefined;
       },
     }),
+    getStorageAt: createTable({
+      name: "getStorageAt",
+      hint: "mock.actions.getStorageAt({ address, slot }).returns(…), or mock.empty(address)",
+      decode([address, slot, block]) {
+        const { address: checksummed, ...at } = decodeAddressAtBlock([address, block]);
+        return { address: checksummed, slot: toWord(slot, "A storage slot"), ...at };
+      },
+      pin: pinStorage,
+      zero: "0x",
+      encode: (value) => toWord(value, "A storage value"),
+      // An address without code has no storage: every slot reads as zero.
+      fallback: (call) =>
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded above
+        codeAt((call as StorageCall).address) === "0x" ? pad("0x", { size: 32 }) : undefined,
+    }),
     getGasPrice: createTable({
       name: "getGasPrice",
       hint: "mock.actions.getGasPrice().returns(…), or `fees` in createMockRpc()",
@@ -1024,6 +1077,7 @@ export function createActions(options: {
     ["eth_blobBaseFee", "getBlobBaseFee"],
     ["eth_feeHistory", "getFeeHistory"],
     ["eth_getTransactionCount", "getTransactionCount"],
+    ["eth_getStorageAt", "getStorageAt"],
     ["eth_estimateGas", "estimateGas"],
   ]);
   const typedTable = (name: string) => {
@@ -1052,6 +1106,7 @@ export function createActions(options: {
     getBlobBaseFee: buildAction(typed.getBlobBaseFee),
     getFeeHistory: buildAction(typed.getFeeHistory),
     getTransactionCount: buildAction(typed.getTransactionCount),
+    getStorageAt: buildAction(typed.getStorageAt),
     estimateGas: buildAction(typed.estimateGas),
   } as unknown as MockActions;
 

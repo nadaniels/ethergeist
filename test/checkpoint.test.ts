@@ -226,7 +226,7 @@ describe("restore() checks", () => {
     usdc.read.balanceOf([DAI]).returns(1n);
     mock.contract({ abi: erc20Abi, address: DAI }).read.balanceOf([alice]).returns(2n);
     mock.actions.getBalance({ address: alice }).returns(3n);
-    mock.method("eth_getStorageAt", [USDC]).returns("0x");
+    mock.method("eth_getProof", [USDC]).returns({});
     mock.actions.getBalance().returns(0n);
     await client.getBalance({ address: DAI });
     let error: unknown;
@@ -239,7 +239,7 @@ describe("restore() checks", () => {
     expect(String(error)).toContain(`balanceOf(${DAI}) on ${USDC}`);
     expect(String(error)).toContain(`balanceOf(${getAddress(alice)}) on ${DAI}`);
     expect(String(error)).toContain(`getBalance({ address: ${getAddress(alice)} })`);
-    expect(String(error)).toContain(`eth_getStorageAt(${USDC})`);
+    expect(String(error)).toContain(`eth_getProof(${USDC})`);
   });
 
   test("assertAllUsed checks args-less mocks since the checkpoint, not defaults", () => {

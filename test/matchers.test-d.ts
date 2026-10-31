@@ -99,7 +99,7 @@ describe("matchers take the type of their position", () => {
         }),
       })
       .returns(null);
-    mock.method("eth_getStorageAt", [match.any(), "0x00"]).returns(null);
+    mock.method("eth_getProof", [match.any(), ["0x1"]]).returns(null);
   });
 });
 

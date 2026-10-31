@@ -5,7 +5,6 @@ import {
   getAddress,
   isAddressEqual,
   parseAbi,
-  zeroHash,
 } from "viem";
 import { describe, expect, test, vi } from "vite-plus/test";
 import {
@@ -511,11 +510,9 @@ describe("actions and raw methods", () => {
 
   test("raw method params take matchers", async () => {
     const { mock, client } = setup();
-    mock.method("eth_getStorageAt", [match.any(), zeroHash]).returns(`0x${"00".repeat(31)}2a`);
+    mock.method("eth_getProof", [match.any(), ["0x1"]]).returns({ balance: "0x2a" });
 
-    expect(await client.getStorageAt({ address: USDC, slot: zeroHash })).toBe(
-      `0x${"00".repeat(31)}2a`,
-    );
+    expect((await client.getProof({ address: USDC, storageKeys: ["0x1"] })).balance).toBe(42n);
   });
 
   test("a throwing predicate in an action is reported as unhandled", async () => {

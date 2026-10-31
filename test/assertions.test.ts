@@ -425,18 +425,18 @@ describe("assertAllUsed(): what the function received instead", () => {
     const { mock, client } = setup();
     mock.actions.getBalance({ address: bob }).returns(1n);
     mock.actions.getBalance().returns(0n);
-    mock.method("eth_getStorageAt", [USDC, "0x01"]).returns("0x");
-    mock.method("eth_getStorageAt").returns("0x");
+    mock.method("eth_getProof", [USDC, ["0x1"]]).returns({});
+    mock.method("eth_getProof").returns({});
 
     await client.getBalance({ address: alice });
-    await client.getStorageAt({ address: USDC, slot: "0x02" });
+    await client.getProof({ address: USDC, storageKeys: ["0x2"] });
     const message = unusedMessage(mock);
     expect(message).toContain(
       `getBalance({ address: ${getAddress(bob)} })\n    received 1 call to getBalance:\n` +
         `      getBalance({ address: ${getAddress(alice)}, … })  ← address didn't match`,
     );
     expect(message).toContain("← address didn't match");
-    expect(message).toContain("eth_getStorageAt(…, 0x02, …)  ← param 2 didn't match");
+    expect(message).toContain("eth_getProof(…, [0x2], …)  ← param 2 didn't match");
   });
 });
 

@@ -89,6 +89,14 @@ const cases: Case[] = [
     request: (head) =>
       getLogs({ fromBlock: hex(head.number - 2n), toBlock: hex(head.number - 2n) }),
   },
+  {
+    name: "get-storage-at",
+    description: "eth_getStorageAt for a slot written short (0x0), to compare a value's form",
+    request: (head) => ({
+      method: "eth_getStorageAt",
+      params: [usdc, "0x0", hex(head.number - 2n)],
+    }),
+  },
   ...(
     [
       ["legacy", "0x0"],

@@ -20,6 +20,7 @@ export type {
   MockMethodBuilder,
   ReceiptCall,
   RpcValue,
+  StorageCall,
   TransactionCall,
   TransactionCountCall,
 } from "./actions.js";

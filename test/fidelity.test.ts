@@ -6,6 +6,7 @@ import {
   createPublicClient,
   encodeErrorResult,
   erc20Abi,
+  getAddress,
   http,
   parseAbi,
 } from "viem";
@@ -468,6 +469,27 @@ describe("getLogs errors match reth's exactly", () => {
       typeof body === "object" && body !== null && "result" in body ? body.result : undefined;
     expect(firstAddress(realLogs)).toBe(firstAddress(realLogs)?.toLowerCase());
     expect(firstAddress(logs)).toBe(TOKEN.toLowerCase());
+  });
+});
+
+describe("storage", () => {
+  test("a value is 32 bytes, lowercase, as reth sends it", async () => {
+    const { body, client } = nodeResponse("get-storage-at");
+    expect(client).toMatch(/^reth\//u);
+    const real = resultOf(body);
+    if (typeof real !== "string") throw new Error("Malformed fixture get-storage-at");
+    const mock = createMockRpc({ blockNumber: 10n });
+    // The address the word holds, checksummed, as a test would write it.
+    mock.actions
+      .getStorageAt({ address: TOKEN, slot: "0x0" })
+      .returns(getAddress(`0x${real.slice(26)}`));
+
+    const mocked = await mock.request({
+      method: "eth_getStorageAt",
+      params: [TOKEN, "0x0", "latest"],
+    });
+
+    expect(mocked).toBe(real);
   });
 });
 

@@ -1,0 +1,20 @@
+{
+  "description": "eth_getStorageAt for a slot written short (0x0), to compare a value's form",
+  "client": "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu",
+  "chainId": 1,
+  "endpoint": "https://ethereum-rpc.publicnode.com",
+  "capturedAt": "2026-10-31",
+  "head": "26310145",
+  "request": {
+    "method": "eth_getStorageAt",
+    "params": ["0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48", "0x0", "0x19175ff"]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "result": "0x000000000000000000000000fcb19e6a322b27c06842a71e8c725399f049ae3a"
+    }
+  }
+}

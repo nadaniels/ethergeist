@@ -13,6 +13,7 @@ import {
   type EstimateGasCall,
   type LogsCall,
   type RpcValue,
+  type StorageCall,
   createMockRpc,
   zeroResult,
   testAddress,
@@ -105,6 +106,18 @@ describe("getTransactionReceipt", () => {
       expectTypeOf(hash).toEqualTypeOf<Hex>();
       return {};
     });
+  });
+});
+
+describe("getStorageAt", () => {
+  test("pins an address and slot, and answers hex", () => {
+    mock.actions.getStorageAt({ address: alice, slot: "0x0", blockTag: "latest" }).returns("0x1");
+    mock.actions.getStorageAt().returns(({ slot }) => slot);
+    expectTypeOf(mock.actions.getStorageAt.calls).toEqualTypeOf<StorageCall[]>();
+    // @ts-expect-error slots are hex
+    mock.actions.getStorageAt({ slot: 0n });
+    // @ts-expect-error storage is hex
+    mock.actions.getStorageAt().returns(1n);
   });
 });
 
@@ -230,7 +243,7 @@ describe("method()", () => {
   });
 
   test("resolvers get the raw params", () => {
-    mock.method("eth_getStorageAt").returns(({ method, params }) => {
+    mock.method("eth_getProof").returns(({ method, params }) => {
       expectTypeOf(method).toEqualTypeOf<string>();
       expectTypeOf(params).toEqualTypeOf<readonly RpcValue[]>();
       return null;

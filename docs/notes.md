@@ -167,7 +167,7 @@ features land; tick them off as pages get written.
 
 ## 5. Node data: `mock.actions` and `mock.method`
 
-- [ ] `getBalance`, `getCode`, `getBlock`, `getTransactionReceipt`, `getTransaction`, `getTransactionCount` and the fee actions, with
+- [ ] `getBalance`, `getCode`, `getStorageAt`, `getBlock`, `getTransactionReceipt`, `getTransaction`, `getTransactionCount` and the fee actions, with
       values in viem's types.
 - [ ] Generated blocks: what's generated (numbers, linked hashes, timestamps
       from `timestamp` and `chain.blockTime`, the base fee from `fees`), and
@@ -340,7 +340,7 @@ features land; tick them off as pages get written.
 - [ ] Strict by default for data the test owns (balances, receipts, nonces), and how
       to opt into real-node defaults with args-less mocks.
 - [ ] Block tags: calls at a block keep the tag they asked for (`getBalance`,
-      `getCode`, `getTransactionCount`, `getBlock`, `getFeeHistory`,
+      `getCode`, `getStorageAt`, `getTransactionCount`, `getBlock`, `getFeeHistory`,
       `estimateGas`): `"latest"` when none was given, and none for a block
       number. A pin without a tag matches any block.
 - [ ] Nonces: pin `getTransactionCount`'s `{ address, blockTag: "pending" }`
@@ -366,6 +366,16 @@ features land; tick them off as pages get written.
     `token.estimateGas.transfer().fails("insufficientFunds")`.
   - Estimating with a local account first prepares the transaction, which
     asks for the nonce: mock `getTransactionCount` too.
+- [ ] Storage: `mock.actions.getStorageAt({ address, slot }).returns(value)`.
+      Slots in pins and requests are compared as 32 bytes (`"0x0"` matches
+      slot zero written in full); values are up to 32 bytes, padded to 32 as
+      a node sends them, so `.returns("0x1")` or `.returns(address)` works.
+      Unmocked, an `empty()` address reads as zero, as for any address
+      without code; registered contracts and unknown addresses aren't
+      answered.
+  - Recipe: a proxy's EIP-1967 implementation slot (`keccak256(
+    "eip1967.proxy.implementation") - 1`), returning the implementation's
+    address; the app reads it with `getAddress(slice(value, 12))`.
 - [ ] `mock.method()` for any other method, with raw JSON-RPC values.
 - [ ] Methods the mock refuses as unsupported (`-32601`, not unhandled), so
       clients use ones it answers: filters (above) and `eth_fillTransaction`.
