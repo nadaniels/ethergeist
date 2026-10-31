@@ -25,12 +25,13 @@ import {
   MockResolverError,
   type RpcValue,
   createMockRpc,
+  match,
   multicall3Address,
   zeroResult,
   testAddress,
   testHash,
 } from "../src/index.js";
-import { expectCause, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, findCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -182,6 +183,35 @@ describe("getBalance", () => {
         .status,
     ).toBe(503);
     expect(mock.unhandled).toEqual([]);
+  });
+
+  test("a mock without an answer doesn't answer; the miss lists what's registered", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: bob }).once().returns(1n);
+    mock.actions.getBalance({ address: alice });
+
+    const error = await rejectionOf(client.getBalance({ address: alice }));
+
+    expect(findCause(error, MockResolverError)).toBeUndefined();
+    expect(expectCause(error, MockNotFoundError).details).toBe(
+      `Registered:\n  getBalance({ address: ${bob} }) once\n  getBalance({ address: ${alice} })`,
+    );
+  });
+
+  test("a resolver can answer zeroResult too", async () => {
+    const { mock, client } = setup();
+    // @ts-expect-error action resolvers aren't typed to return zeroResult, unlike contracts'
+    mock.actions.getBalance().returns(() => zeroResult);
+
+    expect(await client.getBalance({ address: alice })).toBe(0n);
+  });
+
+  test("an answer can't be a matcher", () => {
+    const { mock } = setup();
+
+    expect(() => {
+      mock.actions.getBalance().returns(match.any());
+    }).toThrow("match.any() can't go in return values; matchers only go in args and params.");
   });
 });
 

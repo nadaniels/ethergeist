@@ -207,6 +207,21 @@ describe("balanceOf", () => {
     expectCause(error, MockNotFoundError);
     expect(mock.requests).toHaveLength(1);
   });
+
+  test("a mock without an answer doesn't answer", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC }).read.balanceOf([alice]);
+
+    await rejectionOf(
+      client.readContract({
+        abi: erc20Abi,
+        address: USDC,
+        functionName: "balanceOf",
+        args: [alice],
+      }),
+    );
+    expect(mock.unhandled[0]?.error).toBeInstanceOf(MockNotFoundError);
+  });
 });
 
 describe("string args", () => {

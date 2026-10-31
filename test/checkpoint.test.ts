@@ -70,6 +70,24 @@ describe("restore()", () => {
     expect(await balanceOf()).toBe(5n);
   });
 
+  test("puts back a baseline action mock's answer and its uses left", async () => {
+    const { mock, client } = setup();
+    const balance = mock.actions.getBalance({ address: alice });
+    balance.returns(5n);
+    mock.actions.getBalance({ address: DAI }).times(2).returns(7n);
+    const baseline = mock.checkpoint();
+
+    balance.returns(1n);
+    expect(await client.getBalance({ address: alice })).toBe(1n);
+    expect(await client.getBalance({ address: DAI })).toBe(7n);
+    baseline.restore();
+    expect(await client.getBalance({ address: alice })).toBe(5n);
+    expect([
+      await client.getBalance({ address: DAI }),
+      await client.getBalance({ address: DAI }),
+    ]).toEqual([7n, 7n]);
+  });
+
   test("contracts, empty addresses, and raw methods registered since are gone", async () => {
     const { mock, client, read } = setup();
     const baseline = mock.checkpoint();
@@ -101,6 +119,24 @@ describe("restore()", () => {
     }).toThrow("This mock was removed");
     expect(() => {
       balance.returns(1n);
+    }).toThrow("This mock was removed");
+  });
+
+  test("builders from since throw for limits too: a baseline contract's, actions', raw methods'", () => {
+    const { mock } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const baseline = mock.checkpoint();
+    const decimals = usdc.read.decimals();
+    const balance = mock.actions.getBalance();
+    const raw = mock.method("eth_getBlockTransactionCountByNumber");
+
+    baseline.restore();
+    expect(() => {
+      decimals.returns(6);
+    }).toThrow("This mock was removed");
+    expect(() => balance.times(2)).toThrow("This mock was removed");
+    expect(() => {
+      raw.returns("0x1");
     }).toThrow("This mock was removed");
   });
 

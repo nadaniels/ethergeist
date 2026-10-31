@@ -303,4 +303,15 @@ describe("counts and lifecycle", () => {
       mock.assertAllUsed();
     }).toThrow(`balanceOf(*) 3 times, 2 left on USDC (${getAddress(USDC)})`);
   });
+
+  test("a partly used action mock shows what's left too", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance().times(3).returns(1n);
+    await client.getBalance({ address: alice });
+    mock.clearCalls();
+
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow("getBalance(*) 3 times, 2 left");
+  });
 });

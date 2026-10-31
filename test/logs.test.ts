@@ -538,6 +538,14 @@ describe("mock.actions.getLogs", () => {
     expect(mock.history.map((entry) => entry.outcome.type)).toEqual(["rpcError", "unhandled"]);
   });
 
+  test("reading logs for an unknown address is unhandled as itself, not a resolver error", async () => {
+    const { mock, client } = setup();
+    mock.actions.getLogs().returns(({ logs }) => logs);
+
+    await rejectionOf(client.getLogs({ address: carol }));
+    expect(mock.unhandled[0]?.error).toBeInstanceOf(MockNotFoundError);
+  });
+
   test("pins match the decoded filter, with matchers", async () => {
     const { mock, client } = setup();
     mock.actions

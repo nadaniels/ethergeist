@@ -308,6 +308,15 @@ describe("assertAllUsed()", () => {
     }).not.toThrow();
   });
 
+  test("doesn't check an action mock still waiting for its answer", () => {
+    const { mock } = setup();
+    mock.actions.getBalance({ address: alice });
+
+    expect(() => {
+      mock.assertAllUsed();
+    }).not.toThrow();
+  });
+
   test("counts calls inside a multicall", async () => {
     const { mock, client } = setup();
     mock.contract({ abi: erc20Abi, address: USDC }).read.balanceOf([alice]).returns(1n);
@@ -329,6 +338,17 @@ describe("assertAllUsed()", () => {
     expect(() => {
       mock.assertAllUsed();
     }).toThrow(`balanceOf(${getAddress(alice)})`);
+  });
+
+  test("clearCalls() resets action usage too", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: alice }).returns(1n);
+    await client.getBalance({ address: alice });
+
+    mock.clearCalls();
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`getBalance({ address: ${getAddress(alice)} })`);
   });
 });
 

@@ -441,9 +441,44 @@ describe("contract estimate mocks", () => {
     }).not.toThrow();
   });
 
+  test("an unused one lists the estimates its function received", async () => {
+    const { mock, token, transfer } = tokenSetup();
+    token.simulate.transfer().returns(true);
+    token.estimateGas.transfer([alice, 1n]).returns(65_000n);
+
+    await rejectionOf(transfer());
+
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(`received 1 call to transfer:\n      transfer(${bob}, …)  ← to didn't match`);
+  });
+
+  test("clearCalls() clears their calls", async () => {
+    const { mock, token, transfer } = tokenSetup();
+    token.estimateGas.transfer().returns(65_000n);
+    await transfer();
+
+    mock.clearCalls();
+    expect(token.estimateGas.transfer.calls).toEqual([]);
+  });
+
+  test("history records the contract's answer in viem's types", async () => {
+    const { mock, token, transfer } = tokenSetup();
+    token.estimateGas.transfer().returns(65_000n);
+
+    await transfer();
+
+    expect(mock.history[0]).toMatchObject({
+      contract: { name: "Token", outcome: { type: "result", value: 65_000n } },
+    });
+  });
+
   test("answers are gas, and only write functions estimate", () => {
     const { mock, token } = tokenSetup();
 
+    expect(() => {
+      token.estimateGas.transfer().returns(-1n);
+    }).toThrow("A gas estimate must be a bigint, zero or more; got -1n.");
     expect(() => {
       // @ts-expect-error an estimate is a bigint
       token.estimateGas.transfer().returns(1);

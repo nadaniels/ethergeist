@@ -185,6 +185,20 @@ describe("reset()", () => {
     expectCause(await rejectionOf(decimals(USDC)), MockNotFoundError);
   });
 
+  test("action and raw method builders from before the reset throw too", () => {
+    const { mock } = setup();
+    const balance = mock.actions.getBalance();
+    const raw = mock.method("eth_getBlockTransactionCountByNumber");
+
+    mock.reset();
+    expect(() => {
+      balance.returns(1n);
+    }).toThrow("This mock was removed by restore() or reset()");
+    expect(() => {
+      raw.returns("0x1");
+    }).toThrow("This mock was removed by restore() or reset()");
+  });
+
   test("batch ids start over", async () => {
     const { mock, client } = setup();
     const register = () => {
