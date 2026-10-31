@@ -11,17 +11,11 @@ import {
   getAbiItem,
   getAddress,
   hexToBigInt,
-  numberToHex,
   slice,
   toFunctionSelector,
   toFunctionSignature,
 } from "viem";
-import {
-  MockNotFoundError,
-  MockResolverError,
-  MockRevertError,
-  removedMockError,
-} from "./shared/errors.js";
+import { MockNotFoundError, MockRevertError } from "./shared/errors.js";
 import { type EmitOptions, type MockEventLog, encodeEventLog } from "./events.js";
 import type { PartCheckpoint } from "./checkpoint.js";
 import type {
@@ -34,55 +28,30 @@ import type {
   RevertSpec,
 } from "./contracts/types.js";
 import { MockFailure, fail } from "./mocking/faults.js";
-import type { MockNodeFault } from "./mocking/types.js";
+import { encodeGas } from "./mocking/gas.js";
+import { type Handler as MockHandler, createHandlers, withCalls } from "./mocking/handlers.js";
 import {
   type ReceivedCall,
   formatCall,
   formatContract,
-  formatLimit,
   formatMismatch,
   formatReceived,
-  formatValue,
 } from "./mocking/format.js";
-import { errorOutcome } from "./history.js";
+import { failureOutcome } from "./history.js";
 import type { MockCallRecord, MockOutcome } from "./history/types.js";
-import {
-  type Specificity,
-  assertNoMatchers,
-  bestMatch,
-  findMatcher,
-  isMatch,
-  mismatches,
-  setLimit,
-  specificity,
-} from "./mocking/matching.js";
+import { assertNoMatchers, findMatcher, isMatch, mismatches } from "./mocking/matching.js";
 import { checksumAddresses } from "./contracts/pins.js";
 import { normalizeResult } from "./contracts/results.js";
-import { zeroResult } from "./mocking/zeroResult.js";
-import { createRevertError, revertOutcome } from "./contracts/revert.js";
+import { createRevertError } from "./contracts/revert.js";
 
 type Namespace = "read" | "simulate" | "estimateGas";
 /** What a contract answers: an `eth_call`, or an `eth_estimateGas`. */
 type Kind = "call" | "estimate";
 
-type Handler = {
-  namespace: Namespace;
-  abiItem: AbiFunction;
-  selector: Hex;
-  args: readonly unknown[] | undefined;
-  specificity: Specificity;
-  /** Static values are wrapped at registration; `undefined` until `.returns()`/`.reverts()`. */
-  resolver: ((context: ResolverContext<Abi, readonly unknown[]>) => unknown) | undefined;
-  /** Calls this handler answered since registration or the last `clearCalls()`. */
-  usedCount: number;
-  /** Registered from `defaults`: shared setup, which `assertAllUsed()` doesn't hold to any one test. */
-  isDefault: boolean;
-  /** Set by `.once()`/`.times(n)`: answers in all, and how many are left. Kept by `clearCalls()`. */
-  limit: number | undefined;
-  remaining: number | undefined;
-  /** Set when a `restore()` or `reset()` removes it, so its builder can't answer again. */
-  removed: boolean;
-};
+type Context = ResolverContext<Abi, readonly unknown[]>;
+/** What a contract's mock adds to the engine's: which function it's for, and in which namespace. */
+type ContractFunction = { namespace: Namespace; abiItem: AbiFunction; selector: Hex };
+type Handler = MockHandler<Context, ContractFunction>;
 
 /**
  * An estimate's turn at a contract, prepared when the estimate arrives: the
@@ -131,7 +100,7 @@ export function createMockContract<const abi extends Abi>(
   // Also validates the address at registration.
   const address = getAddress(parameters.address);
   const label = formatContract(address, name);
-  const handlers: Handler[] = [];
+  const mocks = createHandlers<Context, ContractFunction>();
   const history: MockCall[] = [];
   // Estimates aren't calls: `calls` and `mock.calls` are what `eth_call` asked.
   const estimates: MockCall[] = [];
@@ -231,46 +200,19 @@ export function createMockContract<const abi extends Abi>(
       const input = abiItem.inputs[i];
       return input ? checksumAddresses(input, arg) : arg;
     });
-    const handler: Handler = {
-      namespace,
-      abiItem,
-      selector: toFunctionSelector(abiItem),
-      args: pinned,
-      specificity: specificity(pinned),
-      resolver: undefined,
-      usedCount: 0,
-      isDefault,
-      limit: undefined,
-      remaining: undefined,
-      removed: false,
-    };
-    handlers.push(handler);
-
-    const builder = {
-      returns(value: unknown = zeroResult) {
-        if (handler.removed) throw removedMockError();
-        // A static value that can't be encoded fails here, not inside a request.
-        if (typeof value !== "function") encodeAnswer(handler, value);
-        handler.resolver =
-          // The types guarantee a resolver's signature; it can't be checked at runtime.
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function
-          typeof value === "function" ? (value as Handler["resolver"]) : () => value;
-      },
+    const handler = mocks.add(
+      pinned,
+      { namespace, abiItem, selector: toFunctionSelector(abiItem) },
+      { isDefault },
+    );
+    const builder = mocks.builderFor(handler, (value) => {
+      encodeAnswer(handler, value);
+    });
+    return Object.assign(builder, {
       reverts(spec?: RevertSpec) {
         builder.returns(() => revert(spec));
       },
-      // Named node errors are typed only for `simulate`.
-      fails(fault: MockNodeFault) {
-        builder.returns(() => fail(fault));
-      },
-      once: () => builder.times(1),
-      times(count: number) {
-        if (handler.removed) throw removedMockError();
-        setLimit(handler, count);
-        return builder;
-      },
-    };
-    return builder;
+    });
   }
 
   // A default is keyed by name, so it answers every overload of that name.
@@ -288,10 +230,9 @@ export function createMockContract<const abi extends Abi>(
     const callsIn = namespace === "estimateGas" ? estimates : history;
     for (const { name: functionName } of functionsIn[namespace]) {
       if (functionName in entries) continue;
-      entries[functionName] = Object.defineProperty(
+      entries[functionName] = withCalls(
         (args?: readonly unknown[]) => register(namespace, functionName, args),
-        "calls",
-        { get: () => callsIn.filter((call) => call.functionName === functionName) },
+        () => callsIn.filter((call) => call.functionName === functionName),
       );
     }
     // Untyped callers reaching for the other namespace's functions get a pointer
@@ -365,7 +306,7 @@ export function createMockContract<const abi extends Abi>(
       report?.(record({ type: "result", value }));
       return hex;
     } catch (error) {
-      report?.(record(outcomeOf(error)));
+      report?.(record(failureOutcome(error, abi)));
       throw error;
     }
   }
@@ -397,7 +338,7 @@ export function createMockContract<const abi extends Abi>(
             return hex;
           },
           (error: unknown) => {
-            record.outcome = outcomeOf(error);
+            record.outcome = failureOutcome(error, abi);
             throw error;
           },
         );
@@ -405,12 +346,6 @@ export function createMockContract<const abi extends Abi>(
       miss: missError(call, "estimate"),
       record,
     };
-  }
-
-  function outcomeOf(error: unknown): MockOutcome {
-    if (error instanceof MockRevertError) return revertOutcome(abi, error.data);
-    if (error instanceof MockFailure) return { type: "fault", fault: error.fault, source: "mock" };
-    return errorOutcome(error);
   }
 
   /** What a call decoded to, for reporting however it ends. */
@@ -456,7 +391,7 @@ export function createMockContract<const abi extends Abi>(
 
   /** The handlers that answer `kind` for the function `call` decoded to. */
   const candidates = (call: MockCall, kind: Kind) =>
-    handlers.filter(
+    mocks.handlers.filter(
       (h) =>
         h.selector === selectorOf.get(call) &&
         (h.namespace === "estimateGas") === (kind === "estimate"),
@@ -465,17 +400,16 @@ export function createMockContract<const abi extends Abi>(
   // The most specific matching handler wins; among equally specific ones,
   // the most recently registered wins, so per-test mocks override defaults.
   function match(call: MockCall, kind: Kind): Handler | undefined {
-    const handler = bestMatch(
+    return mocks.best(
       candidates(call, kind),
-      (h, options) => h.args === undefined || isMatch(h.args, call.args, options),
+      (h, options) => h.pinned === undefined || isMatch(h.pinned, call.args, options),
       call.functionName,
     );
-    return handler?.resolver ? handler : undefined;
   }
 
   function missError(call: MockCall, kind: Kind): MockNotFoundError {
     const registered = candidates(call, kind).map(
-      (h) => `  ${formatCall(call.functionName, h.args)}${formatLimit(h.limit, h.remaining)}`,
+      (h) => `  ${mocks.withLimit(formatCall(call.functionName, h.pinned), h)}`,
     );
     const what = kind === "estimate" ? "estimateGas mock" : "mock";
     const none =
@@ -488,38 +422,27 @@ export function createMockContract<const abi extends Abi>(
     );
   }
 
-  async function run(handler: Handler, call: MockCall): Promise<Hex> {
-    handler.usedCount += 1;
-    if (handler.remaining !== undefined) handler.remaining -= 1;
-    try {
-      return encodeAnswer(handler, await handler.resolver!({ ...call, revert, fail }));
-    } catch (error) {
-      if (error instanceof MockRevertError || error instanceof MockFailure) throw error;
-      throw new MockResolverError(call.functionName, error);
-    }
-  }
+  /** Answers `call` with `handler`; a revert or a fault is an answer, not a resolver error. */
+  const run = (handler: Handler, call: MockCall): Promise<Hex> =>
+    mocks.run(handler, { ...call, revert, fail }, (value) => encodeAnswer(handler, value), {
+      name: call.functionName,
+      passThrough: (error) => error instanceof MockRevertError || error instanceof MockFailure,
+    });
 
-  /**
-   * Mocks that haven't answered a call; defaults are shared setup, so they're
-   * left out, and so are used-up mocks, which answered every call they had.
-   */
-  function unused(list: Handler[]) {
-    return list
-      .filter(
-        (h) => !h.isDefault && h.resolver !== undefined && h.usedCount === 0 && h.remaining !== 0,
-      )
-      .map((h) => {
-        const mock = `${formatCall(h.abiItem.name, h.args)}${formatLimit(h.limit, h.remaining)}`;
-        return `${mock} on ${label}${formatReceived(h.abiItem.name, received(h))}`;
-      });
-  }
+  /** Unused mocks, each with its contract and the calls its function received instead. */
+  const describeUnused = (list: Handler[]) =>
+    list.map(
+      (h) =>
+        `${mocks.withLimit(formatCall(h.abiItem.name, h.pinned), h)} on ${label}${formatReceived(h.abiItem.name, received(h))}`,
+    );
 
   /** The calls `handler`'s function received since the last clear, and where each differs. */
   function received(handler: Handler): ReceivedCall[] {
     return (handler.namespace === "estimateGas" ? estimates : history)
       .filter((call) => selectorOf.get(call) === handler.selector)
       .map((call) => {
-        const mismatched = handler.args === undefined ? [] : mismatches(handler.args, call.args);
+        const mismatched =
+          handler.pinned === undefined ? [] : mismatches(handler.pinned, call.args);
         const index = mismatched[0];
         // Inputs may be unnamed (`""`); those are numbered from 1.
         const inputName =
@@ -543,24 +466,13 @@ export function createMockContract<const abi extends Abi>(
     clearCalls() {
       history.length = 0;
       estimates.length = 0;
-      for (const handler of handlers) handler.usedCount = 0;
+      mocks.clearUsage();
     },
-    unusedMocks: () => unused(handlers),
-    checkpoint() {
-      const saved = handlers.map((h) => [h, h.resolver, h.limit, h.remaining] as const);
-      return {
-        restore() {
-          for (const handler of handlers.slice(saved.length)) handler.removed = true;
-          handlers.length = saved.length;
-          for (const [handler, resolver, limit, remaining] of saved)
-            Object.assign(handler, { resolver, limit, remaining });
-        },
-        unusedSince: () => unused(handlers.slice(saved.length)),
-      };
-    },
+    unusedMocks: () => describeUnused(mocks.unused(mocks.handlers)),
+    checkpoint: () => mocks.checkpoint(describeUnused),
     detach() {
       detached = true;
-      for (const handler of handlers) handler.removed = true;
+      mocks.removeAll();
     },
   };
 }
@@ -581,12 +493,7 @@ function isOfType(parameter: AbiParameter, value: unknown): boolean {
 
 /** Answers a contract call `eth_call`'s way, or an estimate as gas, as a JSON-RPC quantity. */
 function encodeAnswer({ namespace, abiItem }: Handler, value: unknown): Hex {
-  if (namespace !== "estimateGas") return encodeResult(abiItem, value);
-  if (typeof value !== "bigint" || value < 0n)
-    throw new TypeError(
-      `A gas estimate must be a bigint, zero or more; got ${formatValue(value === zeroResult ? undefined : value)}.`,
-    );
-  return numberToHex(value);
+  return namespace === "estimateGas" ? encodeGas(value) : encodeResult(abiItem, value);
 }
 
 function encodeResult(abiItem: AbiFunction, value: unknown): Hex {

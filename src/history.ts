@@ -1,4 +1,5 @@
 import {
+  type Abi,
   type AbiFunction,
   decodeFunctionResult,
   hexToBigInt,
@@ -46,18 +47,26 @@ export function errorOutcome(error: unknown): MockOutcome {
   return { type: "error", error };
 }
 
-export function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
+/**
+ * The outcome of an error thrown while answering: a revert decoded against
+ * `abi` and the built-in errors, a mock's fault, or what `errorOutcome` says.
+ */
+export function failureOutcome(error: unknown, abi: Abi = []): MockOutcome {
+  if (error instanceof MockRevertError) return revertOutcome(abi, error.data);
   if (error instanceof MockFailure) return { type: "fault", fault: error.fault, source: "mock" };
-  if (error instanceof MockRevertError)
-    // A contract's record already decoded it against the contract's ABI.
-    return entry.type === "call" && entry.call?.outcome.type === "revert"
-      ? entry.call.outcome
-      : entry.type === "action" &&
-          entry.action === "estimateGas" &&
-          entry.contract?.outcome.type === "revert"
-        ? entry.contract.outcome
-        : revertOutcome([], error.data);
   return errorOutcome(error);
+}
+
+export function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
+  // A contract's record already decoded a revert against the contract's ABI.
+  const record =
+    entry.type === "call"
+      ? entry.call
+      : entry.type === "action" && entry.action === "estimateGas"
+        ? entry.contract
+        : undefined;
+  if (error instanceof MockRevertError && record?.outcome.type === "revert") return record.outcome;
+  return failureOutcome(error);
 }
 
 /** Where contract calls report their records: the entry's call, or its batch's slots. */

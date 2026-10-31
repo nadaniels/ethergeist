@@ -31,7 +31,6 @@ import type {
   EstimateGasCall,
   FeeHistoryCall,
   MethodCall,
-  MockActionBuilder,
   MockActions,
   MockMethodBuilder,
   ReceiptCall,
@@ -45,34 +44,21 @@ import {
   toRpcTransaction,
 } from "./chain/transactions.js";
 import { type MockReceipt, completeReceipt, toRpcReceipt } from "./chain/receipts.js";
-import {
-  MockNotFoundError,
-  MockResolverError,
-  MockRpcError,
-  removedMockError,
-} from "./shared/errors.js";
-import { errorOutcome } from "./history.js";
+import { MockNotFoundError, MockRpcError } from "./shared/errors.js";
+import { failureOutcome } from "./history.js";
 import type { MockCallRecord, MockOutcome } from "./history/types.js";
 import { type LogsCall, createLogStore } from "./logs.js";
 import { MockFailure, fail } from "./mocking/faults.js";
-import type { MockNodeFault } from "./mocking/types.js";
+import { encodeGas } from "./mocking/gas.js";
+import { type Handler as MockHandler, createHandlers, withCalls } from "./mocking/handlers.js";
 import {
   type ReceivedCall,
   formatCall,
-  formatLimit,
   formatMismatch,
   formatReceived,
   formatValue,
 } from "./mocking/format.js";
-import {
-  type Specificity,
-  assertNoMatchers,
-  bestMatch,
-  isMatch,
-  mismatches,
-  setLimit,
-  specificity,
-} from "./mocking/matching.js";
+import { assertNoMatchers, isMatch, mismatches } from "./mocking/matching.js";
 import { isPlainObject, lowercase } from "./shared/values.js";
 import { zeroResult } from "./mocking/zeroResult.js";
 
@@ -85,20 +71,6 @@ export type ActionReport = {
   call: object;
   outcome: MockOutcome;
   contract?: MockCallRecord;
-};
-
-type Handler = {
-  pinned: unknown;
-  specificity: Specificity;
-  /** Static values are wrapped at registration; `undefined` until `.returns()`/`.fails()`. */
-  resolver: ((context: ActionContext<object>) => unknown) | undefined;
-  /** Calls this handler answered since registration or the last `clearCalls()`. */
-  usedCount: number;
-  /** Set by `.once()`/`.times(n)`: answers in all, and how many are left. Kept by `clearCalls()`. */
-  limit: number | undefined;
-  remaining: number | undefined;
-  /** Set when a `restore()` or `reset()` removes it, so its builder can't answer again. */
-  removed: boolean;
 };
 
 type Definition = {
@@ -131,59 +103,36 @@ type Definition = {
 };
 
 type Table = ReturnType<typeof createTable>;
+type Handler = MockHandler<ActionContext<object>>;
+
+/**
+ * What a resolver throws that's an answer, not a resolver error: a fault, or
+ * what its context threw, a node's refusal or an unmocked address.
+ */
+const isAnswer = (error: unknown) =>
+  error instanceof MockFailure ||
+  error instanceof MockRpcError ||
+  error instanceof MockNotFoundError;
 
 function createTable(definition: Definition) {
-  const handlers: Handler[] = [];
+  const mocks = createHandlers<ActionContext<object>, unknown>();
   const history: object[] = [];
   const actualOf = definition.actual ?? ((_pinned: unknown, call: object) => call);
 
   function register(params: unknown) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
-    const handler: Handler = {
-      pinned,
-      specificity: specificity(pinned),
-      resolver: undefined,
-      usedCount: 0,
-      limit: undefined,
-      remaining: undefined,
-      removed: false,
-    };
-    handlers.push(handler);
-
-    const builder: MockActionBuilder<object, unknown> = {
-      returns(value: unknown = zeroResult) {
-        if (handler.removed) throw removedMockError();
-        const resolved = value === zeroResult ? definition.zero : value;
-        // A static value that can't be encoded fails here, not inside a request.
-        if (typeof resolved !== "function") encode(resolved, undefined);
-        handler.resolver =
-          // The types guarantee a resolver's signature; it can't be checked at runtime.
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function
-          typeof resolved === "function" ? (resolved as Handler["resolver"]) : () => resolved;
-      },
-      // Named node errors are typed only where a node can refuse with them.
-      fails(fault: MockNodeFault) {
-        builder.returns(() => fail(fault));
-      },
-      once: () => builder.times(1),
-      times(count: number) {
-        if (handler.removed) throw removedMockError();
-        setLimit(handler, count);
-        return builder;
-      },
-    };
-    return builder;
+    const handler = mocks.add(pinned, undefined);
+    return mocks.builderFor(handler, (value) => {
+      encode(value, undefined);
+    });
   }
 
-  /** Mocks that haven't answered a call, except used-up ones: they answered every call they had. */
-  function unused(list: Handler[]) {
-    return list
-      .filter((h) => h.resolver !== undefined && h.usedCount === 0 && h.remaining !== 0)
-      .map((h) => {
-        const mock = `${formatCall(definition.name, h.pinned)}${formatLimit(h.limit, h.remaining)}`;
-        return `${mock}${formatReceived(definition.name, received(h))}`;
-      });
-  }
+  /** Unused mocks, each with the calls this table received instead. */
+  const describeUnused = (list: Handler[]) =>
+    list.map(
+      (h) =>
+        `${mocks.withLimit(formatCall(definition.name, h.pinned), h)}${formatReceived(definition.name, received(h))}`,
+    );
 
   /** The calls this table received since the last clear, and where each differs from `handler`. */
   function received(handler: Handler): ReceivedCall[] {
@@ -217,18 +166,15 @@ function createTable(definition: Definition) {
       reportAs({ type: "result", value: view(rpc) });
       return rpc;
     } catch (error) {
-      reportAs(
-        error instanceof MockFailure
-          ? { type: "fault", fault: error.fault, source: "mock" }
-          : errorOutcome(error),
-      );
+      reportAs(failureOutcome(error));
       throw error;
     }
   }
 
+  /** A value in viem's types as JSON-RPC; `zeroResult` is the action's zero. */
   function encode(value: unknown, call: object | undefined) {
     assertNoMatchers(value);
-    return definition.encode(value, call);
+    return definition.encode(value === zeroResult ? definition.zero : value, call);
   }
 
   async function answerCall(call: object, turn: ContractEstimate | undefined): Promise<unknown> {
@@ -236,18 +182,18 @@ function createTable(definition: Definition) {
     if (answered) return await answered;
     // The most specific matching handler wins; among equally specific ones,
     // the most recently registered wins.
-    const handler = bestMatch(
-      handlers,
+    const handler = mocks.best(
+      mocks.handlers,
       (h, options) =>
         h.pinned === undefined || isMatch(h.pinned, actualOf(h.pinned, call), options),
       definition.name,
     );
-    if (!handler?.resolver) {
+    if (!handler) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
       if (turn) throw turn.miss;
-      const registered = handlers.map(
-        (h) => `  ${formatCall(definition.name, h.pinned)}${formatLimit(h.limit, h.remaining)}`,
+      const registered = mocks.handlers.map(
+        (h) => `  ${mocks.withLimit(formatCall(definition.name, h.pinned), h)}`,
       );
       throw new MockNotFoundError(`No mock for ${formatCall(definition.name, call)}.`, {
         details:
@@ -257,23 +203,12 @@ function createTable(definition: Definition) {
       });
     }
 
-    handler.usedCount += 1;
-    if (handler.remaining !== undefined) handler.remaining -= 1;
-    try {
-      const context = { ...call, fail };
-      definition.extendContext?.(context, call);
-      const value = await handler.resolver(context);
-      return encode(value === zeroResult ? definition.zero : value, call);
-    } catch (error) {
-      // A fault, or what the context threw: a node's refusal or an unmocked address.
-      if (
-        error instanceof MockFailure ||
-        error instanceof MockRpcError ||
-        error instanceof MockNotFoundError
-      )
-        throw error;
-      throw new MockResolverError(definition.name, error);
-    }
+    const context = { ...call, fail };
+    definition.extendContext?.(context, call);
+    return await mocks.run(handler, context, (value) => encode(value, call), {
+      name: definition.name,
+      passThrough: isAnswer,
+    });
   }
 
   return {
@@ -282,27 +217,15 @@ function createTable(definition: Definition) {
     history,
     clearCalls() {
       history.length = 0;
-      for (const handler of handlers) handler.usedCount = 0;
+      mocks.clearUsage();
     },
     reset() {
-      for (const handler of handlers) handler.removed = true;
-      handlers.length = 0;
+      mocks.removeAll();
       history.length = 0;
     },
-    unusedMocks: () => unused(handlers),
+    unusedMocks: () => describeUnused(mocks.unused(mocks.handlers)),
     /** Saves the registered mocks and their answers, to put back or compare against. */
-    checkpoint(): PartCheckpoint {
-      const saved = handlers.map((h) => [h, h.resolver, h.limit, h.remaining] as const);
-      return {
-        restore() {
-          for (const handler of handlers.slice(saved.length)) handler.removed = true;
-          handlers.length = saved.length;
-          for (const [handler, resolver, limit, remaining] of saved)
-            Object.assign(handler, { resolver, limit, remaining });
-        },
-        unusedSince: () => unused(handlers.slice(saved.length)),
-      };
-    },
+    checkpoint: (): PartCheckpoint => mocks.checkpoint(describeUnused),
   };
 }
 
@@ -701,13 +624,7 @@ export function createActions(options: {
       pin: pinTransaction,
       // `.returns()` without a value isn't typed: there's no zero estimate.
       zero: undefined,
-      encode(value) {
-        if (typeof value !== "bigint" || value < 0n)
-          throw new TypeError(
-            `A gas estimate must be a bigint, zero or more; got ${formatValue(value)}.`,
-          );
-        return numberToHex(value);
-      },
+      encode: encodeGas,
       view: viewQuantity,
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeEstimateGas
       contractTurn: (call) => estimateAt(call as EstimateGasCall),
@@ -818,9 +735,10 @@ export function createActions(options: {
   const raw = new Map<string, Table>();
 
   function buildAction(table: Table) {
-    return Object.defineProperty((params?: unknown) => table.register(params), "calls", {
-      get: () => [...table.history],
-    });
+    return withCalls(
+      (params?: unknown) => table.register(params),
+      () => [...table.history],
+    );
   }
 
   // Built at runtime from the tables; `MockActions` describes the same shape.
