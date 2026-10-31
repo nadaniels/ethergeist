@@ -12,8 +12,8 @@ import {
   numberToHex,
   toEventSelector,
 } from "viem";
-import { blockHash, numberOfBlockHash } from "./blocks.js";
-import { MockNotFoundError, MockRpcError } from "./errors.js";
+import { blockHash, numberOfBlockHash } from "./chain/blocks.js";
+import { MockNotFoundError, MockRpcError } from "./shared/errors.js";
 import {
   type BuildLogParameters,
   type EmitOptions,
@@ -21,10 +21,10 @@ import {
   type MockEventLog,
   buildLog,
 } from "./events.js";
-import { formatValue } from "./format.js";
-import { placeLog } from "./receipts.js";
-import { isPlainObject, lowercase, nodeAddress } from "./result.js";
-import { testHash } from "./testValues.js";
+import { formatValue } from "./mocking/format.js";
+import { placeLog } from "./chain/receipts.js";
+import { isPlainObject, lowercase, nodeAddress } from "./shared/values.js";
+import { testHash } from "./shared/testValues.js";
 
 /** A topic position in a filter: one hash, any of several, or `null` for any. */
 export type LogsTopic = Hash | Hash[] | null;

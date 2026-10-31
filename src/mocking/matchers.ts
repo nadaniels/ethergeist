@@ -1,4 +1,4 @@
-import type { PartialStructs } from "./result.js";
+import type { PartialStructs } from "../shared/abiValues.js";
 
 const matcherKey = Symbol("matcher");
 

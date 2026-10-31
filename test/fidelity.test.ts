@@ -22,7 +22,7 @@ import {
   createMockRpc,
   testAddress,
 } from "../src/index.js";
-import { nodeRevertMessage } from "../src/revert.js";
+import { nodeRevertMessage } from "../src/chain/nodeErrors.js";
 import { rejectionOf } from "./utils.js";
 
 // The mock claims the app gets the error a real node would cause. This checks

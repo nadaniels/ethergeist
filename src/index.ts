@@ -48,31 +48,27 @@ export type {
   RevertFn,
   RevertSpec,
 } from "./contracts/types.js";
-export type { MockBlock, MockFeeHistory, MockFees } from "./blocks.js";
-export {
-  type BuildLogParameters,
-  type EmitOptions,
-  type EmittedLog,
-  type LogPlacement,
-  type MockContractEmit,
-  type MockContractEvents,
-  type MockEventArgs,
-  type MockEventLog,
+export type { MockBlock } from "./chain/blocks.js";
+export type { MockFeeHistory, MockFees } from "./chain/fees.js";
+export type {
+  BuildLogParameters,
+  EmitOptions,
+  EmittedLog,
+  LogPlacement,
+  MockContractEmit,
+  MockContractEvents,
+  MockEventArgs,
+  MockEventLog,
 } from "./events.js";
-export {
-  type BuiltTransaction,
-  type MockLog,
-  type MockReceipt,
-  type MockTransaction,
-  type TransactionType,
-} from "./receipts.js";
+export type { BuiltTransaction, MockTransaction, TransactionType } from "./chain/transactions.js";
+export type { MockLog, MockReceipt } from "./chain/receipts.js";
 export type { LogsCall, LogsTopic } from "./logs.js";
 export type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
 export type { MockCallRecord, MockHistoryEntry, MockOutcome } from "./history/types.js";
 export type { FormatHistoryOptions } from "./history.js";
-export { MockNotFoundError, MockResolverError } from "./errors.js";
-export type { FailRequestsOptions, MockFaultHandle } from "./faults.js";
-export { match } from "./matchers.js";
+export { MockNotFoundError, MockResolverError } from "./shared/errors.js";
+export type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
+export { match } from "./mocking/matchers.js";
 export { multicall3Address } from "./multicall.js";
 export type {
   MockEstimateAnswers,
@@ -80,5 +76,5 @@ export type {
   MockNodeFault,
   NodeErrorName,
 } from "./mocking/types.js";
-export { zeroResult } from "./result.js";
-export { testAddress, testHash } from "./testValues.js";
+export { zeroResult } from "./mocking/zeroResult.js";
+export { testAddress, testHash } from "./shared/testValues.js";

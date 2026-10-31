@@ -35,6 +35,12 @@ export default defineConfig({
         plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise", "vitest"],
       },
       {
+        // Temporary: these are split up later in the refactor (actions/, contracts/,
+        // rpc/); remove this override when they're gone.
+        files: ["src/createMockRpc.ts", "src/actions.ts", "src/contract.ts"],
+        rules: { "import/max-dependencies": "off" },
+      },
+      {
         // Type tests assert through compilation and @ts-expect-error.
         files: ["**/*.test-d.ts"],
         rules: { "typescript/no-unsafe-call": "off", "vitest/expect-expect": "off" },

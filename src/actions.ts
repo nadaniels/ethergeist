@@ -20,15 +20,8 @@ import {
   size,
   zeroHash,
 } from "viem";
-import {
-  type Fees,
-  type MockBlock,
-  blobBaseFee,
-  feeHistory,
-  numberOfBlockHash,
-  toRpcBlock,
-  toRpcFeeHistory,
-} from "./blocks.js";
+import { type Fees, blobBaseFee, feeHistory, toRpcFeeHistory } from "./chain/fees.js";
+import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./chain/blocks.js";
 import type { PartCheckpoint } from "./checkpoint.js";
 import type {
   ActionContext,
@@ -48,17 +41,20 @@ import type {
 import type { ContractEstimate } from "./contract.js";
 import {
   type BuiltTransaction,
-  type MockReceipt,
   type MockTransaction,
-  completeReceipt,
-  toRpcReceipt,
   toRpcTransaction,
-} from "./receipts.js";
-import { MockNotFoundError, MockResolverError, MockRpcError, removedMockError } from "./errors.js";
+} from "./chain/transactions.js";
+import { type MockReceipt, completeReceipt, toRpcReceipt } from "./chain/receipts.js";
+import {
+  MockNotFoundError,
+  MockResolverError,
+  MockRpcError,
+  removedMockError,
+} from "./shared/errors.js";
 import { errorOutcome } from "./history.js";
 import type { MockCallRecord, MockOutcome } from "./history/types.js";
 import { type LogsCall, createLogStore } from "./logs.js";
-import { MockFailure, fail } from "./faults.js";
+import { MockFailure, fail } from "./mocking/faults.js";
 import type { MockNodeFault } from "./mocking/types.js";
 import {
   type ReceivedCall,
@@ -67,7 +63,7 @@ import {
   formatMismatch,
   formatReceived,
   formatValue,
-} from "./format.js";
+} from "./mocking/format.js";
 import {
   type Specificity,
   assertNoMatchers,
@@ -76,8 +72,9 @@ import {
   mismatches,
   setLimit,
   specificity,
-} from "./match.js";
-import { isPlainObject, lowercase, zeroResult } from "./result.js";
+} from "./mocking/matching.js";
+import { isPlainObject, lowercase } from "./shared/values.js";
+import { zeroResult } from "./mocking/zeroResult.js";
 
 /**
  * What a table tells the rpc about a call it answered, for history. An

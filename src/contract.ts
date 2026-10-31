@@ -21,7 +21,7 @@ import {
   MockResolverError,
   MockRevertError,
   removedMockError,
-} from "./errors.js";
+} from "./shared/errors.js";
 import { type EmitOptions, type MockEventLog, encodeEventLog } from "./events.js";
 import type { PartCheckpoint } from "./checkpoint.js";
 import type {
@@ -33,7 +33,7 @@ import type {
   RevertFn,
   RevertSpec,
 } from "./contracts/types.js";
-import { MockFailure, fail } from "./faults.js";
+import { MockFailure, fail } from "./mocking/faults.js";
 import type { MockNodeFault } from "./mocking/types.js";
 import {
   type ReceivedCall,
@@ -43,7 +43,7 @@ import {
   formatMismatch,
   formatReceived,
   formatValue,
-} from "./format.js";
+} from "./mocking/format.js";
 import { errorOutcome } from "./history.js";
 import type { MockCallRecord, MockOutcome } from "./history/types.js";
 import {
@@ -55,9 +55,11 @@ import {
   mismatches,
   setLimit,
   specificity,
-} from "./match.js";
-import { checksumAddresses, normalizeResult, zeroResult } from "./result.js";
-import { createRevertError, revertOutcome } from "./revert.js";
+} from "./mocking/matching.js";
+import { checksumAddresses } from "./contracts/pins.js";
+import { normalizeResult } from "./contracts/results.js";
+import { zeroResult } from "./mocking/zeroResult.js";
+import { createRevertError, revertOutcome } from "./contracts/revert.js";
 
 type Namespace = "read" | "simulate" | "estimateGas";
 /** What a contract answers: an `eth_call`, or an `eth_estimateGas`. */

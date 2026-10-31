@@ -1,6 +1,6 @@
 import { type Address, isHex } from "viem";
 import { type Matcher, isMatcher } from "./matchers.js";
-import { isPlainObject } from "./result.js";
+import { isPlainObject } from "../shared/values.js";
 
 /** A contract for messages: its name and address, or just the address. */
 export function formatContract(address: Address, name: string | undefined): string {

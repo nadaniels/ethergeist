@@ -1,10 +1,12 @@
 import type { Address, BlockTag, Hash, Hex } from "viem";
-import type { MockBlock, MockFeeHistory } from "../blocks.js";
+import type { MockBlock } from "../chain/blocks.js";
+import type { MockFeeHistory } from "../chain/fees.js";
 import type { EmittedLog } from "../events.js";
 import type { LogsCall } from "../logs.js";
 import type { MockEstimateAnswers, MockFault, MockNodeFault } from "../mocking/types.js";
-import type { MockReceipt, MockTransaction } from "../receipts.js";
-import type { zeroResult } from "../result.js";
+import type { MockReceipt } from "../chain/receipts.js";
+import type { MockTransaction } from "../chain/transactions.js";
+import type { zeroResult } from "../mocking/zeroResult.js";
 
 /**
  * What a call about an address at a block asked for. A tag resolves to the

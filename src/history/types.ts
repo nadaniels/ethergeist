@@ -1,7 +1,7 @@
 import type { AbiFunction, Address, Hex } from "viem";
 import type { ActionCalls } from "../actions/types.js";
 import type { MockCall } from "../contracts/types.js";
-import type { MockNotFoundError, MockResolverError } from "../errors.js";
+import type { MockNotFoundError, MockResolverError } from "../shared/errors.js";
 import type { MockNodeFault } from "../mocking/types.js";
 
 /** How the mock answered a request, or a contract call inside one. */

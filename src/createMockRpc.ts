@@ -17,14 +17,8 @@ import {
 } from "viem";
 import { mainnet } from "viem/chains";
 import { createActions } from "./actions.js";
-import {
-  type BlockClock,
-  type Fees,
-  type MockFees,
-  generateBlock,
-  numberOfBlockHash,
-  resolveFees,
-} from "./blocks.js";
+import { type BlockClock, generateBlock, numberOfBlockHash } from "./chain/blocks.js";
+import { type Fees, type MockFees, resolveFees } from "./chain/fees.js";
 import type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
 import { type InternalMockContract, createMockContract } from "./contract.js";
 import type {
@@ -33,18 +27,22 @@ import type {
   MockCall,
   MockContract,
 } from "./contracts/types.js";
-import { MockNotFoundError, MockResolverError, MockRevertError, MockRpcError } from "./errors.js";
+import {
+  MockNotFoundError,
+  MockResolverError,
+  MockRevertError,
+  MockRpcError,
+} from "./shared/errors.js";
 import type { EmittedLog } from "./events.js";
 import {
   type ActiveFault,
   type FailRequestsOptions,
   type MockFaultHandle,
-  MockFailure,
   appliesTo,
   createActiveFault,
-  createFaultError,
-  createRevertRpcError,
-} from "./faults.js";
+} from "./rpc/faults.js";
+import { MockFailure } from "./mocking/faults.js";
+import { createFaultError, createRevertRpcError } from "./viem/errors.js";
 import type { MockFault } from "./mocking/types.js";
 import {
   type FormatContext,
@@ -61,7 +59,7 @@ import {
 } from "./history.js";
 import type { MockHistoryEntry, MockOutcome } from "./history/types.js";
 import { multicall3Address, resolveMulticall } from "./multicall.js";
-import { isPlainObject } from "./result.js";
+import { isPlainObject } from "./shared/values.js";
 
 export type CreateMockRpcParameters = {
   /**

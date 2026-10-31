@@ -10,7 +10,7 @@ import type {
 } from "viem";
 import type { MockContractEmit, MockContractEvents } from "../events.js";
 import type { MockEstimateAnswers, MockFault, MockNodeFault } from "../mocking/types.js";
-import type { MockReturnType } from "../result.js";
+import type { MockReturnType } from "./results.js";
 
 type ReadMutability = "pure" | "view";
 type WriteMutability = "nonpayable" | "payable";

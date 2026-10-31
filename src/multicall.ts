@@ -6,8 +6,8 @@ import {
   multicall3Abi,
 } from "viem";
 import type { CallContext } from "./contracts/types.js";
-import { MockNotFoundError, MockRevertError } from "./errors.js";
-import { createRevertError } from "./revert.js";
+import { MockNotFoundError, MockRevertError } from "./shared/errors.js";
+import { createRevertError } from "./contracts/revert.js";
 
 /** The canonical Multicall3 deployment, which viem's built-in chains point at. */
 export const multicall3Address: Address = "0xcA11bde05977b3631167028862bE2a173976CA11";

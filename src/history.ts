@@ -7,14 +7,19 @@ import {
   multicall3Abi,
 } from "viem";
 import type { CallContext } from "./contracts/types.js";
-import { MockNotFoundError, MockResolverError, MockRevertError, MockRpcError } from "./errors.js";
-import { MockFailure } from "./faults.js";
+import {
+  MockNotFoundError,
+  MockResolverError,
+  MockRevertError,
+  MockRpcError,
+} from "./shared/errors.js";
+import { MockFailure } from "./mocking/faults.js";
 import type { MockNodeFault } from "./mocking/types.js";
-import { formatCall, formatValue } from "./format.js";
+import { formatCall, formatValue } from "./mocking/format.js";
 import type { MockCallRecord, MockHistoryEntry, MockOutcome } from "./history/types.js";
 import type { LogsCall } from "./logs.js";
-import { isPlainObject } from "./result.js";
-import { revertOutcome } from "./revert.js";
+import { isPlainObject } from "./shared/values.js";
+import { revertOutcome } from "./contracts/revert.js";
 
 /** How a request's contract calls report back to its history entry. */
 export type Reporter = {
