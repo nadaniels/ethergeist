@@ -26,20 +26,18 @@ import {
   resolveFees,
 } from "./blocks.js";
 import type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
-import {
-  type CallContext,
-  type CreateMockContractParameters,
-  type InternalMockContract,
-  type MockCall,
-  type MockContract,
-  createMockContract,
-} from "./contract.js";
+import { type InternalMockContract, createMockContract } from "./contract.js";
+import type {
+  CallContext,
+  CreateMockContractParameters,
+  MockCall,
+  MockContract,
+} from "./contracts/types.js";
 import { MockNotFoundError, MockResolverError, MockRevertError, MockRpcError } from "./errors.js";
 import type { EmittedLog } from "./events.js";
 import {
   type ActiveFault,
   type FailRequestsOptions,
-  type MockFault,
   type MockFaultHandle,
   MockFailure,
   appliesTo,
@@ -47,11 +45,10 @@ import {
   createFaultError,
   createRevertRpcError,
 } from "./faults.js";
+import type { MockFault } from "./mocking/types.js";
 import {
   type FormatContext,
   type FormatHistoryOptions,
-  type MockHistoryEntry,
-  type MockOutcome,
   type Reporter,
   errorOutcome,
   formatEntry,
@@ -62,6 +59,7 @@ import {
   retryHint,
   valueOf,
 } from "./history.js";
+import type { MockHistoryEntry, MockOutcome } from "./history/types.js";
 import { multicall3Address, resolveMulticall } from "./multicall.js";
 import { isPlainObject } from "./result.js";
 

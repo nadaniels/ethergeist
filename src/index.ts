@@ -14,7 +14,6 @@ export type {
   MockActionBuilder,
   MockActionWithoutParams,
   MockActions,
-  MockEstimateAnswers,
   MockEstimateBuilder,
   MockEstimateGasAction,
   MockMethodBuilder,
@@ -23,7 +22,7 @@ export type {
   StorageCall,
   TransactionCall,
   TransactionCountCall,
-} from "./actions.js";
+} from "./actions/types.js";
 export {
   createMockRpc,
   type CreateMockRpcParameters,
@@ -34,6 +33,7 @@ export {
 } from "./createMockRpc.js";
 export type {
   CallContext,
+  MockBatch,
   MockCall,
   MockContract,
   MockContractDefaults,
@@ -45,7 +45,9 @@ export type {
   MockReadFunction,
   MockSimulateFunction,
   ResolverContext,
-} from "./contract.js";
+  RevertFn,
+  RevertSpec,
+} from "./contracts/types.js";
 export type { MockBlock, MockFeeHistory, MockFees } from "./blocks.js";
 export {
   type BuildLogParameters,
@@ -66,22 +68,17 @@ export {
 } from "./receipts.js";
 export type { LogsCall, LogsTopic } from "./logs.js";
 export type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
-export type {
-  FormatHistoryOptions,
-  MockCallRecord,
-  MockHistoryEntry,
-  MockOutcome,
-} from "./history.js";
+export type { MockCallRecord, MockHistoryEntry, MockOutcome } from "./history/types.js";
+export type { FormatHistoryOptions } from "./history.js";
 export { MockNotFoundError, MockResolverError } from "./errors.js";
+export type { FailRequestsOptions, MockFaultHandle } from "./faults.js";
+export { match } from "./matchers.js";
+export { multicall3Address } from "./multicall.js";
 export type {
-  FailRequestsOptions,
+  MockEstimateAnswers,
   MockFault,
-  MockFaultHandle,
   MockNodeFault,
   NodeErrorName,
-} from "./faults.js";
-export { match } from "./matchers.js";
-export { type MockBatch, multicall3Address } from "./multicall.js";
+} from "./mocking/types.js";
 export { zeroResult } from "./result.js";
 export { testAddress, testHash } from "./testValues.js";
-export type { RevertFn, RevertSpec } from "./revert.js";
