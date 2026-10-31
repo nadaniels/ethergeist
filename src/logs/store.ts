@@ -2,18 +2,13 @@ import { Log as OxLog } from "ox";
 import {
   type Abi,
   type ContractEventName,
-  type AbiEvent,
-  type Address,
   type Hash,
   type RpcLog,
-  decodeAbiParameters,
   getAddress,
-  isHex,
   numberToHex,
-  toEventSelector,
 } from "viem";
-import { blockHash, numberOfBlockHash } from "./chain/blocks.js";
-import { MockNotFoundError, MockRpcError } from "./shared/errors.js";
+import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
+import { MockNotFoundError, MockRpcError } from "../shared/errors.js";
 import {
   type BuildLogParameters,
   type EmitOptions,
@@ -21,26 +16,12 @@ import {
   type MockEventLog,
   buildLog,
 } from "./events.js";
-import { formatValue } from "./mocking/format.js";
-import { placeLog } from "./chain/receipts.js";
-import { isPlainObject, lowercase, nodeAddress } from "./shared/values.js";
-import { testHash } from "./shared/testValues.js";
-
-/** A topic position in a filter: one hash, any of several, or `null` for any. */
-export type LogsTopic = Hash | Hash[] | null;
-
-/**
- * What a call to `getLogs` (or `getContractEvents`) asked for. Addresses are
- * checksummed and topics lowercase. A block range is resolved to numbers,
- * with tags as the current block; a `blockHash` query has no range.
- */
-export type LogsCall = {
-  address?: Address | Address[];
-  topics: LogsTopic[];
-  fromBlock?: bigint;
-  toBlock?: bigint;
-  blockHash?: Hash;
-};
+import { placeLog } from "../chain/receipts.js";
+import { isPlainObject, nodeAddress } from "../shared/values.js";
+import { testHash } from "../shared/testValues.js";
+import type { ChainState } from "../chain/state.js";
+import type { Registry } from "../contracts/registry.js";
+import { type LogsCall, decodeLogsCall, describeLogsCall, topicsMatch } from "./filter.js";
 
 /** A placed log: viem's, with the block's timestamp, as reth includes it. */
 type PlacedLog = EmittedLog & { readonly blockTimestamp: bigint };
@@ -56,21 +37,17 @@ const positionFields = [
 
 export type LogStore = ReturnType<typeof createLogStore>;
 
-export function createLogStore(hooks: {
-  /** The current block number. */
-  blockNumber: () => bigint;
-  /** Mines one block. */
-  mine: () => void;
-  /** Block `number`'s generated timestamp. */
-  timestamp: (number: bigint) => bigint;
-  /** Resolves a block parameter (tag or number) to a block number. */
-  resolveBlock: (block: unknown) => bigint;
-  /** Whether a contract is registered at `address`, which is checksummed. */
-  isContract: (address: Address) => boolean;
-  /** Whether the mock knows `address`: a contract, Multicall3, or an empty address. */
-  isKnown: (address: Address) => boolean;
+/**
+ * Emitted logs, which answer `eth_getLogs`: placed in blocks of `state`, by
+ * contracts in `registry`, and found by filters as a node finds them.
+ */
+export function createLogStore({
+  state,
+  registry,
+}: {
+  state: ChainState;
+  registry: Pick<Registry, "codeAt" | "isContract">;
 }) {
-  const { blockNumber, mine, timestamp, resolveBlock, isContract, isKnown } = hooks;
   const logs: PlacedLog[] = [];
 
   /** Places one transaction's logs, returning one for one and an array for an array. */
@@ -94,16 +71,16 @@ export function createLogStore(hooks: {
             "mock.buildLog()). Pass a log from contract.events, and set its block or transaction " +
             "in emit()'s options.",
         );
-      if (!isContract(getAddress(value.address)))
+      if (!registry.isContract(getAddress(value.address)))
         throw new Error(
           `No mocked contract at ${value.address} to emit this log; register it with contract().`,
         );
     }
     if (emitOptions.mine === true && emitOptions.blockNumber !== undefined)
       throw new Error("emit() takes `mine` or `blockNumber`, not both.");
-    if (emitOptions.mine === true) mine();
+    if (emitOptions.mine === true) state.mine();
 
-    const number = emitOptions.blockNumber ?? blockNumber();
+    const number = emitOptions.blockNumber ?? state.blockNumber;
     const inBlock = logs.filter((log) => log.blockNumber === number);
     const last = inBlock.at(-1);
     const { transactionHash, transactionIndex } = transactionFor(number, inBlock, emitOptions);
@@ -119,7 +96,7 @@ export function createLogStore(hooks: {
         logIndex: firstIndex + i,
       });
       Object.freeze(log.topics);
-      return Object.freeze({ ...log, blockTimestamp: timestamp(number) });
+      return Object.freeze({ ...log, blockTimestamp: state.timestampAt(number) });
     });
     logs.push(...placed);
     return placed;
@@ -170,30 +147,6 @@ export function createLogStore(hooks: {
     };
   }
 
-  /** `eth_getLogs` params as a call; a filter with both a block hash and a range is refused. */
-  function decode([filter]: readonly unknown[]): LogsCall {
-    const fields = isPlainObject(filter) ? filter : {};
-    const call: LogsCall = { topics: [] };
-    const { address } = fields;
-    if (typeof address === "string") call.address = getAddress(address);
-    if (Array.isArray(address))
-      call.address = address.map((each: unknown) => getAddress(String(each)));
-    if (Array.isArray(fields.topics))
-      call.topics = fields.topics.map((topic: unknown) => decodeTopic(topic));
-    if (fields.blockHash === undefined) {
-      call.fromBlock = resolveBlock(fields.fromBlock);
-      call.toBlock = resolveBlock(fields.toBlock);
-    } else {
-      if (fields.fromBlock !== undefined || fields.toBlock !== undefined)
-        throw new MockRpcError(
-          -32602,
-          "invalid argument 0: cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other",
-        );
-      if (isHex(fields.blockHash)) call.blockHash = fields.blockHash;
-    }
-    return call;
-  }
-
   /**
    * The emitted logs a call asks for, sorted by block and log index. Errors
    * are reth's for the same filter; addresses the mock doesn't know are
@@ -202,7 +155,7 @@ export function createLogStore(hooks: {
   function find(call: LogsCall): PlacedLog[] {
     if (call.topics.length > 4)
       throw new MockRpcError(-32602, "query exceeds the maximum of 4 topics");
-    const head = blockNumber();
+    const head = state.blockNumber;
     let from: bigint;
     let to: bigint;
     if (call.blockHash === undefined) {
@@ -220,7 +173,7 @@ export function createLogStore(hooks: {
     }
 
     const addresses = call.address === undefined ? [] : [call.address].flat();
-    const unknown = addresses.filter((address) => !isKnown(address));
+    const unknown = addresses.filter((address) => registry.codeAt(address) === undefined);
     if (unknown.length > 0)
       throw new MockNotFoundError(`No mocked contract at ${unknown.join(", ")}.`, {
         details:
@@ -247,7 +200,7 @@ export function createLogStore(hooks: {
 
   return {
     emit,
-    decode,
+    decode: (params: readonly unknown[]) => decodeLogsCall(params, state.resolveBlock),
     find,
     toRpc,
     describe: describeLogsCall,
@@ -264,7 +217,7 @@ export function createLogStore(hooks: {
     /** A finished log, in the current block unless given; see `buildLog`. */
     buildLog: <const abi extends Abi, eventName extends ContractEventName<abi>>(
       parameters: BuildLogParameters<abi, eventName>,
-    ) => buildLog(parameters, hooks.blockNumber()),
+    ) => buildLog(parameters, state.blockNumber),
     reset() {
       logs.length = 0;
     },
@@ -284,29 +237,6 @@ function isLogList(
   given: MockEventLog | readonly MockEventLog[],
 ): given is readonly MockEventLog[] {
   return Array.isArray(given);
-}
-
-function decodeTopic(topic: unknown): LogsTopic {
-  if (isHex(topic)) return lowercase(topic);
-  if (Array.isArray(topic))
-    return topic.filter((each) => isHex(each)).map((each) => lowercase(each));
-  return null;
-}
-
-/**
- * Whether a log's topics match a filter's, as geth and reth 2.8 match them:
- * position by position, `null` or `[]` matching anything, an array matching
- * any of its hashes. A filter longer than the log's topics never matches it.
- */
-function topicsMatch(filter: readonly LogsTopic[], topics: readonly Hash[]): boolean {
-  if (filter.length > topics.length) return false;
-  return filter.every((wanted, i) => {
-    if (wanted === null || (Array.isArray(wanted) && wanted.length === 0)) return true;
-    const topic = topics[i];
-    if (topic === undefined) return false;
-    const lower = lowercase(topic);
-    return Array.isArray(wanted) ? wanted.includes(lower) : wanted === lower;
-  });
 }
 
 function toRpcLog(log: EmittedLog): RpcLog {
@@ -346,60 +276,4 @@ function toRpc(value: unknown): RpcLog[] {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- checked above
     return toRpcLog(log as unknown as EmittedLog);
   });
-}
-
-/**
- * A `getLogs` call for history: the address (a contract's name where it has
- * one), the event and the indexed args its topics ask for (decoded with the
- * registered contracts' ABIs, as hex otherwise), and the blocks.
- */
-function describeLogsCall(
-  call: LogsCall,
-  contracts: readonly { address: Address; name: string | undefined; abi: Abi }[],
-): string {
-  const nameOf = (address: Address) =>
-    contracts.find((c) => c.address === address)?.name ?? formatValue(address, { short: true });
-  const parts: string[] = [];
-  if (call.address !== undefined)
-    parts.push(
-      Array.isArray(call.address)
-        ? `[${call.address.map((each) => nameOf(each)).join(", ")}]`
-        : nameOf(call.address),
-    );
-  if (call.topics.length > 0) parts.push(describeTopics(call.topics, contracts));
-  if (call.blockHash !== undefined)
-    parts.push(`block ${formatValue(call.blockHash, { short: true })}`);
-  else if (call.fromBlock === call.toBlock) parts.push(`block ${call.fromBlock}`);
-  else parts.push(`blocks ${call.fromBlock}–${call.toBlock}`);
-  return `getLogs(${parts.join(", ")})`;
-}
-
-function describeTopics(topics: readonly LogsTopic[], contracts: readonly { abi: Abi }[]): string {
-  const events = contracts.flatMap(({ abi }) =>
-    abi.filter((item): item is AbiEvent => item.type === "event" && item.anonymous !== true),
-  );
-  const eventFor = (selector: Hash) => events.find((event) => toEventSelector(event) === selector);
-  const [first, ...rest] = topics;
-  const selectors = first === null || first === undefined ? [] : [first].flat();
-  const matched = selectors.map((selector) => eventFor(selector));
-  // Indexed args decode only when the topics ask for one known event.
-  const [event] = matched;
-  if (selectors.length === 0 || matched.some((e) => e === undefined) || event === undefined)
-    return `topics: ${formatValue(topics, { short: true })}`;
-  if (matched.length > 1) return matched.map((e) => e!.name).join(" | ");
-
-  const indexed = event.inputs.filter((input) => input.indexed === true);
-  const args = rest.flatMap((topic, i) => {
-    const input = indexed[i];
-    if (topic === null || input === undefined) return [];
-    const values = [topic].flat().map((hash) => {
-      // Indexed strings, bytes, structs, and arrays are hashes; the rest decode.
-      if (input.type === "string" || input.type === "bytes" || input.type.endsWith("]"))
-        return formatValue(hash, { short: true });
-      const [value] = decodeAbiParameters([input], hash);
-      return formatValue(value, { short: true });
-    });
-    return values.length === 0 ? [] : [`${input.name ?? `arg ${i + 1}`}: ${values.join(" | ")}`];
-  });
-  return `${event.name}(${args.join(", ")})`;
 }

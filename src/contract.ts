@@ -16,7 +16,7 @@ import {
   toFunctionSignature,
 } from "viem";
 import { MockNotFoundError, MockRevertError } from "./shared/errors.js";
-import { type EmitOptions, type MockEventLog, encodeEventLog } from "./events.js";
+import { type EmitOptions, type MockEventLog, encodeEventLog } from "./logs/events.js";
 import type { PartCheckpoint } from "./checkpoint.js";
 import type {
   CallContext,

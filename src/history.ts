@@ -18,7 +18,7 @@ import { MockFailure } from "./mocking/faults.js";
 import type { MockNodeFault } from "./mocking/types.js";
 import { formatCall, formatValue } from "./mocking/format.js";
 import type { MockCallRecord, MockHistoryEntry, MockOutcome } from "./history/types.js";
-import type { LogsCall } from "./logs.js";
+import type { LogsCall } from "./logs/filter.js";
 import { isPlainObject } from "./shared/values.js";
 import { revertOutcome } from "./contracts/revert.js";
 

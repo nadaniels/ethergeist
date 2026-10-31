@@ -14,12 +14,12 @@ import {
   zeroHash,
 } from "viem";
 import { AbiEvent as OxAbiEvent } from "ox";
-import { blockHash } from "./chain/blocks.js";
-import { formatCall } from "./mocking/format.js";
-import { assertNoMatchers } from "./mocking/matching.js";
-import { placeLog } from "./chain/receipts.js";
-import { type AllNamed, type PartialStructs, fillZeros } from "./shared/abiValues.js";
-import { isPlainObject } from "./shared/values.js";
+import { blockHash } from "../chain/blocks.js";
+import { formatCall } from "../mocking/format.js";
+import { assertNoMatchers } from "../mocking/matching.js";
+import { placeLog } from "../chain/receipts.js";
+import { type AllNamed, type PartialStructs, fillZeros } from "../shared/abiValues.js";
+import { isPlainObject } from "../shared/values.js";
 
 /**
  * A log's content, encoded from an event and its args: who emitted it, its

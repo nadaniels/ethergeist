@@ -12,15 +12,12 @@ import {
   getAddress,
   hexToBigInt,
   isAddress,
-  isHex,
   numberToHex,
 } from "viem";
-import { mainnet } from "viem/chains";
 import { createActions } from "./actions.js";
-import { type BlockClock, generateBlock, numberOfBlockHash } from "./chain/blocks.js";
-import { type Fees, type MockFees, resolveFees } from "./chain/fees.js";
+import type { MockFees } from "./chain/fees.js";
 import type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
-import { type InternalMockContract, createMockContract } from "./contract.js";
+import { createMockContract } from "./contract.js";
 import type {
   CallContext,
   CreateMockContractParameters,
@@ -33,7 +30,7 @@ import {
   MockRevertError,
   MockRpcError,
 } from "./shared/errors.js";
-import type { EmittedLog } from "./events.js";
+import type { EmittedLog } from "./logs/events.js";
 import {
   type ActiveFault,
   type FailRequestsOptions,
@@ -58,7 +55,10 @@ import {
   valueOf,
 } from "./history.js";
 import type { MockHistoryEntry, MockOutcome } from "./history/types.js";
-import { multicall3Address, resolveMulticall } from "./multicall.js";
+import { createChainState } from "./chain/state.js";
+import { createRegistry } from "./contracts/registry.js";
+import { createLogStore } from "./logs/store.js";
+import { resolveMulticall } from "./multicall.js";
 import { isPlainObject } from "./shared/values.js";
 
 export type CreateMockRpcParameters = {
@@ -131,36 +131,14 @@ function unusedFailure(list: readonly string[]): string[] {
 }
 
 export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
-  const given = parameters.chain ?? mainnet;
-  // Without a Multicall3 address, viem's multicall falls back to deployless calls.
-  const chain = {
-    ...given,
-    contracts: {
-      ...given.contracts,
-      multicall3: given.contracts?.multicall3 ?? { address: multicall3Address },
-    },
-  };
-  const chainId = chain.id;
-  const multicallAddress = getAddress(chain.contracts.multicall3.address);
-  const initialBlockNumber = parameters.blockNumber ?? 1n;
-  let blockNumber = initialBlockNumber;
-  const contracts: InternalMockContract<any>[] = [];
-  const emptyAddresses = new Set<Address>();
+  const state = createChainState(parameters);
+  const registry = createRegistry(state);
+  const logStore = createLogStore({ state, registry });
   const calls: MockCall[] = [];
   const requests: RpcRequest[] = [];
   const unhandled: UnhandledRequest[] = [];
   const faults: ActiveFault[] = [];
   let batchCount = 0;
-  const clock: BlockClock = {
-    startBlock: initialBlockNumber,
-    startTimestamp: parameters.timestamp ?? 1_700_000_000n,
-    blockTime: chain.blockTime ?? 12_000,
-  };
-  const initialFees = resolveFees(parameters.fees);
-  /** `setFees()` changes, oldest first; each applies from its block on. */
-  let feeChanges: readonly { fromBlock: bigint; fees: Fees }[] = [];
-  const feesAt = (number: bigint) =>
-    feeChanges.findLast((change) => change.fromBlock <= number)?.fees ?? initialFees;
   const checkpoints: { valid: boolean }[] = [];
   const history: MockHistoryEntry[] = [];
   const historyOnFailure = parameters.historyOnFailure ?? 10;
@@ -192,35 +170,13 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       : parameters.debug === false
         ? undefined
         : parameters.debug;
-  const actions = createActions({
-    chainId,
-    resolveBlock,
-    codeAt,
-    blockNumber: () => blockNumber,
-    generateBlock: (number) => generateBlock(number, clock, feesAt(number)),
-    feesAt,
-    mine: () => {
-      blockNumber += 1n;
-    },
-    isContract: (address) => contracts.some((c) => c.matches(address)),
-    estimateAt({ to, data, account, value, blockNumber: number }) {
-      if (to === undefined || data === undefined || data === "0x") return undefined;
-      const contract = contracts.find((c) => c.matches(to));
-      return contract?.estimate(data, {
-        from: account,
-        value,
-        blockNumber: number,
-        batch: undefined,
-      });
-    },
-  });
-  const { logStore } = actions;
+  const actions = createActions({ state, registry, logStore });
   // History names a getLogs filter's events with the registered contracts' ABIs.
   const formatContext: FormatContext = {
     describeLogs: (call) =>
       logStore.describe(
         call,
-        contracts.map(({ contract }) => contract),
+        registry.contracts.map(({ contract }) => contract),
       ),
   };
 
@@ -272,7 +228,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       const to = Array.isArray(params) && isPlainObject(params[0]) ? params[0].to : undefined;
       const target =
         typeof to === "string" && isAddress(to, { strict: false }) ? getAddress(to) : undefined;
-      return target === multicallAddress
+      return target === state.multicallAddress
         ? { ...base, type: "multicall", batchId: undefined, calls: [] }
         : { ...base, type: "call", to: target, call: undefined };
     }
@@ -315,9 +271,9 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   ): Promise<unknown> {
     switch (method) {
       case "eth_chainId":
-        return numberToHex(chainId);
+        return numberToHex(state.chainId);
       case "eth_blockNumber":
-        return numberToHex(blockNumber);
+        return numberToHex(state.blockNumber);
       case "eth_call": {
         // JSON-RPC params arrive untyped; this is the shape viem sends for eth_call.
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
@@ -340,7 +296,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
           {
             from: tx.from,
             value: tx.value ? hexToBigInt(tx.value) : 0n,
-            blockNumber: resolveBlock(block),
+            blockNumber: state.resolveBlock(block),
             batch: undefined,
           },
           reporterFor(entry),
@@ -370,11 +326,11 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
   ): Promise<Hex> {
     // Checksummed once here; lookups below compare checksummed addresses.
     const target = getAddress(to);
-    if (target === multicallAddress) {
+    if (target === state.multicallAddress) {
       const batchId = ++batchCount;
       report.batch?.(batchId);
       return resolveMulticall(data, {
-        address: multicallAddress,
+        address: state.multicallAddress,
         batchId,
         context,
         dispatch: (subTarget, subData, subContext) =>
@@ -382,12 +338,12 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       });
     }
 
-    const contract = contracts.find((c) => c.matches(target));
+    const contract = registry.contractAt(target);
     if (contract)
       return contract.resolve(data, context, (record) => report.call?.(record, context));
     const unknown = { address: target, name: undefined, abiItem: undefined, call: undefined };
     // A real node answers a call to an address without code with empty data.
-    if (emptyAddresses.has(target)) {
+    if (registry.isEmpty(target)) {
       report.call?.({ ...unknown, outcome: { type: "result", value: "0x" } }, context);
       return Promise.resolve("0x");
     }
@@ -400,23 +356,6 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     throw error;
   }
 
-  function assertUnregistered(address: Address) {
-    const checksummed = getAddress(address);
-    const existing = contracts.find((c) => c.matches(checksummed));
-    if (existing)
-      throw new Error(
-        `A contract is already registered at ${existing.label}. ` +
-          "Register it once with a " +
-          "combined ABI (abi: [...a, ...b]). If an earlier test registered it, restore " +
-          "a checkpoint after each test, or call reset().",
-      );
-    if (emptyAddresses.has(checksummed))
-      throw new Error(
-        `${checksummed} is already registered as empty. If an earlier test registered it, ` +
-          "restore a checkpoint after each test, or call reset().",
-      );
-  }
-
   function onCall(call: MockCall) {
     calls.push(call);
   }
@@ -426,7 +365,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     history.length = 0;
     requests.length = 0;
     unhandled.length = 0;
-    for (const contract of contracts) contract.clearCalls();
+    registry.clearCalls();
     actions.clearCalls();
   }
 
@@ -454,45 +393,13 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     };
   }
 
-  /**
-   * A block parameter as a block number: a hex number, a tag (`earliest` is 0;
-   * every other tag is the current block, as there are no reorgs), or an
-   * EIP-1898 `{ blockNumber }` or `{ blockHash }` of a generated block.
-   */
-  function resolveBlock(block: unknown): bigint {
-    if (isHex(block)) return hexToBigInt(block);
-    if (block === "earliest") return 0n;
-    if (isPlainObject(block)) {
-      if (isHex(block.blockNumber)) return hexToBigInt(block.blockNumber);
-      if (isHex(block.blockHash)) {
-        const number = numberOfBlockHash(block.blockHash);
-        if (number === undefined)
-          throw new MockNotFoundError(`No block with hash ${block.blockHash}.`, {
-            details: "Only generated blocks' hashes resolve to a block number.",
-          });
-        return number;
-      }
-    }
-    return blockNumber;
-  }
-
-  /** Code at an address the mock knows without a mock: placeholder code for contracts, none for empty. */
-  function codeAt(address: Address): Hex | undefined {
-    if (address === multicallAddress || contracts.some((c) => c.matches(address))) return "0xfe";
-    if (emptyAddresses.has(address)) return "0x";
-    return undefined;
-  }
-
   function assertNoUnhandled() {
     const [failure] = unhandledFailure(unhandled);
     if (failure !== undefined) throw checkFailed(assertNoUnhandled, failure);
   }
 
   function assertAllUsed() {
-    const [failure] = unusedFailure([
-      ...contracts.flatMap((c) => c.unusedMocks()),
-      ...actions.unusedMocks(),
-    ]);
+    const [failure] = unusedFailure([...registry.unusedMocks(), ...actions.unusedMocks()]);
     if (failure !== undefined) throw checkFailed(assertAllUsed, failure);
   }
 
@@ -505,24 +412,17 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
           `intentional:\n${unhandled.map(({ error }) => `  - ${error.shortMessage}`).join("\n")}`,
       );
 
-    const contractCount = contracts.length;
-    const savedContracts = contracts.map((contract) => contract.checkpoint());
+    const savedRegistry = registry.checkpoint();
     const savedActions = actions.checkpoint();
     const savedLogs = logStore.checkpoint();
-    const savedEmpty = new Set(emptyAddresses);
     const savedFaults = faults.map((fault) => [fault, fault.remaining, fault.count] as const);
-    const savedBlockNumber = blockNumber;
-    const savedFeeChanges = feeChanges;
+    const savedState = state.checkpoint();
     const savedBatchCount = batchCount;
     const entry = { valid: true };
     checkpoints.push(entry);
 
     /** Mocks registered since this checkpoint that never answered, except defaults. */
-    const unusedSince = () => [
-      ...savedContracts.flatMap((saved) => saved.unusedSince()),
-      ...contracts.slice(contractCount).flatMap((contract) => contract.unusedMocks()),
-      ...savedActions.unusedSince(),
-    ];
+    const unusedSince = () => [...savedRegistry.unusedSince(), ...savedActions.unusedSince()];
 
     function restore(options: MockRestoreOptions = {}) {
       if (!entry.valid)
@@ -542,20 +442,15 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
       // Checkpoints taken after this one describe state that's about to go away.
       for (const later of checkpoints.splice(checkpoints.indexOf(entry) + 1)) later.valid = false;
 
-      for (const contract of contracts.slice(contractCount)) contract.detach();
-      contracts.length = contractCount;
-      for (const saved of savedContracts) saved.restore();
+      savedRegistry.restore();
       savedActions.restore();
       savedLogs.restore();
-      emptyAddresses.clear();
-      for (const address of savedEmpty) emptyAddresses.add(address);
       faults.length = savedFaults.length;
       for (const [fault, remaining, count] of savedFaults) {
         fault.remaining = remaining;
         fault.count = count;
       }
-      blockNumber = savedBlockNumber;
-      feeChanges = savedFeeChanges;
+      savedState.restore();
       batchCount = savedBatchCount;
       clearCalls();
 
@@ -583,7 +478,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
         cacheTime: 0,
         pollingInterval: 50,
         ...options,
-        chain,
+        chain: state.chain,
         transport: transport(),
       });
     },
@@ -594,9 +489,9 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
     contract<const abi extends Abi>(
       contractParameters: CreateMockContractParameters<abi>,
     ): MockContract<abi> {
-      assertUnregistered(contractParameters.address);
+      registry.assertUnregistered(contractParameters.address);
       const internal = createMockContract(contractParameters, { onCall, emit: logStore.emit });
-      contracts.push(internal);
+      registry.add(internal);
       return internal.contract;
     },
     /**
@@ -665,21 +560,21 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * `ContractFunctionExecutionError` caused by `ContractFunctionZeroDataError`.
      */
     empty(address: Address) {
-      assertUnregistered(address);
-      emptyAddresses.add(getAddress(address));
+      registry.assertUnregistered(address);
+      registry.markEmpty(getAddress(address));
     },
     /** The chain clients should use: as given, with Multicall3 added if it had none. */
     get chain() {
-      return chain;
+      return state.chain;
     },
     get chainId() {
-      return chainId;
+      return state.chainId;
     },
     get blockNumber() {
-      return blockNumber;
+      return state.blockNumber;
     },
     mine(blocks = 1n) {
-      blockNumber += blocks;
+      state.mine(blocks);
     },
     /**
      * Changes the fees from the current block on, e.g. for a fee spike:
@@ -688,11 +583,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      * they are. `restore()` and `reset()` undo it.
      */
     setFees(fees: MockFees) {
-      const changed = resolveFees({ ...feesAt(blockNumber), ...fees });
-      feeChanges = [
-        ...feeChanges.filter((change) => change.fromBlock < blockNumber),
-        { fromBlock: blockNumber, fees: changed },
-      ];
+      state.setFees(fees);
     },
     /** Every decoded contract call, across all contracts, in the order received. */
     get calls() {
@@ -753,19 +644,16 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}) {
      */
     reset() {
       for (const entry of checkpoints.splice(0)) entry.valid = false;
-      for (const contract of contracts) contract.detach();
-      contracts.length = 0;
+      registry.reset();
       actions.reset();
       logStore.reset();
-      emptyAddresses.clear();
       faults.length = 0;
       calls.length = 0;
       history.length = 0;
       requests.length = 0;
       unhandled.length = 0;
       batchCount = 0;
-      blockNumber = initialBlockNumber;
-      feeChanges = [];
+      state.reset();
     },
   };
 }

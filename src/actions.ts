@@ -1,5 +1,4 @@
 import {
-  type Address,
   type BlockTag,
   type Hash,
   type Hex,
@@ -20,8 +19,8 @@ import {
   size,
   zeroHash,
 } from "viem";
-import { type Fees, blobBaseFee, feeHistory, toRpcFeeHistory } from "./chain/fees.js";
-import { type MockBlock, numberOfBlockHash, toRpcBlock } from "./chain/blocks.js";
+import { blobBaseFee, feeHistory, toRpcFeeHistory } from "./chain/fees.js";
+import { numberOfBlockHash, toRpcBlock } from "./chain/blocks.js";
 import type { PartCheckpoint } from "./checkpoint.js";
 import type {
   ActionContext,
@@ -47,7 +46,10 @@ import { type MockReceipt, completeReceipt, toRpcReceipt } from "./chain/receipt
 import { MockNotFoundError, MockRpcError } from "./shared/errors.js";
 import { failureOutcome } from "./history.js";
 import type { MockCallRecord, MockOutcome } from "./history/types.js";
-import { type LogsCall, createLogStore } from "./logs.js";
+import type { LogsCall } from "./logs/filter.js";
+import type { LogStore } from "./logs/store.js";
+import type { ChainState } from "./chain/state.js";
+import type { Registry } from "./contracts/registry.js";
 import { MockFailure, fail } from "./mocking/faults.js";
 import { encodeGas } from "./mocking/gas.js";
 import { type Handler as MockHandler, createHandlers, withCalls } from "./mocking/handlers.js";
@@ -370,36 +372,26 @@ const builtIns = new Map([
   ["eth_call", "register a contract with mock.contract()"],
 ]);
 
-export function createActions(options: {
-  /** Resolves a block parameter (tag, number, or EIP-1898 object) to a block number. */
-  resolveBlock: (block: unknown) => bigint;
-  /** Code for an address the mock knows about without a mock: registered or empty. */
-  codeAt: (address: Address) => Hex | undefined;
-  /** The current block number. */
-  blockNumber: () => bigint;
-  /** Block `number` as generated, before any mock's fields. */
-  generateBlock: (number: bigint) => MockBlock;
-  /** Mines one block. */
-  mine: () => void;
-  /** Whether a contract is registered at `address`, which is checksummed. */
-  isContract: (address: Address) => boolean;
-  /** Block `number`'s fees. */
-  feesAt: (number: bigint) => Fees;
-  /** A registered contract's turn at an estimate of one of its functions, if it's one. */
-  estimateAt: (call: EstimateGasCall) => ContractEstimate | undefined;
-  chainId: number;
+export function createActions({
+  state,
+  registry,
+  logStore,
+}: {
+  state: ChainState;
+  registry: Registry;
+  /** Emitted logs, which answer `eth_getLogs`. */
+  logStore: LogStore;
 }) {
-  const {
-    resolveBlock,
-    codeAt,
-    blockNumber,
-    generateBlock,
-    mine,
-    isContract,
-    feesAt,
-    estimateAt,
-    chainId,
-  } = options;
+  const { resolveBlock, generateBlock, feesAt, chainId } = state;
+  const { codeAt } = registry;
+  const blockNumber = () => state.blockNumber;
+  /** A registered contract's turn at an estimate of one of its functions, if it's one. */
+  function estimateAt({ to, data, account, value, blockNumber: number }: EstimateGasCall) {
+    if (to === undefined || data === undefined || data === "0x") return undefined;
+    return registry
+      .contractAt(to)
+      ?.estimate(data, { from: account, value, blockNumber: number, batch: undefined });
+  }
   /** A transaction's JSON-RPC form, with the mock's defaults; see `getTransaction`. */
   const encodeTransaction = (transaction: MockTransaction, hash: Hash) =>
     toRpcTransaction(transaction, {
@@ -407,18 +399,9 @@ export function createActions(options: {
       blockNumber: blockNumber(),
       chainId,
       feesAt,
-      timestampAt: (number) => generateBlock(number).timestamp,
+      timestampAt: state.timestampAt,
     });
   const fees = () => feesAt(blockNumber());
-  // Emitted logs, which answer `eth_getLogs`.
-  const logStore = createLogStore({
-    blockNumber,
-    mine,
-    timestamp: (number) => generateBlock(number).timestamp,
-    resolveBlock,
-    isContract,
-    isKnown: (address) => codeAt(address) !== undefined,
-  });
   /** `eth_getBlockByNumber` takes a number or tag; `eth_getBlockByHash` a hash. */
   function decodeBlock([block, includeTransactions]: readonly unknown[], rpcMethod: string) {
     const include = includeTransactions === true;
@@ -791,7 +774,6 @@ export function createActions(options: {
   return {
     actions,
     method,
-    logStore,
     /** The receipt `getTransactionReceipt` answers for `.returns(receipt)`; its hash is zero unless given. */
     buildReceipt: (receipt: MockReceipt = {}) =>
       completeReceipt(receipt, {
