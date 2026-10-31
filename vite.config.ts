@@ -35,9 +35,14 @@ export default defineConfig({
         plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise", "vitest"],
       },
       {
-        // Temporary: these are split up later in the refactor (actions/, contracts/,
-        // rpc/); remove this override when they're gone.
-        files: ["src/createMockRpc.ts", "src/actions.ts", "src/contract.ts"],
+        // Temporary: these are split up later in the refactor (contracts/, rpc/,
+        // viem/); remove this override when they're gone.
+        files: ["src/createMockRpc.ts", "src/contract.ts"],
+        rules: { "import/max-dependencies": "off" },
+      },
+      {
+        // The catalog of typed actions imports each one; that's its job.
+        files: ["src/actions/typedActions.ts"],
         rules: { "import/max-dependencies": "off" },
       },
       {

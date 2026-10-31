@@ -1,0 +1,51 @@
+import { type RpcBlock, formatBlock, isHex } from "viem";
+import { numberOfBlockHash, toRpcBlock } from "../chain/blocks.js";
+import type { ChainState } from "../chain/state.js";
+import { isPlainObject } from "../shared/values.js";
+import type { BlockCall } from "./types.js";
+import { blockAt } from "./decode.js";
+import type { ActionsContext, Definition } from "./table.js";
+
+/** `eth_getBlockByNumber` takes a number or tag; `eth_getBlockByHash` a hash. */
+function decodeBlock(
+  [block, includeTransactions]: readonly unknown[],
+  rpcMethod: string,
+  state: ChainState,
+): BlockCall {
+  const include = includeTransactions === true;
+  if (rpcMethod === "eth_getBlockByHash" && isHex(block))
+    return {
+      blockNumber: numberOfBlockHash(block) ?? state.blockNumber,
+      blockHash: block,
+      includeTransactions: include,
+    };
+  return { ...blockAt(block, state.resolveBlock), includeTransactions: include };
+}
+
+/** `eth_getBlockByNumber` and `eth_getBlockByHash`: unmocked, generated blocks up to the current one. */
+export const getBlock = ({ state }: ActionsContext): Definition => ({
+  name: "getBlock",
+  hint: "mock.actions.getBlock({ blockNumber }).returns(…)",
+  decode: (params, method) => decodeBlock(params, method, state),
+  zero: {},
+  encode(value, call) {
+    if (value === null) return null;
+    if (!isPlainObject(value))
+      throw new TypeError(`A block must be an object or null; got ${typeof value}.`);
+    const { blockNumber: number, blockHash } = (call ?? {}) as Partial<BlockCall>;
+    const generated = state.generateBlock(number ?? state.blockNumber);
+    // A pinned, unknown hash is the block's own hash.
+    const base = blockHash === undefined ? generated : { ...generated, hash: blockHash };
+    return toRpcBlock({ ...base, ...value });
+  },
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encoded by toRpcBlock
+  view: (rpc) => (rpc === null ? null : formatBlock(rpc as RpcBlock)),
+  // Generated blocks exist up to the current one, and only by their own hashes.
+  fallback(call) {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeBlock
+    const { blockNumber: number, blockHash } = call as BlockCall;
+    if (blockHash !== undefined && numberOfBlockHash(blockHash) === undefined) return undefined;
+    if (number > state.blockNumber) return undefined;
+    return toRpcBlock(state.generateBlock(number));
+  },
+});

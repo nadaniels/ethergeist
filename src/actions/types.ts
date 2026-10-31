@@ -1,11 +1,6 @@
 import type { Address, BlockTag, Hash, Hex } from "viem";
-import type { MockBlock } from "../chain/blocks.js";
-import type { MockFeeHistory } from "../chain/fees.js";
-import type { EmittedLog } from "../logs/events.js";
 import type { LogsCall } from "../logs/filter.js";
-import type { MockEstimateAnswers, MockFault, MockNodeFault } from "../mocking/types.js";
-import type { MockReceipt } from "../chain/receipts.js";
-import type { MockTransaction } from "../chain/transactions.js";
+import type { MockFault } from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";
 
 /**
@@ -87,40 +82,29 @@ export type TransactionCall = { hash: Hash };
 /** A raw JSON-RPC request answered by `mock.method()`. */
 export type MethodCall = { method: string; params: readonly RpcValue[] };
 
+/** Each typed action's decoded call. */
+export type ActionCalls = {
+  getBalance: BalanceCall;
+  getCode: CodeCall;
+  getBlock: BlockCall;
+  getTransactionReceipt: ReceiptCall;
+  getTransaction: TransactionCall;
+  getLogs: LogsCall;
+  getGasPrice: EmptyCall;
+  estimateMaxPriorityFeePerGas: EmptyCall;
+  getBlobBaseFee: EmptyCall;
+  getFeeHistory: FeeHistoryCall;
+  getTransactionCount: TransactionCountCall;
+  getStorageAt: StorageCall;
+  estimateGas: EstimateGasCall;
+};
+
 export type ActionContext<call> = call & {
   /**
    * Fail the whole JSON-RPC request with a transport-level fault, e.g.
    * `fail({ status: 503 })`. See `MockFault` for the kinds.
    */
   fail: (fault: MockFault) => never;
-};
-
-/**
- * What a `getLogs` resolver gets: the filter, `fail`, and `logs`, what the
- * emitted logs would answer. Reading `logs` for a filter a node would refuse
- * (a range past the head, an address without a contract) throws that refusal.
- */
-export type LogsContext = ActionContext<LogsCall> & { readonly logs: EmittedLog[] };
-
-/**
- * What an estimate's resolver gets: the call, and `fail`, which also takes a
- * node's refusal by name, e.g. `fail("insufficientFunds")`.
- */
-export type EstimateGasContext = EstimateGasCall & { fail: (fault: MockNodeFault) => never };
-
-/** Like `MockActionBuilder`, for an estimate. */
-export type MockEstimateBuilder<context> = MockEstimateAnswers<context> & {
-  /** See `MockActionBuilder`'s `once()`. */
-  once(): MockEstimateAnswers<context>;
-  /** Like `.once()`, for the next `count` matching requests. */
-  times(count: number): MockEstimateAnswers<context>;
-};
-
-/** `MockAction` for `estimateGas`. */
-export type MockEstimateGasAction = {
-  (params?: Partial<EstimateGasCall>): MockEstimateBuilder<EstimateGasContext>;
-  /** Every call to this action the mock has received, in order. */
-  readonly calls: EstimateGasCall[];
 };
 
 /** How a mock answers: `.returns()` or `.fails()`. */
@@ -162,116 +146,6 @@ export type MockActionWithoutParams<value> = {
   (): MockActionBuilder<EmptyCall, value, ActionContext<object>>;
   /** Every call to this action the mock has received, in order. */
   readonly calls: EmptyCall[];
-};
-
-/** Each typed action's decoded call. */
-export type ActionCalls = {
-  getBalance: BalanceCall;
-  getCode: CodeCall;
-  getBlock: BlockCall;
-  getTransactionReceipt: ReceiptCall;
-  getTransaction: TransactionCall;
-  getLogs: LogsCall;
-  getGasPrice: EmptyCall;
-  estimateMaxPriorityFeePerGas: EmptyCall;
-  getBlobBaseFee: EmptyCall;
-  getFeeHistory: FeeHistoryCall;
-  getTransactionCount: TransactionCountCall;
-  getStorageAt: StorageCall;
-  estimateGas: EstimateGasCall;
-};
-
-/** Mocks for viem's public actions, answered with values in viem's own types. */
-export type MockActions = {
-  /** `eth_getBalance`. Unmocked addresses aren't answered. */
-  getBalance: MockAction<BalanceCall, bigint>;
-  /**
-   * `eth_getCode`. Unmocked, a registered contract (and Multicall3) answers
-   * with placeholder code, `0xfe`, and an `empty()` address with `0x`.
-   */
-  getCode: MockAction<CodeCall, Hex>;
-  /**
-   * `eth_getBlockByNumber` and `eth_getBlockByHash`. Unmocked, blocks up to the
-   * current one are generated: number, hash, parent hash, a timestamp that
-   * follows the chain's `blockTime`, and the base fee (see `fees`), with
-   * everything else zero. A mock's fields
-   * are merged over the generated block; `null` answers "no such block".
-   */
-  getBlock: MockAction<BlockCall, Partial<MockBlock> | null>;
-  /**
-   * `eth_getTransactionReceipt`. A mock's fields go over defaults: `status` is
-   * `"success"`, the block is the current one, and logs get their index, block,
-   * and transaction from the receipt; the rest is zero. `null` answers "no
-   * such transaction". Unmocked hashes aren't answered.
-   */
-  getTransactionReceipt: MockAction<ReceiptCall, MockReceipt | null>;
-  /**
-   * `eth_getTransactionByHash`. A mock's fields go over defaults: an
-   * `"eip1559"` transaction mined in the current block, at index 0, that paid
-   * the suggested fees (see `fees`), with a zero signature; the rest is zero.
-   * Fields its `type` doesn't have throw, and `blockNumber: null` makes it
-   * pending. `null` answers "no such transaction". Unmocked hashes aren't
-   * answered. `mock.buildTransaction()` builds the same transaction.
-   */
-  getTransaction: MockAction<TransactionCall, MockTransaction | null>;
-  /**
-   * `eth_getLogs`, for `getLogs` and `getContractEvents`. Unmocked, it's
-   * answered from emitted logs (`mock.emit()`), filtered as a node filters
-   * them. A mock answers first, with placed logs (from `emit()` or
-   * `mock.buildLog()`), or fails, e.g. for a provider's block range cap; its
-   * resolver gets the emitted logs the filter matches as `logs`.
-   */
-  getLogs: MockAction<LogsCall, readonly EmittedLog[], LogsContext>;
-  /**
-   * `eth_gasPrice`. Unmocked, the current block's base fee plus the tip, as
-   * reth suggests (see `fees` in `createMockRpc()`).
-   */
-  getGasPrice: MockActionWithoutParams<bigint>;
-  /**
-   * `eth_maxPriorityFeePerGas`, the tip a node suggests. Unmocked, `fees`'
-   * `maxPriorityFeePerGas`. viem's `estimateMaxPriorityFeePerGas()` and
-   * `estimateFeesPerGas()` don't fail when it fails: they fall back to
-   * `eth_gasPrice` minus the base fee.
-   */
-  estimateMaxPriorityFeePerGas: MockActionWithoutParams<bigint>;
-  /**
-   * `eth_blobBaseFee`. Unmocked, 1 wei, the protocol's minimum: generated
-   * blocks have no excess blob gas.
-   */
-  getBlobBaseFee: MockActionWithoutParams<bigint>;
-  /**
-   * `eth_feeHistory`. Unmocked, the generated blocks' history, as reth
-   * answers it for empty blocks: their base fees from `fees`, no gas used,
-   * and zero rewards. A mock's fields are merged over it. Unmocked, a newest
-   * block past the current one and unordered percentiles are refused, as
-   * reth refuses them.
-   */
-  getFeeHistory: MockAction<FeeHistoryCall, MockFeeHistory>;
-  /**
-   * `eth_getTransactionCount`, an account's nonce: the transactions it has
-   * sent. Unmocked addresses aren't answered. viem asks for `"pending"`
-   * when preparing a transaction, and `"latest"` by default.
-   */
-  getTransactionCount: MockAction<TransactionCountCall, number>;
-  /**
-   * `eth_getStorageAt`, one storage slot of an address. Slots in pins and
-   * requests are compared as 32 bytes, so `"0x0"` matches a request for slot
-   * zero written in full. Answers are up to 32 bytes, padded to 32 as a node
-   * sends them, so `.returns("0x1")` works. Unmocked, an `empty()` address's
-   * storage is all zero, as for any address without code; other addresses
-   * aren't answered.
-   */
-  getStorageAt: MockAction<StorageCall, Hex>;
-  /**
-   * `eth_estimateGas`, for `estimateGas` and the gas a transaction is
-   * prepared with. A registered contract's `estimateGas` mocks and defaults
-   * answer estimates of its functions first; these answer the rest. Unmocked,
-   * a plain transfer, with no data, to an
-   * address without code is 21000 gas, as a node estimates it; anything else
-   * isn't answered. `.fails()` takes a node's refusal by name, e.g.
-   * `"insufficientFunds"`.
-   */
-  estimateGas: MockEstimateGasAction;
 };
 
 export type MockMethodBuilder = MockActionBuilder<MethodCall, RpcValue>;

@@ -1,28 +1,32 @@
 export type {
   ActionContext,
+  MockAction,
+  MockActionAnswers,
+  MockActionBuilder,
+  MockActionWithoutParams,
+  MockMethodBuilder,
+} from "./actions/types.js";
+export type {
   AddressAtBlockCall,
   BalanceCall,
   BlockCall,
   CodeCall,
   EmptyCall,
   EstimateGasCall,
-  EstimateGasContext,
   FeeHistoryCall,
   MethodCall,
-  MockAction,
-  MockActionAnswers,
-  MockActionBuilder,
-  MockActionWithoutParams,
-  MockActions,
-  MockEstimateBuilder,
-  MockEstimateGasAction,
-  MockMethodBuilder,
   ReceiptCall,
   RpcValue,
   StorageCall,
   TransactionCall,
   TransactionCountCall,
 } from "./actions/types.js";
+export type {
+  EstimateGasContext,
+  MockEstimateBuilder,
+  MockEstimateGasAction,
+} from "./actions/estimateGas.js";
+export type { MockActions } from "./actions/typedActions.js";
 export {
   createMockRpc,
   type CreateMockRpcParameters,

@@ -14,7 +14,7 @@ import {
   isAddress,
   numberToHex,
 } from "viem";
-import { createActions } from "./actions.js";
+import { createActions } from "./actions/createActions.js";
 import type { MockFees } from "./chain/fees.js";
 import type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
 import { createMockContract } from "./contract.js";
