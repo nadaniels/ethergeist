@@ -1,4 +1,4 @@
-import { createPublicClient, erc20Abi, getAddress, parseAbi, zeroHash } from "viem";
+import { type BlockTag, createPublicClient, erc20Abi, getAddress, parseAbi, zeroHash } from "viem";
 import { base } from "viem/chains";
 import { describe, expect, expectTypeOf, test } from "vite-plus/test";
 import {
@@ -236,7 +236,7 @@ describe("history entries", () => {
       if (entry.type === "multicall") expectTypeOf(entry.calls).toBeArray();
       if (entry.type === "action" && entry.action === "getBalance")
         expectTypeOf(entry.call).toEqualTypeOf<
-          { address: `0x${string}`; blockNumber: bigint } | undefined
+          { address: `0x${string}`; blockNumber: bigint; blockTag?: BlockTag } | undefined
         >();
       if (entry.outcome.type === "revert")
         expectTypeOf(entry.outcome.data).toEqualTypeOf<`0x${string}`>();
@@ -277,7 +277,7 @@ describe("formatHistory()", () => {
         "   └ 0x6B17…1d0F.decimals() ✗ reverted: EnforcedPause()",
         "#3 eth_call USDC.symbol() ✗ fault: HTTP 503",
         "#4 eth_call (retry) USDC.symbol() ✗ fault: HTTP 503",
-        "#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n }) → 1000000000000000000n",
+        "#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n, blockTag: latest }) → 1000000000000000000n",
         "#6 eth_getBlockTransactionCountByNumber(latest) ✗ not mocked",
         "#7 eth_blockNumber → 10n",
       ].join("\n"),

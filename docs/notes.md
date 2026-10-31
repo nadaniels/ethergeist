@@ -339,10 +339,13 @@ features land; tick them off as pages get written.
     it (reported upstream; link the issue).
 - [ ] Strict by default for data the test owns (balances, receipts, nonces), and how
       to opt into real-node defaults with args-less mocks.
-- [ ] Nonces: `getTransactionCount` keeps the block tag, so pin
-      `{ address, blockTag: "pending" }` apart from `"latest"` (a node counts
-      transactions waiting to be mined in `"pending"`), e.g. for a stuck
-      transaction. viem asks for `"pending"` when preparing a transaction
+- [ ] Block tags: calls at a block keep the tag they asked for (`getBalance`,
+      `getCode`, `getTransactionCount`, `getBlock`, `getFeeHistory`,
+      `estimateGas`): `"latest"` when none was given, and none for a block
+      number. A pin without a tag matches any block.
+- [ ] Nonces: pin `getTransactionCount`'s `{ address, blockTag: "pending" }`
+      apart from `"latest"` (a node counts transactions waiting to be mined
+      in `"pending"`), e.g. for a stuck transaction. viem asks for `"pending"` when preparing a transaction
       for a local account. Nonces don't follow sends yet: mock them.
 - [ ] Gas estimates: `mock.actions.estimateGas({ account, to, value, data })`
       answers `estimateGas` and the gas viem prepares a transaction with.

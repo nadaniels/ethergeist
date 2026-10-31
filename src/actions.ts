@@ -62,10 +62,16 @@ import {
 } from "./match.js";
 import { isPlainObject, zeroResult } from "./result.js";
 
-/** What a call to `getBalance` asked for. Block tags resolve to the mock's block number. */
-export type BalanceCall = { address: Address; blockNumber: bigint };
-/** What a call to `getCode` asked for. Block tags resolve to the mock's block number. */
-export type CodeCall = { address: Address; blockNumber: bigint };
+/**
+ * What a call about an address at a block asked for. A tag resolves to the
+ * mock's block number and is kept, so `"pending"` can be pinned apart from
+ * `"latest"`; no block is `"latest"`, and a block number has no tag.
+ */
+export type AddressAtBlockCall = { address: Address; blockNumber: bigint; blockTag?: BlockTag };
+/** What a call to `getBalance` asked for; see `AddressAtBlockCall`. */
+export type BalanceCall = AddressAtBlockCall;
+/** What a call to `getCode` asked for; see `AddressAtBlockCall`. */
+export type CodeCall = AddressAtBlockCall;
 /**
  * What a call to `getBlock` asked for. `blockNumber` is always set: a tag
  * resolves to the mock's block number, and a generated block's hash to its
@@ -98,11 +104,10 @@ export type FeeHistoryCall = {
   rewardPercentiles?: readonly number[];
 };
 /**
- * What a call to `getTransactionCount` asked for. A tag resolves to the
- * mock's block number and is kept, so `"pending"` can be pinned apart from
- * `"latest"`: a node counts transactions waiting to be mined in `"pending"`.
+ * What a call to `getTransactionCount` asked for; see `AddressAtBlockCall`.
+ * A node counts transactions waiting to be mined in `"pending"`.
  */
-export type TransactionCountCall = { address: Address; blockNumber: bigint; blockTag?: BlockTag };
+export type TransactionCountCall = AddressAtBlockCall;
 /**
  * What a call to `estimateGas` asked for: the transaction, and the block it's
  * estimated at. `account` is the sender, sent as `from`; `value` is `0n` when
@@ -755,12 +760,17 @@ export function createActions(options: {
   }
   const feeHistoryOf = ({ blockCount, blockNumber: newest, rewardPercentiles }: FeeHistoryCall) =>
     feeHistory({ blockCount, newest, ...(rewardPercentiles && { rewardPercentiles }) }, feesAt);
-  /** Like `decodeAddressAtBlock`, keeping a tag. */
-  function decodeTransactionCount(params: readonly unknown[]): TransactionCountCall {
-    const [, block = "latest"] = params;
+  /** An address and a block, as `eth_getBalance` and its kind take them; see `AddressAtBlockCall`. */
+  function decodeAddressAtBlock([
+    address,
+    block = "latest",
+  ]: readonly unknown[]): AddressAtBlockCall {
     const isTag = typeof block === "string" && !isHex(block);
     return {
-      ...decodeAddressAtBlock(params),
+      // JSON-RPC params arrive untyped; viem sends the address first.
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
+      address: getAddress(address as string),
+      blockNumber: resolveBlock(block),
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a tag, per JSON-RPC
       ...(isTag && { blockTag: block as BlockTag }),
     };
@@ -799,12 +809,6 @@ export function createActions(options: {
       Object.entries(fields).filter(([, each]) => each !== undefined),
     ) as EstimateGasCall;
   }
-  const decodeAddressAtBlock = ([address, block]: readonly unknown[]) => ({
-    // JSON-RPC params arrive untyped; viem sends the address first.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
-    address: getAddress(address as string),
-    blockNumber: resolveBlock(block),
-  });
 
   const typed = {
     getBalance: createTable({
@@ -909,7 +913,7 @@ export function createActions(options: {
     getTransactionCount: createTable({
       name: "getTransactionCount",
       hint: "mock.actions.getTransactionCount({ address }).returns(…)",
-      decode: decodeTransactionCount,
+      decode: decodeAddressAtBlock,
       pin: pinAddress,
       zero: 0,
       encode(value) {

@@ -1,5 +1,6 @@
 export type {
   ActionContext,
+  AddressAtBlockCall,
   BalanceCall,
   BlockCall,
   CodeCall,

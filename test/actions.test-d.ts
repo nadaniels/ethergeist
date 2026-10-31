@@ -54,7 +54,7 @@ describe("actions", () => {
 
   test("calls are typed", () => {
     expectTypeOf(mock.actions.getBalance.calls).toEqualTypeOf<
-      { address: Address; blockNumber: bigint }[]
+      { address: Address; blockNumber: bigint; blockTag?: BlockTag }[]
     >();
   });
 

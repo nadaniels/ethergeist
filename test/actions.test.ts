@@ -78,7 +78,7 @@ describe("getBalance", () => {
       MockNotFoundError,
     );
     expect(error.message).toContain(
-      `No mock for getBalance({ address: ${getAddress(alice)}, blockNumber: 10n })`,
+      `No mock for getBalance({ address: ${getAddress(alice)}, blockNumber: 10n, blockTag: latest })`,
     );
     expect(error.message).toContain("mock.actions.getBalance({ address }).returns(…)");
     expect(mock.unhandled).toHaveLength(1);
@@ -113,13 +113,28 @@ describe("getBalance", () => {
     expect(await client.getBalance({ address: alice, blockNumber: 3n })).toBe(300n);
   });
 
+  test("keeps the block tag, so pending can be pinned apart from latest", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: alice }).returns(parseEther("1"));
+    mock.actions.getBalance({ address: alice, blockTag: "pending" }).returns(parseEther("2"));
+
+    expect(await client.getBalance({ address: alice })).toBe(parseEther("1"));
+    expect(await client.getBalance({ address: alice, blockTag: "pending" })).toBe(parseEther("2"));
+    expect(await client.getBalance({ address: alice, blockNumber: 4n })).toBe(parseEther("1"));
+    expect(mock.actions.getBalance.calls.map((call) => call.blockTag)).toEqual([
+      "latest",
+      "pending",
+      undefined,
+    ]);
+  });
+
   test("calls are logged with checksummed addresses", async () => {
     const { mock, client } = setup();
     mock.actions.getBalance().returns(0n);
 
     await client.getBalance({ address: lowercase(alice) });
     expect(mock.actions.getBalance.calls).toEqual([
-      { address: getAddress(alice), blockNumber: 10n },
+      { address: getAddress(alice), blockNumber: 10n, blockTag: "latest" },
     ]);
   });
 
