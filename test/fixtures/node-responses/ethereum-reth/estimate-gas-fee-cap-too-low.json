@@ -1,10 +1,10 @@
 {
-  "description": "eth_estimateGas with a max fee of 1 wei, below the base fee",
+  "description": "eth_estimateGas with a max fee of 1 wei, below the base fee, from a funded sender",
   "client": "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu",
   "chainId": 1,
   "endpoint": "https://ethereum-rpc.publicnode.com",
   "capturedAt": "2026-10-31",
-  "head": "26314731",
+  "head": "26314821",
   "request": {
     "method": "eth_estimateGas",
     "params": [
@@ -14,7 +14,12 @@
         "maxFeePerGas": "0x1",
         "maxPriorityFeePerGas": "0x0"
       },
-      "latest"
+      "latest",
+      {
+        "0x3ffad175d7e6060d236e450e9bc09bc54be68770": {
+          "balance": "0x56bc75e2d63100000"
+        }
+      }
     ]
   },
   "response": {

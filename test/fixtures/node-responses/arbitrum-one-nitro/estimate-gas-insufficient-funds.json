@@ -1,0 +1,30 @@
+{
+  "description": "eth_estimateGas sending 1 wei from an unfunded address, without fee fields",
+  "client": "nitro/v3.12.2+5f02f3f-20261014T220458Z/linux-arm64/go1.25.12",
+  "chainId": 42161,
+  "endpoint": "https://arb1.arbitrum.io/rpc",
+  "capturedAt": "2026-10-31",
+  "head": "520076047",
+  "request": {
+    "method": "eth_estimateGas",
+    "params": [
+      {
+        "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
+        "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
+        "value": "0x1"
+      },
+      "latest"
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "error": {
+        "code": -32000,
+        "message": "failed with 50000000 gas: insufficient funds for gas * price + value: address 0x3FFad175d7E6060D236E450E9Bc09BC54BE68770 have 0 want 1"
+      }
+    }
+  }
+}

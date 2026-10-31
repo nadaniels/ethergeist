@@ -1,10 +1,10 @@
 {
-  "description": "eth_estimateGas with a tip above its max fee",
+  "description": "eth_estimateGas with a tip above its max fee, from a funded sender",
   "client": "reth/v2.5.2-7134be3/x86_64-unknown-linux-gnu/base/v1.5.0",
   "chainId": 8453,
   "endpoint": "https://mainnet.base.org",
   "capturedAt": "2026-10-31",
-  "head": "53342154",
+  "head": "53342693",
   "request": {
     "method": "eth_estimateGas",
     "params": [
@@ -14,7 +14,12 @@
         "maxFeePerGas": "0x989680",
         "maxPriorityFeePerGas": "0xe4e1c0"
       },
-      "latest"
+      "latest",
+      {
+        "0x3ffad175d7e6060d236e450e9bc09bc54be68770": {
+          "balance": "0x56bc75e2d63100000"
+        }
+      }
     ]
   },
   "response": {

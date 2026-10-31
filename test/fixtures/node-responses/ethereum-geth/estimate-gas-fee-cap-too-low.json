@@ -1,0 +1,36 @@
+{
+  "description": "eth_estimateGas with a max fee of 1 wei, below the base fee, from a funded sender",
+  "client": "Geth/v1.17.5-stable-385b80eb/linux-amd64/go1.25.12",
+  "chainId": 1,
+  "endpoint": "https://eth.blockrazor.xyz",
+  "capturedAt": "2026-10-31",
+  "head": "26314821",
+  "request": {
+    "method": "eth_estimateGas",
+    "params": [
+      {
+        "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
+        "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
+        "maxFeePerGas": "0x1",
+        "maxPriorityFeePerGas": "0x0"
+      },
+      "latest",
+      {
+        "0x3ffad175d7e6060d236e450e9bc09bc54be68770": {
+          "balance": "0x56bc75e2d63100000"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "error": {
+        "code": -32000,
+        "message": "failed with 16777216 gas: max fee per gas less than block base fee: address 0x3FFad175d7E6060D236E450E9Bc09BC54BE68770, maxFeePerGas: 1, baseFee: 69556412"
+      }
+    }
+  }
+}

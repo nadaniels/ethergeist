@@ -1,0 +1,36 @@
+{
+  "description": "eth_estimateGas with a tip above its max fee, from a funded sender",
+  "client": "Nethermind/v2.2.2+be201120-h/linux-x64/dotnet10.0.14",
+  "chainId": 100,
+  "endpoint": "https://gnosis-rpc.publicnode.com",
+  "capturedAt": "2026-10-31",
+  "head": "49042224",
+  "request": {
+    "method": "eth_estimateGas",
+    "params": [
+      {
+        "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
+        "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
+        "maxFeePerGas": "0x2c",
+        "maxPriorityFeePerGas": "0x42"
+      },
+      "latest",
+      {
+        "0x3ffad175d7e6060d236e450e9bc09bc54be68770": {
+          "balance": "0x56bc75e2d63100000"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "error": {
+        "code": -32000,
+        "message": "failed with 16777216 gas: max priority fee per gas higher than max fee per gas: address 0x3FFad175d7E6060D236E450E9Bc09BC54BE68770, maxPriorityFeePerGas: 66, maxFeePerGas: 44"
+      },
+      "id": 1
+    }
+  }
+}

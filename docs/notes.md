@@ -147,8 +147,19 @@ features land; tick them off as pages get written.
     else a node says, `fails({ code, message })`.
   - Assert the class, e.g. `err.walk((e) => e instanceof
     InsufficientFundsError)`, not the code or text: those are reth's, and
-    geth and its forks send other codes and wordings that viem names the
-    same. (To confirm across clients with the step 9 captures.)
+    other clients send other codes and wordings that viem names the same.
+    Checked against captures (2026-10-31) from geth, an OP Stack geth fork
+    (Mantle), Arbitrum Nitro, Erigon and Nethermind: all three names give
+    the same viem class. Besu wasn't checked (no public endpoint ran it).
+  - Known difference: zkSync Era sends insufficient funds as code 3 (a
+    revert, `data: "0x"`), so viem gives `ExecutionRevertedError` there, not
+    `InsufficientFundsError`; and it doesn't check fee caps in estimates,
+    so it never says the other two. An app on zkSync that handles
+    insufficient funds by class needs a revert branch too, in production
+    as well as in tests.
+  - Most clients check the balance against the fee cap first: from an
+    empty account, geth-family nodes say "insufficient funds" for any
+    estimate with fees, before any fee-cap error.
 - [ ] `failRequests()` for transport-wide faults, versus `.fails()` and
       `fail()` for one function.
 - [ ] Recovering after a failure: `.once().fails(…)` or `.times(n).fails(…)`
@@ -352,6 +363,9 @@ features land; tick them off as pages get written.
       Unmocked, a plain transfer (no data) to an address without code is
       21000 gas, as a node estimates it, so sending ETH needs no mock;
       anything else isn't answered.
+  - 21000 is what reth, geth, Erigon, Nethermind and Arbitrum estimate. On
+    zkSync Era a plain transfer estimates far higher (146780 when
+    captured): mock the estimate if a test there depends on the number.
   - The call has the request's fees and nonce when it sent them, e.g. for
     a resolver; `value` is `0n` when it sent none, so pinning `value: 0n`
     matches those.
@@ -382,9 +396,15 @@ features land; tick them off as pages get written.
       viem tries `eth_fillTransaction` first when preparing a transaction for
       a local account (writes, and `estimateGas` with a local account) and,
       once refused, fills the nonce, fees, and gas with their own requests,
-      which are what tests mock. reth and geth support it, so against them
-      viem sends fewer requests; the transaction it builds is the same. Mock it
-      with `mock.method("eth_fillTransaction")` to test code that relies on it.
+      which are what tests mock. Mock it with
+      `mock.method("eth_fillTransaction")` to test code that relies on it.
+  - In production it varies (captured 2026-10-31): reth, geth, Nethermind
+    and zkSync support it; Arbitrum and Erigon refuse it with `-32601`, as
+    the mock does, which viem remembers per client. Some gateways refuse it
+    another way (Base's public RPC with HTTP 401, Mantle's with HTTP 403),
+    and geth-family nodes fail it for an empty account; after those, viem
+    falls back without remembering, so it tries again on every prepare. The
+    transaction viem builds is the same either way.
 
 ## 6. Assertions and error messages
 

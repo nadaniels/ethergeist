@@ -4,7 +4,7 @@
  * head, so captures stay valid as the chain moves on.
  *
  * Usage:
- *   vpx scripts/capture-node-responses.ts [endpoint] [--write] [--name <name>] [--only <prefix>]
+ *   vpx scripts/capture-node-responses.ts [endpoint] [--write] [--name <name>] [--only <prefix>] [--pause <ms>]
  *
  * - `endpoint`: a JSON-RPC URL. Defaults to Ethereum's public reth node
  *   (publicnode), the node the mock imitates. Use any public endpoint to see
@@ -18,11 +18,15 @@
  * - `--only`: capture only the cases whose names start with this, e.g.
  *   `estimate-gas`; repeat it for several. Defaults to every case, so a
  *   subset can be refreshed without rewriting the rest.
+ * - `--pause`: milliseconds between requests. Defaults to 500; raise it for
+ *   an endpoint with a tight rate limit, e.g. 13000 for 5 requests a minute.
  *
  * It sends a handful of read-only requests, one at a time with a pause in
  * between, and needs no API key. Gas estimates are sent from an address
  * nobody holds a key to, which holds nothing (checked before they're sent):
- * nothing is signed or spent. Don't point it at an endpoint with a key in
+ * nothing is signed or spent. The fee cases pretend it's funded for that one
+ * request (a state override), since geth-family nodes check the balance
+ * against the fees first. Don't point it at an endpoint with a key in
  * its URL with `--write`: the endpoint is saved with each fixture.
  */
 import { mkdir, writeFile } from "node:fs/promises";
@@ -40,8 +44,8 @@ import * as chains from "viem/chains";
 
 const defaultEndpoint = "https://ethereum-rpc.publicnode.com";
 const fixturesDir = new URL("../test/fixtures/node-responses/", import.meta.url);
-/** Between requests, to stay well within public endpoints' rate limits. */
-const pauseMs = 500;
+/** Between requests, to stay well within public endpoints' rate limits; see `--pause`. */
+let pauseMs = 500;
 
 // USDC on Ethereum: busy enough that any block has its logs. Public nodes
 // refuse multi-block log queries without an address.
@@ -146,17 +150,22 @@ const cases: Case[] = [
   },
   {
     name: "estimate-gas-fee-cap-too-low",
-    description: "eth_estimateGas with a max fee of 1 wei, below the base fee",
-    request: () => estimateGas({ maxFeePerGas: "0x1", maxPriorityFeePerGas: "0x0" }),
+    description:
+      "eth_estimateGas with a max fee of 1 wei, below the base fee, from a funded sender",
+    request: () =>
+      estimateGas({ maxFeePerGas: "0x1", maxPriorityFeePerGas: "0x0" }, { funded: true }),
   },
   {
     name: "estimate-gas-tip-above-fee-cap",
-    description: "eth_estimateGas with a tip above its max fee",
+    description: "eth_estimateGas with a tip above its max fee, from a funded sender",
     request: (head) =>
-      estimateGas({
-        maxFeePerGas: numberToHex(head.baseFeePerGas * 2n),
-        maxPriorityFeePerGas: numberToHex(head.baseFeePerGas * 3n),
-      }),
+      estimateGas(
+        {
+          maxFeePerGas: numberToHex(head.baseFeePerGas * 2n),
+          maxPriorityFeePerGas: numberToHex(head.baseFeePerGas * 3n),
+        },
+        { funded: true },
+      ),
   },
   {
     name: "estimate-gas-transfer",
@@ -183,11 +192,18 @@ const cases: Case[] = [
   })),
 ];
 
-/** A transfer from the unfunded address, estimated at the head, with `fields` over it. */
-function estimateGas(fields: Record<string, string>): RpcRequest {
+/**
+ * A transfer from the unfunded address, estimated at the head, with `fields`
+ * over it. `funded` gives the sender 100 ether for this request only, with a
+ * state override: nothing is held or spent.
+ */
+function estimateGas(fields: Record<string, string>, { funded = false } = {}): RpcRequest {
+  const transaction = { from: unfunded, to: recipient, ...fields };
   return {
     method: "eth_estimateGas",
-    params: [{ from: unfunded, to: recipient, ...fields }, "latest"],
+    params: funded
+      ? [transaction, "latest", { [unfunded]: { balance: numberToHex(10n ** 20n) } }]
+      : [transaction, "latest"],
   };
 }
 
@@ -249,8 +265,10 @@ async function main() {
       write: { type: "boolean", default: false },
       name: { type: "string" },
       only: { type: "string", multiple: true },
+      pause: { type: "string" },
     },
   });
+  if (values.pause !== undefined) pauseMs = Number(values.pause);
   const endpoint = positionals[0] ?? defaultEndpoint;
   const selected = cases.filter(
     ({ name }) =>
@@ -260,7 +278,8 @@ async function main() {
 
   // Setting up goes through viem: these must succeed, and aren't saved. The
   // cases themselves are sent raw, to save exactly what the node answered.
-  const setup = createPublicClient({ transport: http(endpoint, { retryCount: 0 }) });
+  // viem retries rate limits with backoff, and waits as long as Retry-After asks.
+  const setup = createPublicClient({ transport: http(endpoint, { retryCount: 3 }) });
   const client = await setup.request({ method: "web3_clientVersion" });
   await pause();
   const chainId = await setup.getChainId();

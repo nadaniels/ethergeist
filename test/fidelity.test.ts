@@ -17,6 +17,7 @@ import {
   type MockContract,
   type MockFault,
   type MockTransaction,
+  type NodeErrorName,
   type RevertSpec,
   createMockRpc,
   testAddress,
@@ -32,7 +33,8 @@ import { rejectionOf } from "./utils.js";
 // The mock imitates reth exactly (Ethereum's publicnode and mainnet.base.org
 // both run it). Other nodes word their messages differently, so against them
 // only what error handling should rely on is compared: classes, codes, and
-// the decoded revert.
+// the decoded revert. Later captures (named node errors, gas, fill) come from
+// `scripts/capture-node-responses.ts`, one fixture folder per node.
 
 const TOKEN = testAddress("token");
 const abi = [
@@ -474,54 +476,56 @@ describe("getLogs errors match reth's exactly", () => {
   });
 });
 
-describe("named node errors match reth's exactly", () => {
-  // The fixtures' sender and recipient: addresses nobody holds a key to.
-  const unfunded = "0x3FFad175d7E6060D236E450E9Bc09BC54BE68770";
-  const recipient = "0xE023cD5ae4146512f9BA0CBd4523f463603ecd67";
-  const cases = [
-    {
-      fixture: "estimate-gas-insufficient-funds",
-      name: "insufficientFunds",
-      fields: { value: 1n },
-    },
-    {
-      fixture: "estimate-gas-insufficient-funds-with-fees",
-      name: "insufficientFunds",
-      fields: { value: 1n, maxFeePerGas: 2n, maxPriorityFeePerGas: 0n },
-    },
-    {
-      fixture: "estimate-gas-fee-cap-too-low",
-      name: "feeCapTooLow",
-      fields: { maxFeePerGas: 1n, maxPriorityFeePerGas: 0n },
-    },
-    {
-      fixture: "estimate-gas-tip-above-fee-cap",
-      name: "tipAboveFeeCap",
-      fields: { maxFeePerGas: 2n, maxPriorityFeePerGas: 3n },
-    },
-  ] as const;
-  const nodes = ["ethereum-reth", "base-reth"];
+// The gas fixtures' sender and recipient: addresses nobody holds a key to.
+const unfunded = "0x3FFad175d7E6060D236E450E9Bc09BC54BE68770";
+const recipient = "0xE023cD5ae4146512f9BA0CBd4523f463603ecd67";
+/** Each named error's fixture, and the request it answered, in viem's terms. */
+const namedErrors = [
+  { fixture: "estimate-gas-insufficient-funds", name: "insufficientFunds", fields: { value: 1n } },
+  {
+    fixture: "estimate-gas-insufficient-funds-with-fees",
+    name: "insufficientFunds",
+    fields: { value: 1n, maxFeePerGas: 2n, maxPriorityFeePerGas: 0n },
+  },
+  {
+    fixture: "estimate-gas-fee-cap-too-low",
+    name: "feeCapTooLow",
+    fields: { maxFeePerGas: 1n, maxPriorityFeePerGas: 0n },
+  },
+  {
+    fixture: "estimate-gas-tip-above-fee-cap",
+    name: "tipAboveFeeCap",
+    fields: { maxFeePerGas: 2n, maxPriorityFeePerGas: 3n },
+  },
+] as const;
+const noRetries = { retryCount: 0, retryDelay: 0 };
 
-  /** A client estimating through `transport`, and an estimate of the fixtures' transfer. */
-  function estimate(transport: Transport, fields: object) {
-    const client = createPublicClient({ chain: mainnet, transport });
-    return client.estimateGas({ account: unfunded, to: recipient, ...fields });
-  }
+/** An estimate of the fixtures' transfer through `transport`, with `fields` over it. */
+function estimate(transport: Transport, fields: object) {
+  const client = createPublicClient({ chain: mainnet, transport });
+  return client.estimateGas({ account: unfunded, to: recipient, ...fields });
+}
+
+/** The error a mock answers an estimate with when it `.fails(name)`. */
+function mockedRefusal(name: NodeErrorName, fields: object) {
+  const mock = createMockRpc();
+  mock.actions.estimateGas().fails(name);
+  return rejectionOf(estimate(mock.transport(noRetries), fields));
+}
+
+describe("named node errors match reth's exactly", () => {
+  const nodes = ["ethereum-reth", "base-reth"];
 
   test.each(
     nodes.flatMap((node) =>
-      cases.map(({ fixture, name, fields }) => ({ node, fixture, name, fields })),
+      namedErrors.map(({ fixture, name, fields }) => ({ node, fixture, name, fields })),
     ),
   )("$node: $fixture", async ({ node, fixture, name, fields }) => {
-    const { client } = nodeResponse(fixture, node);
-    expect(client).toMatch(/^reth\//u);
+    expect(nodeResponse(fixture, node).client).toMatch(/^reth\//u);
     answer = nodeResponse(fixture, node).answer;
-    const mock = createMockRpc();
-    mock.actions.estimateGas().fails(name);
-    const options = { retryCount: 0, retryDelay: 0 };
 
-    const realError = await rejectionOf(estimate(http(url, options), fields));
-    const mockError = await rejectionOf(estimate(mock.transport(options), fields));
+    const realError = await rejectionOf(estimate(http(url, noRetries), fields));
+    const mockError = await mockedRefusal(name, fields);
 
     expect(layers(mockError, { details: true })).toEqual(layers(realError, { details: true }));
   });
@@ -529,11 +533,78 @@ describe("named node errors match reth's exactly", () => {
   test.each(nodes)("%s: a plain transfer is estimated at 21000, as unmocked", async (node) => {
     answer = nodeResponse("estimate-gas-transfer", node).answer;
     const mock = createMockRpc();
-    const options = { retryCount: 0, retryDelay: 0 };
 
-    expect(await estimate(mock.transport(options), {})).toBe(
-      await estimate(http(url, options), {}),
+    expect(await estimate(mock.transport(noRetries), {})).toBe(
+      await estimate(http(url, noRetries), {}),
     );
+  });
+});
+
+// Other clients word these differently, and send -32000 where reth sends
+// -32003, so viem's middle layer differs (InvalidInputRpcError vs
+// TransactionRejectedRpcError). What error handling relies on matches: the
+// estimate's error, and the node error viem names from the message.
+describe("named node errors classify the same on other clients", () => {
+  const families = [
+    { node: "ethereum-geth", family: "geth" },
+    { node: "mantle-geth", family: "geth (an OP Stack fork)" },
+    { node: "arbitrum-one-nitro", family: "Arbitrum Nitro" },
+    { node: "ethereum-erigon", family: "Erigon" },
+    { node: "gnosis-nethermind", family: "Nethermind" },
+  ];
+
+  test.each(
+    families.flatMap(({ node, family }) =>
+      namedErrors.map(({ fixture, name, fields }) => ({ node, family, fixture, name, fields })),
+    ),
+  )("$family ($node): $fixture", async ({ node, fixture, name, fields }) => {
+    answer = nodeResponse(fixture, node).answer;
+
+    const realError = await rejectionOf(estimate(http(url, noRetries), fields));
+    const mockError = await mockedRefusal(name, fields);
+
+    expect(names(mockError).slice(0, 2)).toEqual(names(realError).slice(0, 2));
+  });
+
+  test.each(families)("$family ($node): a plain transfer is 21000 too", async ({ node }) => {
+    answer = nodeResponse("estimate-gas-transfer", node).answer;
+
+    expect(await estimate(http(url, noRetries), {})).toBe(21_000n);
+  });
+
+  test("zkSync Era sends insufficient funds as a revert, and doesn't check fee caps", async () => {
+    const node = "zksync-era-zksync";
+    answer = nodeResponse("estimate-gas-insufficient-funds", node).answer;
+    const realError = await rejectionOf(estimate(http(url, noRetries), { value: 1n }));
+    // Code 3, so viem names it a revert, not InsufficientFundsError.
+    expect(names(realError).slice(0, 2)).toEqual([
+      "EstimateGasExecutionError",
+      "ExecutionRevertedError",
+    ]);
+    expect(names(await mockedRefusal("insufficientFunds", { value: 1n }))[1]).toBe(
+      "InsufficientFundsError",
+    );
+
+    // Fee caps the other clients refuse are estimated, and a transfer isn't 21000.
+    answer = nodeResponse("estimate-gas-fee-cap-too-low", node).answer;
+    expect(await estimate(http(url, noRetries), { maxFeePerGas: 1n })).toBe(146_830n);
+    answer = nodeResponse("estimate-gas-transfer", node).answer;
+    expect(await estimate(http(url, noRetries), {})).toBe(146_780n);
+  });
+});
+
+describe("eth_fillTransaction", () => {
+  test("is refused as Arbitrum refuses it, which viem remembers", async () => {
+    answer = nodeResponse("fill-transaction", "arbitrum-one-nitro").answer;
+    const request = { method: "eth_fillTransaction", params: [{ from: unfunded, to: recipient }] };
+    const real = http(url, noRetries)({ chain: mainnet });
+    const mocked = createMockRpc().transport(noRetries)({ chain: mainnet });
+
+    const realError = await rejectionOf(real.request(request));
+    const mockError = await rejectionOf(mocked.request(request));
+
+    expect(layers(mockError, { details: true })).toEqual(layers(realError, { details: true }));
+    expect(names(mockError)[0]).toBe("MethodNotFoundRpcError");
   });
 });
 

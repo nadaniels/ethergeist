@@ -1,0 +1,29 @@
+{
+  "description": "eth_fillTransaction for a plain transfer: supported, or how it's refused",
+  "client": "Geth/v1.17.5-stable-385b80eb/linux-amd64/go1.25.12",
+  "chainId": 1,
+  "endpoint": "https://eth.blockrazor.xyz",
+  "capturedAt": "2026-10-31",
+  "head": "26314821",
+  "request": {
+    "method": "eth_fillTransaction",
+    "params": [
+      {
+        "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
+        "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
+        "value": "0x0"
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "id": 1,
+      "error": {
+        "code": -32000,
+        "message": "insufficient funds for transfer"
+      }
+    }
+  }
+}

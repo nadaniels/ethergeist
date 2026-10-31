@@ -1,0 +1,32 @@
+{
+  "description": "eth_estimateGas sending 1 wei from an unfunded address, with fee fields",
+  "client": "erigon/3.8.1-cf6f1413/linux-amd64/go1.27.3",
+  "chainId": 1,
+  "endpoint": "https://ethereum-mainnet.gateway.tatum.io",
+  "capturedAt": "2026-10-31",
+  "head": "26314826",
+  "request": {
+    "method": "eth_estimateGas",
+    "params": [
+      {
+        "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
+        "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
+        "value": "0x1",
+        "maxFeePerGas": "0x87f9b3e",
+        "maxPriorityFeePerGas": "0x0"
+      },
+      "latest"
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "id": 1,
+      "jsonrpc": "2.0",
+      "error": {
+        "code": -32000,
+        "message": "insufficient funds for transfer"
+      }
+    }
+  }
+}

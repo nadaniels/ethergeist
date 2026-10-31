@@ -1,0 +1,33 @@
+{
+  "description": "eth_estimateGas with a tip above its max fee, from a funded sender",
+  "client": "zkSync/v2.0",
+  "chainId": 324,
+  "endpoint": "https://mainnet.era.zksync.io",
+  "capturedAt": "2026-10-31",
+  "head": "72708464",
+  "request": {
+    "method": "eth_estimateGas",
+    "params": [
+      {
+        "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
+        "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
+        "maxFeePerGas": "0x564eba0",
+        "maxPriorityFeePerGas": "0x8176170"
+      },
+      "latest",
+      {
+        "0x3ffad175d7e6060d236e450e9bc09bc54be68770": {
+          "balance": "0x56bc75e2d63100000"
+        }
+      }
+    ]
+  },
+  "response": {
+    "status": 200,
+    "body": {
+      "jsonrpc": "2.0",
+      "result": "0x23d8e",
+      "id": 1
+    }
+  }
+}

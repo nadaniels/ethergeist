@@ -1,20 +1,25 @@
 {
-  "description": "eth_estimateGas with a tip above its max fee",
+  "description": "eth_estimateGas with a tip above its max fee, from a funded sender",
   "client": "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu",
   "chainId": 1,
   "endpoint": "https://ethereum-rpc.publicnode.com",
   "capturedAt": "2026-10-31",
-  "head": "26314731",
+  "head": "26314821",
   "request": {
     "method": "eth_estimateGas",
     "params": [
       {
         "from": "0x3ffad175d7e6060d236e450e9bc09bc54be68770",
         "to": "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67",
-        "maxFeePerGas": "0xb05f82e",
-        "maxPriorityFeePerGas": "0x1088f445"
+        "maxFeePerGas": "0x8710a9e",
+        "maxPriorityFeePerGas": "0xca98fed"
       },
-      "latest"
+      "latest",
+      {
+        "0x3ffad175d7e6060d236e450e9bc09bc54be68770": {
+          "balance": "0x56bc75e2d63100000"
+        }
+      }
     ]
   },
   "response": {
