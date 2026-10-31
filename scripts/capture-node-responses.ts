@@ -27,6 +27,15 @@
  */
 import { mkdir, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
+import {
+  type PublicClient,
+  createPublicClient,
+  http,
+  keccak256,
+  numberToHex,
+  slice,
+  toHex,
+} from "viem";
 import * as chains from "viem/chains";
 
 const defaultEndpoint = "https://ethereum-rpc.publicnode.com";
@@ -38,14 +47,14 @@ const pauseMs = 500;
 // refuse multi-block log queries without an address.
 const usdc = "0xa0b86991c6218b36c1d19d4a2e9eb0ce3606eb48";
 const unknownHash = `0x${"11".repeat(32)}`;
-// The last 20 bytes of keccak256("viem-transport-mock: unfunded sender") and
-// of "…: recipient": addresses nobody holds a key to.
-const unfunded = "0x3ffad175d7e6060d236e450e9bc09bc54be68770";
-const recipient = "0xe023cd5ae4146512f9ba0cbd4523f463603ecd67";
+/** An address derived from `seed`, which nobody holds a key to. */
+const keyless = (seed: string) => slice(keccak256(toHex(`viem-transport-mock: ${seed}`)), 12);
+const unfunded = keyless("unfunded sender");
+const recipient = keyless("recipient");
 
 /**
  * The node's head: its number, hash and base fee, and a hash of each
- * transaction type in a recent block, by type (`0x2`), when a case needs one.
+ * transaction type in a recent block, by type (`eip1559`), when a case needs one.
  */
 type Head = {
   number: bigint;
@@ -65,25 +74,29 @@ type Case = {
 };
 type RpcRequest = { method: string; params: unknown[] };
 
-const hex = (n: bigint) => `0x${n.toString(16)}`;
-
 const cases: Case[] = [
   {
     name: "get-logs-range-past-head",
     description: "eth_getLogs whose toBlock is past the head",
     request: (head) =>
-      getLogs({ fromBlock: hex(head.number - 5n), toBlock: hex(head.number + 10n) }),
+      getLogs({
+        fromBlock: numberToHex(head.number - 5n),
+        toBlock: numberToHex(head.number + 10n),
+      }),
   },
   {
     name: "get-logs-range-backwards",
     description: "eth_getLogs whose fromBlock is after its toBlock",
     request: (head) =>
-      getLogs({ fromBlock: hex(head.number - 5n), toBlock: hex(head.number - 10n) }),
+      getLogs({
+        fromBlock: numberToHex(head.number - 5n),
+        toBlock: numberToHex(head.number - 10n),
+      }),
   },
   {
     name: "get-logs-block-hash-with-range",
     description: "eth_getLogs with both a blockHash and a fromBlock",
-    request: (head) => getLogs({ blockHash: head.hash, fromBlock: hex(head.number) }),
+    request: (head) => getLogs({ blockHash: head.hash, fromBlock: numberToHex(head.number) }),
   },
   {
     name: "get-logs-unknown-block-hash",
@@ -95,8 +108,8 @@ const cases: Case[] = [
     description: "eth_getLogs with five topic positions",
     request: (head) =>
       getLogs({
-        fromBlock: hex(head.number),
-        toBlock: hex(head.number),
+        fromBlock: numberToHex(head.number),
+        toBlock: numberToHex(head.number),
         topics: [null, null, null, null, null],
       }),
   },
@@ -104,14 +117,14 @@ const cases: Case[] = [
     name: "get-logs-shape",
     description: "eth_getLogs for one block, to compare the fields of a log",
     request: (head) =>
-      getLogs({ fromBlock: hex(head.number - 2n), toBlock: hex(head.number - 2n) }),
+      getLogs({ fromBlock: numberToHex(head.number - 2n), toBlock: numberToHex(head.number - 2n) }),
   },
   {
     name: "get-storage-at",
     description: "eth_getStorageAt for a slot written short (0x0), to compare a value's form",
     request: (head) => ({
       method: "eth_getStorageAt",
-      params: [usdc, "0x0", hex(head.number - 2n)],
+      params: [usdc, "0x0", numberToHex(head.number - 2n)],
     }),
   },
   // Named node errors and gas assumptions: what `.fails("insufficientFunds")`
@@ -127,7 +140,7 @@ const cases: Case[] = [
     request: (head) =>
       estimateGas({
         value: "0x1",
-        maxFeePerGas: hex(head.baseFeePerGas * 2n),
+        maxFeePerGas: numberToHex(head.baseFeePerGas * 2n),
         maxPriorityFeePerGas: "0x0",
       }),
   },
@@ -141,8 +154,8 @@ const cases: Case[] = [
     description: "eth_estimateGas with a tip above its max fee",
     request: (head) =>
       estimateGas({
-        maxFeePerGas: hex(head.baseFeePerGas * 2n),
-        maxPriorityFeePerGas: hex(head.baseFeePerGas * 3n),
+        maxFeePerGas: numberToHex(head.baseFeePerGas * 2n),
+        maxPriorityFeePerGas: numberToHex(head.baseFeePerGas * 3n),
       }),
   },
   {
@@ -158,19 +171,11 @@ const cases: Case[] = [
       params: [{ from: unfunded, to: recipient, value: "0x0" }],
     }),
   },
-  ...(
-    [
-      ["legacy", "0x0"],
-      ["eip2930", "0x1"],
-      ["eip1559", "0x2"],
-      ["eip4844", "0x3"],
-      ["eip7702", "0x4"],
-    ] as const
-  ).map(([type, typeHex]) => ({
+  ...(["legacy", "eip2930", "eip1559", "eip4844", "eip7702"] as const).map((type) => ({
     name: `get-transaction-${type}`,
     description: `eth_getTransactionByHash for a mined ${type} transaction`,
     request: (head: Head) => {
-      const hash = head.transactions[typeHex];
+      const hash = head.transactions[type];
       return hash === undefined
         ? undefined
         : { method: "eth_getTransactionByHash", params: [hash] };
@@ -206,14 +211,6 @@ async function send(endpoint: string, request: RpcRequest): Promise<Response> {
     // An HTTP error page, kept as text.
   }
   return { status: response.status, body };
-}
-
-/** The result of a request that must succeed, for setting up the cases. */
-async function result(endpoint: string, request: RpcRequest): Promise<unknown> {
-  const { status, body } = await send(endpoint, request);
-  if (status !== 200 || typeof body !== "object" || body === null || !("result" in body))
-    throw new Error(`${request.method} failed (HTTP ${status}): ${JSON.stringify(body)}`);
-  return body.result;
 }
 
 /** Keeps a successful log query to its first two logs; one block of USDC can have hundreds. */
@@ -261,31 +258,29 @@ async function main() {
   );
   if (selected.length === 0) throw new Error(`No case starts with ${values.only?.join(" or ")}.`);
 
-  const client = String(await result(endpoint, { method: "web3_clientVersion", params: [] }));
+  // Setting up goes through viem: these must succeed, and aren't saved. The
+  // cases themselves are sent raw, to save exactly what the node answered.
+  const setup = createPublicClient({ transport: http(endpoint, { retryCount: 0 }) });
+  const client = await setup.request({ method: "web3_clientVersion" });
   await pause();
-  const chainId = Number(await result(endpoint, { method: "eth_chainId", params: [] }));
+  const chainId = await setup.getChainId();
   await pause();
-  const block = await result(endpoint, {
-    method: "eth_getBlockByNumber",
-    params: ["latest", false],
-  });
-  if (typeof block !== "object" || block === null || !("number" in block) || !("hash" in block))
-    throw new Error(`Unexpected block: ${JSON.stringify(block)}`);
-  const number = BigInt(String(block.number));
-  const baseFeePerGas = "baseFeePerGas" in block ? BigInt(String(block.baseFeePerGas)) : 0n;
+  const block = await setup.getBlock();
   const transactions = selected.some(({ name }) => name.startsWith("get-transaction-"))
-    ? await recentTransactions(endpoint, number)
+    ? await recentTransactions(setup, block.number)
     : {};
   if (selected.some(({ name }) => name.startsWith("estimate-gas-"))) {
     await pause();
-    const balance = await result(endpoint, {
-      method: "eth_getBalance",
-      params: [unfunded, "latest"],
-    });
-    if (BigInt(String(balance)) !== 0n)
-      throw new Error(`${unfunded} holds ${String(balance)} here; the estimates need it empty.`);
+    const balance = await setup.getBalance({ address: unfunded });
+    if (balance !== 0n)
+      throw new Error(`${unfunded} holds ${balance} wei here; the estimates need it empty.`);
   }
-  const head = { number, hash: String(block.hash), baseFeePerGas, transactions };
+  const head = {
+    number: block.number,
+    hash: block.hash,
+    baseFeePerGas: block.baseFeePerGas ?? 0n,
+    transactions,
+  };
   const name = values.name ?? defaultName(chainId, client);
   console.log(`${endpoint}: ${client}, chain ${chainId} (${name}), head ${head.number}\n`);
 
@@ -299,21 +294,12 @@ async function main() {
   if (outDir !== undefined) console.log(`Saved to ${outDir.pathname}`);
 }
 
-/** A hash of each transaction type in a block a couple behind the head, by type (`0x2`). */
-async function recentTransactions(endpoint: string, head: bigint) {
+/** A hash of each transaction type in a block a couple behind the head, by type (`eip1559`). */
+async function recentTransactions(setup: PublicClient, head: bigint) {
   await pause();
-  const recent = await result(endpoint, {
-    method: "eth_getBlockByNumber",
-    params: [hex(head - 2n), true],
-  });
+  const recent = await setup.getBlock({ blockNumber: head - 2n, includeTransactions: true });
   const transactions: Record<string, string> = {};
-  const list: unknown[] =
-    typeof recent === "object" && recent !== null && "transactions" in recent
-      ? [recent.transactions].flat()
-      : [];
-  for (const tx of list)
-    if (typeof tx === "object" && tx !== null && "type" in tx && "hash" in tx)
-      transactions[String(tx.type)] ??= String(tx.hash);
+  for (const tx of recent.transactions) transactions[tx.type] ??= tx.hash;
   return transactions;
 }
 
