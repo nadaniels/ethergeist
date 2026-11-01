@@ -69,7 +69,6 @@ export type { FormatHistoryOptions } from "./history/format.js";
 export { MockNotFoundError, MockResolverError } from "./shared/errors.js";
 export type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
 export { match } from "./mocking/matchers.js";
-export { multicall3Address } from "./chain/state.js";
 export type {
   MockEstimateAnswers,
   MockFault,

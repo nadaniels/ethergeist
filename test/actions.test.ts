@@ -18,7 +18,7 @@ import {
   zeroHash,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { base } from "viem/chains";
+import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
@@ -27,7 +27,6 @@ import {
   type RpcValue,
   createMockRpc,
   match,
-  multicall3Address,
   zeroResult,
   testAddress,
   testHash,
@@ -249,7 +248,7 @@ describe("getCode", () => {
     mock.contract({ abi: erc20Abi, address: USDC });
 
     expect(await client.getCode({ address: USDC })).toBe("0xfe");
-    expect(await client.getCode({ address: multicall3Address })).toBe("0xfe");
+    expect(await client.getCode({ address: mainnet.contracts.multicall3.address })).toBe("0xfe");
   });
 
   test("an empty() address has no code", async () => {

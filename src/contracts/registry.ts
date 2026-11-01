@@ -11,7 +11,7 @@ export type Registry = ReturnType<typeof createRegistry>;
  * empty (no code). Each address takes one registration. Lookups take
  * checksummed addresses.
  */
-export function createRegistry({ multicallAddress }: { multicallAddress: Address }) {
+export function createRegistry({ multicallAddress }: { multicallAddress: Address | undefined }) {
   const contracts: InternalMockContract<any>[] = [];
   const emptyAddresses = new Set<Address>();
 

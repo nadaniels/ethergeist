@@ -1,8 +1,8 @@
-import { defineChain, erc20Abi, multicall3Abi } from "viem";
+import { ChainDoesNotSupportContract, defineChain, erc20Abi, multicall3Abi } from "viem";
 import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { createMockRpc, multicall3Address, testAddress } from "../src/index.js";
+import { createMockRpc, testAddress } from "../src/index.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const customMulticall = testAddress("custom-multicall");
@@ -79,14 +79,22 @@ describe("createMockRpc({ chain })", () => {
     expect(mock.requests.at(-1)?.params).toMatchObject([{ to: customMulticall }, "latest"]);
   });
 
-  test("a chain without Multicall3 gets the mock's", async () => {
+  test("a chain without Multicall3 can't multicall, as in viem", async () => {
     const { contracts: _, ...bare } = customChain;
     const mock = withUsdc(createMockRpc({ chain: bare }));
 
-    expect(mock.chain.contracts?.multicall3?.address).toBe(multicall3Address);
-    expect(
-      await mock.publicClient().multicall({ contracts: [decimalsCall], allowFailure: false }),
-    ).toEqual([6]);
+    expect(mock.chain.contracts?.multicall3).toBeUndefined();
+    await expect(
+      mock.publicClient().multicall({ contracts: [decimalsCall], allowFailure: false }),
+    ).rejects.toThrow(ChainDoesNotSupportContract);
+  });
+
+  test("on a chain without Multicall3, a call without a target isn't a multicall", async () => {
+    const { contracts: _, ...bare } = customChain;
+    const mock = createMockRpc({ chain: bare });
+
+    await mock.request({ method: "eth_call", params: [{ data: "0x" }, "latest"] }).catch(() => {});
+    expect(mock.history[0]?.type).toBe("call");
   });
 
   test("a chain's own Multicall3 isn't answered at the canonical address", async () => {
@@ -95,9 +103,9 @@ describe("createMockRpc({ chain })", () => {
     await expect(
       mock.publicClient().readContract({
         abi: multicall3Abi,
-        address: multicall3Address,
+        address: mainnet.contracts.multicall3.address,
         functionName: "getCurrentBlockTimestamp",
       }),
-    ).rejects.toThrow(`No mocked contract at ${multicall3Address}`);
+    ).rejects.toThrow(`No mocked contract at ${mainnet.contracts.multicall3.address}`);
   });
 });

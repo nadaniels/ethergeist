@@ -1,16 +1,10 @@
-import { type Address, type Chain, getAddress, hexToBigInt, isHex } from "viem";
+import { type Chain, getAddress, hexToBigInt, isHex } from "viem";
 import { mainnet } from "viem/chains";
 
 import { MockNotFoundError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { type BlockClock, type MockBlock, generateBlock, numberOfBlockHash } from "./blocks.js";
 import { type Fees, type MockFees, resolveFees } from "./fees.js";
-
-/** The canonical Multicall3 deployment, which viem's built-in chains point at. */
-export const multicall3Address: Address = "0xcA11bde05977b3631167028862bE2a173976CA11";
-
-/** The chain a mock stands in for, with a Multicall3 address: its own, or the canonical one. */
-export type MockChain = Chain & { contracts: { multicall3: { address: Address } } };
 
 /** What the mock knows about its chain without any mocks: see `createChainState`. */
 export type ChainState = ReturnType<typeof createChainState>;
@@ -26,15 +20,9 @@ export function createChainState(parameters: {
   timestamp?: bigint | undefined;
   fees?: MockFees | undefined;
 }) {
-  const given = parameters.chain ?? mainnet;
-  // Without a Multicall3 address, viem's multicall falls back to deployless calls.
-  const chain: MockChain = {
-    ...given,
-    contracts: {
-      ...given.contracts,
-      multicall3: given.contracts?.multicall3 ?? { address: multicall3Address },
-    },
-  };
+  // A chain without a Multicall3 address can't multicall: viem throws, as without a mock.
+  const chain = parameters.chain ?? mainnet;
+  const multicall3 = chain.contracts?.multicall3?.address;
   const initialBlockNumber = parameters.blockNumber ?? 1n;
   let blockNumber = initialBlockNumber;
   const clock: BlockClock = {
@@ -74,8 +62,8 @@ export function createChainState(parameters: {
   return {
     chain,
     chainId: chain.id,
-    /** Multicall3's address on this chain, checksummed. */
-    multicallAddress: getAddress(chain.contracts.multicall3.address),
+    /** Multicall3's address on this chain, checksummed, if it has one. */
+    multicallAddress: multicall3 === undefined ? undefined : getAddress(multicall3),
     get blockNumber() {
       return blockNumber;
     },

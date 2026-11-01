@@ -81,7 +81,7 @@ export function createRecorder({
   debug,
   formatContext,
 }: {
-  multicallAddress: Address;
+  multicallAddress: Address | undefined;
   /** The typed action answering a JSON-RPC method, if any. */
   actionFor: (method: string) => ActionName | undefined;
   /** `createMockRpc()`'s `debug` option. */
@@ -110,7 +110,7 @@ export function createRecorder({
       const to = Array.isArray(params) && isPlainObject(params[0]) ? params[0].to : undefined;
       const target =
         typeof to === "string" && isAddress(to, { strict: false }) ? getAddress(to) : undefined;
-      return target === multicallAddress
+      return target !== undefined && target === multicallAddress
         ? { ...base, type: "multicall", batchId: undefined, calls: [] }
         : { ...base, type: "call", to: target, call: undefined };
     }

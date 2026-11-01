@@ -14,7 +14,6 @@ import type { MockActions } from "./actions/typedActions.js";
 import type { MockMethodBuilder } from "./actions/types.js";
 import type { MockFees } from "./chain/fees.js";
 import type { MockReceipt } from "./chain/receipts.js";
-import type { MockChain } from "./chain/state.js";
 import type { BuiltTransaction, MockTransaction } from "./chain/transactions.js";
 import type { CreateMockContractParameters, MockCall, MockContract } from "./contracts/types.js";
 import type { FormatHistoryOptions } from "./history/format.js";
@@ -27,9 +26,10 @@ import type { MockPublicClientParameters } from "./viem/adapter.js";
 export type CreateMockRpcParameters = {
   /**
    * The chain the mock stands in for: its id answers `eth_chainId`, and
-   * `aggregate3` calls to its Multicall3 (the canonical address if it has none)
-   * are decoded. `publicClient()` uses it. Defaults to viem's `mainnet`; for any
-   * other id or Multicall3 address, use a viem chain or `defineChain`.
+   * `aggregate3` calls to its Multicall3 (`contracts.multicall3`) are decoded.
+   * Without one, viem can't multicall on it, as without a mock. `publicClient()`
+   * uses it. Defaults to viem's `mainnet`; for any other id or Multicall3
+   * address, use a viem chain or `defineChain`.
    */
   chain?: Chain;
   /** Block number the mock starts at. Defaults to 1n. */
@@ -145,8 +145,8 @@ export type MockRpc = {
    * `ContractFunctionExecutionError` caused by `ContractFunctionZeroDataError`.
    */
   empty(address: Address): void;
-  /** The chain clients should use: as given, with Multicall3 added if it had none. */
-  readonly chain: MockChain;
+  /** The chain clients should use: the one given to `createMockRpc()`, or `mainnet`. */
+  readonly chain: Chain;
   readonly chainId: number;
   readonly blockNumber: bigint;
   mine(blocks?: bigint): void;

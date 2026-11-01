@@ -3,13 +3,14 @@ import {
   createPublicClient,
   defineChain,
   erc20Abi,
+  getAddress,
   multicall3Abi,
   parseAbi,
 } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockNotFoundError, createMockRpc, multicall3Address, testAddress } from "../src/index.js";
+import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, failureOf, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -83,7 +84,7 @@ describe("client.multicall", () => {
     });
 
     const [call] = usdc.calls;
-    expect(call?.from).toBe(multicall3Address);
+    expect(call?.from).toBe(getAddress(mainnet.contracts.multicall3.address));
     expect(call?.batch?.from).toBe(alice);
   });
 
@@ -142,7 +143,7 @@ describe("aggregate3 called directly", () => {
     const error = await rejectionOf(
       client.readContract({
         abi: multicall3Abi,
-        address: multicall3Address,
+        address: mainnet.contracts.multicall3.address,
         functionName: "aggregate3",
         args: [[{ target: FEED, allowFailure: false, callData: "0x313ce567" }]],
       }),
