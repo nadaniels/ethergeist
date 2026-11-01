@@ -17,8 +17,11 @@ export default defineConfig({
       "eslint/max-lines": "off",
       "eslint/max-lines-per-function": "off",
       "eslint/no-redeclare": "off",
-      // Type-only imports add no runtime coupling; createMockRpc wires every part together.
+      // A prompt to check a module isn't taking on too much, not a limit to design around;
+      // see docs/architecture.md. Type-only imports add no runtime coupling.
       "import/max-dependencies": ["warn", { max: 10, ignoreTypeImports: true }],
+      // Type-only cycles count too: they're as much a sign of tangled modules.
+      "import/no-cycle": ["error", { ignoreTypes: false }],
       "typescript/prefer-readonly-parameter-types": "off",
       "typescript/strict-boolean-expressions": [
         "warn",
@@ -35,13 +38,7 @@ export default defineConfig({
         plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise", "vitest"],
       },
       {
-        // createMockRpc assembles every part of the mock, so it imports each one.
-        files: ["src/createMockRpc.ts"],
-        rules: { "import/max-dependencies": "off" },
-      },
-      {
-        // The catalog of typed actions imports each one; that's its job.
-        files: ["src/actions/typedActions.ts"],
+        files: ["src/createMockRpc.ts", "src/actions/typedActions.ts"],
         rules: { "import/max-dependencies": "off" },
       },
       {
