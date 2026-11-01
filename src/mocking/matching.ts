@@ -190,3 +190,35 @@ export function assertNoMatchers(value: unknown, place = "return values"): void 
       `match.${found.type}() can't go in ${place}; matchers only go in args and params.`,
     );
 }
+
+/**
+ * Throws if `pinned` holds a Jest or Vitest matcher (`expect.any(…)` and the
+ * like) anywhere. The mock can't run them, and they're typed `any`, so they
+ * would type-check and then never match.
+ */
+export function assertNoRunnerMatchers(pinned: unknown): void {
+  const found = findRunnerMatcher(pinned, new Set());
+  if (found !== undefined)
+    throw new TypeError(
+      `Args and params take the mock's own matchers, not Jest's or Vitest's (got ${found}): ` +
+        "use match.any() or match.where(…) instead.",
+    );
+}
+
+/** A Jest or Vitest matcher: both give theirs `asymmetricMatch`, and a name. */
+type RunnerMatcher = { asymmetricMatch(other: unknown): boolean; toAsymmetricMatcher?(): string };
+
+const isRunnerMatcher = (value: object): value is RunnerMatcher =>
+  "asymmetricMatch" in value && typeof value.asymmetricMatch === "function";
+
+/** A Jest or Vitest matcher in `value`, by its name (e.g. `Any<String>`), if any. */
+function findRunnerMatcher(value: unknown, seen: Set<object>): string | undefined {
+  if (typeof value !== "object" || value === null || seen.has(value)) return undefined;
+  seen.add(value);
+  if (isRunnerMatcher(value)) return value.toAsymmetricMatcher?.() ?? "a test runner matcher";
+  for (const each of Array.isArray(value) ? value : Object.values(value)) {
+    const found = findRunnerMatcher(each, seen);
+    if (found !== undefined) return found;
+  }
+  return undefined;
+}

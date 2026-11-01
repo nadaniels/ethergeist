@@ -51,6 +51,9 @@ features land; tick them off as pages get written.
 - [ ] Matchers: `match.any()`, `match.where(predicate, label?)` and
       `match.partial(fields)` in args and in action and method params, typed
       as the value they replace. Show:
+  - Not Jest's or Vitest's: `expect.any(String)` and the like are refused
+    at registration, pointing to `match.any()`/`match.where()`. They're
+    typed `any`, so they'd type-check and then never match.
   - Ranking: exact values, then predicates, then `any`, compared in that
     order (one exact value beats any number of predicates); a mock with args,
     even all `any`, beats an args-less one.

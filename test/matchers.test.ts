@@ -392,6 +392,24 @@ describe("registration", () => {
     }).toThrow(`allowance(${getAddress(alice)}, any)`);
   });
 
+  test("Jest and Vitest matchers are refused in args and params, pointing to match", () => {
+    const { mock, usdc } = setup();
+
+    // `expect.any()` is typed `any`, so it type-checks, but the mock can't run it.
+    expect(() => usdc.read.allowance([expect.any(String), bob])).toThrow(
+      "Args and params take the mock's own matchers, not Jest's or Vitest's (got Any<String>): " +
+        "use match.any() or match.where(…) instead.",
+    );
+    // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
+    expect(() => mock.actions.getBalance({ address: expect.anything() })).toThrow("(got Anything)");
+    // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
+    expect(() => mock.method("eth_custom", [{ nested: expect.any(Number) }])).toThrow(TypeError);
+    // A call that throws registers nothing.
+    expect(() => {
+      mock.assertAllUsed();
+    }).not.toThrow();
+  });
+
   test("matchers can't be return values", async () => {
     const { usdc, balanceOf } = setup();
     expect(() => {

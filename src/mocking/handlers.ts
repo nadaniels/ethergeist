@@ -7,7 +7,14 @@ import {
 } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { MockFailure, fail } from "./faults.js";
-import { type Specificity, bestMatch, isMatch, setLimit, specificity } from "./matching.js";
+import {
+  type Specificity,
+  assertNoRunnerMatchers,
+  bestMatch,
+  isMatch,
+  setLimit,
+  specificity,
+} from "./matching.js";
 import type { MockNodeFault } from "./types.js";
 import { zeroResult } from "./zeroResult.js";
 
@@ -73,6 +80,7 @@ export function createHandlers<context, extra>() {
     extra: extra,
     { isDefault = false }: { isDefault?: boolean } = {},
   ): Handler<context, extra> {
+    assertNoRunnerMatchers(pinned);
     const handler: Handler<context, extra> = {
       ...extra,
       pinned,
