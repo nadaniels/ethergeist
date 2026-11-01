@@ -195,8 +195,24 @@ describe("getBalance", () => {
 
     expect(findCause(error, MockResolverError)).toBeUndefined();
     expect(expectCause(error, MockNotFoundError).details).toBe(
-      `Registered:\n  getBalance({ address: ${bob} }) once\n  getBalance({ address: ${alice} })`,
+      `Registered:\n  getBalance({ address: ${bob} }) once\n  getBalance({ address: ${alice} }) without an answer`,
     );
+  });
+
+  test("a mock without an answer steps aside for one with an answer", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance().returns(5n);
+    mock.actions.getBalance({ address: alice });
+
+    expect(await client.getBalance({ address: alice })).toBe(5n);
+  });
+
+  test("even for a copy of itself registered before it", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: alice }).returns(5n);
+    mock.actions.getBalance({ address: alice });
+
+    expect(await client.getBalance({ address: alice })).toBe(5n);
   });
 
   test("a resolver can answer zeroResult too", async () => {

@@ -2,8 +2,8 @@ import type { AbiFunction } from "viem";
 
 import {
   type ReceivedCall,
+  describeMock,
   formatCall,
-  formatLimit,
   formatMismatch,
   formatReceived,
 } from "../mocking/format.js";
@@ -18,11 +18,8 @@ type Mock = {
   pinned: unknown;
   limit: number | undefined;
   remaining: number | undefined;
+  resolver: unknown;
 };
-
-/** A mock as messages name it: its call and its limit, e.g. `balanceOf(0x…) once`. */
-const describe = (functionName: string, mock: Mock) =>
-  `${formatCall(functionName, mock.pinned)}${formatLimit(mock.limit, mock.remaining)}`;
 
 /**
  * The error for a call no mock answers, on the contract `label`: the mocks
@@ -34,7 +31,7 @@ export function missError(
   label: string,
   registered: readonly Mock[],
 ): MockNotFoundError {
-  const lines = registered.map((mock) => `  ${describe(call.functionName, mock)}`);
+  const lines = registered.map((mock) => `  ${describeMock(call.functionName, mock)}`);
   const what = kind === "estimate" ? "estimateGas mock" : "mock";
   const none =
     kind === "estimate"
@@ -49,7 +46,7 @@ export function missError(
 /** An unused mock on the contract `label`, with the `calls` its function received instead. */
 export function unusedLine(mock: Mock, label: string, calls: readonly MockCall[]): string {
   const name = mock.abiItem.name;
-  return `${describe(name, mock)} on ${label}${formatReceived(
+  return `${describeMock(name, mock)} on ${label}${formatReceived(
     name,
     calls.map((call) => received(mock, call)),
   )}`;

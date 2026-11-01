@@ -300,22 +300,22 @@ describe("assertAllUsed()", () => {
     }).not.toThrow();
   });
 
-  test("doesn't check a mock still waiting for its answer", () => {
+  test("reports a mock registered without an answer", () => {
     const { mock } = setup();
     mock.contract({ abi: erc20Abi, address: USDC }).read.balanceOf();
 
     expect(() => {
       mock.assertAllUsed();
-    }).not.toThrow();
+    }).toThrow(`balanceOf(*) without an answer on ${USDC}`);
   });
 
-  test("doesn't check an action mock still waiting for its answer", () => {
+  test("reports an action mock registered without an answer", () => {
     const { mock } = setup();
     mock.actions.getBalance({ address: alice });
 
     expect(() => {
       mock.assertAllUsed();
-    }).not.toThrow();
+    }).toThrow(`getBalance({ address: ${getAddress(alice)} }) without an answer`);
   });
 
   test("counts calls inside a multicall", async () => {

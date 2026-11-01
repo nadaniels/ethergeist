@@ -222,6 +222,25 @@ describe("balanceOf", () => {
       }),
     );
     expect(mock.unhandled[0]?.error).toBeInstanceOf(MockNotFoundError);
+    expect(mock.unhandled[0]?.error.details).toBe(
+      `Registered:\n  balanceOf(${getAddress(alice)}) without an answer`,
+    );
+  });
+
+  test("a mock without an answer steps aside for one with an answer", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.read.balanceOf().returns(5n);
+    usdc.read.balanceOf([alice]);
+
+    expect(
+      await client.readContract({
+        abi: erc20Abi,
+        address: USDC,
+        functionName: "balanceOf",
+        args: [alice],
+      }),
+    ).toBe(5n);
   });
 });
 

@@ -7,6 +7,7 @@ import type { LogStore } from "../logs/store.js";
 import { MockFailure, fail } from "../mocking/faults.js";
 import {
   type ReceivedCall,
+  describeMock,
   formatCall,
   formatMismatch,
   formatReceived,
@@ -89,8 +90,7 @@ export function createTable(definition: Definition) {
   /** Unused mocks, each with the calls this table received instead. */
   const describeUnused = (list: Handler[]) =>
     list.map(
-      (h) =>
-        `${mocks.withLimit(formatCall(definition.name, h.pinned), h)}${formatReceived(definition.name, received(h))}`,
+      (h) => `${describeMock(definition.name, h)}${formatReceived(definition.name, received(h))}`,
     );
 
   /** The calls this table received since the last clear, and where each differs from `handler`. */
@@ -146,9 +146,7 @@ export function createTable(definition: Definition) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
       if (turn) throw turn.miss;
-      const registered = mocks.handlers.map(
-        (h) => `  ${mocks.withLimit(formatCall(definition.name, h.pinned), h)}`,
-      );
+      const registered = mocks.handlers.map((h) => `  ${describeMock(definition.name, h)}`);
       throw new MockNotFoundError(`No mock for ${formatCall(definition.name, call)}.`, {
         details:
           registered.length > 0

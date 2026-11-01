@@ -24,10 +24,27 @@ export function formatCall(name: string, args: unknown, options: FormatOptions =
 }
 
 /**
+ * A mock as messages name it: its call, its limit, and whether it's still
+ * without an answer, e.g. `balanceOf(*) once` or `getBalance() without an answer`.
+ */
+export const describeMock = (
+  name: string,
+  mock: {
+    pinned: unknown;
+    limit: number | undefined;
+    remaining: number | undefined;
+    resolver: unknown;
+  },
+) =>
+  `${formatCall(name, mock.pinned)}${formatLimit(mock.limit, mock.remaining)}${
+    mock.resolver === undefined ? " without an answer" : ""
+  }`;
+
+/**
  * A mock's limit for messages, after its call: ` once`, ` 3 times, 1 left`,
  * or `, used up`. Empty for an unlimited mock.
  */
-export function formatLimit(limit: number | undefined, remaining: number | undefined): string {
+function formatLimit(limit: number | undefined, remaining: number | undefined): string {
   if (limit === undefined || remaining === undefined) return "";
   const count = limit === 1 ? "once" : `${limit} times`;
   if (remaining === 0) return ` ${count}, used up`;

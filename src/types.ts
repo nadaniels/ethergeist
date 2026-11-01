@@ -183,8 +183,9 @@ export type MockRpc = {
   assertNoUnhandled(): void;
   /**
    * Throws if a mock never answered a call: its args are wrong and a broader
-   * mock answered instead, or the app no longer makes the call it stands for.
-   * Contract `defaults` aren't checked: they're shared setup, answers for
+   * mock answered instead, the app no longer makes the call it stands for, or
+   * it was registered without an answer (no `.returns()`, `.reverts()` or
+   * `.fails()`), so it never could. Contract `defaults` aren't checked: they're shared setup, answers for
    * the whole suite that any one test may not use. For other shared setup
    * (actions, `method`, narrowed mocks), take a checkpoint after registering
    * it and use `restore({ assertAllUsed: true })`, which checks only what
