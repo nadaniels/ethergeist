@@ -124,6 +124,9 @@ export type MockRpc = {
    * parses logs. The same encoding as a contract's `events`, in the current
    * block unless given, with other position fields zero. Its address is
    * lowercase, as nodes send it: compare with `isAddressEqual`, not `toBe`.
+   * Not for a receipt's logs, which the receipt places itself: use
+   * `contract.events`, or `contractEvents({ abi, address })` for a contract
+   * you don't mock.
    */
   buildLog<const abi extends Abi, eventName extends ContractEventName<abi>>(
     parameters: BuildLogParameters<abi, eventName>,

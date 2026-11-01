@@ -154,6 +154,33 @@ export function buildLog<const abi extends Abi, eventName extends ContractEventN
 }
 
 /**
+ * A contract's events, each building the log its args would emit at
+ * `address`, without registering the contract: for a receipt's logs from a
+ * contract the app decodes but never calls, e.g.
+ * `contractEvents({ abi, address }).Transfer({ from, to, value })`. The same
+ * as a registered contract's `events`: indexed args are required, the rest
+ * zero-filled. The address is validated now.
+ */
+export function contractEvents<const abi extends Abi>({
+  abi,
+  address,
+}: {
+  abi: abi;
+  address: Address;
+}): MockContractEvents<abi> {
+  const emitter = getAddress(address);
+  const names = new Set((abi as Abi).flatMap((item) => (item.type === "event" ? [item.name] : [])));
+  // Built from the ABI at runtime; `MockContractEvents<abi>` describes the same shape.
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- runtime-built typed facade
+  return Object.fromEntries(
+    [...names].map((eventName) => [
+      eventName,
+      (args?: unknown) => encodeEventLog(abi, emitter, eventName, args),
+    ]),
+  ) as unknown as MockContractEvents<abi>;
+}
+
+/**
  * Encodes the log `address` emits for event `eventName` of `abi`. An
  * overloaded name uses the one overload `args` fit.
  */

@@ -87,7 +87,7 @@ function assertInReceipt<value extends bigint | number | string>(
     throw new Error(
       `Receipt log ${index} has ${field} ${formatValue(actual)}, but the receipt's is ` +
         `${formatValue(expected)}. A receipt places its logs: pass only their content, e.g. from ` +
-        "contract.events.",
+        "contract.events, or contractEvents({ abi, address }) for a contract you don't mock.",
     );
 }
 

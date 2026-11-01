@@ -12,7 +12,7 @@ import {
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
-import { createMockRpc, match, testAddress, testHash } from "../src/index.js";
+import { contractEvents, createMockRpc, match, testAddress, testHash } from "../src/index.js";
 import { lowercase } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -240,6 +240,62 @@ describe("contract.events", () => {
     expect(() => usdc.events.Transfer({ from: "0x1234", to: bob, value: 5n })).toThrow(
       InvalidAddressError,
     );
+  });
+});
+
+describe("contractEvents()", () => {
+  // A contract the app never calls, only decodes the logs of.
+  const FACTORY = testAddress("factory");
+
+  test("builds the same logs as a registered contract's events", () => {
+    const { usdc } = setup();
+    const args = { from: alice, to: bob, value: 5n };
+
+    expect(contractEvents({ abi: erc20Abi, address: USDC }).Transfer(args)).toEqual(
+      usdc.events.Transfer(args),
+    );
+  });
+
+  test("registers nothing: the address stays unmocked and free", async () => {
+    const { mock, client } = setup();
+    contractEvents({ abi: erc20Abi, address: FACTORY }).Transfer({ from: alice, to: bob });
+
+    await expect(client.getCode({ address: FACTORY })).rejects.toThrow("No mock for getCode");
+    expect(() => mock.contract({ abi: erc20Abi, address: FACTORY })).not.toThrow();
+  });
+
+  test("its logs go into a receipt the app decodes", async () => {
+    const { mock, client } = setup();
+    const hash = testHash("transfer");
+    const factory = contractEvents({ abi: erc20Abi, address: FACTORY });
+    mock.actions
+      .getTransactionReceipt({ hash })
+      .returns({ logs: [factory.Transfer({ from: alice, to: bob, value: 5n })] });
+
+    const { logs } = await client.getTransactionReceipt({ hash });
+    expect(parseEventLogs({ abi: erc20Abi, logs })).toMatchObject([
+      { eventName: "Transfer", args: { from: alice, to: bob, value: 5n }, transactionHash: hash },
+    ]);
+  });
+
+  test("validates the address up front", () => {
+    expect(() => contractEvents({ abi: erc20Abi, address: "0x1234" })).toThrow(InvalidAddressError);
+  });
+
+  test("a receipt rejecting a placed log points to it", () => {
+    const { mock } = setup();
+    const placed = mock.buildLog({
+      abi: erc20Abi,
+      address: FACTORY,
+      eventName: "Transfer",
+      args: { from: alice, to: bob },
+    });
+
+    expect(() => {
+      mock.actions
+        .getTransactionReceipt({ hash: testHash("transfer") })
+        .returns({ logs: [placed] });
+    }).toThrow("or contractEvents({ abi, address }) for a contract you don't mock");
   });
 });
 

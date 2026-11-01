@@ -278,9 +278,13 @@ features land; tick them off as pages get written.
   - `mock.buildLog({ abi, address, eventName, args, blockNumber, … })` for a
     complete viem log where no mock places it (`toEqual`, Storybook props,
     a function that parses logs). Inside a mock, receipts and `emit` place
-    logs themselves, so they take `contract.events` values; for a contract
-    whose functions aren't mocked, register it anyway (`mock.contract({ abi,
-    address })`, no mocks needed): only contracts emit logs. And
+    logs themselves, so they take `contract.events` values. For a receipt's
+    logs from a contract the app decodes but never calls (an indexer, a
+    receipt parser), `contractEvents({ abi, address })` builds the same logs
+    without registering it, so it doesn't answer `getCode`, claim its
+    address, or show in "Registered" lists. `emit` still needs the contract
+    registered (`mock.contract({ abi, address })`, no mocks needed), since
+    `getLogs` treats an unknown address as unmocked. And
     `mock.buildReceipt(fields)` for the receipt `.returns(fields)` answers
     (pass `transactionHash` to match the request's). Both default to the
     mock's current block. Both share the mock's encoding and

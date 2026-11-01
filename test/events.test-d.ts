@@ -5,6 +5,7 @@ import {
   type LogsCall,
   type MockEventArgs,
   type MockEventLog,
+  contractEvents,
   createMockRpc,
   testAddress,
 } from "../src/index.js";
@@ -99,6 +100,20 @@ describe("contract.events", () => {
     mock.actions
       .getTransactionReceipt()
       .returns({ logs: [usdc.events.Transfer({ from: alice, to: bob })] });
+  });
+});
+
+describe("contractEvents()", () => {
+  const usdc = contractEvents({ abi: erc20Abi, address: USDC });
+
+  test("the same typed events as a registered contract's", () => {
+    expectTypeOf(usdc).toEqualTypeOf(
+      createMockRpc().contract({ abi: erc20Abi, address: USDC }).events,
+    );
+    expectTypeOf(usdc.Transfer({ from: alice, to: bob, value: 5n })).toEqualTypeOf<MockEventLog>();
+    // @ts-expect-error -- `to` is indexed, so required
+    usdc.Transfer({ from: alice, value: 5n });
+    expectTypeOf(usdc).not.toHaveProperty("Swap");
   });
 });
 

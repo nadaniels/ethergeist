@@ -226,6 +226,8 @@ export type MockContract<abi extends Abi> = {
    * The contract's events, each building the log its args would emit at this
    * address, e.g. `events.Transfer({ from, to, value })`, for a mocked
    * receipt's `logs`. Indexed args are required; the rest are zero-filled.
+   * For a contract the app never calls, `contractEvents({ abi, address })`
+   * builds the same logs without registering it.
    * Once placed (in a receipt, emitted, or as the app gets it), its address
    * is lowercase, as nodes send it: compare with viem's `isAddressEqual`,
    * not `toBe(contract.address)`.

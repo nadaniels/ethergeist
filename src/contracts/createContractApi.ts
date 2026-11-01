@@ -1,6 +1,11 @@
 import type { Abi, AbiFunction, Address } from "viem";
 
-import { type EmitOptions, type MockEventLog, encodeEventLog } from "../logs/events.js";
+import {
+  type EmitOptions,
+  type MockEventLog,
+  contractEvents,
+  encodeEventLog,
+} from "../logs/events.js";
 import { withCalls } from "../mocking/handlers.js";
 import type { Namespace } from "./functions.js";
 import type { MockCall, MockContract } from "./types.js";
@@ -75,12 +80,7 @@ export function createContractApi<const abi extends Abi>({
     read: buildNamespace("read"),
     simulate: buildNamespace("simulate"),
     estimateGas: buildNamespace("estimateGas"),
-    events: Object.fromEntries(
-      events.map((eventName) => [
-        eventName,
-        (args?: unknown) => encodeEventLog(abi, address, eventName, args),
-      ]),
-    ),
+    events: contractEvents({ abi, address }),
     emit: Object.fromEntries(
       events.map((eventName) => [
         eventName,

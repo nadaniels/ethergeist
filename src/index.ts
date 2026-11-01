@@ -60,6 +60,7 @@ export type {
   MockEventArgs,
   MockEventLog,
 } from "./logs/events.js";
+export { contractEvents } from "./logs/events.js";
 export type { BuiltTransaction, MockTransaction, TransactionType } from "./chain/transactions.js";
 export type { MockLog, MockReceipt } from "./chain/receipts.js";
 export type { LogsCall, LogsTopic } from "./logs/filter.js";

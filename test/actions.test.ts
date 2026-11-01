@@ -523,7 +523,8 @@ describe("getTransactionReceipt", () => {
       mock.actions.getTransactionReceipt().returns({ blockNumber: 7n, logs: [placed] });
     }).toThrow(
       "Receipt log 0 has blockNumber 10n, but the receipt's is 7n. A receipt places its logs: " +
-        "pass only their content, e.g. from contract.events.",
+        "pass only their content, e.g. from contract.events, or contractEvents({ abi, address }) " +
+        "for a contract you don't mock.",
     );
     // A pinned hash is known at registration, so a log from another transaction fails there.
     const otherLog = {
