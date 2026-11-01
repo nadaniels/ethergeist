@@ -1,6 +1,6 @@
 import { type Address, type Hex, getAddress } from "viem";
 
-import type { PartCheckpoint } from "../shared/parts.js";
+import type { PartSnapshot } from "../shared/parts.js";
 import type { InternalMockContract } from "./createMockContract.js";
 
 /** What's registered at addresses: see `createRegistry`. */
@@ -15,7 +15,7 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
   const contracts: InternalMockContract<any>[] = [];
   const emptyAddresses = new Set<Address>();
 
-  const contractAt = (address: Address) => contracts.find((c) => c.matches(address));
+  const contractAt = (address: Address) => contracts.find((contract) => contract.matches(address));
 
   /** Code at an address the mock knows without a mock: placeholder code for contracts, none for empty. */
   function codeAt(address: Address): Hex | undefined {
@@ -64,9 +64,9 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
      * Saves the contracts, their mocks, and the empty addresses. `restore()`
      * removes contracts registered since, which then throw if used.
      */
-    checkpoint(): Required<PartCheckpoint> {
+    snapshot(): Required<PartSnapshot> {
       const count = contracts.length;
-      const saved = contracts.map((contract) => contract.checkpoint());
+      const saved = contracts.map((contract) => contract.snapshot());
       const savedEmpty = new Set(emptyAddresses);
       return {
         restore() {

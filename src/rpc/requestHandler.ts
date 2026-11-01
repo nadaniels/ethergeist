@@ -34,50 +34,52 @@ export function createRequestHandler({
    * fault (`MockFailure`), a revert, a node's refusal (`MockRpcError`), or
    * what it couldn't answer; adapters turn them into their client's errors.
    */
-  async function handle(rpcRequest: RpcRequest, retryCount?: number): Promise<unknown> {
-    const { method, params } = rpcRequest;
-    const entry: RpcRequest = params === undefined ? { method } : { method, params };
-    const record = recorder.start(entry);
+  async function handle(given: RpcRequest, retryCount?: number): Promise<unknown> {
+    const { method, params } = given;
+    // As recorded: without `params` when the request had none.
+    const request: RpcRequest = params === undefined ? { method } : { method, params };
+    const historyEntry = recorder.start(request);
 
     // The most recent fault wins, like mocks. A fault is a deliberate answer, so
     // it isn't recorded as unhandled.
     const fault = faults.take(method);
     if (fault !== undefined) {
-      recorder.settle(record, { type: "fault", fault, source: "failRequests" });
+      recorder.settle(historyEntry, { type: "fault", fault, source: "failRequests" });
       throw new MockFailure(fault);
     }
 
     try {
-      const answered = await answer(rpcRequest, record);
-      recorder.settle(record, { type: "result", value: answered.value });
+      const answered = await answer(request, historyEntry);
+      recorder.settle(historyEntry, { type: "result", value: answered.value });
       return answered.rpc;
     } catch (caught) {
-      const error = withRetryHint(caught, record, retryCount);
-      recorder.settle(record, outcomeOf(record, error));
+      const error = withRetryHint(caught, historyEntry, retryCount);
+      recorder.settle(historyEntry, outcomeOf(historyEntry, error));
       // Recorded because callers can swallow these: app code with a fallback,
       // or viem's multicall turning a failed batch into per-call failures.
       if (error instanceof MockNotFoundError || error instanceof MockResolverError)
-        recorder.unhandled.push({ ...entry, error });
+        recorder.unhandled.push({ ...request, error });
       throw error;
     }
   }
 
   async function answer(
-    rpcRequest: RpcRequest,
-    entry: MockHistoryEntry,
+    request: RpcRequest,
+    historyEntry: MockHistoryEntry,
   ): Promise<{ rpc: unknown; value: unknown }> {
     let actionOutcome: MockOutcome | undefined;
-    const rpc = await answerRpc(rpcRequest, entry, (outcome) => {
+    const rpc = await answerRpc(request, historyEntry, (outcome) => {
       actionOutcome = outcome;
     });
     // An action's table knows its value in viem's types; for the rest, decode the answer.
-    const value = actionOutcome?.type === "result" ? actionOutcome.value : valueOf(entry, rpc);
+    const value =
+      actionOutcome?.type === "result" ? actionOutcome.value : valueOf(historyEntry, rpc);
     return { rpc, value };
   }
 
   async function answerRpc(
     { method, params }: RpcRequest,
-    entry: MockHistoryEntry,
+    historyEntry: MockHistoryEntry,
     onAction: (outcome: MockOutcome) => void,
   ): Promise<unknown> {
     switch (method) {
@@ -86,13 +88,14 @@ export function createRequestHandler({
       case "eth_blockNumber":
         return numberToHex(state.blockNumber);
       case "eth_call":
-        return await dispatcher.call(params, reporterFor(entry));
+        return await dispatcher.call(params, reporterFor(historyEntry));
       default: {
         const answered = actions.answer(method, params, (report) => {
-          if (entry.type !== "action") return;
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the table for entry.action decoded it
-          entry.call = report.call as typeof entry.call;
-          if (entry.action === "estimateGas" && report.contract) entry.contract = report.contract;
+          if (historyEntry.type !== "action") return;
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the table for historyEntry.action decoded it
+          historyEntry.call = report.call as typeof historyEntry.call;
+          if (historyEntry.action === "estimateGas" && report.contract)
+            historyEntry.contract = report.contract;
           onAction(report.outcome);
         });
         if (answered) return await answered;
@@ -104,14 +107,18 @@ export function createRequestHandler({
   }
 
   /** A "not mocked" error, explained when it's viem retrying past a limited mock's fault. */
-  function withRetryHint(error: unknown, record: MockHistoryEntry, retryCount: number | undefined) {
+  function withRetryHint(
+    error: unknown,
+    historyEntry: MockHistoryEntry,
+    retryCount: number | undefined,
+  ) {
     if (!(error instanceof MockNotFoundError)) return error;
-    const hint = retryHint(recorder.history, recorder.history.indexOf(record), retryCount);
+    const hint = retryHint(recorder.history, recorder.history.indexOf(historyEntry), retryCount);
     if (hint === undefined) return error;
     return new MockNotFoundError(error.shortMessage, {
       details: error.details === "" ? hint : `${error.details}\n${hint}`,
     });
   }
 
-  return { handle };
+  return handle;
 }

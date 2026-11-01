@@ -1,4 +1,4 @@
-import type { PartCheckpoint } from "../shared/parts.js";
+import type { PartSnapshot } from "../shared/parts.js";
 import { type Table, createTable } from "./table.js";
 import type { MethodCall, MockMethodBuilder } from "./types.js";
 
@@ -71,8 +71,8 @@ export function createMethods(actionFor: (method: string) => string | undefined)
     isRefused: (name: string) => refusedMethods.has(name),
     tables: () => [...raw.values()],
     /** Saves every method's mocks; `restore()` removes methods first mocked since. */
-    checkpoint(): Required<PartCheckpoint> {
-      const saved = new Map([...raw].map(([name, table]) => [name, table.checkpoint()]));
+    snapshot(): Required<PartSnapshot> {
+      const saved = new Map([...raw].map(([name, table]) => [name, table.snapshot()]));
       return {
         restore() {
           for (const [name, table] of raw) {
@@ -80,7 +80,7 @@ export function createMethods(actionFor: (method: string) => string | undefined)
             if (each) {
               each.restore();
             } else {
-              table.remove();
+              table.removeAll();
               raw.delete(name);
             }
           }

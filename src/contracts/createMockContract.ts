@@ -18,7 +18,7 @@ import { fail } from "../mocking/faults.js";
 import { formatContract } from "../mocking/format.js";
 import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
 import { MockNotFoundError } from "../shared/errors.js";
-import type { PartCheckpoint } from "../shared/parts.js";
+import type { PartSnapshot } from "../shared/parts.js";
 import { encodeAnswer, createRevertError } from "./answers.js";
 import { createContractApi } from "./createContractApi.js";
 import { type Namespace, createFunctions, type Kind, pinArgs } from "./functions.js";
@@ -66,7 +66,7 @@ export type InternalMockContract<abi extends Abi = Abi> = {
   /** Mocks other than defaults that haven't answered a call, formatted for messages. */
   unusedMocks(): string[];
   /** Saves the registered mocks and their answers, to put back or compare against. */
-  checkpoint(): Required<PartCheckpoint>;
+  snapshot(): Required<PartSnapshot>;
   /** Marks the contract removed: registering on it, or answering its mocks, throws. */
   detach(): void;
 };
@@ -121,12 +121,12 @@ export function createMockContract<const abi extends Abi>(
     const isDefault = asDefault !== undefined;
 
     const pinned = pinArgs(abiItem, args);
-    const handler = mocks.add(
+    const handler = mocks.register(
       pinned,
       { namespace, abiItem, selector: toFunctionSelector(abiItem) },
       { isDefault },
     );
-    const builder = mocks.builderFor(handler, (value) => {
+    const builder = mocks.createBuilder(handler, (value) => {
       encodeAnswer(handler, value);
     });
     return Object.assign(builder, {
@@ -139,7 +139,7 @@ export function createMockContract<const abi extends Abi>(
   // A default is keyed by name, so it answers every overload of that name.
   for (const namespace of ["read", "simulate", "estimateGas"] as const)
     for (const [functionName, resolver] of Object.entries(defaults[namespace] ?? {})) {
-      const overloads = functionsIn[namespace].filter((f) => f.name === functionName);
+      const overloads = functionsIn[namespace].filter((abiItem) => abiItem.name === functionName);
       if (overloads.length === 0) throw notInNamespaceError(namespace, functionName);
       for (const abiItem of overloads)
         register(namespace, functionName, undefined, { abiItem }).returns(resolver);
@@ -262,20 +262,20 @@ export function createMockContract<const abi extends Abi>(
   /** The handlers that answer `kind` for the function `call` decoded to. */
   const candidates = (call: MockCall, kind: Kind) =>
     mocks.handlers.filter(
-      (h) =>
-        h.selector === selectorOf.get(call) &&
-        (h.namespace === "estimateGas") === (kind === "estimate"),
+      (handler) =>
+        handler.selector === selectorOf.get(call) &&
+        (handler.namespace === "estimateGas") === (kind === "estimate"),
     );
 
   // The most specific matching handler wins; among equally specific ones,
   // the most recently registered wins, so per-test mocks override defaults.
   function match(call: MockCall, kind: Kind): Handler | undefined {
-    return mocks.best(candidates(call, kind), () => call.args, call.functionName);
+    return mocks.findAnswering(candidates(call, kind), () => call.args, call.functionName);
   }
 
   /** Answers `call` with `handler`. */
   const run = (handler: Handler, call: MockCall): Promise<Hex> =>
-    mocks.run(
+    mocks.answerWith(
       handler,
       { ...call, revert, fail },
       (value) => encodeAnswer(handler, value),
@@ -284,12 +284,12 @@ export function createMockContract<const abi extends Abi>(
 
   /** Unused mocks, each with its contract and the calls its function received instead. */
   const describeUnused = (list: Handler[]) =>
-    list.map((h) =>
+    list.map((handler) =>
       unusedLine(
-        h,
+        handler,
         label,
-        (h.namespace === "estimateGas" ? estimates : history).filter(
-          (call) => selectorOf.get(call) === h.selector,
+        (handler.namespace === "estimateGas" ? estimates : history).filter(
+          (call) => selectorOf.get(call) === handler.selector,
         ),
       ),
     );
@@ -306,7 +306,7 @@ export function createMockContract<const abi extends Abi>(
       mocks.clearUsage();
     },
     unusedMocks: () => describeUnused(mocks.unused(mocks.handlers)),
-    checkpoint: () => mocks.checkpoint(describeUnused),
+    snapshot: () => mocks.snapshot(describeUnused),
     detach() {
       detached = true;
       mocks.removeAll();

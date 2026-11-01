@@ -63,14 +63,14 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     formatContext,
     historyOnFailure: parameters.historyOnFailure,
   });
-  const handler = createRequestHandler({ state, recorder, faults, actions, dispatcher });
+  const handleRequest = createRequestHandler({ state, recorder, faults, actions, dispatcher });
   const builders = createBuilders(state);
-  const viem = createViemAdapter({ handle: handler.handle, chain: state.chain });
+  const viemAdapter = createViemAdapter({ handle: handleRequest, chain: state.chain });
 
   return {
-    request: viem.request,
-    transport: viem.transport,
-    publicClient: viem.publicClient,
+    request: viemAdapter.request,
+    transport: viemAdapter.transport,
+    publicClient: viemAdapter.publicClient,
     contract<const abi extends Abi>(
       contractParameters: CreateMockContractParameters<abi>,
     ): MockContract<abi> {

@@ -1,7 +1,7 @@
 import type { Part } from "../shared/parts.js";
 
-/** Every part's state as a checkpoint saved it. */
-export type SavedParts = {
+/** A checkpoint on the stack: a snapshot of every part, and whether it can still be restored. */
+export type Checkpoint = {
   /** Whether it can still be restored: see `createCheckpoints`. */
   readonly valid: boolean;
   /** Restores every part, then clears what they recorded. */
@@ -14,9 +14,9 @@ export type SavedParts = {
 export type Checkpoints = ReturnType<typeof createCheckpoints>;
 
 /**
- * Checkpoints of every part, and what they do to each other. They nest as a
- * stack: restoring one invalidates every one taken after it, whose state is
- * gone. `reset()` restores the mock as it was created, saved here before
+ * Checkpoints, and what they do to each other. Each holds a snapshot of every
+ * part. They nest as a stack: restoring one invalidates every one added after
+ * it, whose state is gone. `reset()` restores the mock as it was created, saved here before
  * anything was registered, and invalidates every checkpoint.
  */
 export function createCheckpoints(parts: readonly Part[]) {
@@ -26,8 +26,9 @@ export function createCheckpoints(parts: readonly Part[]) {
     for (const part of parts) part.clearCalls?.();
   }
 
-  function save() {
-    const saved = parts.map((part) => part.checkpoint?.());
+  /** Every part's snapshot, restored together. Not a checkpoint: it isn't on the stack. */
+  function snapshot() {
+    const saved = parts.map((part) => part.snapshot?.());
     return {
       restore() {
         for (const each of saved) each?.restore();
@@ -37,15 +38,15 @@ export function createCheckpoints(parts: readonly Part[]) {
     };
   }
 
-  const created = save();
+  const created = snapshot();
 
   return {
     clearCalls,
     /** Every part's mocks that never answered a call. */
     unusedMocks: () => parts.flatMap((part) => part.unusedMocks?.() ?? []),
     /** Saves every part, as the newest checkpoint on the stack. */
-    take(): SavedParts {
-      const saved = save();
+    addCheckpoint(): Checkpoint {
+      const saved = snapshot();
       const entry = { valid: true };
       stack.push(entry);
       return {

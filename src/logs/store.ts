@@ -203,7 +203,7 @@ export function createLogStore({
       );
     },
     /** Saves the logs emitted so far; `restore()` removes later ones. */
-    checkpoint() {
+    snapshot() {
       const count = logs.length;
       return {
         restore() {

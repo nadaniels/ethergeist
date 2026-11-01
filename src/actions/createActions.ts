@@ -1,6 +1,6 @@
 import { withCalls } from "../mocking/handlers.js";
 import { MockRpcError } from "../shared/errors.js";
-import type { PartCheckpoint } from "../shared/parts.js";
+import type { PartSnapshot } from "../shared/parts.js";
 import { createMethods } from "./methods.js";
 import { type ActionReport, type Table, createTable, type ActionsContext } from "./table.js";
 import { type MockActions, type ActionName, typedActions } from "./typedActions.js";
@@ -67,9 +67,9 @@ export function createActions(context: ActionsContext) {
     },
     unusedMocks: () => tables().flatMap((table) => table.unusedMocks()),
     /** Saves every table's mocks, typed and raw, to put back or compare against. */
-    checkpoint(): Required<PartCheckpoint> {
-      const typedSaved = Object.values(typed).map((table) => table.checkpoint());
-      const rawSaved = methods.checkpoint();
+    snapshot(): Required<PartSnapshot> {
+      const typedSaved = Object.values(typed).map((table) => table.snapshot());
+      const rawSaved = methods.snapshot();
       return {
         restore() {
           for (const saved of typedSaved) saved.restore();

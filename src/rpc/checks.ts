@@ -74,7 +74,7 @@ export function createChecks({
           `intentional:\n${recorder.unhandled.map(({ error }) => `  - ${error.shortMessage}`).join("\n")}`,
       );
 
-    const saved = checkpoints.take();
+    const saved = checkpoints.addCheckpoint();
 
     function restore(options: MockRestoreOptions = {}) {
       if (!saved.valid)

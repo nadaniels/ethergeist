@@ -62,6 +62,12 @@ adapter folder beside `viem/`, not a change to the layers under it.
    `createMockRpc.ts`.
 3. **`build*` builds values** (`buildLog`, `buildReceipt`, `buildTransaction`);
    **`create*` creates stateful parts.**
+4. **A name says what it does where it's used.** Read a method with the object
+   it's called on (`checkpoints.addCheckpoint()`, `mocks.findAnswering()`), and
+   avoid bare verbs that could mean anything on their own (`save`, `take`,
+   `run`), or that read like a built-in (`push`). Callback parameters are named
+   for what they hold (`handler`, not `h`), except `(a, b)` in a sort
+   comparator and `i` for an index.
 
 ## Adding an action
 
@@ -81,15 +87,20 @@ adapter folder beside `viem/`, not a change to the layers under it.
 
 Anything that holds state is a `Part` (`shared/parts.ts`), with any of:
 
-- `checkpoint()`: saves what it holds, returning a `restore()`;
+- `snapshot()`: saves what it holds, returning a `restore()`;
 - `clearCalls()`: forgets what it recorded, keeping what's registered;
 - `unusedMocks()`: mocks that never answered a call, for `assertAllUsed()`.
 
 Add the part to the list passed to `createCheckpoints` in `createMockRpc.ts`.
 `checkpoint()`, `reset()`, `clearCalls()` and `assertAllUsed()` then handle it
 with every other part; nothing else needs to change. `reset()` restores a
-checkpoint saved when the mock was created, so a part needs no `reset()` of
-its own.
+snapshot taken when the mock was created, so a part needs no `reset()` of its
+own.
+
+A **snapshot** is saved state, nothing more: each part's, or every part's at
+once. A **checkpoint** is what `mock.checkpoint()` returns: a snapshot of every
+part on a stack, where restoring one invalidates the checkpoints added after
+it.
 
 ## Lint rules as guidelines
 

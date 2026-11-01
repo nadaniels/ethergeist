@@ -69,7 +69,7 @@ export function createFaults() {
       return active.fault;
     },
     /** Saves the faults and their counts; `restore()` removes later ones. */
-    checkpoint() {
+    snapshot() {
       const saved = faults.map((fault) => [fault, fault.remaining, fault.count] as const);
       return {
         restore() {

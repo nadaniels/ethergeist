@@ -92,7 +92,8 @@ export function describeLogsCall(
   contracts: readonly { address: Address; name: string | undefined; abi: Abi }[],
 ): string {
   const nameOf = (address: Address) =>
-    contracts.find((c) => c.address === address)?.name ?? formatValue(address, { short: true });
+    contracts.find((contract) => contract.address === address)?.name ??
+    formatValue(address, { short: true });
   const parts: string[] = [];
   if (call.address !== undefined)
     parts.push(
@@ -118,9 +119,13 @@ function describeTopics(topics: readonly LogsTopic[], contracts: readonly { abi:
   const matched = selectors.map((selector) => eventFor(selector));
   // Indexed args decode only when the topics ask for one known event.
   const [event] = matched;
-  if (selectors.length === 0 || matched.some((e) => e === undefined) || event === undefined)
+  if (
+    selectors.length === 0 ||
+    matched.some((abiEvent) => abiEvent === undefined) ||
+    event === undefined
+  )
     return `topics: ${formatValue(topics, { short: true })}`;
-  if (matched.length > 1) return matched.map((e) => e!.name).join(" | ");
+  if (matched.length > 1) return matched.map((abiEvent) => abiEvent!.name).join(" | ");
 
   const indexed = event.inputs.filter((input) => input.indexed === true);
   const args = rest.flatMap((topic, i) => {

@@ -89,7 +89,7 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
       );
     },
     /** Saves the batch count, so batch ids go back on `restore()`. */
-    checkpoint() {
+    snapshot() {
       const saved = batchCount;
       return {
         restore() {

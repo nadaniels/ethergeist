@@ -16,7 +16,7 @@ import { type Handler as MockHandler, createHandlers } from "../mocking/handlers
 import { assertNoMatchers, mismatches } from "../mocking/matching.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockNotFoundError } from "../shared/errors.js";
-import type { PartCheckpoint } from "../shared/parts.js";
+import type { PartSnapshot } from "../shared/parts.js";
 import type { ActionContext } from "./types.js";
 
 /** What an action's definition reads: the chain's state, what's registered, and emitted logs. */
@@ -72,8 +72,8 @@ export function createTable(definition: Definition) {
 
   function register(params: unknown) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
-    const handler = mocks.add(pinned, undefined);
-    return mocks.builderFor(handler, (value) => {
+    const handler = mocks.register(pinned, undefined);
+    return mocks.createBuilder(handler, (value) => {
       encode(value, undefined);
     });
   }
@@ -81,7 +81,8 @@ export function createTable(definition: Definition) {
   /** Unused mocks, each with the calls this table received instead. */
   const describeUnused = (list: Handler[]) =>
     list.map(
-      (h) => `${describeMock(definition.name, h)}${formatReceived(definition.name, received(h))}`,
+      (handler) =>
+        `${describeMock(definition.name, handler)}${formatReceived(definition.name, received(handler))}`,
     );
 
   /** The calls this table received since the last clear, and where each differs from `handler`. */
@@ -132,12 +133,16 @@ export function createTable(definition: Definition) {
     if (answered) return await answered;
     // The most specific matching handler wins; among equally specific ones,
     // the most recently registered wins.
-    const handler = mocks.best(mocks.handlers, (h) => actualOf(h.pinned, call), definition.name);
+    const handler = mocks.findAnswering(
+      mocks.handlers,
+      (candidate) => actualOf(candidate.pinned, call),
+      definition.name,
+    );
     if (!handler) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
       if (turn) throw turn.miss;
-      const registered = mocks.handlers.map((h) => `  ${describeMock(definition.name, h)}`);
+      const registered = mocks.handlers.map((mock) => `  ${describeMock(definition.name, mock)}`);
       throw new MockNotFoundError(`No mock for ${formatCall(definition.name, call)}.`, {
         details:
           registered.length > 0
@@ -148,7 +153,12 @@ export function createTable(definition: Definition) {
 
     const context = { ...call, fail };
     definition.extendContext?.(context, call);
-    return await mocks.run(handler, context, (value) => encode(value, call), definition.name);
+    return await mocks.answerWith(
+      handler,
+      context,
+      (value) => encode(value, call),
+      definition.name,
+    );
   }
 
   return {
@@ -160,12 +170,12 @@ export function createTable(definition: Definition) {
       mocks.clearUsage();
     },
     /** Removes every mock, whose builders then throw, and forgets the calls. */
-    remove() {
+    removeAll() {
       mocks.removeAll();
       history.length = 0;
     },
     unusedMocks: () => describeUnused(mocks.unused(mocks.handlers)),
     /** Saves the registered mocks and their answers, to put back or compare against. */
-    checkpoint: (): Required<PartCheckpoint> => mocks.checkpoint(describeUnused),
+    snapshot: (): Required<PartSnapshot> => mocks.snapshot(describeUnused),
   };
 }

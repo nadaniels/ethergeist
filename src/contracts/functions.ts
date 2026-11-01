@@ -39,13 +39,16 @@ export function createFunctions(abi: Abi) {
     estimateGas: writes,
   };
   const functionsBySelector = new Map(
-    [...functionsIn.read, ...functionsIn.simulate].map((f) => [toFunctionSelector(f), f]),
+    [...functionsIn.read, ...functionsIn.simulate].map((abiItem) => [
+      toFunctionSelector(abiItem),
+      abiItem,
+    ]),
   );
 
   /** For a name that isn't in `namespace`: says where it is instead, if anywhere. */
   function notInNamespaceError(namespace: Namespace, functionName: string) {
     const other = namespace === "read" ? "simulate" : "read";
-    const elsewhere = functionsIn[other].find((f) => f.name === functionName);
+    const elsewhere = functionsIn[other].find((abiItem) => abiItem.name === functionName);
     if (!elsewhere) return new Error(`No function "${functionName}" on this contract's ABI.`);
     const kind = `"${functionName}" is a ${elsewhere.stateMutability} function`;
     return namespace === "estimateGas"
@@ -66,7 +69,7 @@ export function createFunctions(abi: Abi) {
     functionName: string,
     args: readonly unknown[] | undefined,
   ): AbiFunction {
-    const overloads = functionsIn[namespace].filter((f) => f.name === functionName);
+    const overloads = functionsIn[namespace].filter((abiItem) => abiItem.name === functionName);
     // viem would pick the first overload; "any args" can't say which one.
     if (args === undefined && overloads.length > 1)
       throw new Error(
@@ -81,9 +84,11 @@ export function createFunctions(abi: Abi) {
     }
 
     const fits = overloads.filter(
-      (f) =>
-        f.inputs.length === args!.length &&
-        args!.every((arg, i) => findMatcher(arg) !== undefined || isOfType(f.inputs[i]!, arg)),
+      (overload) =>
+        overload.inputs.length === args!.length &&
+        args!.every(
+          (arg, i) => findMatcher(arg) !== undefined || isOfType(overload.inputs[i]!, arg),
+        ),
     );
     if (fits.length === 1) return fits[0]!;
     const call = formatCall(functionName, args);
@@ -98,7 +103,7 @@ export function createFunctions(abi: Abi) {
 }
 
 function listSignatures(functions: readonly AbiFunction[]): string {
-  return functions.map((f) => `  ${toFunctionSignature(f)}`).join("\n");
+  return functions.map((abiItem) => `  ${toFunctionSignature(abiItem)}`).join("\n");
 }
 
 /** Whether `value` encodes as `parameter`'s type. */
@@ -127,7 +132,7 @@ function checksumAddresses(parameter: AbiParameter, value: unknown): unknown {
 
   const element = arrayElement(parameter);
   if (element)
-    return Array.isArray(value) ? value.map((v) => checksumAddresses(element, v)) : value;
+    return Array.isArray(value) ? value.map((item) => checksumAddresses(element, item)) : value;
 
   if (parameter.type === "tuple" && "components" in parameter) {
     const { components } = parameter;
@@ -138,7 +143,7 @@ function checksumAddresses(parameter: AbiParameter, value: unknown): unknown {
     if (isPlainObject(value))
       return Object.fromEntries(
         Object.entries(value).map(([key, v]) => {
-          const component = components.find((c) => c.name === key);
+          const component = components.find((candidate) => candidate.name === key);
           return [key, component ? checksumAddresses(component, v) : v];
         }),
       );

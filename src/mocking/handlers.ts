@@ -5,7 +5,7 @@ import {
   MockRpcError,
   removedMockError,
 } from "../shared/errors.js";
-import type { PartCheckpoint } from "../shared/parts.js";
+import type { PartSnapshot } from "../shared/parts.js";
 import { MockFailure, fail } from "./faults.js";
 import { type Specificity, bestMatch, isMatch, setLimit, specificity } from "./matching.js";
 import type { MockNodeFault } from "./types.js";
@@ -68,7 +68,7 @@ export function withCalls<fn extends (...args: never[]) => unknown>(
 export function createHandlers<context, extra>() {
   const handlers: Handler<context, extra>[] = [];
 
-  function add(
+  function register(
     pinned: unknown,
     extra: extra,
     { isDefault = false }: { isDefault?: boolean } = {},
@@ -92,7 +92,7 @@ export function createHandlers<context, extra>() {
    * `handler`'s builder. `validate` checks a static answer at registration,
    * so one that can't be encoded fails there, not inside a request.
    */
-  function builderFor(
+  function createBuilder(
     handler: Handler<context, extra>,
     validate: (value: unknown) => void,
   ): Builder {
@@ -127,14 +127,15 @@ export function createHandlers<context, extra>() {
    * the call has for it. `name` names the function or action when a
    * predicate throws.
    */
-  function best(
+  function findAnswering(
     candidates: readonly Handler<context, extra>[],
     actual: (handler: Handler<context, extra>) => unknown,
     name: string,
   ): Handler<context, extra> | undefined {
     return bestMatch(
-      candidates.filter((h) => h.resolver !== undefined),
-      (h, options) => h.pinned === undefined || isMatch(h.pinned, actual(h), options),
+      candidates.filter((handler) => handler.resolver !== undefined),
+      (handler, options) =>
+        handler.pinned === undefined || isMatch(handler.pinned, actual(handler), options),
       name,
     );
   }
@@ -144,7 +145,7 @@ export function createHandlers<context, extra>() {
    * What it throws becomes a resolver error named `name`, unless it's an
    * answer itself, like a revert or a fault: see `isDeliberate`.
    */
-  async function run<answer>(
+  async function answerWith<answer>(
     handler: Handler<context, extra>,
     context: context,
     encode: (value: unknown) => answer,
@@ -166,14 +167,16 @@ export function createHandlers<context, extra>() {
    * are used-up mocks, which answered every call they had.
    */
   const unused = (list: readonly Handler<context, extra>[]) =>
-    list.filter((h) => !h.isDefault && h.usedCount === 0 && h.remaining !== 0);
+    list.filter(
+      (handler) => !handler.isDefault && handler.usedCount === 0 && handler.remaining !== 0,
+    );
 
   return {
     handlers,
-    add,
-    builderFor,
-    best,
-    run,
+    register,
+    createBuilder,
+    findAnswering,
+    answerWith,
     unused,
     clearUsage() {
       for (const handler of handlers) handler.usedCount = 0;
@@ -187,10 +190,12 @@ export function createHandlers<context, extra>() {
      * Saves the registered mocks and their answers and limits. `restore()`
      * removes mocks registered since; `unusedSince` reports their unused ones.
      */
-    checkpoint(
+    snapshot(
       describeUnused: (list: Handler<context, extra>[]) => string[],
-    ): Required<PartCheckpoint> {
-      const saved = handlers.map((h) => [h, h.resolver, h.limit, h.remaining] as const);
+    ): Required<PartSnapshot> {
+      const saved = handlers.map(
+        (handler) => [handler, handler.resolver, handler.limit, handler.remaining] as const,
+      );
       return {
         restore() {
           for (const handler of handlers.slice(saved.length)) handler.removed = true;

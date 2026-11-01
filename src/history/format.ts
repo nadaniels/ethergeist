@@ -49,7 +49,7 @@ export function formatRecent(
       ? "Requests so far:"
       : `${shown.length === 1 ? "Last request" : `Last ${shown.length} requests`} ` +
         `(${earlier} earlier; see mock.formatHistory()):`;
-  return [heading, ...shown.map((i) => formatEntry(entries, i, context))].join("\n");
+  return [heading, ...shown.map((index) => formatEntry(entries, index, context))].join("\n");
 }
 
 /** The fault that entry `index` retries, if it's a retry: the same request, right after a fault. */

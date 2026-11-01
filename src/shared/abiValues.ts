@@ -27,13 +27,19 @@ export function fillZeros(parameter: AbiParameter, value: unknown): unknown {
   if (value === undefined) return zeroValue(parameter);
 
   const element = arrayElement(parameter);
-  if (element) return Array.isArray(value) ? value.map((v) => fillZeros(element, v)) : value;
+  if (element) return Array.isArray(value) ? value.map((item) => fillZeros(element, item)) : value;
 
   if (parameter.type === "tuple" && "components" in parameter) {
     const { components } = parameter;
-    if (Array.isArray(value)) return components.map((c, i) => fillZeros(c, value[i]));
+    if (Array.isArray(value))
+      return components.map((component, i) => fillZeros(component, value[i]));
     if (isPlainObject(value))
-      return Object.fromEntries(components.map((c) => [c.name, fillZeros(c, value[c.name!])]));
+      return Object.fromEntries(
+        components.map((component) => [
+          component.name,
+          fillZeros(component, value[component.name!]),
+        ]),
+      );
   }
   return value;
 }
@@ -47,9 +53,9 @@ function zeroValue(parameter: AbiParameter): unknown {
 
   if (parameter.type === "tuple" && "components" in parameter) {
     const { components } = parameter;
-    return components.every((c) => c.name)
-      ? Object.fromEntries(components.map((c) => [c.name, zeroValue(c)]))
-      : components.map((c) => zeroValue(c));
+    return components.every((component) => component.name)
+      ? Object.fromEntries(components.map((component) => [component.name, zeroValue(component)]))
+      : components.map((component) => zeroValue(component));
   }
 
   if (parameter.type === "address") return zeroAddress;

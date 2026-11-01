@@ -86,7 +86,7 @@ export function createChainState(parameters: {
     timestampAt: (number: bigint) => generate(number).timestamp,
     resolveBlock,
     /** Saves the block number and fees, to go back to. */
-    checkpoint() {
+    snapshot() {
       const saved = { blockNumber, feeChanges };
       return {
         restore() {
