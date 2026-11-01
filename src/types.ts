@@ -108,13 +108,16 @@ export type MockRpc = {
    * with `.returns(receipt)`: the same defaults, logs placed the same way,
    * in the current block unless given. Its hash is zero unless given
    * (`transactionHash`). For `toEqual` against what the app got, and for props.
+   * Its addresses are lowercase, as nodes send them: compare them with viem's
+   * `isAddressEqual`, not `toBe(contract.address)`.
    */
   buildReceipt(receipt?: MockReceipt): TransactionReceipt;
   /**
    * The log `address` emits for `eventName` with `args`, as a complete viem
    * log, for where no mock places it: `toEqual`, props, a function that
    * parses logs. The same encoding as a contract's `events`, in the current
-   * block unless given, with other position fields zero.
+   * block unless given, with other position fields zero. Its address is
+   * lowercase, as nodes send it: compare with `isAddressEqual`, not `toBe`.
    */
   buildLog<const abi extends Abi, eventName extends ContractEventName<abi>>(
     parameters: BuildLogParameters<abi, eventName>,
@@ -124,10 +127,15 @@ export type MockRpc = {
    * values from a contract's `events`, in the current block, or in a newly
    * mined one with `{ mine: true }`. Returns the placed logs, e.g. for a
    * mocked receipt. See `EmitOptions` for choosing the block and transaction.
+   * Placed logs' addresses are lowercase, as nodes send them: compare with
+   * `isAddressEqual`, not `toBe`.
    */
   emit(log: MockEventLog, options?: EmitOptions): EmittedLog;
   emit(logs: readonly MockEventLog[], options?: EmitOptions): EmittedLog[];
-  /** Every emitted log, by block and log index, as `getLogs` would answer them. */
+  /**
+   * Every emitted log, by block and log index, as `getLogs` would answer them,
+   * with lowercase addresses: compare with `isAddressEqual`, not `toBe`.
+   */
   readonly logs: EmittedLog[];
   /**
    * Mocks a JSON-RPC method that has no typed mock, answering with raw JSON-RPC

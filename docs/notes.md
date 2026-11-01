@@ -129,6 +129,14 @@ features land; tick them off as pages get written.
       (`ContractFunctionRevertedError`, `errorName`, `reason`), never by
       message text: the wording differs by node (`<empty>` vs an empty
       reason, panic descriptions, BSC appending the data), in production too.
+- [ ] Test error handling through the transport, not with hand-built viem
+      errors, which are easy to get subtly wrong. A dogfood app modelled a
+      rate limit as a JSON-RPC error with code 429, which providers rarely
+      send, instead of the HTTP 429 response viem raises as
+      `HttpRequestError`. Its handler turned real 429s into outages, and its
+      tests never noticed. With `failRequests({ status: 429 })` and the other
+      fault kinds, the app's handling runs against the errors viem really
+      throws. Show each fault kind next to the error it produces.
 - [ ] Known difference: Scroll sends a bare `revert()` (no data) as `-32000`,
       so viem gives no `ContractFunctionRevertedError` there; the mock, like
       reth, does.
