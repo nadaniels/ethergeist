@@ -46,7 +46,7 @@ export function createRequestHandler({
 
     // The most recent fault wins, like mocks. A fault is a deliberate answer, so
     // it isn't recorded as unhandled.
-    const fault = faults.take(method);
+    const fault = faults.applyTo(method);
     if (fault !== undefined) {
       recorder.settle(historyEntry, { type: "fault", fault, source: "failRequests" });
       throw new MockFailure(fault);
@@ -62,7 +62,7 @@ export function createRequestHandler({
       // Recorded because callers can swallow these: app code with a fallback,
       // or viem's multicall turning a failed batch into per-call failures.
       if (error instanceof MockNotFoundError || error instanceof MockResolverError)
-        recorder.unhandled.push({ ...request, error });
+        recorder.markUnhandled(request, error);
       throw error;
     }
   }

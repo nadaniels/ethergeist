@@ -1,9 +1,12 @@
 import { type Abi, type ContractEventName, formatTransaction, zeroHash } from "viem";
 
-import { encodeTransaction } from "./actions/getTransaction.js";
 import { type MockReceipt, completeReceipt } from "./chain/receipts.js";
 import type { ChainState } from "./chain/state.js";
-import type { BuiltTransaction, MockTransaction } from "./chain/transactions.js";
+import {
+  encodeTransaction,
+  type BuiltTransaction,
+  type MockTransaction,
+} from "./chain/transactions.js";
 import { type BuildLogParameters, buildLog } from "./logs/events.js";
 
 /**

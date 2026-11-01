@@ -56,7 +56,6 @@ export type Definition = {
  * estimate of a registered contract's function also has its decoded call.
  */
 export type ActionReport = {
-  action: string;
   call: object;
   outcome: MockOutcome;
   contract?: MockCallRecord;
@@ -110,7 +109,7 @@ export function createTable(definition: Definition) {
       const contract = turn?.record;
       // The contract's own outcome if it answered; otherwise the request's.
       if (contract?.outcome.type === "pending") contract.outcome = outcome;
-      report?.({ action: definition.name, call, outcome, ...(contract && { contract }) });
+      report?.({ call, outcome, ...(contract && { contract }) });
     };
     try {
       const rpc = await answerCall(call, turn);

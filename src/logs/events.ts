@@ -94,7 +94,7 @@ export type MockEventArgs<
 type AllOptional<value> = Partial<value> extends value ? true : false;
 
 /** `args` as a parameter: optional when the event's args may all be left out. */
-export type MockEventArgsParameter<abi extends Abi, eventName extends ContractEventName<abi>> =
+type MockEventArgsParameter<abi extends Abi, eventName extends ContractEventName<abi>> =
   AllOptional<MockEventArgs<abi, eventName>> extends true
     ? [args?: MockEventArgs<abi, eventName>]
     : [args: MockEventArgs<abi, eventName>];

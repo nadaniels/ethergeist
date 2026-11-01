@@ -60,8 +60,8 @@ export function createFaults() {
         },
       };
     },
-    /** The fault that fails a request for `method`, if any, counting the use. */
-    take(method: string): MockFault | undefined {
+    /** Applies the fault that fails a request for `method`, if any, counting the use. */
+    applyTo(method: string): MockFault | undefined {
       const active = faults.findLast((each) => appliesTo(each, method));
       if (!active) return undefined;
       active.remaining -= 1;

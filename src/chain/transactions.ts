@@ -17,6 +17,7 @@ import {
 import { nodeAddress } from "../shared/values.js";
 import { blockHash } from "./blocks.js";
 import { type Fees, blobBaseFee } from "./fees.js";
+import type { ChainState } from "./state.js";
 
 /** The transaction types viem knows. */
 export type TransactionType = "legacy" | "eip2930" | "eip1559" | "eip4844" | "eip7702";
@@ -131,7 +132,7 @@ const typeHexes: Record<TransactionType, Hex> = {
 };
 
 /** What a transaction's defaults come from: the request, and the mock's chain, blocks and fees. */
-export type TransactionContext = {
+type TransactionContext = {
   hash: Hash;
   /** The current block, where a transaction without a `blockNumber` was mined. */
   blockNumber: bigint;
@@ -259,3 +260,13 @@ export function toRpcTransaction(
     rpc.blockTimestamp = numberToHex(transaction.blockTimestamp ?? context.timestampAt(number));
   return rpc;
 }
+
+/** A transaction's JSON-RPC form, with the mock's defaults: the current block and its fees. */
+export const encodeTransaction = (state: ChainState, transaction: MockTransaction, hash: Hash) =>
+  toRpcTransaction(transaction, {
+    hash,
+    blockNumber: state.blockNumber,
+    chainId: state.chainId,
+    feesAt: state.feesAt,
+    timestampAt: state.timestampAt,
+  });

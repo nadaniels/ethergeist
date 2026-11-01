@@ -20,7 +20,7 @@ import type { RevertSpec } from "./types.js";
  * Turns what a resolver returned into the value viem's encoder expects: named
  * outputs become a tuple in ABI order, and omitted struct fields get zero values.
  */
-export function normalizeResult(outputs: readonly AbiParameter[], value: unknown): unknown {
+function normalizeResult(outputs: readonly AbiParameter[], value: unknown): unknown {
   if (value === zeroResult) return normalizeResult(outputs, outputs.length > 1 ? [] : undefined);
   if (outputs.length === 0) return value;
   if (outputs.length === 1) return fillZeros(outputs[0]!, value);
@@ -39,7 +39,7 @@ export function encodeAnswer(
 }
 
 /** `value` as `abiItem`'s encoded return data, as `eth_call` answers. */
-export function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
+function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
   assertNoMatchers(value);
   return encodeFunctionResult({
     abi: [abiItem],

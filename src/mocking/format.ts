@@ -1,12 +1,7 @@
-import { type Address, isHex } from "viem";
+import { isHex } from "viem";
 
 import { isPlainObject } from "../shared/values.js";
 import { type Matcher, isMatcher } from "./matchers.js";
-
-/** A contract for messages: its name and address, or just the address. */
-export function formatContract(address: Address, name: string | undefined): string {
-  return name === undefined ? address : `${name} (${address})`;
-}
 
 /**
  * A call for messages, e.g. `balanceOf(0x…)` or `getBalance({ address: 0x… })`.

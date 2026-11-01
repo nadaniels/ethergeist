@@ -1,7 +1,7 @@
 import type { Part } from "../shared/parts.js";
 
 /** A checkpoint on the stack: a snapshot of every part, and whether it can still be restored. */
-export type Checkpoint = {
+type Checkpoint = {
   /** Whether it can still be restored: see `createCheckpoints`. */
   readonly valid: boolean;
   /** Restores every part, then clears what they recorded. */

@@ -13,7 +13,6 @@ import {
 
 import { type EmitOptions, type MockEventLog } from "../logs/events.js";
 import { fail } from "../mocking/faults.js";
-import { formatContract } from "../mocking/format.js";
 import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError } from "../shared/errors.js";
@@ -21,7 +20,7 @@ import type { PartSnapshot } from "../shared/parts.js";
 import { encodeAnswer, createRevertError } from "./answers.js";
 import { createContractApi } from "./createContractApi.js";
 import { type Namespace, createFunctions, type Kind, pinArgs } from "./functions.js";
-import { missError, unusedLine } from "./messages.js";
+import { formatContract, missError, unusedLine } from "./messages.js";
 import type {
   MockCallRecord,
   CallContext,

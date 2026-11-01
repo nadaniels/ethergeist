@@ -306,7 +306,7 @@ type NamedOutputs<abiFunction> = abiFunction extends {
   : never;
 
 /** What `.returns()` accepts for a function: viem's return type, or named outputs. */
-export type MockReturnType<abi extends Abi, functionName extends string, returnType> =
+type MockReturnType<abi extends Abi, functionName extends string, returnType> =
   | PartialStructs<returnType>
   | NamedOutputs<Extract<abi[number], { type: "function"; name: functionName }>>
   | typeof zeroResult;

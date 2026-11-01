@@ -15,7 +15,7 @@ const url = "mock://viem-transport-mock";
  * differently, but viem builds the same classes and decoded revert from them. viem reads the
  * reason and the data from it, as in production.
  */
-export function createRevertRpcError(
+function createRevertRpcError(
   revert: MockRevertError,
   request: { method: string; params?: unknown },
 ): RpcRequestError {
@@ -30,7 +30,7 @@ export function createRevertRpcError(
   });
 }
 
-export function createFaultError(
+function createFaultError(
   fault: MockNodeFault,
   request: { method: string; params?: unknown },
 ): HttpRequestError | RpcRequestError | TimeoutError {

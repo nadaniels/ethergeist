@@ -1,4 +1,4 @@
-import type { AbiFunction } from "viem";
+import type { AbiFunction, Address } from "viem";
 
 import {
   type ReceivedCall,
@@ -65,4 +65,9 @@ function received(mock: Mock, call: MockCall): ReceivedCall {
         ? `arg ${Number(index) + 1}`
         : inputName;
   return { call: formatMismatch(call.functionName, call.args, mismatched), differs };
+}
+
+/** A contract for messages: its name and address, or just the address. */
+export function formatContract(address: Address, name: string | undefined): string {
+  return name === undefined ? address : `${name} (${address})`;
 }

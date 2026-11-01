@@ -12,7 +12,7 @@ import {
 import type { ActionName } from "../actions/typedActions.js";
 import type { MockCall, Reporter } from "../contracts/types.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
-import { MockRevertError } from "../shared/errors.js";
+import { MockNotFoundError, MockResolverError, MockRevertError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { type FormatContext, formatEntry } from "./format.js";
 import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./types.js";
@@ -117,7 +117,8 @@ export function createRecorder({
     requests,
     history,
     calls,
-    unhandled,
+    /** Requests the mock couldn't answer; added to with `markUnhandled()`. */
+    unhandled: unhandled as readonly UnhandledRequest[],
     /** Records a request as received, and returns its history entry. */
     start(request: RpcRequest): MockHistoryEntry {
       requests.push(request);
@@ -137,6 +138,10 @@ export function createRecorder({
           : formatEntry(history, index, formatContext),
         entry,
       );
+    },
+    /** Records a request the mock couldn't answer, for `unhandled` and `assertNoUnhandled()`. */
+    markUnhandled(request: RpcRequest, error: MockNotFoundError | MockResolverError) {
+      unhandled.push({ ...request, error });
     },
     /** Records a decoded contract call, from any contract. */
     onCall: (call: MockCall) => {

@@ -92,7 +92,7 @@ function assertInReceipt<value extends bigint | number | string>(
 }
 
 /** Where a log sits on the chain: its block, transaction, and index in the block. */
-export type LogPosition = Pick<
+type LogPosition = Pick<
   Log<bigint, number, false>,
   "blockHash" | "blockNumber" | "transactionHash" | "transactionIndex" | "logIndex"
 >;
