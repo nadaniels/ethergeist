@@ -81,8 +81,14 @@ export type MockRpc = {
    * chain, `cacheTime: 0` so `mine()` shows up immediately, and
    * `pollingInterval: 50` so watchers and `waitForTransactionReceipt` notice
    * new blocks quickly (viem's default is up to 4s). Options override them.
+   * `transportOptions` are the transport's, as for `transport()`, and merge
+   * over the same defaults: e.g. `publicClient({}, { retryCount: 0 })` so a
+   * fault reaches the app without retries.
    */
-  publicClient(options?: MockPublicClientParameters): PublicClient<CustomTransport, Chain>;
+  publicClient(
+    options?: MockPublicClientParameters,
+    transportOptions?: CustomTransportConfig,
+  ): PublicClient<CustomTransport, Chain>;
   /**
    * Registers a mocked contract. Each address takes one registration; for a
    * proxy or extended contract, combine the ABIs (`abi: [...a, ...b]`).

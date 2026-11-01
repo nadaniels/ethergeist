@@ -50,6 +50,33 @@ describe("publicClient()", () => {
     expect(mock.requests.filter((r) => r.method === "eth_call")).toHaveLength(1);
   });
 
+  test("transport options are a second argument, e.g. no retries", async () => {
+    const mock = createMockRpc();
+    mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().fails({ status: 503 });
+    const ethCalls = () => mock.requests.filter((r) => r.method === "eth_call");
+
+    await mock
+      .publicClient(undefined, { retryCount: 0 })
+      .readContract(decimalsCall)
+      .catch(() => {});
+    expect(ethCalls()).toHaveLength(1);
+    await mock
+      .publicClient()
+      .readContract(decimalsCall)
+      .catch(() => {});
+    // One attempt plus viem's default 3 retries.
+    expect(ethCalls()).toHaveLength(5);
+  });
+
+  test("transport options merge over the transport's defaults, as client options do", () => {
+    const client = createMockRpc().publicClient({ cacheTime: 10 }, { retryCount: 2 });
+
+    expect(client.transport.retryCount).toBe(2);
+    expect(client.transport.retryDelay).toBe(0);
+    expect(client.cacheTime).toBe(10);
+    expect(client.pollingInterval).toBe(50);
+  });
+
   test("defaults to mainnet", async () => {
     const mock = createMockRpc();
 

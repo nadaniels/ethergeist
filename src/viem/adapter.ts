@@ -49,13 +49,14 @@ export function createViemAdapter({ handle, chain }: { handle: RequestHandler; c
 
   function publicClient(
     options: MockPublicClientParameters = {},
+    transportOptions?: CustomTransportConfig,
   ): PublicClient<CustomTransport, Chain> {
     return createPublicClient({
       cacheTime: 0,
       pollingInterval: 50,
       ...options,
       chain,
-      transport: transport(),
+      transport: transport(transportOptions),
     });
   }
 
