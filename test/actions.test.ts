@@ -509,8 +509,8 @@ describe("getTransactionReceipt", () => {
     expect(await client.getTransactionConfirmations({ transactionReceipt: receipt })).toBe(3n);
   });
 
-  test("a log placed elsewhere throws, naming where", async () => {
-    const { mock, client } = setup();
+  test("a log placed elsewhere throws, naming where", () => {
+    const { mock } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });
     const placed = mock.buildLog({
       abi: erc20Abi,
@@ -525,10 +525,25 @@ describe("getTransactionReceipt", () => {
       "Receipt log 0 has blockNumber 10n, but the receipt's is 7n. A receipt places its logs: " +
         "pass only their content, e.g. from contract.events.",
     );
-    // The hash is known only once a request arrives.
-    mock.actions.getTransactionReceipt({ hash: txHash }).returns({
-      logs: [{ ...usdc.events.Transfer({ from: alice, to: bob }), transactionHash: otherHash }],
-    });
+    // A pinned hash is known at registration, so a log from another transaction fails there.
+    const otherLog = {
+      ...usdc.events.Transfer({ from: alice, to: bob }),
+      transactionHash: otherHash,
+    };
+    expect(() => {
+      mock.actions.getTransactionReceipt({ hash: txHash }).returns({ logs: [otherLog] });
+    }).toThrow(`Receipt log 0 has transactionHash ${otherHash}, but the receipt's is ${txHash}.`);
+  });
+
+  test("a hash pinned with a matcher is known only once a request arrives", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const otherLog = {
+      ...usdc.events.Transfer({ from: alice, to: bob }),
+      transactionHash: otherHash,
+    };
+    mock.actions.getTransactionReceipt({ hash: match.any() }).returns({ logs: [otherLog] });
+
     expect(String(await rejectionOf(client.getTransactionReceipt({ hash: txHash })))).toContain(
       `Receipt log 0 has transactionHash ${otherHash}, but the receipt's is ${txHash}.`,
     );

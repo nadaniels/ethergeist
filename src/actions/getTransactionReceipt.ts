@@ -1,4 +1,4 @@
-import { formatTransactionReceipt } from "viem";
+import { formatTransactionReceipt, isHash } from "viem";
 
 import { completeReceipt, toRpcReceipt } from "../chain/receipts.js";
 import { isPlainObject } from "../shared/values.js";
@@ -13,6 +13,11 @@ export const getTransactionReceipt = ({
   name: "getTransactionReceipt",
   hint: "mock.actions.getTransactionReceipt({ hash }).returns(…)",
   decode: ([hash]) => ({ hash: hashParam(hash) }),
+  // A pinned hash is the receipt's, so its logs' placement is checked at registration.
+  pinnedCall: (pinned) =>
+    isPlainObject(pinned) && typeof pinned.hash === "string" && isHash(pinned.hash)
+      ? { hash: pinned.hash }
+      : undefined,
   zero: {},
   encode(value, call) {
     if (value === null) return null;

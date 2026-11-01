@@ -46,6 +46,12 @@ export type Definition<call extends object = object, rpc = unknown> = {
   zero: unknown;
   /** Normalizes pinned fields at registration, e.g. checksumming addresses. */
   pin?(pinned: unknown): unknown;
+  /**
+   * The call a static answer is checked against at registration, from what
+   * the mock pins, so a mismatch fails at `.returns()`. `undefined` when the
+   * pins don't settle it (e.g. a matcher), leaving the check to request time.
+   */
+  pinnedCall?(pinned: unknown): call | undefined;
   /** What pinned params are matched against, deeply. Defaults to the call itself. */
   actual?(pinned: unknown, call: call): unknown;
   /** The answer when no mock matches, or `undefined` to report the call as unhandled. */
@@ -84,7 +90,7 @@ export function createTable(definition: Definition) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
     const handler = mocks.register(pinned, undefined);
     return mocks.createBuilder(handler, (value) => {
-      encode(value, undefined);
+      encode(value, definition.pinnedCall?.(pinned));
     });
   }
 

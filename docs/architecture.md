@@ -83,7 +83,10 @@ adapter folder beside `viem/`, not a change to the layers under it.
    `logStore`) and returns its `Definition<call, rpc>`: how to decode the call,
    encode and view answers, and what to answer when it isn't mocked. `call` is
    its decoded call's type and `rpc` its JSON-RPC answer's, so its members get
-   them typed, without casts.
+   them typed, without casts. If `encode` checks the answer against the call
+   (as receipts check their logs' placement), also give `pinnedCall`, so a
+   static answer that can't fit fails at `.returns()` instead of at request
+   time.
 2. Add it to the `typedActions` catalog in `actions/typedActions.ts`, with the
    JSON-RPC methods it answers.
 3. Add its mock's type, with its documentation, to `MockActions` in the same
