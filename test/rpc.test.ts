@@ -229,3 +229,23 @@ describe("chainId", () => {
     expect(await client.getChainId()).toBe(8453);
   });
 });
+
+describe("malformed params", () => {
+  // A node refuses params it can't parse with -32602 (invalid params). The
+  // messages are the mock's own: none were captured from a node.
+  test.each([
+    ["an address that isn't one", "eth_getBalance", ["0x1234", "latest"]],
+    ["a block tag that isn't one", "eth_getBlockByNumber", ["banana", false]],
+    ["a transaction hash that isn't one", "eth_getTransactionByHash", [5]],
+    ["a receipt hash that isn't one", "eth_getTransactionReceipt", ["0x12"]],
+    ["reward percentiles that aren't numbers", "eth_feeHistory", ["0x1", "latest", ["a"]]],
+    ["a block count that isn't a number", "eth_feeHistory", ["many", "latest"]],
+    ["an eth_call target that isn't an address", "eth_call", [{ to: 5, data: "0x313ce567" }]],
+    ["an eth_call without a transaction", "eth_call", ["0x313ce567"]],
+  ])("%s is refused as invalid params", async (_, method, params) => {
+    const mock = createMockRpc();
+
+    await mock.request({ method, params }).catch(() => {});
+    expect(mock.history[0]?.outcome).toMatchObject({ type: "rpcError", code: -32602 });
+  });
+});

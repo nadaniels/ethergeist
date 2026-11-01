@@ -1,5 +1,17 @@
-import { type BlockTag, getAddress, hexToBigInt, isHex, numberToHex } from "viem";
+import {
+  type Address,
+  type BlockTag,
+  type Hash,
+  getAddress,
+  hexToBigInt,
+  isAddress,
+  isHash,
+  isHex,
+  numberToHex,
+} from "viem";
 
+import { formatValue } from "../mocking/format.js";
+import { invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { AddressAtBlockCall } from "./types.js";
 
@@ -41,12 +53,30 @@ export function blockAt(
   resolveBlock: (block: unknown) => bigint,
 ): { blockNumber: bigint; blockTag?: BlockTag } {
   const tagged = block ?? "latest";
-  const isTag = typeof tagged === "string" && !isHex(tagged);
+  if (typeof tagged === "string" && !isHex(tagged) && !isBlockTag(tagged))
+    throw invalidParams(`expected a block number, tag or hash; got ${formatValue(tagged)}`);
   return {
     blockNumber: resolveBlock(tagged),
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a tag, per JSON-RPC
-    ...(isTag && { blockTag: tagged as BlockTag }),
+    ...(isBlockTag(tagged) && { blockTag: tagged }),
   };
+}
+
+const blockTags = new Set<unknown>(["latest", "earliest", "pending", "safe", "finalized"]);
+
+const isBlockTag = (value: unknown): value is BlockTag => blockTags.has(value);
+
+/** An address param, checksummed; refused as invalid params if it isn't one. */
+export function addressParam(value: unknown): Address {
+  if (typeof value !== "string" || !isAddress(value, { strict: false }))
+    throw invalidParams(`expected an address; got ${formatValue(value)}`);
+  return getAddress(value);
+}
+
+/** A 32-byte hash param; refused as invalid params if it isn't one. */
+export function hashParam(value: unknown): Hash {
+  if (typeof value !== "string" || !isHash(value))
+    throw invalidParams(`expected a 32-byte hash; got ${formatValue(value)}`);
+  return value;
 }
 
 /** An address and a block, as `eth_getBalance` and its kind take them; see `AddressAtBlockCall`. */
@@ -55,9 +85,7 @@ export function decodeAddressAtBlock(
   resolveBlock: (block: unknown) => bigint,
 ): AddressAtBlockCall {
   return {
-    // JSON-RPC params arrive untyped; viem sends the address first.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
-    address: getAddress(address as string),
+    address: addressParam(address),
     ...blockAt(block, resolveBlock),
   };
 }

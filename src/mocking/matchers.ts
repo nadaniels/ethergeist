@@ -1,4 +1,5 @@
 import type { PartialStructs } from "../shared/abiValues.js";
+import { isPlainObject } from "../shared/values.js";
 
 const matcherKey = Symbol("matcher");
 
@@ -65,15 +66,14 @@ type PartialFields<value> = value extends readonly unknown[] ? never : PartialSt
 
 /** Internal: a `partial` matcher for `fields`, e.g. after normalizing them. */
 export function partialMatcher(fields: unknown): Matcher {
-  if (typeof fields !== "object" || fields === null || Array.isArray(fields))
+  if (!isPlainObject(fields))
     throw new TypeError(
       "match.partial() takes a struct's fields as an object; for arrays, use match.where().",
     );
   return Object.freeze<Matcher>({
     [matcherKey]: true,
     type: "partial",
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- checked to be a non-array object above
-    fields: fields as Record<string, unknown>,
+    fields,
   });
 }
 

@@ -1,11 +1,38 @@
-import { type Address, type Hex, getAddress, hexToBigInt } from "viem";
+import { type Address, type Hex, getAddress, hexToBigInt, isAddress, isHex } from "viem";
 
 import type { ChainState } from "../chain/state.js";
+import { formatValue } from "../mocking/format.js";
 import { errorOutcome } from "../mocking/outcomes.js";
-import { MockNotFoundError } from "../shared/errors.js";
+import { MockNotFoundError, invalidParams } from "../shared/errors.js";
+import { isPlainObject } from "../shared/values.js";
 import { resolveMulticall } from "./multicall.js";
 import type { Registry } from "./registry.js";
 import type { Reporter, CallContext } from "./types.js";
+
+/** An `eth_call`'s transaction, its fields checked; refused as invalid params if malformed. */
+function callTransaction(given: unknown) {
+  if (!isPlainObject(given))
+    throw invalidParams(`expected a transaction object; got ${formatValue(given)}`);
+  const field = <type>(name: string, is: (value: unknown) => value is type, expected: string) => {
+    const value = given[name];
+    if (value === undefined) return undefined;
+    if (!is(value))
+      throw invalidParams(`expected ${expected} for \`${name}\`; got ${formatValue(value)}`);
+    return value;
+  };
+  return {
+    to: field("to", isAddressValue, "an address"),
+    from: field("from", isAddressValue, "an address"),
+    value: field("value", isHexValue, "a quantity"),
+    data: field("data", isHexValue, "hex data"),
+    input: field("input", isHexValue, "hex data"),
+  };
+}
+
+const isHexValue = (value: unknown): value is Hex => isHex(value);
+
+const isAddressValue = (value: unknown): value is Address =>
+  typeof value === "string" && isAddress(value, { strict: false });
 
 /** `eth_call` routing: see `createDispatch`. */
 export type Dispatcher = ReturnType<typeof createDispatch>;
@@ -60,12 +87,9 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
   return {
     /** Answers an `eth_call` request; `report` hears each contract call and batch. */
     call(params: unknown, report: Reporter): Promise<Hex> {
-      // JSON-RPC params arrive untyped; this is the shape viem sends for eth_call.
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
-      const [tx, block] = params as [
-        { to?: Address; from?: Address; value?: Hex; data?: Hex; input?: Hex },
-        unknown,
-      ];
+      const list: readonly unknown[] = Array.isArray(params) ? params : [];
+      const [given, block] = list;
+      const tx = callTransaction(given);
       const data = tx.data ?? tx.input;
       if (!data) throw new MockNotFoundError("eth_call without `data` is not supported.");
       if (!tx.to)

@@ -257,7 +257,7 @@ function toRpc(value: unknown): RpcLog[] {
       throw new TypeError(
         `getLogs answers placed logs, e.g. from emit() or mock.buildLog(); log ${i} has no position.`,
       );
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- checked above
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- its position is checked above; the rest is the mock's answer as given
     return toRpcLog(log as unknown as EmittedLog);
   });
 }

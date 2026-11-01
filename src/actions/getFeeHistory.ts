@@ -1,7 +1,8 @@
 import { hexToBigInt, hexToNumber, isHex } from "viem";
 
 import { feeHistory, toRpcFeeHistory } from "../chain/fees.js";
-import { MockRpcError } from "../shared/errors.js";
+import { formatValue } from "../mocking/format.js";
+import { MockRpcError, invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { blockAt } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
@@ -62,16 +63,23 @@ function viewFeeHistory(rpc: unknown) {
   };
 }
 
+const isNumberList = (value: unknown): value is number[] =>
+  Array.isArray(value) && value.every((each) => typeof each === "number");
+
 /** `eth_feeHistory` takes a count (hex, or a number), the newest block, and maybe percentiles. */
 function decodeFeeHistory(
   [count, newest, percentiles]: readonly unknown[],
   resolveBlock: (block: unknown) => bigint,
 ): FeeHistoryCall {
+  const blockCount = isHex(count) ? hexToNumber(count) : count;
+  if (typeof blockCount !== "number" || !Number.isInteger(blockCount))
+    throw invalidParams(`expected a block count; got ${formatValue(count)}`);
+  if (percentiles !== undefined && !isNumberList(percentiles))
+    throw new MockRpcError(-32602, "invalid reward percentiles");
   return {
-    blockCount: isHex(count) ? hexToNumber(count) : Number(count),
+    blockCount,
     ...blockAt(newest, resolveBlock),
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- percentiles, per JSON-RPC
-    ...(Array.isArray(percentiles) && { rewardPercentiles: percentiles as number[] }),
+    ...(percentiles !== undefined && { rewardPercentiles: percentiles }),
   };
 }
 

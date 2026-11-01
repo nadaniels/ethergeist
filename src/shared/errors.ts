@@ -69,3 +69,10 @@ export class MockRpcError extends BaseError {
     this.code = code;
   }
 }
+
+/**
+ * A request's params a node can't parse, refused as invalid params (`-32602`).
+ * The wording is the mock's own: no node's was captured for these.
+ */
+export const invalidParams = (message: string) =>
+  new MockRpcError(-32602, `invalid params: ${message}`);

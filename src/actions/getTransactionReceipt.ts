@@ -1,7 +1,8 @@
-import { type Hash, formatTransactionReceipt } from "viem";
+import { formatTransactionReceipt } from "viem";
 
 import { completeReceipt, toRpcReceipt } from "../chain/receipts.js";
 import { isPlainObject } from "../shared/values.js";
+import { hashParam } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ReceiptCall } from "./types.js";
 
@@ -11,8 +12,7 @@ export const getTransactionReceipt = ({
 }: ActionsContext): Definition<ReceiptCall, ReturnType<typeof toRpcReceipt> | null> => ({
   name: "getTransactionReceipt",
   hint: "mock.actions.getTransactionReceipt({ hash }).returns(…)",
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
-  decode: ([hash]) => ({ hash: hash as Hash }),
+  decode: ([hash]) => ({ hash: hashParam(hash) }),
   zero: {},
   encode(value, call) {
     if (value === null) return null;

@@ -1,7 +1,8 @@
-import { type Hash, formatTransaction, zeroHash } from "viem";
+import { formatTransaction, zeroHash } from "viem";
 
 import { encodeTransaction } from "../chain/transactions.js";
 import { isPlainObject } from "../shared/values.js";
+import { hashParam } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { TransactionCall } from "./types.js";
 
@@ -11,8 +12,7 @@ export const getTransaction = ({
 }: ActionsContext): Definition<TransactionCall, ReturnType<typeof encodeTransaction> | null> => ({
   name: "getTransaction",
   hint: "mock.actions.getTransaction({ hash }).returns(…)",
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- untyped JSON-RPC boundary
-  decode: ([hash]) => ({ hash: hash as Hash }),
+  decode: ([hash]) => ({ hash: hashParam(hash) }),
   zero: {},
   encode(value, call) {
     if (value === null) return null;
