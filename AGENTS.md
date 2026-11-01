@@ -32,6 +32,8 @@ release. Add a tool name to select part of the graph. For example, run
 
 # Project Conventions
 
+Read `docs/architecture.md` before changing `src/`: the layers, naming, and how to add an action or a piece of state.
+
 ## Addresses
 
 - Normalize and compare addresses with viem's `getAddress` (checksummed) wherever they need to be valid: registration, lookups, address-keyed sets and maps. `getAddress` validates the input, so a malformed address fails at registration instead of silently never matching, and it accepts any casing.

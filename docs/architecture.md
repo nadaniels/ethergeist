@@ -1,0 +1,102 @@
+# Architecture
+
+How `src/` is organized, for anyone changing it. What the library does for its
+users is in the docs plan, `docs/notes.md`.
+
+## Layers
+
+Each folder owns one part of the mock, and imports only from the layers before
+it:
+
+```
+shared → mocking → chain → logs / contracts / actions → history → rpc → viem → createMockRpc
+```
+
+- **`shared/`:** what every layer uses: the mock's errors, small value helpers,
+  test values (`testAddress`, `testHash`), and the `Part` type (see
+  [Adding state](#adding-state)).
+- **`mocking/`:** the mock engine that contracts and actions share
+  (`handlers.ts`: registering mocks, picking the most specific match, limits
+  and usage), plus matching, matchers, faults (`MockFailure`) and `zeroResult`.
+- **`chain/`:** the chain's own state (`createChainState`: block number, clock,
+  fees) and the node's shapes for blocks, transactions, receipts and errors.
+- **`logs/`:** emitted logs and how `eth_getLogs` filters find them.
+- **`contracts/`:** mocked contracts, their registry, and `eth_call` dispatch,
+  multicall included.
+- **`actions/`:** typed actions (`mock.actions.getBalance`, …), one file each,
+  and raw `mock.method()` mocks.
+- **`history/`:** what the mock received and how it answered: the recorder,
+  outcomes, and formatting.
+- **`rpc/`:** the request pipeline (`createRequestHandler`), `failRequests()`
+  faults, checkpoints, and the assertions.
+- **`viem/`:** the viem adapter: `request`, `transport` and `publicClient`, and
+  turning the mock's errors into viem's.
+- **`createMockRpc.ts`:** the composition root. It creates each part, wires
+  them together, and returns the `MockRpc` object; it holds no logic of its own.
+
+`types.ts` holds the public `MockRpc` type and its documentation. `index.ts` is
+the only public entry point: anything users need, types included, is exported
+from there.
+
+Lint rejects import cycles, type-only ones included (`import/no-cycle`). An
+import that points back up a layer usually closes one; when it doesn't, it's
+still a sign the code is in the wrong place.
+
+### Clients and errors
+
+`createRequestHandler` knows nothing about viem. It throws the mock's own
+errors: `MockFailure` for faults, `MockRevertError`, `MockRpcError` for a node's
+refusal, and `MockNotFoundError` or `MockResolverError` for what it couldn't
+answer. An adapter turns them into its client's errors: `toViemError` in
+`viem/errors.ts` for viem. Support for another client (wagmi, ethers) is a new
+adapter folder beside `viem/`, not a change to the layers under it.
+
+## Naming
+
+1. **A file is named for what it holds.** A file built around one factory names
+   it `create` plus that thing, read together with its folder: `logs/store.ts`
+   exports `createLogStore`, `contracts/registry.ts` exports `createRegistry`.
+2. **A folder's entry point, or a file whose thing has no good noun, is named
+   for its factory:** `actions/createActions.ts`,
+   `contracts/createMockContract.ts`, `contracts/createContractApi.ts`,
+   `createMockRpc.ts`.
+3. **`build*` builds values** (`buildLog`, `buildReceipt`, `buildTransaction`);
+   **`create*` creates stateful parts.**
+
+## Adding an action
+
+1. Add its file in `actions/`, named for the action (`getGasPrice.ts`). It
+   exports a function that takes the `ActionsContext` (`state`, `registry`,
+   `logStore`) and returns its `Definition`: how to decode the call, encode and
+   view answers, and what to answer when it isn't mocked.
+2. Add it to the `typedActions` catalog in `actions/typedActions.ts`, with the
+   JSON-RPC methods it answers.
+3. Add its mock's type, with its documentation, to `MockActions` in the same
+   file.
+4. Add its decoded call's type to `ActionCalls` in `actions/types.ts`. History
+   entries and `mock.calls` are typed from it.
+5. Export any new public types from `index.ts`.
+
+## Adding state
+
+Anything that holds state is a `Part` (`shared/parts.ts`), with any of:
+
+- `checkpoint()`: saves what it holds, returning a `restore()`;
+- `clearCalls()`: forgets what it recorded, keeping what's registered;
+- `unusedMocks()`: mocks that never answered a call, for `assertAllUsed()`.
+
+Add the part to the list passed to `createCheckpoints` in `createMockRpc.ts`.
+`checkpoint()`, `reset()`, `clearCalls()` and `assertAllUsed()` then handle it
+with every other part; nothing else needs to change. `reset()` restores a
+checkpoint saved when the mock was created, so a part needs no `reset()` of
+its own.
+
+## Lint rules as guidelines
+
+`import/max-dependencies` warns when a file imports more than 10 modules (type
+imports don't count). It's a prompt to check whether a file is taking on too
+much, not a limit to design around: if splitting the file or moving code
+elsewhere would read worse than the imports, leave it, and if needed exempt the
+file in `vite.config.ts`. Two files are exempt because importing everything is
+their job: `createMockRpc.ts`, the composition root, and
+`actions/typedActions.ts`, the catalog of actions.
