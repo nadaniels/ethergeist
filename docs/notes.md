@@ -39,6 +39,10 @@ features land; tick them off as pages get written.
       case-comparison and sorting bugs. Several at once:
       ``Array.from({ length: 3 }, (_, i) => testAddress(`user-${i + 1}`))``.
       The address belongs to a key derived from the label (signing later).
+      `testLog("noise")` is a log that matches no event, for a receipt's
+      noise; `testLog("noise", { address: USDC })` for an unknown event at a
+      contract the code does know (any address; `emit()` needs it
+      registered).
 
 ## 3. Mocking contract calls
 

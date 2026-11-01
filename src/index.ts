@@ -80,3 +80,4 @@ export type {
 } from "./mocking/types.js";
 export { zeroResult } from "./mocking/zeroResult.js";
 export { testAddress, testHash } from "./shared/testValues.js";
+export { testLog } from "./logs/testLog.js";
