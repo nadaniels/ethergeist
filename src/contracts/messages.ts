@@ -5,6 +5,7 @@ import {
   describeMock,
   formatCall,
   formatMismatch,
+  formatNoAnswer,
   formatReceived,
 } from "../mocking/format.js";
 import { mismatches } from "../mocking/matching.js";
@@ -46,10 +47,14 @@ export function missError(
 /** An unused mock on the contract `label`, with the `calls` its function received instead. */
 export function unusedLine(mock: Mock, label: string, calls: readonly MockCall[]): string {
   const name = mock.abiItem.name;
-  return `${describeMock(name, mock)} on ${label}${formatReceived(
-    name,
-    calls.map((call) => received(mock, call)),
-  )}`;
+  const after =
+    mock.resolver === undefined
+      ? formatNoAnswer(".returns(), .reverts() or .fails()")
+      : formatReceived(
+          name,
+          calls.map((call) => received(mock, call)),
+        );
+  return `${describeMock(name, mock)} on ${label}${after}`;
 }
 
 /** A call `mock`'s function received, and where it first differs from `mock`'s args. */

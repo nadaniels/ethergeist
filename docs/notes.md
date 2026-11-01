@@ -435,6 +435,17 @@ features land; tick them off as pages get written.
       single test must, like the checkpoint baseline. Not "never hit".
       Show the surprise case: a fallback shadowed by a more specific mock
       (`fn()` plus `fn([x])`, only ever called with `x`) is reported.
+- [ ] Registering and answering are separate calls: `fn(args)` registers
+      the mock, then `.returns(value)` answers it. A mock registered without
+      an answer is reported ("without an answer", with how to give it one),
+      and steps aside for any mock that has one. A call that throws changes
+      nothing, so a rejected `.returns(value)` (a value that can't be
+      encoded, a receipt log placed elsewhere) leaves the mock registered
+      without an answer. App tests never see this beyond the throw itself.
+      A test of a helper that registers mocks and is expected to throw
+      (`expect(() => receiptFor(mock, bad)).toThrow()`) should use a mock of
+      its own, or a checkpoint around the throw, if an `afterEach` runs
+      `assertAllUsed()`.
 - [ ] Where shared fallbacks go: on contracts, in `defaults`. For actions,
       `method`, and narrowed fallbacks (`fn([match.where(…)])`), which have
       no `defaults`, take a checkpoint after registering them and use

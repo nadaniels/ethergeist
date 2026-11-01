@@ -69,6 +69,14 @@ export function formatMismatch(
 export type ReceivedCall = { call: string; differs: string | undefined };
 
 /**
+ * For an unused mock without an answer, in place of the calls it received:
+ * how to give it one. Matching calls aren't listed, since it had nothing to
+ * answer them with. `answers` names its engine's, e.g. `.returns() or .fails()`.
+ */
+export const formatNoAnswer = (answers: string) =>
+  `\n    give it one with ${answers}, or don't register it`;
+
+/**
  * Under an unused mock, for messages: the calls its function did receive (up
  * to 3) and where each first differs, or that it received none.
  */

@@ -8,6 +8,7 @@ import {
   type ReceivedCall,
   describeMock,
   formatCall,
+  formatNoAnswer,
   formatMismatch,
   formatReceived,
 } from "../mocking/format.js";
@@ -98,7 +99,11 @@ export function createTable(definition: Definition) {
   const describeUnused = (list: Handler[]) =>
     list.map(
       (handler) =>
-        `${describeMock(definition.name, handler)}${formatReceived(definition.name, received(handler))}`,
+        `${describeMock(definition.name, handler)}${
+          handler.resolver === undefined
+            ? formatNoAnswer(".returns() or .fails()")
+            : formatReceived(definition.name, received(handler))
+        }`,
     );
 
   /** The calls this table received since the last clear, and where each differs from `handler`. */

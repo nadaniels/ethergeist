@@ -300,22 +300,30 @@ describe("assertAllUsed()", () => {
     }).not.toThrow();
   });
 
-  test("reports a mock registered without an answer", () => {
+  test("reports a mock registered without an answer, and how to give it one", () => {
     const { mock } = setup();
     mock.contract({ abi: erc20Abi, address: USDC }).read.balanceOf();
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(`balanceOf(*) without an answer on ${USDC}`);
+    const message = unusedMessage(mock);
+    expect(message).toContain(
+      `  - balanceOf(*) without an answer on ${USDC}\n` +
+        "    give it one with .returns(), .reverts() or .fails(), or don't register it",
+    );
+    expect(message).not.toContain("received no calls");
   });
 
-  test("reports an action mock registered without an answer", () => {
-    const { mock } = setup();
+  test("reports an action mock registered without an answer, not the calls it matched", async () => {
+    const { mock, client } = setup();
     mock.actions.getBalance({ address: alice });
+    await client.getBalance({ address: alice }).catch(() => {});
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(`getBalance({ address: ${getAddress(alice)} }) without an answer`);
+    const message = unusedMessage(mock);
+    expect(message).toContain(
+      `  - getBalance({ address: ${getAddress(alice)} }) without an answer\n` +
+        "    give it one with .returns() or .fails(), or don't register it",
+    );
+    // It matched, but had no answer to give: no other mock answered it either.
+    expect(message).not.toContain("another mock answered it");
   });
 
   test("counts calls inside a multicall", async () => {

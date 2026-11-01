@@ -76,6 +76,17 @@ adapter folder beside `viem/`, not a change to the layers under it.
    for what they hold (`handler`, not `h`), except `(a, b)` in a sort
    comparator and `i` for an index.
 
+## A call that throws changes nothing
+
+Every public call either does all of what it says or nothing: it validates
+first, then changes state. `.times(n)` checks `n` before setting the limit,
+`mock.contract()` checks the address before registering, `.returns()` checks
+the value before replacing the answer. So there's never a half-done state to
+explain. Registering and answering are separate calls (`fn(args)`, then
+`.returns()`), so a rejected answer leaves the mock registered without one,
+which `assertAllUsed()` reports. A new feature should keep the rule: check
+everything, then mutate.
+
 ## Adding an action
 
 1. Add its file in `actions/`, named for the action (`getGasPrice.ts`). It
