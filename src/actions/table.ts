@@ -1,8 +1,7 @@
 import type { ChainState } from "../chain/state.js";
 import type { ContractEstimate } from "../contracts/createMockContract.js";
 import type { Registry } from "../contracts/registry.js";
-import { failureOutcome } from "../history/outcomes.js";
-import type { MockCallRecord, MockOutcome } from "../history/types.js";
+import type { MockCallRecord } from "../contracts/types.js";
 import type { LogStore } from "../logs/store.js";
 import { fail } from "../mocking/faults.js";
 import {
@@ -14,6 +13,7 @@ import {
 } from "../mocking/format.js";
 import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
 import { assertNoMatchers, mismatches } from "../mocking/matching.js";
+import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";

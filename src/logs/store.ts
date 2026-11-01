@@ -1,10 +1,9 @@
 import { Log as OxLog } from "ox";
-import { type Hash, type RpcLog, getAddress, numberToHex } from "viem";
+import { type Address, type Hash, type Hex, type RpcLog, getAddress, numberToHex } from "viem";
 
 import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
 import { placeLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
-import type { Registry } from "../contracts/registry.js";
 import { MockNotFoundError, MockRpcError } from "../shared/errors.js";
 import { testHash } from "../shared/testValues.js";
 import { isPlainObject, nodeAddress } from "../shared/values.js";
@@ -34,7 +33,11 @@ export function createLogStore({
   registry,
 }: {
   state: ChainState;
-  registry: Pick<Registry, "codeAt" | "isContract">;
+  /** What the contract registry knows, for checking addresses. */
+  registry: {
+    codeAt(address: Address): Hex | undefined;
+    isContract(address: Address): boolean;
+  };
 }) {
   const logs: PlacedLog[] = [];
 

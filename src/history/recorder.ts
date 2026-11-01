@@ -10,18 +10,12 @@ import {
 } from "viem";
 
 import type { ActionName } from "../actions/typedActions.js";
-import type { MockCall } from "../contracts/types.js";
+import type { MockCall, Reporter } from "../contracts/types.js";
+import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockRevertError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { type FormatContext, formatEntry } from "./format.js";
-import { failureOutcome } from "./outcomes.js";
-import type {
-  MockHistoryEntry,
-  MockOutcome,
-  Reporter,
-  RpcRequest,
-  UnhandledRequest,
-} from "./types.js";
+import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./types.js";
 
 export function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
   // A contract's record already decoded a revert against the contract's ABI.

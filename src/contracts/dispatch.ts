@@ -1,12 +1,11 @@
 import { type Address, type Hex, getAddress, hexToBigInt } from "viem";
 
 import type { ChainState } from "../chain/state.js";
-import { errorOutcome } from "../history/outcomes.js";
-import type { Reporter } from "../history/types.js";
+import { errorOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import { resolveMulticall } from "./multicall.js";
 import type { Registry } from "./registry.js";
-import type { CallContext } from "./types.js";
+import type { Reporter, CallContext } from "./types.js";
 
 /** `eth_call` routing: see `createDispatch`. */
 export type Dispatcher = ReturnType<typeof createDispatch>;

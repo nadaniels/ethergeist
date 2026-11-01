@@ -63,8 +63,10 @@ export type {
 export type { BuiltTransaction, MockTransaction, TransactionType } from "./chain/transactions.js";
 export type { MockLog, MockReceipt } from "./chain/receipts.js";
 export type { LogsCall, LogsTopic } from "./logs/filter.js";
-export type { MockCheckpoint, MockRestoreOptions } from "./types.js";
-export type { MockCallRecord, MockHistoryEntry, MockOutcome } from "./history/types.js";
+export type { MockCheckpoint, MockRestoreOptions } from "./rpc/checks.js";
+export type { MockCallRecord } from "./contracts/types.js";
+export type { MockHistoryEntry } from "./history/types.js";
+export type { MockOutcome } from "./mocking/outcomes.js";
 export type { FormatHistoryOptions } from "./history/format.js";
 export { MockNotFoundError, MockResolverError } from "./shared/errors.js";
 export type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";

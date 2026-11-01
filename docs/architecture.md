@@ -5,11 +5,11 @@ users is in the docs plan, `docs/notes.md`.
 
 ## Layers
 
-Each folder owns one part of the mock, and imports only from the layers before
-it:
+Each folder owns one part of the mock, and imports only from its own folder
+and the layers before it:
 
 ```
-shared → mocking → chain → logs / contracts / actions → history → rpc → viem → createMockRpc
+shared → mocking → chain → logs → contracts → actions → history → rpc → viem → (top of src/)
 ```
 
 - **`shared/`:** what every layer uses: the mock's errors, small value helpers,
@@ -17,30 +17,37 @@ shared → mocking → chain → logs / contracts / actions → history → rpc 
   [Adding state](#adding-state)).
 - **`mocking/`:** the mock engine that contracts and actions share
   (`handlers.ts`: registering mocks, picking the most specific match, limits
-  and usage), plus matching, matchers, faults (`MockFailure`) and `zeroResult`.
+  and usage), plus matching, matchers, faults (`MockFailure`), `zeroResult`,
+  and outcomes (`MockOutcome`: how a mock answered, which history records).
 - **`chain/`:** the chain's own state (`createChainState`: block number, clock,
   fees) and the node's shapes for blocks, transactions, receipts and errors.
 - **`logs/`:** emitted logs and how `eth_getLogs` filters find them.
 - **`contracts/`:** mocked contracts, their registry, and `eth_call` dispatch,
-  multicall included.
+  multicall included. It emits logs, so it sits above `logs/`; it owns
+  `MockCallRecord`, the record of a call it answered.
 - **`actions/`:** typed actions (`mock.actions.getBalance`, …), one file each,
-  and raw `mock.method()` mocks.
+  and raw `mock.method()` mocks. `getLogs` reads the log store and
+  `estimateGas` asks contracts first, so it sits above both.
 - **`history/`:** what the mock received and how it answered: the recorder,
-  outcomes, and formatting.
-- **`rpc/`:** the request pipeline (`createRequestHandler`), `failRequests()`
-  faults, checkpoints, and the assertions.
+  history entries, and formatting.
+- **`rpc/`:** the request pipeline (`createRequestHandler`, a
+  `RequestHandler`), `failRequests()` faults, checkpoints, and the assertions.
 - **`viem/`:** the viem adapter: `request`, `transport` and `publicClient`, and
   turning the mock's errors into viem's.
-- **`createMockRpc.ts`:** the composition root. It creates each part, wires
-  them together, and returns the `MockRpc` object; it holds no logic of its own.
+- **The top of `src/`:**
+  - `createMockRpc.ts`, the composition root: it creates each part, wires them
+    together, and returns the `MockRpc` object; it holds no logic of its own;
+  - `types.ts`, the public `MockRpc` type and its documentation;
+  - `builders.ts`, the mock's `buildTransaction`, `buildReceipt` and `buildLog`;
+  - `index.ts`, the only public entry point: anything users need, types
+    included, is exported from there.
 
-`types.ts` holds the public `MockRpc` type and its documentation. `index.ts` is
-the only public entry point: anything users need, types included, is exported
-from there.
-
-Lint rejects import cycles, type-only ones included (`import/no-cycle`). An
-import that points back up a layer usually closes one; when it doesn't, it's
-still a sign the code is in the wrong place.
+`test/architecture.test.ts` checks the layers: every folder in `src/` must be
+one, and no import may point up. A new folder goes into its list, in its place.
+Lint separately rejects import cycles between files, type-only ones included
+(`import/no-cycle`). When something lower needs a type or helper from higher
+up, move it down to where both can use it, as `MockOutcome` moved to
+`mocking/`.
 
 ### Clients and errors
 

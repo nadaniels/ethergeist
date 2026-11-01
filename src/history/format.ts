@@ -1,11 +1,13 @@
 import { type AbiFunction } from "viem";
 
+import type { MockCallRecord } from "../contracts/types.js";
 import type { LogsCall } from "../logs/filter.js";
 import { formatCall, formatValue } from "../mocking/format.js";
+import type { MockOutcome } from "../mocking/outcomes.js";
 import type { MockNodeFault } from "../mocking/types.js";
 import { MockResolverError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-import type { MockCallRecord, MockHistoryEntry, MockOutcome } from "./types.js";
+import type { MockHistoryEntry } from "./types.js";
 
 export type FormatHistoryOptions = {
   /** Include `eth_chainId` and `eth_blockNumber`. Defaults to `true`. */

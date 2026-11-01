@@ -4,16 +4,13 @@ import {
   type AbiParameter,
   type Hex,
   encodeFunctionResult,
-  decodeErrorResult,
   encodeErrorResult,
 } from "viem";
 
-import { builtinErrors } from "../chain/nodeErrors.js";
-import type { MockOutcome } from "../history/types.js";
 import { encodeGas } from "../mocking/gas.js";
 import { assertNoMatchers } from "../mocking/matching.js";
 import { zeroResult } from "../mocking/zeroResult.js";
-import { fillZeros } from "../shared/abiValues.js";
+import { builtinErrors, fillZeros } from "../shared/abiValues.js";
 import { MockRevertError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { Namespace } from "./functions.js";
@@ -69,16 +66,4 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
   return new MockRevertError(
     encodeErrorResult({ abi, errorName: spec.errorName, args: spec.args }),
   );
-}
-
-/** A revert's data, decoded against `abi` and the built-in errors where possible. */
-export function revertOutcome(abi: Abi, data: Hex): Extract<MockOutcome, { type: "revert" }> {
-  try {
-    const { errorName, args } = decodeErrorResult({ abi: [...abi, ...builtinErrors], data });
-    if (errorName === "Error" && typeof args[0] === "string")
-      return { type: "revert", data, reason: args[0] };
-    return { type: "revert", data, errorName, args: args ?? [] };
-  } catch {
-    return { type: "revert", data };
-  }
 }

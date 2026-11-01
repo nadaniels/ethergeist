@@ -1,5 +1,6 @@
 import type {
   Abi,
+  AbiFunction,
   Address,
   ContractErrorArgs,
   ContractErrorName,
@@ -12,6 +13,7 @@ import type {
 } from "viem";
 
 import type { MockContractEmit, MockContractEvents } from "../logs/events.js";
+import type { MockOutcome } from "../mocking/outcomes.js";
 import type {
   MockEstimateAnswers,
   MockFault,
@@ -308,3 +310,21 @@ export type MockReturnType<abi extends Abi, functionName extends string, returnT
   | PartialStructs<returnType>
   | NamedOutputs<Extract<abi[number], { type: "function"; name: functionName }>>
   | typeof zeroResult;
+
+/** A contract call the mock dispatched, directly or inside a multicall. */
+export type MockCallRecord = {
+  address: Address;
+  /** The contract's name, if it was registered with one. */
+  name: string | undefined;
+  /** The function called, from the contract's ABI; `undefined` when it couldn't be decoded. */
+  abiItem: AbiFunction | undefined;
+  /** The decoded call, or `undefined` if it couldn't be decoded (no contract, unknown selector, an empty address). */
+  call: MockCall | undefined;
+  outcome: MockOutcome;
+};
+
+/** How a request's contract calls report back to its history entry. */
+export type Reporter = {
+  call?: (record: MockCallRecord, context: CallContext) => void;
+  batch?: (id: number) => void;
+};

@@ -9,6 +9,7 @@ import {
 } from "viem";
 
 import type { RpcRequest } from "../history/types.js";
+import type { RequestHandler } from "../rpc/requestHandler.js";
 import { toViemError } from "./errors.js";
 
 /** Public client options, minus the chain and transport, which come from the mock. */
@@ -22,13 +23,7 @@ export type MockPublicClientParameters = Omit<
  * answer them, a transport over them, and a public client on the mock's
  * chain. `handle` answers a request with the mock's own errors.
  */
-export function createViemAdapter({
-  handle,
-  chain,
-}: {
-  handle: (request: RpcRequest, retryCount?: number) => Promise<unknown>;
-  chain: Chain;
-}) {
+export function createViemAdapter({ handle, chain }: { handle: RequestHandler; chain: Chain }) {
   /** Answers a request as viem's `http` transport would; `retryCount` is the transport's. */
   async function request(rpcRequest: RpcRequest, retryCount?: number): Promise<unknown> {
     try {

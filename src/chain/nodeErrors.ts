@@ -1,9 +1,7 @@
-import { type Hex, decodeErrorResult, parseAbi, hexToBigInt, isHex } from "viem";
+import { type Hex, decodeErrorResult, hexToBigInt, isHex } from "viem";
 
 import type { MockNodeFault, NodeErrorName } from "../mocking/types.js";
-
-/** Solidity's built-in errors, which any contract can revert with. */
-export const builtinErrors = parseAbi(["error Error(string)", "error Panic(uint256)"]);
+import { builtinErrors } from "../shared/abiValues.js";
 
 /**
  * Reth's descriptions of Solidity's panic codes, as it puts them in the error

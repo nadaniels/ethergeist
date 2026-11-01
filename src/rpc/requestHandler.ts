@@ -5,10 +5,14 @@ import type { ChainState } from "../chain/state.js";
 import type { Dispatcher } from "../contracts/dispatch.js";
 import { retryHint } from "../history/format.js";
 import { type Recorder, outcomeOf, reporterFor, valueOf } from "../history/recorder.js";
-import type { MockHistoryEntry, MockOutcome, RpcRequest } from "../history/types.js";
+import type { MockHistoryEntry, RpcRequest } from "../history/types.js";
 import { MockFailure } from "../mocking/faults.js";
+import type { MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError, MockResolverError } from "../shared/errors.js";
 import type { Faults } from "./faults.js";
+
+/** Answers a request with the mock's own errors: see `createRequestHandler`. */
+export type RequestHandler = (request: RpcRequest, retryCount?: number) => Promise<unknown>;
 
 /**
  * The mock's request pipeline: record the request, fail it if a
@@ -27,7 +31,7 @@ export function createRequestHandler({
   faults: Faults;
   actions: Actions;
   dispatcher: Dispatcher;
-}) {
+}): RequestHandler {
   /**
    * Answers a request, recording it. `retryCount` is the transport's, when it
    * came through one, for the retry hint. Throws the mock's own errors: a

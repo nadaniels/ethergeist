@@ -1,4 +1,4 @@
-import { type AbiParameter, zeroAddress } from "viem";
+import { type AbiParameter, parseAbi, zeroAddress } from "viem";
 
 import { isPlainObject } from "./values.js";
 
@@ -73,3 +73,6 @@ export function arrayElement(parameter: AbiParameter): AbiParameter | undefined 
   const match = /^(.*)\[\d*\]$/u.exec(parameter.type);
   return match ? { ...parameter, type: match[1]! } : undefined;
 }
+
+/** Solidity's built-in errors, which any contract can revert with. */
+export const builtinErrors = parseAbi(["error Error(string)", "error Panic(uint256)"]);
