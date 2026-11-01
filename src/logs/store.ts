@@ -69,9 +69,12 @@ export function createLogStore({
     }
     if (emitOptions.mine === true && emitOptions.blockNumber !== undefined)
       throw new Error("emit() takes `mine` or `blockNumber`, not both.");
-    if (emitOptions.mine === true) state.mine();
-
-    const number = emitOptions.blockNumber ?? state.blockNumber;
+    // The block to mine is placed into first, and mined only once every check
+    // has passed, so a rejected emit changes nothing.
+    const number =
+      emitOptions.mine === true
+        ? state.blockNumber + 1n
+        : (emitOptions.blockNumber ?? state.blockNumber);
     const inBlock = logs.filter((log) => log.blockNumber === number);
     const last = inBlock.at(-1);
     const { transactionHash, transactionIndex } = transactionFor(number, inBlock, emitOptions);
@@ -89,6 +92,7 @@ export function createLogStore({
       Object.freeze(log.topics);
       return Object.freeze({ ...log, blockTimestamp: state.timestampAt(number) });
     });
+    if (emitOptions.mine === true) state.mine();
     logs.push(...placed);
     return placed;
   }

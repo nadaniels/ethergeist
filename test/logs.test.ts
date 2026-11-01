@@ -132,6 +132,17 @@ describe("emit", () => {
     ).toThrow(`Transaction ${hash} is in block 10; a transaction's logs are all in one block.`);
   });
 
+  test("a rejected emit({ mine: true }) mines nothing", () => {
+    const { mock, usdc } = setup();
+    const { transactionHash } = usdc.emit.Transfer({ from: alice, to: bob });
+
+    // The transaction is in block 10, so it can't take logs in a newly mined block.
+    expect(() =>
+      mock.emit(usdc.events.Transfer({ from: alice, to: bob }), { mine: true, transactionHash }),
+    ).toThrow(`Transaction ${transactionHash} is in block 10`);
+    expect(mock.blockNumber).toBe(10n);
+  });
+
   test("a block's transactions go in order", () => {
     const { usdc } = setup();
 
