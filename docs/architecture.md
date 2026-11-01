@@ -76,6 +76,13 @@ adapter folder beside `viem/`, not a change to the layers under it.
    for what they hold (`handler`, not `h`), except `(a, b)` in a sort
    comparator and `i` for an index.
 
+## Tests
+
+Unit tests for a module sit next to it, as `name.test.ts` in the same
+folder, and import it directly. `test/` holds the tests of the public API,
+which import only from `src/index.ts` and are the main suite. Packaging
+leaves `*.test.ts` out of what ships.
+
 ## A call that throws changes nothing
 
 Every public call either does all of what it says or nothing: it validates
