@@ -1,8 +1,9 @@
 import type { MockNodeFault } from "./types.js";
 
 /**
- * Thrown by a resolver's `fail()` and caught by the rpc, which needs the raw
- * request to build viem's error. Internal: it never reaches viem.
+ * A deliberate failure: a resolver's `fail()`, a mock's `.fails()`, or a
+ * `failRequests()` fault. Internal: it never reaches viem, whose adapter
+ * turns it into the error viem's `http` transport would throw.
  */
 export class MockFailure extends Error {
   readonly fault: MockNodeFault;

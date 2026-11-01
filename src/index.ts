@@ -27,14 +27,10 @@ export type {
   MockEstimateGasAction,
 } from "./actions/estimateGas.js";
 export type { MockActions } from "./actions/typedActions.js";
-export {
-  createMockRpc,
-  type CreateMockRpcParameters,
-  type MockPublicClientParameters,
-  type MockRpc,
-  type RpcRequest,
-  type UnhandledRequest,
-} from "./createMockRpc.js";
+export { createMockRpc } from "./createMockRpc.js";
+export type { CreateMockRpcParameters, MockRpc } from "./types.js";
+export type { MockPublicClientParameters } from "./viem/adapter.js";
+export type { RpcRequest, UnhandledRequest } from "./history/types.js";
 export type {
   CallContext,
   MockBatch,
@@ -67,9 +63,9 @@ export type {
 export type { BuiltTransaction, MockTransaction, TransactionType } from "./chain/transactions.js";
 export type { MockLog, MockReceipt } from "./chain/receipts.js";
 export type { LogsCall, LogsTopic } from "./logs/filter.js";
-export type { MockCheckpoint, MockRestoreOptions } from "./checkpoint.js";
+export type { MockCheckpoint, MockRestoreOptions } from "./types.js";
 export type { MockCallRecord, MockHistoryEntry, MockOutcome } from "./history/types.js";
-export type { FormatHistoryOptions } from "./history.js";
+export type { FormatHistoryOptions } from "./history/format.js";
 export { MockNotFoundError, MockResolverError } from "./shared/errors.js";
 export type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
 export { match } from "./mocking/matchers.js";

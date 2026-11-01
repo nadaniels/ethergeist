@@ -1,7 +1,7 @@
 import type { ChainState } from "../chain/state.js";
 import type { ContractEstimate } from "../contracts/createMockContract.js";
 import type { Registry } from "../contracts/registry.js";
-import { failureOutcome } from "../history.js";
+import { failureOutcome } from "../history/outcomes.js";
 import type { MockCallRecord, MockOutcome } from "../history/types.js";
 import type { LogStore } from "../logs/store.js";
 import { MockFailure, fail } from "../mocking/faults.js";

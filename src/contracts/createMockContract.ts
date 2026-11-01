@@ -11,7 +11,7 @@ import {
   toFunctionSelector,
 } from "viem";
 
-import { failureOutcome } from "../history.js";
+import { failureOutcome } from "../history/outcomes.js";
 import type { MockCallRecord, MockOutcome } from "../history/types.js";
 import { type EmitOptions, type MockEventLog } from "../logs/events.js";
 import { MockFailure, fail } from "../mocking/faults.js";

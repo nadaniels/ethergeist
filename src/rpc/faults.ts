@@ -38,6 +38,9 @@ function appliesTo(active: ActiveFault, method: string): boolean {
   return active.remaining > 0 && (active.methods?.includes(method) ?? true);
 }
 
+/** `failRequests()`' faults: see `createFaults`. */
+export type Faults = ReturnType<typeof createFaults>;
+
 /**
  * `failRequests()`' faults. The most recent one that applies fails a request,
  * as the most recent mock answers one.

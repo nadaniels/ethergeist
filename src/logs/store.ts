@@ -1,12 +1,5 @@
 import { Log as OxLog } from "ox";
-import {
-  type Abi,
-  type ContractEventName,
-  type Hash,
-  type RpcLog,
-  getAddress,
-  numberToHex,
-} from "viem";
+import { type Hash, type RpcLog, getAddress, numberToHex } from "viem";
 
 import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
 import { placeLog } from "../chain/receipts.js";
@@ -15,13 +8,7 @@ import type { Registry } from "../contracts/registry.js";
 import { MockNotFoundError, MockRpcError } from "../shared/errors.js";
 import { testHash } from "../shared/testValues.js";
 import { isPlainObject, nodeAddress } from "../shared/values.js";
-import {
-  type BuildLogParameters,
-  type EmitOptions,
-  type EmittedLog,
-  type MockEventLog,
-  buildLog,
-} from "./events.js";
+import type { EmitOptions, EmittedLog, MockEventLog } from "./events.js";
 import { type LogsCall, decodeLogsCall, describeLogsCall, topicsMatch } from "./filter.js";
 
 /** A placed log: viem's, with the block's timestamp, as reth includes it. */
@@ -215,10 +202,6 @@ export function createLogStore({
             : 1,
       );
     },
-    /** A finished log, in the current block unless given; see `buildLog`. */
-    buildLog: <const abi extends Abi, eventName extends ContractEventName<abi>>(
-      parameters: BuildLogParameters<abi, eventName>,
-    ) => buildLog(parameters, state.blockNumber),
     /** Saves the logs emitted so far; `restore()` removes later ones. */
     checkpoint() {
       const count = logs.length;

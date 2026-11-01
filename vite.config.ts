@@ -35,8 +35,7 @@ export default defineConfig({
         plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise", "vitest"],
       },
       {
-        // Temporary: split up later in the refactor (rpc/, viem/); remove this
-        // override when it's done.
+        // createMockRpc assembles every part of the mock, so it imports each one.
         files: ["src/createMockRpc.ts"],
         rules: { "import/max-dependencies": "off" },
       },

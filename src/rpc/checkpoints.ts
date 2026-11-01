@@ -10,6 +10,9 @@ export type SavedParts = {
   unusedSince(): string[];
 };
 
+/** Every part's checkpoints: see `createCheckpoints`. */
+export type Checkpoints = ReturnType<typeof createCheckpoints>;
+
 /**
  * Checkpoints of every part, and what they do to each other. They nest as a
  * stack: restoring one invalidates every one taken after it, whose state is

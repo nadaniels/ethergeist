@@ -1,9 +1,9 @@
 import type { AbiFunction, Address, Hex } from "viem";
 
 import type { ActionCalls } from "../actions/types.js";
-import type { MockCall } from "../contracts/types.js";
+import type { CallContext, MockCall } from "../contracts/types.js";
 import type { MockNodeFault } from "../mocking/types.js";
-import type { MockNotFoundError, MockResolverError } from "../shared/errors.js";
+import { MockNotFoundError, MockResolverError } from "../shared/errors.js";
 
 /** How the mock answered a request, or a contract call inside one. */
 export type MockOutcome =
@@ -61,3 +61,14 @@ export type MockHistoryEntry =
     }[keyof ActionCalls]
   | EntryBase<"method">
   | EntryBase<"builtIn">;
+
+/** How a request's contract calls report back to its history entry. */
+export type Reporter = {
+  call?: (record: MockCallRecord, context: CallContext) => void;
+  batch?: (id: number) => void;
+};
+
+export type RpcRequest = { method: string; params?: unknown };
+
+/** A request the mock couldn't answer: nothing was mocked for it, or a resolver threw. */
+export type UnhandledRequest = RpcRequest & { error: MockNotFoundError | MockResolverError };

@@ -1,21 +1,18 @@
-import { formatTransaction, zeroHash } from "viem";
-
-import { type MockReceipt, completeReceipt } from "../chain/receipts.js";
-import type { BuiltTransaction, MockTransaction } from "../chain/transactions.js";
 import { withCalls } from "../mocking/handlers.js";
 import { MockRpcError } from "../shared/errors.js";
 import type { PartCheckpoint } from "../shared/parts.js";
-import { encodeTransaction } from "./getTransaction.js";
 import { createMethods } from "./methods.js";
 import { type ActionReport, type Table, createTable, type ActionsContext } from "./table.js";
 import { type MockActions, type ActionName, typedActions } from "./typedActions.js";
+
+/** The typed actions and raw methods: see `createActions`. */
+export type Actions = ReturnType<typeof createActions>;
 
 /**
  * The typed actions (`mock.actions`) and raw methods (`mock.method()`): their
  * mocks, and answering the requests they're for.
  */
 export function createActions(context: ActionsContext) {
-  const { state } = context;
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
   const names = Object.keys(typedActions) as ActionName[];
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- one table per name, as built
@@ -47,20 +44,6 @@ export function createActions(context: ActionsContext) {
   return {
     actions,
     method: methods.method,
-    /** The receipt `getTransactionReceipt` answers for `.returns(receipt)`; its hash is zero unless given. */
-    buildReceipt: (receipt: MockReceipt = {}) =>
-      completeReceipt(receipt, {
-        hash: receipt.transactionHash ?? zeroHash,
-        blockNumber: state.blockNumber,
-      }),
-    /** The transaction `getTransaction` answers for `.returns(transaction)`, in viem's types. */
-    buildTransaction: <const transaction extends MockTransaction = { type?: "eip1559" }>(
-      transaction?: transaction,
-    ): BuiltTransaction<transaction> =>
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- formatTransaction of the transaction's own type
-      formatTransaction(
-        encodeTransaction(state, transaction ?? {}, transaction?.hash ?? zeroHash),
-      ) as BuiltTransaction<transaction>,
     /** Answers a request with a typed or raw mock, or returns `undefined` if none applies. */
     answer(
       name: string,

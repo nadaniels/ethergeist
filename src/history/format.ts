@@ -1,33 +1,11 @@
-import {
-  type Abi,
-  type AbiFunction,
-  decodeFunctionResult,
-  hexToBigInt,
-  hexToNumber,
-  isHex,
-  multicall3Abi,
-} from "viem";
+import { type AbiFunction } from "viem";
 
-import { revertOutcome } from "./contracts/answers.js";
-import type { CallContext } from "./contracts/types.js";
-import type { MockCallRecord, MockHistoryEntry, MockOutcome } from "./history/types.js";
-import type { LogsCall } from "./logs/filter.js";
-import { MockFailure } from "./mocking/faults.js";
-import { formatCall, formatValue } from "./mocking/format.js";
-import type { MockNodeFault } from "./mocking/types.js";
-import {
-  MockNotFoundError,
-  MockResolverError,
-  MockRevertError,
-  MockRpcError,
-} from "./shared/errors.js";
-import { isPlainObject } from "./shared/values.js";
-
-/** How a request's contract calls report back to its history entry. */
-export type Reporter = {
-  call?: (record: MockCallRecord, context: CallContext) => void;
-  batch?: (id: number) => void;
-};
+import type { LogsCall } from "../logs/filter.js";
+import { formatCall, formatValue } from "../mocking/format.js";
+import type { MockNodeFault } from "../mocking/types.js";
+import { MockResolverError } from "../shared/errors.js";
+import { isPlainObject } from "../shared/values.js";
+import type { MockCallRecord, MockHistoryEntry, MockOutcome } from "./types.js";
 
 export type FormatHistoryOptions = {
   /** Include `eth_chainId` and `eth_blockNumber`. Defaults to `true`. */
@@ -38,68 +16,6 @@ export type FormatHistoryOptions = {
 export type FormatContext = {
   describeLogs?: (call: LogsCall) => string;
 };
-
-/** The outcome of an error thrown while answering, other than reverts and faults. */
-export function errorOutcome(error: unknown): MockOutcome {
-  if (error instanceof MockNotFoundError || error instanceof MockResolverError)
-    return { type: "unhandled", error };
-  if (error instanceof MockRpcError)
-    return { type: "rpcError", code: error.code, message: error.shortMessage };
-  return { type: "error", error };
-}
-
-/**
- * The outcome of an error thrown while answering: a revert decoded against
- * `abi` and the built-in errors, a mock's fault, or what `errorOutcome` says.
- */
-export function failureOutcome(error: unknown, abi: Abi = []): MockOutcome {
-  if (error instanceof MockRevertError) return revertOutcome(abi, error.data);
-  if (error instanceof MockFailure) return { type: "fault", fault: error.fault, source: "mock" };
-  return errorOutcome(error);
-}
-
-export function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
-  // A contract's record already decoded a revert against the contract's ABI.
-  const record =
-    entry.type === "call"
-      ? entry.call
-      : entry.type === "action" && entry.action === "estimateGas"
-        ? entry.contract
-        : undefined;
-  if (error instanceof MockRevertError && record?.outcome.type === "revert") return record.outcome;
-  return failureOutcome(error);
-}
-
-/** Where contract calls report their records: the entry's call, or its batch's slots. */
-export function reporterFor(entry: MockHistoryEntry): Reporter {
-  if (entry.type === "call")
-    return {
-      call(record) {
-        entry.call = record;
-      },
-    };
-  if (entry.type === "multicall")
-    return {
-      batch(id) {
-        entry.batchId = id;
-      },
-      call(record, context) {
-        if (context.batch) entry.calls[context.batch.index] = record;
-      },
-    };
-  return {};
-}
-
-/** The answer in viem's types, for history. */
-export function valueOf(entry: MockHistoryEntry, rpc: unknown): unknown {
-  if (entry.type === "builtIn" && isHex(rpc))
-    return entry.method === "eth_chainId" ? hexToNumber(rpc) : hexToBigInt(rpc);
-  if (entry.type === "call")
-    return entry.call?.outcome.type === "result" ? entry.call.outcome.value : rpc;
-  if (entry.type === "multicall" && isHex(rpc))
-    return decodeFunctionResult({ abi: multicall3Abi, functionName: "aggregate3", data: rpc });
-  return rpc;
-}
 
 /** One line per entry (plus one per multicall sub-call), numbered from 1. */
 export function formatHistory(
