@@ -14,10 +14,10 @@ import {
 import { failureOutcome } from "../history/outcomes.js";
 import type { MockCallRecord, MockOutcome } from "../history/types.js";
 import { type EmitOptions, type MockEventLog } from "../logs/events.js";
-import { MockFailure, fail } from "../mocking/faults.js";
+import { fail } from "../mocking/faults.js";
 import { formatContract } from "../mocking/format.js";
 import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
-import { MockNotFoundError, MockRevertError } from "../shared/errors.js";
+import { MockNotFoundError } from "../shared/errors.js";
 import type { PartCheckpoint } from "../shared/parts.js";
 import { encodeAnswer, createRevertError } from "./answers.js";
 import { createContractApi } from "./createContractApi.js";
@@ -273,12 +273,14 @@ export function createMockContract<const abi extends Abi>(
     return mocks.best(candidates(call, kind), () => call.args, call.functionName);
   }
 
-  /** Answers `call` with `handler`; a revert or a fault is an answer, not a resolver error. */
+  /** Answers `call` with `handler`. */
   const run = (handler: Handler, call: MockCall): Promise<Hex> =>
-    mocks.run(handler, { ...call, revert, fail }, (value) => encodeAnswer(handler, value), {
-      name: call.functionName,
-      passThrough: (error) => error instanceof MockRevertError || error instanceof MockFailure,
-    });
+    mocks.run(
+      handler,
+      { ...call, revert, fail },
+      (value) => encodeAnswer(handler, value),
+      call.functionName,
+    );
 
   /** Unused mocks, each with its contract and the calls its function received instead. */
   const describeUnused = (list: Handler[]) =>

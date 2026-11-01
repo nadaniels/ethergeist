@@ -4,7 +4,7 @@ import type { Registry } from "../contracts/registry.js";
 import { failureOutcome } from "../history/outcomes.js";
 import type { MockCallRecord, MockOutcome } from "../history/types.js";
 import type { LogStore } from "../logs/store.js";
-import { MockFailure, fail } from "../mocking/faults.js";
+import { fail } from "../mocking/faults.js";
 import {
   type ReceivedCall,
   describeMock,
@@ -15,7 +15,7 @@ import {
 import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
 import { assertNoMatchers, mismatches } from "../mocking/matching.js";
 import { zeroResult } from "../mocking/zeroResult.js";
-import { MockNotFoundError, MockRpcError } from "../shared/errors.js";
+import { MockNotFoundError } from "../shared/errors.js";
 import type { PartCheckpoint } from "../shared/parts.js";
 import type { ActionContext } from "./types.js";
 
@@ -64,15 +64,6 @@ export type ActionReport = {
 
 export type Table = ReturnType<typeof createTable>;
 type Handler = MockHandler<ActionContext<object>>;
-
-/**
- * What a resolver throws that's an answer, not a resolver error: a fault, or
- * what its context threw, a node's refusal or an unmocked address.
- */
-const isAnswer = (error: unknown) =>
-  error instanceof MockFailure ||
-  error instanceof MockRpcError ||
-  error instanceof MockNotFoundError;
 
 export function createTable(definition: Definition) {
   const mocks = createHandlers<ActionContext<object>, unknown>();
@@ -157,10 +148,7 @@ export function createTable(definition: Definition) {
 
     const context = { ...call, fail };
     definition.extendContext?.(context, call);
-    return await mocks.run(handler, context, (value) => encode(value, call), {
-      name: definition.name,
-      passThrough: isAnswer,
-    });
+    return await mocks.run(handler, context, (value) => encode(value, call), definition.name);
   }
 
   return {

@@ -175,6 +175,18 @@ describe("getBalance", () => {
     expect(mock.unhandled).toHaveLength(2);
   });
 
+  test("a resolver can throw MockNotFoundError to leave a request unanswered", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance().returns(({ address }) => {
+      if (address === alice) return 1n;
+      throw new MockNotFoundError(`No balance for ${address}.`);
+    });
+
+    await rejectionOf(client.getBalance({ address: bob }));
+    expect(mock.unhandled[0]?.error).toBeInstanceOf(MockNotFoundError);
+    expect(mock.unhandled[0]?.error.shortMessage).toBe(`No balance for ${bob}.`);
+  });
+
   test("fails() fails the request, and isn't unhandled", async () => {
     const { mock, client } = setup();
     mock.actions.getBalance({ address: alice }).fails({ status: 503 });

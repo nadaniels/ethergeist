@@ -1,6 +1,12 @@
-import { MockResolverError, removedMockError } from "../shared/errors.js";
+import {
+  MockNotFoundError,
+  MockResolverError,
+  MockRevertError,
+  MockRpcError,
+  removedMockError,
+} from "../shared/errors.js";
 import type { PartCheckpoint } from "../shared/parts.js";
-import { fail } from "./faults.js";
+import { MockFailure, fail } from "./faults.js";
 import { type Specificity, bestMatch, isMatch, setLimit, specificity } from "./matching.js";
 import type { MockNodeFault } from "./types.js";
 import { zeroResult } from "./zeroResult.js";
@@ -34,6 +40,17 @@ export type Builder = {
   once(): Builder;
   times(count: number): Builder;
 };
+
+/**
+ * What a resolver throws that's an answer, not a resolver error: a revert, a
+ * fault, a node's refusal, or that it doesn't answer this call
+ * (`MockNotFoundError`). Its context's `revert()` and `fail()` throw these.
+ */
+const isDeliberate = (error: unknown) =>
+  error instanceof MockRevertError ||
+  error instanceof MockFailure ||
+  error instanceof MockRpcError ||
+  error instanceof MockNotFoundError;
 
 /** `fn` with a `calls` getter, as `mock.actions.x` and a contract's functions have. */
 export function withCalls<fn extends (...args: never[]) => unknown>(
@@ -124,21 +141,21 @@ export function createHandlers<context, extra>() {
 
   /**
    * Answers with `handler`, counting the use: its resolver's value, encoded.
-   * What it throws becomes a resolver error named `name`, except what
-   * `passThrough` says is a deliberate answer, like a fault.
+   * What it throws becomes a resolver error named `name`, unless it's an
+   * answer itself, like a revert or a fault: see `isDeliberate`.
    */
   async function run<answer>(
     handler: Handler<context, extra>,
     context: context,
     encode: (value: unknown) => answer,
-    { name, passThrough }: { name: string; passThrough: (error: unknown) => boolean },
+    name: string,
   ): Promise<answer> {
     handler.usedCount += 1;
     if (handler.remaining !== undefined) handler.remaining -= 1;
     try {
       return encode(await handler.resolver!(context));
     } catch (error) {
-      if (passThrough(error)) throw error;
+      if (isDeliberate(error)) throw error;
       throw new MockResolverError(name, error);
     }
   }

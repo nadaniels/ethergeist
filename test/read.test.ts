@@ -227,6 +227,23 @@ describe("balanceOf", () => {
     );
   });
 
+  test("a resolver can throw MockNotFoundError to leave a call unanswered", async () => {
+    const { mock, client } = setup();
+    mock
+      .contract({ abi: erc20Abi, address: USDC })
+      .read.balanceOf()
+      .returns(({ args: [owner] }) => {
+        if (owner === alice) return 1n;
+        throw new MockNotFoundError(`No balance for ${owner}.`);
+      });
+
+    await rejectionOf(
+      client.readContract({ abi: erc20Abi, address: USDC, functionName: "balanceOf", args: [bob] }),
+    );
+    expect(mock.unhandled[0]?.error).toBeInstanceOf(MockNotFoundError);
+    expect(mock.unhandled[0]?.error.shortMessage).toBe(`No balance for ${bob}.`);
+  });
+
   test("a mock without an answer steps aside for one with an answer", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });
