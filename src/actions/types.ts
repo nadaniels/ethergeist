@@ -108,11 +108,18 @@ export type ActionContext<call> = call & {
   fail: (fault: MockFault) => never;
 };
 
+/** What an action mock answers with: a value in viem's types, or `zeroResult` for its zero. */
+type ActionValue<value> = value | typeof zeroResult;
+
 /** How a mock answers: `.returns()` or `.fails()`. */
 export type MockActionAnswers<call, value, context = ActionContext<call>> = {
   /** With no argument, answers with the zero value, like `.returns(zeroResult)`. */
   returns(): void;
-  returns(value: value | typeof zeroResult | ((context: context) => value | Promise<value>)): void;
+  returns(
+    value:
+      | ActionValue<value>
+      | ((context: context) => ActionValue<value> | Promise<ActionValue<value>>),
+  ): void;
   /** Fail every matching request at the network level. See `MockFault` for the kinds. */
   fails(fault: MockFault): void;
 };

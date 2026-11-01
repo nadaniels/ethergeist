@@ -201,7 +201,6 @@ describe("getBalance", () => {
 
   test("a resolver can answer zeroResult too", async () => {
     const { mock, client } = setup();
-    // @ts-expect-error action resolvers aren't typed to return zeroResult, unlike contracts'
     mock.actions.getBalance().returns(() => zeroResult);
 
     expect(await client.getBalance({ address: alice })).toBe(0n);
