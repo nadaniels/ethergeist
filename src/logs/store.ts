@@ -143,7 +143,7 @@ export function createLogStore({
    * are reth's for the same filter; addresses the mock doesn't know are
    * reported as unmocked, since a real node would quietly answer `[]`.
    */
-  function find(call: LogsCall): PlacedLog[] {
+  function logsFor(call: LogsCall): PlacedLog[] {
     if (call.topics.length > 4)
       throw new MockRpcError(-32602, "query exceeds the maximum of 4 topics");
     const head = state.blockNumber;
@@ -192,7 +192,7 @@ export function createLogStore({
   return {
     emit,
     decode: (params: readonly unknown[]) => decodeLogsCall(params, state.resolveBlock),
-    find,
+    logsFor,
     toRpc,
     describe: describeLogsCall,
     /** Every placed log, by block and log index. */

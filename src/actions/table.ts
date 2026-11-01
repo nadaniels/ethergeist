@@ -22,33 +22,43 @@ import type { ActionContext } from "./types.js";
 /** What an action's definition reads: the chain's state, what's registered, and emitted logs. */
 export type ActionsContext = { state: ChainState; registry: Registry; logStore: LogStore };
 
-export type Definition = {
+/**
+ * How a table answers one action: decoding its calls, encoding answers, and
+ * what it answers unmocked. `call` is what `decode` returns and every other
+ * member receives; `rpc` is the JSON-RPC answer `encode` and `fallback` give.
+ *
+ * Members are methods, whose parameters TypeScript checks both ways, so a
+ * `Definition<BalanceCall>` is a `Definition`: the table holds every action's
+ * the same way. That's sound because the table only passes each member what
+ * the same definition's `decode`, `encode` or `fallback` produced.
+ */
+export type Definition<call extends object = object, rpc = unknown> = {
   /** How calls and mocks are named in messages, e.g. `getBalance`. */
   name: string;
   /** Where to register a mock, for "not mocked" messages. */
   hint: string;
-  decode: (params: readonly unknown[], method: string) => object;
+  decode(params: readonly unknown[], method: string): call;
   /**
    * Validates a value in viem's types and converts it to its JSON-RPC form.
    * `call` is `undefined` when validating a static value at registration.
    */
-  encode: (value: unknown, call: object | undefined) => unknown;
+  encode(value: unknown, call: call | undefined): rpc;
   zero: unknown;
   /** Normalizes pinned fields at registration, e.g. checksumming addresses. */
-  pin?: (pinned: unknown) => unknown;
+  pin?(pinned: unknown): unknown;
   /** What pinned params are matched against, deeply. Defaults to the call itself. */
-  actual?: (pinned: unknown, call: object) => unknown;
+  actual?(pinned: unknown, call: call): unknown;
   /** The answer when no mock matches, or `undefined` to report the call as unhandled. */
-  fallback?: (call: object) => unknown;
+  fallback?(call: call): rpc | undefined;
   /** A JSON-RPC answer in viem's types, as the action returns it; for history. Defaults to as is. */
-  view?: (rpc: unknown) => unknown;
+  view?(rpc: rpc): unknown;
   /** Adds to what a resolver gets, beyond the call and `fail`. */
-  extendContext?: (context: object, call: object) => void;
+  extendContext?(context: object, call: call): void;
   /**
    * For estimates: a registered contract's turn, prepared as the call
    * arrives. Its mocks answer before this table's: it owns its functions.
    */
-  contractTurn?: (call: object) => ContractEstimate | undefined;
+  contractTurn?(call: call): ContractEstimate | undefined;
 };
 
 /**
@@ -67,7 +77,8 @@ type Handler = MockHandler<ActionContext<object>>;
 export function createTable(definition: Definition) {
   const mocks = createHandlers<ActionContext<object>, unknown>();
   const history: object[] = [];
-  const actualOf = definition.actual ?? ((_pinned: unknown, call: object) => call);
+  const actualOf = (pinned: unknown, call: object) =>
+    definition.actual === undefined ? call : definition.actual(pinned, call);
 
   function register(params: unknown) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
@@ -104,7 +115,6 @@ export function createTable(definition: Definition) {
     const call = definition.decode(params, method);
     history.push(call);
     const turn = definition.contractTurn?.(call);
-    const view = definition.view ?? ((rpc: unknown) => rpc);
     const reportAs = (outcome: MockOutcome) => {
       const contract = turn?.record;
       // The contract's own outcome if it answered; otherwise the request's.
@@ -113,7 +123,7 @@ export function createTable(definition: Definition) {
     };
     try {
       const rpc = await answerCall(call, turn);
-      reportAs({ type: "result", value: view(rpc) });
+      reportAs({ type: "result", value: definition.view ? definition.view(rpc) : rpc });
       return rpc;
     } catch (error) {
       reportAs(failureOutcome(error));

@@ -21,6 +21,7 @@ import { getTransactionCount } from "./getTransactionCount.js";
 import { getTransactionReceipt } from "./getTransactionReceipt.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type {
+  ActionCalls,
   BalanceCall,
   BlockCall,
   CodeCall,
@@ -57,10 +58,13 @@ export const typedActions = {
   getTransactionCount: { define: getTransactionCount, methods: ["eth_getTransactionCount"] },
   getStorageAt: { define: getStorageAt, methods: ["eth_getStorageAt"] },
   estimateGas: { define: estimateGas, methods: ["eth_estimateGas"] },
-} satisfies Record<
-  string,
-  { define: (context: ActionsContext) => Definition; methods: readonly string[] }
->;
+} satisfies {
+  // Each action decodes to its call type in `ActionCalls`, and every action has one.
+  [name in keyof ActionCalls]: {
+    define: (context: ActionsContext) => Definition<ActionCalls[name]>;
+    methods: readonly string[];
+  };
+};
 
 /** A typed action's name, e.g. `getBalance`. */
 export type ActionName = keyof typeof typedActions;

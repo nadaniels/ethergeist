@@ -28,7 +28,7 @@ function pinStorage(pinned: unknown) {
 }
 
 /** `eth_getStorageAt`: slots and values as 32 bytes; unmocked, an `empty()` address's storage is zero. */
-export const getStorageAt = ({ state, registry }: ActionsContext): Definition => ({
+export const getStorageAt = ({ state, registry }: ActionsContext): Definition<StorageCall> => ({
   name: "getStorageAt",
   hint: "mock.actions.getStorageAt({ address, slot }).returns(…), or mock.empty(address)",
   decode([address, slot, block]) {
@@ -43,6 +43,5 @@ export const getStorageAt = ({ state, registry }: ActionsContext): Definition =>
   encode: (value) => toWord(value, "A storage value"),
   // An address without code has no storage: every slot reads as zero.
   fallback: (call) =>
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded above
-    registry.codeAt((call as StorageCall).address) === "0x" ? pad("0x", { size: 32 }) : undefined,
+    registry.codeAt(call.address) === "0x" ? pad("0x", { size: 32 }) : undefined,
 });

@@ -24,7 +24,9 @@ function decodeBlock(
 }
 
 /** `eth_getBlockByNumber` and `eth_getBlockByHash`: unmocked, generated blocks up to the current one. */
-export const getBlock = ({ state }: ActionsContext): Definition => ({
+export const getBlock = ({
+  state,
+}: ActionsContext): Definition<BlockCall, ReturnType<typeof toRpcBlock> | null> => ({
   name: "getBlock",
   hint: "mock.actions.getBlock({ blockNumber }).returns(…)",
   decode: (params, method) => decodeBlock(params, method, state),
@@ -33,18 +35,18 @@ export const getBlock = ({ state }: ActionsContext): Definition => ({
     if (value === null) return null;
     if (!isPlainObject(value))
       throw new TypeError(`A block must be an object or null; got ${typeof value}.`);
-    const { blockNumber: number, blockHash } = (call ?? {}) as Partial<BlockCall>;
-    const generated = state.generateBlock(number ?? state.blockNumber);
+    const generated = state.generateBlock(call?.blockNumber ?? state.blockNumber);
+    const blockHash = call?.blockHash;
     // A pinned, unknown hash is the block's own hash.
     const base = blockHash === undefined ? generated : { ...generated, hash: blockHash };
     return toRpcBlock({ ...base, ...value });
   },
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encoded by toRpcBlock
-  view: (rpc) => (rpc === null ? null : formatBlock(rpc as RpcBlock)),
+  view: (rpc) =>
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- ox's RPC block leaves out what viem's types as null
+    rpc === null ? null : formatBlock(rpc as RpcBlock),
   // Generated blocks exist up to the current one, and only by their own hashes.
   fallback(call) {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeBlock
-    const { blockNumber: number, blockHash } = call as BlockCall;
+    const { blockNumber: number, blockHash } = call;
     if (blockHash !== undefined && numberOfBlockHash(blockHash) === undefined) return undefined;
     if (number > state.blockNumber) return undefined;
     return toRpcBlock(state.generateBlock(number));

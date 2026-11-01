@@ -3,9 +3,12 @@ import { hexToNumber, isHex, numberToHex } from "viem";
 import { formatValue } from "../mocking/format.js";
 import { decodeAddressAtBlock, pinAddress } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
+import type { TransactionCountCall } from "./types.js";
 
 /** `eth_getTransactionCount`, an account's nonce: unmocked addresses aren't answered. */
-export const getTransactionCount = ({ state }: ActionsContext): Definition => ({
+export const getTransactionCount = ({
+  state,
+}: ActionsContext): Definition<TransactionCountCall> => ({
   name: "getTransactionCount",
   hint: "mock.actions.getTransactionCount({ address }).returns(…)",
   decode: (params) => decodeAddressAtBlock(params, state.resolveBlock),

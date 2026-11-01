@@ -1,4 +1,4 @@
-import { getAddress, hexToNumber, isHex, numberToHex } from "viem";
+import { type Hex, getAddress, hexToNumber, isHex, numberToHex } from "viem";
 
 import { encodeGas } from "../mocking/gas.js";
 import type { MockEstimateAnswers, MockNodeFault, WithLimits } from "../mocking/types.js";
@@ -64,7 +64,10 @@ function decodeEstimateGas(
  * its functions first; unmocked, a plain transfer to an address without code
  * is 21000 gas, as a node estimates it.
  */
-export const estimateGas = ({ state, registry }: ActionsContext): Definition => ({
+export const estimateGas = ({
+  state,
+  registry,
+}: ActionsContext): Definition<EstimateGasCall, Hex> => ({
   name: "estimateGas",
   hint: "mock.actions.estimateGas({ to }).returns(…)",
   decode: (params) => decodeEstimateGas(params, state.resolveBlock),
@@ -75,8 +78,7 @@ export const estimateGas = ({ state, registry }: ActionsContext): Definition => 
   view: viewQuantity,
   // A registered contract's turn at an estimate of one of its functions.
   contractTurn(call) {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeEstimateGas
-    const { to, data, account, value, blockNumber } = call as EstimateGasCall;
+    const { to, data, account, value, blockNumber } = call;
     if (to === undefined || data === undefined || data === "0x") return undefined;
     return registry
       .contractAt(to)
@@ -84,8 +86,7 @@ export const estimateGas = ({ state, registry }: ActionsContext): Definition => 
   },
   // A plain transfer to an address without code costs the base 21000 gas.
   fallback(call) {
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeEstimateGas
-    const { to, data = "0x" } = call as EstimateGasCall;
+    const { to, data = "0x" } = call;
     if (to === undefined || data !== "0x") return undefined;
     const code = registry.codeAt(to);
     return code === undefined || code === "0x" ? numberToHex(21_000n) : undefined;

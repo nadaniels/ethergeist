@@ -80,14 +80,17 @@ adapter folder beside `viem/`, not a change to the layers under it.
 
 1. Add its file in `actions/`, named for the action (`getGasPrice.ts`). It
    exports a function that takes the `ActionsContext` (`state`, `registry`,
-   `logStore`) and returns its `Definition`: how to decode the call, encode and
-   view answers, and what to answer when it isn't mocked.
+   `logStore`) and returns its `Definition<call, rpc>`: how to decode the call,
+   encode and view answers, and what to answer when it isn't mocked. `call` is
+   its decoded call's type and `rpc` its JSON-RPC answer's, so its members get
+   them typed, without casts.
 2. Add it to the `typedActions` catalog in `actions/typedActions.ts`, with the
    JSON-RPC methods it answers.
 3. Add its mock's type, with its documentation, to `MockActions` in the same
    file.
 4. Add its decoded call's type to `ActionCalls` in `actions/types.ts`. History
-   entries and `mock.calls` are typed from it.
+   entries and `mock.calls` are typed from it, and the catalog checks that the
+   definition decodes to it.
 5. Export any new public types from `index.ts`.
 
 ## Adding state

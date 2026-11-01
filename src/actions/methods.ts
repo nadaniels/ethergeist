@@ -1,6 +1,6 @@
 import type { PartSnapshot } from "../shared/parts.js";
-import { type Table, createTable } from "./table.js";
-import type { MethodCall, MockMethodBuilder } from "./types.js";
+import { type Definition, type Table, createTable } from "./table.js";
+import type { MockMethodBuilder } from "./types.js";
 
 /**
  * Methods the mock doesn't support, refused with Arbitrum's error unless
@@ -45,7 +45,7 @@ export function createMethods(actionFor: (method: string) => string | undefined)
 
     let table = raw.get(name);
     if (!table) {
-      table = createTable({
+      const definition: Definition<{ method: string; params: readonly unknown[] }> = {
         name,
         hint: `mock.method("${name}", …).returns(…)`,
         decode: (rawParams) => ({ method: name, params: rawParams }),
@@ -53,11 +53,9 @@ export function createMethods(actionFor: (method: string) => string | undefined)
         encode: (value) => value,
         // Pinned params are a prefix: pin the leading ones, leave the rest open.
         actual: (pinned, call) =>
-          Array.isArray(pinned)
-            ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded above
-              pinned.map((_, i) => (call as MethodCall).params[i])
-            : call,
-      });
+          Array.isArray(pinned) ? pinned.map((_, i) => call.params[i]) : call,
+      };
+      table = createTable(definition);
       raw.set(name, table);
     }
     return table.register(params);

@@ -5,7 +5,7 @@ import type { ActionsContext, Definition } from "./table.js";
 import type { CodeCall } from "./types.js";
 
 /** `eth_getCode`: unmocked, what the registry knows, contracts' placeholder code and empty addresses'. */
-export const getCode = ({ state, registry }: ActionsContext): Definition => ({
+export const getCode = ({ state, registry }: ActionsContext): Definition<CodeCall> => ({
   name: "getCode",
   hint: "mock.actions.getCode({ address }).returns(…), or mock.empty(address)",
   decode: (params) => decodeAddressAtBlock(params, state.resolveBlock),
@@ -15,6 +15,5 @@ export const getCode = ({ state, registry }: ActionsContext): Definition => ({
     if (!isHex(value)) throw new TypeError(`Code must be hex; got ${String(value)}.`);
     return value;
   },
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeAddressAtBlock
-  fallback: (call) => registry.codeAt((call as CodeCall).address),
+  fallback: (call) => registry.codeAt(call.address),
 });

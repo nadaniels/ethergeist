@@ -76,7 +76,7 @@ function decodeFeeHistory(
 }
 
 /** `eth_feeHistory`: unmocked, the generated blocks' history, as reth answers it for empty blocks. */
-export const getFeeHistory = ({ state }: ActionsContext): Definition => {
+export const getFeeHistory = ({ state }: ActionsContext): Definition<FeeHistoryCall> => {
   const feeHistoryOf = ({ blockCount, blockNumber: newest, rewardPercentiles }: FeeHistoryCall) =>
     feeHistory(
       { blockCount, newest, ...(rewardPercentiles && { rewardPercentiles }) },
@@ -91,24 +91,21 @@ export const getFeeHistory = ({ state }: ActionsContext): Definition => {
       if (!isPlainObject(value))
         throw new TypeError(`A fee history must be an object; got ${typeof value}.`);
       assertFeeHistory(value);
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeFeeHistory
-      const derived = call === undefined ? {} : feeHistoryOf(call as FeeHistoryCall);
+      const derived = call === undefined ? {} : feeHistoryOf(call);
       return toRpcFeeHistory({ ...derived, ...value });
     },
     view: viewFeeHistory,
     fallback(call) {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- decoded by decodeFeeHistory
-      const feeCall = call as FeeHistoryCall;
       const head = state.blockNumber;
-      if (feeCall.blockCount > 0 && feeCall.blockNumber > head)
+      if (call.blockCount > 0 && call.blockNumber > head)
         throw new MockRpcError(
           -32602,
-          `request beyond head block: requested ${feeCall.blockNumber}, head ${head}`,
+          `request beyond head block: requested ${call.blockNumber}, head ${head}`,
         );
-      const percentiles = feeCall.rewardPercentiles ?? [];
+      const percentiles = call.rewardPercentiles ?? [];
       if (percentiles.some((p, i) => p < 0 || p > 100 || p < (percentiles[i - 1] ?? 0)))
         throw new MockRpcError(-32602, "invalid reward percentiles");
-      return toRpcFeeHistory(feeHistoryOf(feeCall));
+      return toRpcFeeHistory(feeHistoryOf(call));
     },
   };
 };
