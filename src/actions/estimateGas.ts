@@ -1,7 +1,7 @@
 import { getAddress, hexToNumber, isHex, numberToHex } from "viem";
 
 import { encodeGas } from "../mocking/gas.js";
-import type { MockEstimateAnswers, MockNodeFault } from "../mocking/types.js";
+import type { MockEstimateAnswers, MockNodeFault, WithLimits } from "../mocking/types.js";
 import { isPlainObject } from "../shared/values.js";
 import { blockAt, quantity, viewQuantity } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
@@ -14,12 +14,7 @@ import type { EstimateGasCall } from "./types.js";
 export type EstimateGasContext = EstimateGasCall & { fail: (fault: MockNodeFault) => never };
 
 /** Like `MockActionBuilder`, for an estimate. */
-export type MockEstimateBuilder<context> = MockEstimateAnswers<context> & {
-  /** See `MockActionBuilder`'s `once()`. */
-  once(): MockEstimateAnswers<context>;
-  /** Like `.once()`, for the next `count` matching requests. */
-  times(count: number): MockEstimateAnswers<context>;
-};
+export type MockEstimateBuilder<context> = WithLimits<MockEstimateAnswers<context>>;
 
 /** `MockAction` for `estimateGas`. */
 export type MockEstimateGasAction = {

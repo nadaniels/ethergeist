@@ -213,6 +213,8 @@ describe("getLogs", () => {
     mock.actions.estimateGas().returns(21_000);
     // @ts-expect-error there's no zero estimate
     mock.actions.estimateGas().returns(zeroResult);
+    // @ts-expect-error nor a default one
+    mock.actions.estimateGas().once().returns();
     // @ts-expect-error not a node error
     mock.actions.estimateGas().fails("nonceTooLow");
     // @ts-expect-error a node doesn't refuse a balance read by name

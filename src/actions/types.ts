@@ -1,7 +1,7 @@
 import type { Address, BlockTag, Hash, Hex } from "viem";
 
 import type { LogsCall } from "../logs/filter.js";
-import type { MockFault } from "../mocking/types.js";
+import type { MockFault, WithLimits } from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";
 
 /**
@@ -124,20 +124,9 @@ export type MockActionAnswers<call, value, context = ActionContext<call>> = {
   fails(fault: MockFault): void;
 };
 
-export type MockActionBuilder<call, value, context = ActionContext<call>> = MockActionAnswers<
-  call,
-  value,
-  context
-> & {
-  /**
-   * Answer only the next matching request, then step aside for the next best
-   * mock. Limited mocks go ahead of unlimited ones as specific, oldest first.
-   * Retries use up answers too.
-   */
-  once(): MockActionAnswers<call, value, context>;
-  /** Like `.once()`, for the next `count` matching requests. */
-  times(count: number): MockActionAnswers<call, value, context>;
-};
+export type MockActionBuilder<call, value, context = ActionContext<call>> = WithLimits<
+  MockActionAnswers<call, value, context>
+>;
 
 /**
  * Mirrors the viem action of the same name, but registers a mock. Pin any of

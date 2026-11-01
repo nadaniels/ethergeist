@@ -31,11 +31,29 @@ export type NodeErrorName = "insufficientFunds" | "feeCapTooLow" | "tipAboveFeeC
 /** A `MockFault`, or a node's refusal by name, where a node can refuse: see `NodeErrorName`. */
 export type MockNodeFault = MockFault | NodeErrorName;
 
+/** A mock's answers, and `.once()`/`.times()` to limit how often it gives them. */
+export type WithLimits<answers> = answers & {
+  /**
+   * Answer only the next matching call, then step aside for the next best
+   * mock. Limited mocks go ahead of unlimited ones as specific, oldest first,
+   * so `.once().fails("network")` beside `.returns(…)` fails once whichever
+   * is registered first. Retries use up answers too.
+   */
+  once(): answers;
+  /** Like `.once()`, for the next `count` matching calls. */
+  times(count: number): answers;
+};
+
 /**
  * How an estimate answers: with gas, or `.fails()`, which also takes a node's
- * refusal by name. There's no zero answer: a node never estimates zero gas.
+ * refusal by name.
  */
 export type MockEstimateAnswers<context> = {
+  /**
+   * Answer with this much gas. A value is required: a node never estimates
+   * zero gas, so there's no zero answer. Unmocked, a plain transfer to an
+   * address without code is estimated at the base 21000.
+   */
   returns(value: bigint | ((context: context) => bigint | Promise<bigint>)): void;
   /**
    * Fail every matching request: a node's refusal by name, e.g.

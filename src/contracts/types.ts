@@ -12,7 +12,12 @@ import type {
 } from "viem";
 
 import type { MockContractEmit, MockContractEvents } from "../logs/events.js";
-import type { MockEstimateAnswers, MockFault, MockNodeFault } from "../mocking/types.js";
+import type {
+  MockEstimateAnswers,
+  MockFault,
+  MockNodeFault,
+  WithLimits,
+} from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";
 import type { AllNamed, PartialStructs } from "../shared/abiValues.js";
 
@@ -110,22 +115,9 @@ export type MockFunctionAnswers<abi extends Abi, args, result, fault = MockFault
   fails(fault: fault): void;
 };
 
-export type MockFunction<abi extends Abi, args, result, fault = MockFault> = MockFunctionAnswers<
-  abi,
-  args,
-  result,
-  fault
-> & {
-  /**
-   * Answer only the next matching call, then step aside for the next best
-   * mock. Limited mocks go ahead of unlimited ones as specific, oldest first,
-   * so `fn().once().fails("network")` beside `fn().returns(1n)` fails once
-   * whichever is registered first. Retries use up answers too.
-   */
-  once(): MockFunctionAnswers<abi, args, result, fault>;
-  /** Like `.once()`, for the next `count` matching calls. */
-  times(count: number): MockFunctionAnswers<abi, args, result, fault>;
-};
+export type MockFunction<abi extends Abi, args, result, fault = MockFault> = WithLimits<
+  MockFunctionAnswers<abi, args, result, fault>
+>;
 
 /** Mirrors `getContract(...).<namespace>.<functionName>(args)`, but registers a mock. */
 export type MockContractFunction<
@@ -166,12 +158,7 @@ export type MockEstimateGasFunction<
 > = {
   <const args extends ContractFunctionArgs<abi, WriteMutability, functionName>>(
     args?: args,
-  ): MockContractEstimateAnswers<abi, args> & {
-    /** See `MockFunction`'s `once()`. */
-    once(): MockContractEstimateAnswers<abi, args>;
-    /** Like `.once()`, for the next `count` matching estimates. */
-    times(count: number): MockContractEstimateAnswers<abi, args>;
-  };
+  ): WithLimits<MockContractEstimateAnswers<abi, args>>;
   /** Every estimate of this function the mock has received, in order. */
   readonly calls: MockCall<
     ContractFunctionArgs<abi, WriteMutability, functionName>,
