@@ -44,3 +44,24 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 ## Bugs
 
 - Fix bugs red/green: first write a test that reproduces the bug and watch it fail for the reason reported, then fix the code and watch it pass. A bug that's only in a doc comment gets a test that pins the real behavior, where practical.
+
+## Independent review
+
+Any change beyond a trivial one (anything that changes behavior, types, matching, the engines or the public API; not a typo, a rename or a one-line doc fix) gets an independent review before it's reported as done:
+
+1. **When:** once the change is green (`vp check` clean, `vp run test` passing), before handing it over to commit.
+2. **Who:** a separate agent, briefed from scratch, so its read isn't anchored on the author's. It's read-only on the repo; probes go in a scratch directory outside the repo.
+3. **The brief:** what the change is meant to do, the constraints and invariants it must keep (e.g. "predicates run only while a mock is in contention"), where the diff is (`git diff`), and `docs/architecture.md`. Give it the code and the intent, not your conclusions about it. Ask for:
+   - **correctness:** is everything it claims true, across the tricky cases (list the ones you can think of, and ask for more);
+   - **architectural fit:** does it follow the existing patterns and layers, and is there a better seam;
+   - **code quality:** naming, comments, consistency, missing tests.
+
+   Ask for findings ranked most important first, each marked bug, design or nit, with a concrete failing scenario.
+
+4. **Verify before acting:** check each finding against the code yourself, and reproduce bugs red/green. Judge each one on its merits: decline any that don't hold up, and say why. A reviewer that's asked to find problems will always find something.
+5. **Fix, then send it back to the same reviewer** with what changed and where the risk is (new call sites, changed signatures). A re-review covers only the fixes and what they touch; it isn't a fresh review of everything.
+6. **When to stop:**
+   - **Stop when a pass finds no bugs.** A bug is something wrong, with a concrete failing scenario. Design suggestions and nits don't keep the loop going: take them if they're clearly better and cheap, otherwise list them as declined or deferred.
+   - **At most three rounds.** If a third round still finds bugs, stop and bring them to the owner instead of continuing.
+   - **If a round contradicts an earlier one,** or a fix undoes an earlier fix, stop and bring both to the owner. Going back and forth makes the code worse, not better. A fix that introduces a new bug is different: fix it in the next round, within the three.
+7. **Report** what each round found and what was done about it, including findings that were declined and why.
