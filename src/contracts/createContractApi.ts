@@ -22,7 +22,7 @@ export function createContractApi<const abi extends Abi>({
   functions: { functionsIn, notInNamespaceError },
   register,
   calls,
-  estimates,
+  callsTo,
   emit,
   assertAttached,
 }: {
@@ -34,9 +34,10 @@ export function createContractApi<const abi extends Abi>({
     notInNamespaceError: (namespace: Namespace, functionName: string) => Error;
   };
   register: (namespace: Namespace, functionName: string, args?: readonly unknown[]) => unknown;
-  /** The contract's `eth_call`s, and its estimates, as they arrive. */
-  calls: readonly MockCall[];
-  estimates: readonly MockCall[];
+  /** The contract's `eth_call`s, as they arrive. */
+  calls: () => readonly MockCall[];
+  /** The calls a namespace's function received, every overload's. */
+  callsTo: (namespace: Namespace, functionName: string) => MockCall[];
   /** Places a transaction's logs in the rpc's log store. */
   emit: (logs: readonly MockEventLog[], options?: EmitOptions) => readonly unknown[];
   /** Throws if the contract was removed. */
@@ -45,12 +46,11 @@ export function createContractApi<const abi extends Abi>({
   // Overloads share one entry, as in viem's `getContract`.
   function buildNamespace(namespace: Namespace) {
     const entries: Record<string, unknown> = {};
-    const callsIn = namespace === "estimateGas" ? estimates : calls;
     for (const { name: functionName } of functionsIn[namespace]) {
       if (functionName in entries) continue;
       entries[functionName] = withCalls(
         (args?: readonly unknown[]) => register(namespace, functionName, args),
-        () => callsIn.filter((call) => call.functionName === functionName),
+        () => callsTo(namespace, functionName),
       );
     }
     // Untyped callers reaching for the other namespace's functions get a pointer
@@ -75,7 +75,7 @@ export function createContractApi<const abi extends Abi>({
     name,
     abi,
     get calls() {
-      return [...calls];
+      return [...calls()];
     },
     read: buildNamespace("read"),
     simulate: buildNamespace("simulate"),

@@ -134,14 +134,20 @@ export type MockActionBuilder<call, value, context = ActionContext<call>> = With
  */
 export type MockAction<call, value, context = ActionContext<call>> = {
   (params?: Partial<call>): MockActionBuilder<call, value, context>;
-  /** Every call to this action the mock has received, in order. */
+  /**
+   * Every call to this action the mock has received, in order (the last
+   * `historyLimit`).
+   */
   readonly calls: call[];
 };
 
 /** Like `MockAction`, for an action without params: there's nothing to pin. */
 export type MockActionWithoutParams<value> = {
   (): MockActionBuilder<EmptyCall, value, ActionContext<object>>;
-  /** Every call to this action the mock has received, in order. */
+  /**
+   * Every call to this action the mock has received, in order (the last
+   * `historyLimit`).
+   */
   readonly calls: EmptyCall[];
 };
 

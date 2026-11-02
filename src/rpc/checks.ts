@@ -1,13 +1,23 @@
 import { type FormatContext, formatRecent } from "../history/format.js";
 import type { Recorder } from "../history/recorder.js";
 import type { UnhandledRequest } from "../history/types.js";
+import type { RecordList } from "../shared/records.js";
 import type { Checkpoints } from "./checkpoints.js";
 /** `assertNoUnhandled()`'s message, if any request went unanswered. */
-function unhandledFailure(list: readonly UnhandledRequest[]): string[] {
-  if (list.length === 0) return [];
-  const lines = list.map(({ error }) => `  - ${error.shortMessage}`);
-  return [`The mock couldn't answer ${list.length} request(s):\n${lines.join("\n")}`];
+function unhandledFailure(unhandled: RecordList<UnhandledRequest>): string[] {
+  if (unhandled.total === 0) return [];
+  return [`The mock couldn't answer ${countOf(unhandled)}:\n${unhandledLines(unhandled)}`];
 }
+
+/** How many requests went unanswered, and how many of them are listed if not all. */
+function countOf(unhandled: RecordList<UnhandledRequest>): string {
+  const shown =
+    unhandled.dropped === 0 ? "" : ` (the last ${unhandled.kept.length} kept, past historyLimit)`;
+  return `${unhandled.total} request(s)${shown}`;
+}
+
+const unhandledLines = (unhandled: RecordList<UnhandledRequest>) =>
+  unhandled.kept.map(({ error }) => `  - ${error.shortMessage}`).join("\n");
 
 /** `assertAllUsed()`'s message, if any mock never answered. */
 function unusedFailure(list: readonly string[]): string[] {
@@ -45,9 +55,9 @@ export function createChecks({
    */
   function checkFailed(check: (...args: never[]) => unknown, message: string): Error {
     const recent =
-      historyOnFailure === false
+      historyOnFailure === false || historyOnFailure === 0
         ? undefined
-        : formatRecent(recorder.history, historyOnFailure, formatContext);
+        : formatRecent(recorder.view, historyOnFailure, formatContext);
     const error = new Error(recent === undefined ? message : `${message}\n\n${recent}`);
     // Not every engine has it (Node's types say it's always there).
     if ("captureStackTrace" in Error) Error.captureStackTrace(error, check);
@@ -65,12 +75,12 @@ export function createChecks({
   }
 
   function checkpoint(): MockCheckpoint {
-    if (recorder.unhandled.length > 0)
+    if (recorder.unhandled.total > 0)
       throw checkFailed(
         checkpoint,
-        `Can't checkpoint: ${recorder.unhandled.length} request(s) since the last clear ` +
-          "went unanswered. Fix the setup, or call clearCalls() first if they were " +
-          `intentional:\n${recorder.unhandled.map(({ error }) => `  - ${error.shortMessage}`).join("\n")}`,
+        `Can't checkpoint: ${countOf(recorder.unhandled)} since the last clear went ` +
+          "unanswered. Fix the setup, or call clearCalls() first if they were " +
+          `intentional:\n${unhandledLines(recorder.unhandled)}`,
       );
 
     const saved = checkpoints.addCheckpoint();

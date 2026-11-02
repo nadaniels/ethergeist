@@ -17,6 +17,12 @@ import { type Handler as MockHandler, createHandlers } from "../mocking/handlers
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
+import {
+  type RecordLimit,
+  type RecordList,
+  createRecordList,
+  unlimited,
+} from "../shared/records.js";
 import { encodeAnswer, createRevertError } from "./answers.js";
 import { createContractApi } from "./createContractApi.js";
 import { type Namespace, createFunctions, type Kind, pinArgs } from "./functions.js";
@@ -77,18 +83,27 @@ export function createMockContract<const abi extends Abi>(
     onCall?: (call: MockCall) => void;
     /** Places a transaction's logs in the rpc's log store. */
     emit?: (logs: readonly MockEventLog[], options?: EmitOptions) => readonly unknown[];
+    /** How many calls each list keeps: the contract's, and each function's. */
+    recordLimit?: RecordLimit;
   } = {},
 ): InternalMockContract<abi> {
-  const { onCall = () => {}, emit = () => [] } = hooks;
+  const { onCall = () => {}, emit = () => [], recordLimit = unlimited } = hooks;
   const { abi, name, defaults = {} } = parameters;
   // Also validates the address at registration.
   const address = getAddress(parameters.address);
   const label = formatContract(address, name);
   const mocks = createHandlers<Context, ContractFunction>();
-  const history: MockCall[] = [];
   // Estimates aren't calls: `calls` and `mock.calls` are what `eth_call` asked.
-  const estimates: MockCall[] = [];
-  // Overloads share a name, so unused mocks find their calls by selector.
+  const calls = createRecordList<MockCall>(recordLimit);
+  // Each function's calls in a list of its own, by kind and selector, so a
+  // busy function can't push a quiet one's out. Unused mocks find theirs by
+  // selector; a function's `.calls` merges its overloads' in the order received.
+  const callsBySelector = new Map<
+    `${Kind}:${Hex}`,
+    { functionName: string; list: RecordList<MockCall> }
+  >();
+  const order = new WeakMap<MockCall, number>();
+  let received = 0;
   const selectorOf = new WeakMap<MockCall, Hex>();
   let detached = false;
   /** Throws if `restore()` or `reset()` removed this contract. */
@@ -150,8 +165,8 @@ export function createMockContract<const abi extends Abi>(
     name,
     functions: { functionsIn, notInNamespaceError },
     register,
-    calls: history,
-    estimates,
+    calls: () => calls.kept,
+    callsTo,
     emit,
     assertAttached,
   });
@@ -249,13 +264,34 @@ export function createMockContract<const abi extends Abi>(
 
     const call: MockCall = { ...context, address, ...fn };
     selectorOf.set(call, selector);
-    if (kind === "estimate") {
-      estimates.push(call);
-    } else {
-      history.push(call);
+    received += 1;
+    order.set(call, received);
+    functionCalls(kind, selector, fn.functionName).add(call);
+    if (kind === "call") {
+      calls.add(call);
       onCall(call);
     }
     return call;
+  }
+
+  /** The calls of `kind` to the function with `selector`, made on its first. */
+  function functionCalls(kind: Kind, selector: Hex, functionName: string): RecordList<MockCall> {
+    const key = `${kind}:${selector}` as const;
+    const existing = callsBySelector.get(key);
+    if (existing) return existing.list;
+    const list = createRecordList<MockCall>(recordLimit);
+    callsBySelector.set(key, { functionName, list });
+    return list;
+  }
+
+  /** The calls a namespace's function received, every overload's, in the order received. */
+  function callsTo(namespace: Namespace, functionName: string): MockCall[] {
+    const kind: Kind = namespace === "estimateGas" ? "estimate" : "call";
+    const lists = [...callsBySelector]
+      .filter(([key, each]) => key.startsWith(`${kind}:`) && each.functionName === functionName)
+      .map(([, each]) => each.list.kept);
+    if (lists.length === 1) return [...lists[0]!];
+    return lists.flat().toSorted((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
   }
 
   /** The handlers that answer `kind` for the function `call` decoded to. */
@@ -283,15 +319,11 @@ export function createMockContract<const abi extends Abi>(
 
   /** Unused mocks, each with its contract and the calls its function received instead. */
   const describeUnused = (list: Handler[]) =>
-    list.map((handler) =>
-      unusedLine(
-        handler,
-        label,
-        (handler.namespace === "estimateGas" ? estimates : history).filter(
-          (call) => selectorOf.get(call) === handler.selector,
-        ),
-      ),
-    );
+    list.map((handler) => {
+      const kind: Kind = handler.namespace === "estimateGas" ? "estimate" : "call";
+      const functionList = callsBySelector.get(`${kind}:${handler.selector}`)?.list;
+      return unusedLine(handler, label, functionList?.kept ?? [], functionList?.total ?? 0);
+    });
 
   return {
     contract,
@@ -300,8 +332,9 @@ export function createMockContract<const abi extends Abi>(
     resolve,
     estimate,
     clearCalls() {
-      history.length = 0;
-      estimates.length = 0;
+      calls.clear();
+      callsBySelector.clear();
+      received = 0;
       mocks.clearUsage();
     },
     unusedMocks: () => describeUnused(mocks.unused(mocks.handlers)),

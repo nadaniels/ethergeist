@@ -11,10 +11,11 @@ import {
 
 import type { ActionName } from "../actions/typedActions.js";
 import type { MockCall, Reporter } from "../contracts/types.js";
-import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
+import { type FaultOutcome, failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError, MockResolverError, MockRevertError } from "../shared/errors.js";
+import { createRecordList, type RecordLimit } from "../shared/records.js";
 import { isPlainObject } from "../shared/values.js";
-import { type FormatContext, formatEntry } from "./format.js";
+import { type FormatContext, type HistoryView, formatEntry } from "./format.js";
 import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./types.js";
 
 export function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
@@ -66,14 +67,15 @@ export type Recorder = ReturnType<typeof createRecorder>;
 /**
  * What the mock records about requests: each one as received (`requests`),
  * how it was answered (`history`), every decoded contract call (`calls`),
- * and those it couldn't answer (`unhandled`). As a part, `clearCalls()`
- * clears them; they're never saved.
+ * and those it couldn't answer (`unhandled`), each kept to `recordLimit`.
+ * As a part, `clearCalls()` clears them; they're never saved.
  */
 export function createRecorder({
   multicallAddress,
   actionFor,
   debug,
   formatContext,
+  recordLimit,
 }: {
   multicallAddress: Address | undefined;
   /** The typed action answering a JSON-RPC method, if any. */
@@ -81,11 +83,32 @@ export function createRecorder({
   /** `createMockRpc()`'s `debug` option. */
   debug: boolean | ((line: string, entry: MockHistoryEntry) => void) | undefined;
   formatContext: FormatContext;
+  recordLimit: RecordLimit;
 }) {
-  const requests: RpcRequest[] = [];
-  const history: MockHistoryEntry[] = [];
-  const calls: MockCall[] = [];
-  const unhandled: UnhandledRequest[] = [];
+  const requests = createRecordList<RpcRequest>(recordLimit);
+  const history = createRecordList<MockHistoryEntry>(recordLimit);
+  const calls = createRecordList<MockCall>(recordLimit);
+  const unhandled = createRecordList<UnhandledRequest>(recordLimit);
+  // Kept beside the entries, not in them, so they stay as users see them.
+  // A number is good until the next clear, which starts them over.
+  const numbers = new WeakMap<MockHistoryEntry, { number: number; clears: number }>();
+  let clears = 0;
+  const retries = new WeakMap<MockHistoryEntry, FaultOutcome>();
+  /** The last request received, to tell whether the next one retries it. */
+  let last: MockHistoryEntry | undefined;
+  const view: HistoryView = {
+    get entries() {
+      return history.kept;
+    },
+    get dropped() {
+      return history.dropped;
+    },
+    numberOf(entry) {
+      const numbered = numbers.get(entry);
+      return numbered?.clears === clears ? numbered.number : undefined;
+    },
+    faultRetried: (entry) => retries.get(entry),
+  };
   const log =
     debug === true
       ? (line: string) => {
@@ -118,40 +141,53 @@ export function createRecorder({
     history,
     calls,
     /** Requests the mock couldn't answer; added to with `markUnhandled()`. */
-    unhandled: unhandled as readonly UnhandledRequest[],
+    unhandled,
+    /** The history, for formatting: see `HistoryView`. */
+    view,
     /** Records a request as received, and returns its history entry. */
     start(request: RpcRequest): MockHistoryEntry {
-      requests.push(request);
+      requests.add(request);
       const entry = entryFor(request.method, request.params);
-      history.push(entry);
+      // viem retries only once the attempt before has failed, so its outcome is known by now.
+      const fault = last === undefined ? undefined : retriedFault(last, entry);
+      if (fault) retries.set(entry, fault);
+      last = entry;
+      history.add(entry);
+      numbers.set(entry, { number: history.total, clears });
       return entry;
     },
     /** Records how a request ended, and logs it when `debug` is on. */
     settle(entry: MockHistoryEntry, outcome: MockOutcome) {
       entry.outcome = outcome;
-      if (!log) return;
-      const index = history.indexOf(entry);
-      // Cleared while it was in flight: still worth a line, just without its number.
-      log(
-        index === -1
-          ? formatEntry([entry], 0, formatContext)
-          : formatEntry(history, index, formatContext),
-        entry,
-      );
+      log?.(formatEntry(view, entry, formatContext), entry);
     },
     /** Records a request the mock couldn't answer, for `unhandled` and `assertNoUnhandled()`. */
     markUnhandled(request: RpcRequest, error: MockNotFoundError | MockResolverError) {
-      unhandled.push({ ...request, error });
+      unhandled.add({ ...request, error });
     },
     /** Records a decoded contract call, from any contract. */
     onCall: (call: MockCall) => {
-      calls.push(call);
+      calls.add(call);
     },
     clearCalls() {
-      requests.length = 0;
-      history.length = 0;
-      calls.length = 0;
-      unhandled.length = 0;
+      requests.clear();
+      history.clear();
+      calls.clear();
+      unhandled.clear();
+      last = undefined;
+      clears += 1;
     },
   };
+}
+
+/** The fault `entry` retries: `previous`'s, if it faulted and `entry` is the same request. */
+function retriedFault(
+  previous: MockHistoryEntry,
+  entry: MockHistoryEntry,
+): FaultOutcome | undefined {
+  if (previous.outcome.type !== "fault") return undefined;
+  const same =
+    previous.method === entry.method &&
+    JSON.stringify(previous.params) === JSON.stringify(entry.params);
+  return same ? previous.outcome : undefined;
 }

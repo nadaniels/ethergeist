@@ -117,7 +117,7 @@ export function createRequestHandler({
     retryCount: number | undefined,
   ) {
     if (!(error instanceof MockNotFoundError)) return error;
-    const hint = retryHint(recorder.history, recorder.history.indexOf(historyEntry), retryCount);
+    const hint = retryHint(recorder.view.faultRetried(historyEntry), retryCount);
     if (hint === undefined) return error;
     return new MockNotFoundError(error.shortMessage, {
       details: error.details === "" ? hint : `${error.details}\n${hint}`,

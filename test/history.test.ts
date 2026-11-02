@@ -475,6 +475,18 @@ describe("historyOnFailure", () => {
     expect(() => createMockRpc({ historyOnFailure: -1 })).toThrow(RangeError);
   });
 
+  test("0 leaves it out, as false does", async () => {
+    const { mock, usdc, decimals } = setupWith(0);
+    usdc.read.symbol().returns("USDC");
+    await rejectionOf(decimals());
+
+    expect(
+      messageOf(() => {
+        mock.assertNoUnhandled();
+      }),
+    ).not.toContain("Requests");
+  });
+
   test("restore() shows the history it's about to clear", async () => {
     const { mock, usdc, decimals } = setupWith();
     const baseline = mock.checkpoint();

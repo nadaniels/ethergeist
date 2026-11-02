@@ -9,6 +9,7 @@ import { createDispatch } from "./contracts/dispatch.js";
 import { createRegistry } from "./contracts/registry.js";
 import type { CreateMockContractParameters, MockContract } from "./contracts/types.js";
 import { type FormatContext, type FormatHistoryOptions, formatHistory } from "./history/format.js";
+import { createRecordLimit } from "./history/historyLimit.js";
 import { createRecorder } from "./history/recorder.js";
 import type { EmittedLog } from "./logs/events.js";
 import { createLogStore } from "./logs/store.js";
@@ -25,12 +26,14 @@ import { createViemAdapter } from "./viem/adapter.js";
  * requests, in viem's types. See `MockRpc` for what it does.
  */
 export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc {
+  // Checked first, so a bad limit throws before anything is made.
+  const recordLimit = createRecordLimit(parameters.historyLimit);
   const state = createChainState(parameters);
   const registry = createRegistry(state);
   const logStore = createLogStore({ state, registry });
   const faults = createFaults();
 
-  const actions = createActions({ state, registry, logStore });
+  const actions = createActions({ state, registry, logStore }, recordLimit);
   // History names a getLogs filter's events with the registered contracts' ABIs.
   const formatContext: FormatContext = {
     describeLogs: (call) =>
@@ -44,6 +47,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     actionFor: actions.actionFor,
     debug: parameters.debug,
     formatContext,
+    recordLimit,
   });
   const dispatcher = createDispatch({ state, registry });
   // Saved first, before anything is registered: reset() restores it.
@@ -78,6 +82,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
       const internal = createMockContract(contractParameters, {
         onCall: recorder.onCall,
         emit: logStore.emit,
+        recordLimit,
       });
       registry.add(internal);
       return internal.contract;
@@ -114,19 +119,19 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
       state.setFees(fees);
     },
     get calls() {
-      return [...recorder.calls];
+      return [...recorder.calls.kept];
     },
     get history() {
-      return [...recorder.history];
+      return [...recorder.history.kept];
     },
     formatHistory(options?: FormatHistoryOptions) {
-      return formatHistory(recorder.history, options, formatContext);
+      return formatHistory(recorder.view, options, formatContext);
     },
     get requests() {
-      return [...recorder.requests];
+      return [...recorder.requests.kept];
     },
     get unhandled() {
-      return [...recorder.unhandled];
+      return [...recorder.unhandled.kept];
     },
     assertNoUnhandled: checks.assertNoUnhandled,
     assertAllUsed: checks.assertAllUsed,

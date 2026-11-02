@@ -65,6 +65,23 @@ export type CreateMockRpcParameters = {
    * built-ins. `false` (or `0`) leaves them out. Defaults to 10.
    */
   historyOnFailure?: number | false;
+  /**
+   * How many entries each record of requests keeps: `history`, `requests`,
+   * `calls`, `unhandled`, each action's `.calls`, and each contract's and
+   * function's `.calls`. The limit is per list, not in all. Past it, the
+   * oldest are dropped; history keeps its numbering and says how many were
+   * dropped, and checks count every request. Defaults to 1000, warning
+   * once the first time one's dropped, so a test that counted on every
+   * request hears about it. Long-running pages need a limit: a demo polling
+   * every 50ms makes about 68k requests an hour. The limit counts entries,
+   * not bytes: a single read keeps about 3 KB per request across its
+   * records, and a 10-call multicall about 21 KB, since one entry carries
+   * the whole batch; so about 3 MB and 21 MB at the default. Pass a number
+   * to choose without the warning, or `Infinity` to keep everything.
+   * Registered mocks and `mock.logs` aren't records; they grow only as code
+   * adds to them.
+   */
+  historyLimit?: number;
 };
 
 /** A mock JSON-RPC node, answering viem through `transport()`; see `createMockRpc`. */
@@ -175,13 +192,17 @@ export type MockRpc = {
    * they are. `restore()` and `reset()` undo it.
    */
   setFees(fees: MockFees): void;
-  /** Every decoded contract call, across all contracts, in the order received. */
+  /**
+   * Every decoded contract call, across all contracts, in the order
+   * received (the last `historyLimit`).
+   */
   readonly calls: MockCall[];
   /**
-   * Every request the mock received, in order, with how it was answered:
-   * decoded contract calls (each multicall sub-call too), actions, and raw
-   * methods, each with a result in viem's types, a revert, a fault, or
-   * "unhandled". Retries are separate entries; in-flight ones are "pending".
+   * Every request the mock received (the last `historyLimit`), in order,
+   * with how it was answered: decoded contract calls (each multicall
+   * sub-call too), actions, and raw methods, each with a result in viem's
+   * types, a revert, a fault, or "unhandled". Retries are separate entries;
+   * in-flight ones are "pending".
    */
   readonly history: MockHistoryEntry[];
   /**
@@ -190,9 +211,15 @@ export type MockRpc = {
    * `eth_chainId` and `eth_blockNumber`.
    */
   formatHistory(options?: FormatHistoryOptions): string;
-  /** Every raw JSON-RPC request the mock has received, in order. */
+  /**
+   * Every raw JSON-RPC request the mock has received, in order (the last
+   * `historyLimit`).
+   */
   readonly requests: RpcRequest[];
-  /** Requests the mock couldn't answer, even if the code under test swallowed the error. */
+  /**
+   * Requests the mock couldn't answer, even if the code under test swallowed
+   * the error (the last `historyLimit`).
+   */
   readonly unhandled: UnhandledRequest[];
   /**
    * Throws if any request went unanswered: a missing mock or a resolver that

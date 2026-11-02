@@ -53,7 +53,13 @@ export function missError(
 }
 
 /** An unused mock on the contract `label`, with the `calls` its function received instead. */
-export function unusedLine(mock: Mock, label: string, calls: readonly MockCall[]): string {
+export function unusedLine(
+  mock: Mock,
+  label: string,
+  calls: readonly MockCall[],
+  /** Every call received, including those dropped past `historyLimit`. */
+  total: number,
+): string {
   const name = mock.abiItem.name;
   const after =
     mock.resolver === undefined
@@ -61,6 +67,7 @@ export function unusedLine(mock: Mock, label: string, calls: readonly MockCall[]
       : formatReceived(
           name,
           calls.map((call) => received(mock, call)),
+          total,
         );
   return `${describeMock(name, mock)} on ${label}${after}`;
 }

@@ -3,7 +3,7 @@ import { type AbiFunction } from "viem";
 import type { MockCallRecord } from "../contracts/types.js";
 import type { LogsCall } from "../logs/filter.js";
 import { formatCall, formatValue } from "../mocking/format.js";
-import type { MockOutcome } from "../mocking/outcomes.js";
+import type { FaultOutcome, MockOutcome } from "../mocking/outcomes.js";
 import type { MockNodeFault } from "../mocking/types.js";
 import { MockResolverError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
@@ -19,18 +19,33 @@ export type FormatContext = {
   describeLogs?: (call: LogsCall) => string;
 };
 
+/**
+ * What formatting needs from the recorder: the history it kept, how many
+ * older entries it dropped, and what it knows about each entry.
+ */
+export type HistoryView = {
+  entries: readonly MockHistoryEntry[];
+  dropped: number;
+  /**
+   * The entry's number, from 1 since the last clear, kept as older ones are
+   * dropped; `undefined` for one received before the last clear.
+   */
+  numberOf(entry: MockHistoryEntry): number | undefined;
+  /** The fault `entry` retries, if it's a retry: the same request, right after a fault. */
+  faultRetried(entry: MockHistoryEntry): FaultOutcome | undefined;
+};
+
 /** One line per entry (plus one per multicall sub-call), numbered from 1. */
 export function formatHistory(
-  entries: readonly MockHistoryEntry[],
+  view: HistoryView,
   { builtIns = true }: FormatHistoryOptions = {},
   context: FormatContext = {},
 ): string {
-  return entries
-    .map((entry, i) =>
-      builtIns || entry.type !== "builtIn" ? formatEntry(entries, i, context) : undefined,
-    )
-    .filter((line) => line !== undefined)
-    .join("\n");
+  const lines = view.entries
+    .filter((entry) => builtIns || entry.type !== "builtIn")
+    .map((entry) => formatEntry(view, entry, context));
+  if (view.dropped > 0) lines.unshift(`(${droppedNote(view.dropped)})`);
+  return lines.join("\n");
 }
 
 /**
@@ -38,48 +53,51 @@ export function formatHistory(
  * Numbered as in `formatHistory()`; `undefined` with no requests to show.
  */
 export function formatRecent(
-  entries: readonly MockHistoryEntry[],
+  view: HistoryView,
   count: number,
   context: FormatContext = {},
 ): string | undefined {
-  const indexes = entries.flatMap((entry, i) => (entry.type === "builtIn" ? [] : [i]));
-  const shown = indexes.slice(-count);
-  if (shown.length === 0) return undefined;
-  const earlier = indexes.length - shown.length;
+  const requests = view.entries.filter((entry) => entry.type !== "builtIn");
+  const shown = requests.slice(-count);
+  if (shown.length === 0)
+    // A poller's built-ins can push out everything else.
+    return view.dropped === 0
+      ? undefined
+      : `Requests so far: only built-ins kept (${droppedNote(view.dropped)}).`;
+  const earlier = requests.length - shown.length;
+  const notes = [
+    ...(earlier === 0 ? [] : [`${earlier} earlier; see mock.formatHistory()`]),
+    ...(view.dropped === 0
+      ? []
+      : [
+          earlier === 0
+            ? droppedNote(view.dropped)
+            : `${view.dropped} before those dropped, past historyLimit`,
+        ]),
+  ];
   const heading =
-    earlier === 0
+    notes.length === 0
       ? "Requests so far:"
       : `${shown.length === 1 ? "Last request" : `Last ${shown.length} requests`} ` +
-        `(${earlier} earlier; see mock.formatHistory()):`;
-  return [heading, ...shown.map((index) => formatEntry(entries, index, context))].join("\n");
+        `(${notes.join("; ")}):`;
+  return [heading, ...shown.map((entry) => formatEntry(view, entry, context))].join("\n");
 }
 
-/** The fault that entry `index` retries, if it's a retry: the same request, right after a fault. */
-function faultRetried(
-  entries: readonly MockHistoryEntry[],
-  index: number,
-): Extract<MockOutcome, { type: "fault" }> | undefined {
-  const entry = entries[index];
-  const previous = entries[index - 1];
-  if (entry === undefined || previous?.outcome.type !== "fault") return undefined;
-  const same =
-    previous.method === entry.method &&
-    JSON.stringify(previous.params) === JSON.stringify(entry.params);
-  return same ? previous.outcome : undefined;
-}
+const droppedNote = (dropped: number) =>
+  `${dropped} older ${dropped === 1 ? "request" : "requests"} dropped, past historyLimit`;
 
 /**
- * For a request a mock didn't answer: explains that it's viem retrying after
- * a limited mock's fault used up its answers. `retryCount` is the transport's,
- * when known. A `fallback()` transport does the retrying itself and gives its
- * transports `retryCount: 0`, so a retry through one of those shows the default.
+ * For a request a mock didn't answer, retrying `fault`: explains that it's
+ * viem retrying after a limited mock's fault used up its answers.
+ * `retryCount` is the transport's, when known. A `fallback()` transport does
+ * the retrying itself and gives its transports `retryCount: 0`, so a retry
+ * through one of those shows the default.
  */
 export function retryHint(
-  entries: readonly MockHistoryEntry[],
-  index: number,
+  fault: FaultOutcome | undefined,
   retryCount: number | undefined,
 ): string | undefined {
-  if (faultRetried(entries, index)?.source !== "mock") return undefined;
+  if (fault?.source !== "mock") return undefined;
   const retries =
     retryCount === undefined || retryCount === 0
       ? "`retryCount` is 3 by default"
@@ -91,15 +109,15 @@ export function retryHint(
   );
 }
 
-/** Entry `index` of `entries`, formatted; earlier entries tell retries apart. */
+/** `entry`, formatted with its number, and marked if it's a retry. */
 export function formatEntry(
-  entries: readonly MockHistoryEntry[],
-  index: number,
+  view: HistoryView,
+  entry: MockHistoryEntry,
   context: FormatContext = {},
 ): string {
-  const entry = entries[index]!;
-  const retry = faultRetried(entries, index) ? "(retry) " : "";
-  const head = `#${index + 1} ${entry.method} ${retry}`;
+  const retry = view.faultRetried(entry) ? "(retry) " : "";
+  // Received before the last clear: still worth a line, just without a number.
+  const head = `#${view.numberOf(entry) ?? "–"} ${entry.method} ${retry}`;
 
   if (entry.type === "call")
     return entry.call

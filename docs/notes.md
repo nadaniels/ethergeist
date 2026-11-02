@@ -515,6 +515,24 @@ features land; tick them off as pages get written.
 - [ ] What history shows: `(retry)` after a fault, named outputs by name
       (the value stays the tuple viem returns), `(no outputs)`, and
       `abiItem` on each contract call record.
+- [ ] `historyLimit` (default 1,000 per list, `Infinity` for no limit):
+      every record (`history`, `requests`, `calls`, `unhandled`, each
+      action's and function's `.calls`) keeps its last N; each function and
+      each overload has its own list, so a busy poller can't push out a quiet
+      function's calls. History keeps its numbering (`#68001`) and says how
+      many it dropped; checks count every request ("3 request(s) (the last 2
+      kept)"). The default warns once, on the first drop, so a test that
+      relied on every request hears about it; a chosen number never warns.
+      Why a default at all: a page polling every 50ms makes about 68k requests
+      an hour. Measured per request across all records: about 3 KB for a
+      single read, about 21 KB for a 10-call multicall (one entry carries the
+      whole batch). Unlimited, a demo left open all day holds hundreds of MB
+      or more; at the default, about 3 MB and 21 MB. The limit counts
+      entries, not bytes. Why 1,000 and not more: it keeps multicall demos
+      small, while `restore()` after each test clears the records, so a
+      single test rarely reaches it; one that does gets the warning, and
+      `Infinity` keeps everything. Not records: registered mocks and
+      `mock.logs`, which grow only as code adds to them.
 
 ## 8. Sharing setup across tests: `checkpoint()` and `restore()`
 
@@ -607,3 +625,10 @@ features land; tick them off as pages get written.
       resolver reads the current value on every call, rather than per-test
       overrides outside `defaults`, which `assertAllUsed()` reports when a
       test doesn't use them.
+- [ ] A long-running demo page: the default `historyLimit` already suits
+      it; set it to silence the warning, or lower it for a page that
+      multicalls many functions per poll. Change answers over time with
+      a resolver that reads app state, or by calling `.returns()` again on a
+      kept builder, never by registering a new mock on a timer: each
+      registration is kept (and matched against) for good. Likewise, `emit`
+      on a timer grows `mock.logs`, which `getLogs` searches on every poll.

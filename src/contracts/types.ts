@@ -139,7 +139,10 @@ export type MockContractFunction<
     >,
     FaultOf<mutability>
   >;
-  /** Every call to this function the mock has received, in order. */
+  /**
+   * Every call to this function the mock has received, in order (the last
+   * `historyLimit` of each overload).
+   */
   readonly calls: MockCall<ContractFunctionArgs<abi, mutability, functionName>, functionName>[];
 };
 
@@ -161,7 +164,10 @@ export type MockEstimateGasFunction<
   <const args extends ContractFunctionArgs<abi, WriteMutability, functionName>>(
     args?: args,
   ): WithLimits<MockContractEstimateAnswers<abi, args>>;
-  /** Every estimate of this function the mock has received, in order. */
+  /**
+   * Every estimate of this function the mock has received, in order (the
+   * last `historyLimit` of each overload).
+   */
   readonly calls: MockCall<
     ContractFunctionArgs<abi, WriteMutability, functionName>,
     functionName
@@ -191,7 +197,10 @@ export type MockContract<abi extends Abi> = {
   /** The name given at registration, if any. */
   name: string | undefined;
   abi: abi;
-  /** Every call to any of this contract's functions, in order. Estimates aren't calls. */
+  /**
+   * Every call to any of this contract's functions, in order (the last
+   * `historyLimit`). Estimates aren't calls.
+   */
   readonly calls: (NamespaceCall<abi, ReadMutability> | NamespaceCall<abi, WriteMutability>)[];
   /** View and pure functions. */
   read: {

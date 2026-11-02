@@ -92,16 +92,23 @@ export const formatNoAnswer = (answers: string) =>
  * Under an unused mock, for messages: the calls its function did receive (up
  * to 3) and where each first differs, or that it received none.
  */
-export function formatReceived(name: string, received: readonly ReceivedCall[]): string {
-  if (received.length === 0) return `\n    received no calls to ${name}`;
+export function formatReceived(
+  name: string,
+  received: readonly ReceivedCall[],
+  /** Every call received, including those dropped past `historyLimit`. */
+  total = received.length,
+): string {
+  if (total === 0) return `\n    received no calls to ${name}`;
   const lines = received.slice(0, 3).map(({ call, differs }) => {
     const why =
       differs === undefined ? "matches; another mock answered it" : `${differs} didn't match`;
     return `\n      ${call}  ← ${why}`;
   });
   if (received.length > 3) lines.push(`\n      …and ${received.length - 3} more`);
-  const count = received.length === 1 ? "1 call" : `${received.length} calls`;
-  return `\n    received ${count} to ${name}:${lines.join("")}`;
+  const count = total === 1 ? "1 call" : `${total} calls`;
+  const kept =
+    received.length === total ? "" : ` (the last ${received.length} kept, past historyLimit)`;
+  return `\n    received ${count} to ${name}${kept}:${lines.join("")}`;
 }
 
 type FormatOptions = {

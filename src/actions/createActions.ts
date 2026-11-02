@@ -1,6 +1,7 @@
 import { withCalls } from "../mocking/handlers.js";
 import { MockRpcError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
+import type { RecordLimit } from "../shared/records.js";
 import { createMethods } from "./methods.js";
 import { type ActionReport, type Table, createTable, type ActionsContext } from "./table.js";
 import { type MockActions, type ActionName, typedActions } from "./typedActions.js";
@@ -12,17 +13,17 @@ export type Actions = ReturnType<typeof createActions>;
  * The typed actions (`mock.actions`) and raw methods (`mock.method()`): their
  * mocks, and answering the requests they're for.
  */
-export function createActions(context: ActionsContext) {
+export function createActions(context: ActionsContext, recordLimit: RecordLimit) {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
   const names = Object.keys(typedActions) as ActionName[];
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- one table per name, as built
   const typed = Object.fromEntries(
-    names.map((name) => [name, createTable(typedActions[name].define(context))]),
+    names.map((name) => [name, createTable(typedActions[name].define(context), recordLimit)]),
   ) as Record<ActionName, Table>;
   const typedMethods = new Map<string, ActionName>(
     names.flatMap((name) => typedActions[name].methods.map((method) => [method, name] as const)),
   );
-  const methods = createMethods((method) => typedMethods.get(method));
+  const methods = createMethods((method) => typedMethods.get(method), recordLimit);
 
   // Built at runtime from the tables; `MockActions` describes the same shape.
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- runtime-built typed facade
@@ -33,7 +34,7 @@ export function createActions(context: ActionsContext) {
         name,
         withCalls(
           (params?: unknown) => table.register(params),
-          () => [...table.history],
+          () => [...table.calls.kept],
         ),
       ];
     }),

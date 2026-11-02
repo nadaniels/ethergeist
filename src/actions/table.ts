@@ -20,6 +20,7 @@ import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
+import { type RecordLimit, createRecordList } from "../shared/records.js";
 import type { ActionContext } from "./types.js";
 
 /** What an action's definition reads: the chain's state, what's registered, and emitted logs. */
@@ -87,9 +88,10 @@ type Handler = MockHandler<ActionContext<object>>;
 const paramName = (key: PinnedKey) =>
   key === null ? "params" : typeof key === "number" ? `param ${key + 1}` : key;
 
-export function createTable(definition: Definition) {
+/** A table answering `definition`'s action; its calls are kept to `recordLimit`. */
+export function createTable(definition: Definition, recordLimit: RecordLimit) {
   const mocks = createHandlers<ActionContext<object>, unknown>();
-  const history: object[] = [];
+  const calls = createRecordList<object>(recordLimit);
   const actualOf = (pinned: unknown, call: object) =>
     definition.actual === undefined ? call : definition.actual(pinned, call);
 
@@ -108,13 +110,13 @@ export function createTable(definition: Definition) {
         `${describeMock(definition.name, handler)}${
           handler.resolver === undefined
             ? formatNoAnswer(".returns() or .fails()")
-            : formatReceived(definition.name, received(handler))
+            : formatReceived(definition.name, received(handler), calls.total)
         }`,
     );
 
-  /** The calls this table received since the last clear, and where each differs from `handler`. */
+  /** The calls this table kept since the last clear, and where each differs from `handler`. */
   function received(handler: Handler): ReceivedCall[] {
-    return history.map((call) => {
+    return calls.kept.map((call) => {
       const mismatched = mismatches(handler.pinned, actualOf(handler.pinned, call));
       const [key] = mismatched;
       return {
@@ -130,7 +132,7 @@ export function createTable(definition: Definition) {
     report?: (report: ActionReport) => void,
   ): Promise<unknown> {
     const call = definition.decode(params, method);
-    history.push(call);
+    calls.add(call);
     const turn = definition.contractTurn?.(call);
     const reportAs = (outcome: MockOutcome) => {
       const contract = turn?.record;
@@ -194,15 +196,16 @@ export function createTable(definition: Definition) {
   return {
     register,
     answer,
-    history,
+    /** The calls this table received, as they arrive. */
+    calls,
     clearCalls() {
-      history.length = 0;
+      calls.clear();
       mocks.clearUsage();
     },
     /** Removes every mock, whose builders then throw, and forgets the calls. */
     removeAll() {
       mocks.removeAll();
-      history.length = 0;
+      calls.clear();
     },
     unusedMocks: () => describeUnused(mocks.unused(mocks.handlers)),
     /** Saves the registered mocks and their answers, to put back or compare against. */

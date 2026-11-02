@@ -1,4 +1,5 @@
 import type { PartSnapshot } from "../shared/parts.js";
+import type { RecordLimit } from "../shared/records.js";
 import { type Definition, type Table, createTable } from "./table.js";
 import type { MockMethodBuilder } from "./types.js";
 
@@ -33,7 +34,10 @@ const builtIns = new Map([
  * made when it's first mocked. `actionFor` names the typed action for a
  * method that has one, which `mock.method()` refuses.
  */
-export function createMethods(actionFor: (method: string) => string | undefined) {
+export function createMethods(
+  actionFor: (method: string) => string | undefined,
+  recordLimit: RecordLimit,
+) {
   const raw = new Map<string, Table>();
 
   function method(name: string, params?: readonly unknown[]): MockMethodBuilder {
@@ -56,7 +60,7 @@ export function createMethods(actionFor: (method: string) => string | undefined)
         actual: (pinned, call) =>
           Array.isArray(pinned) ? pinned.map((_, i) => call.params[i]) : call.params,
       };
-      table = createTable(definition);
+      table = createTable(definition, recordLimit);
       raw.set(name, table);
     }
     return table.register(params);
