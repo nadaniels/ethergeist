@@ -1,6 +1,7 @@
 import { type Hex, isHex, pad, size } from "viem";
 
 import { formatValue } from "../mocking/format.js";
+import { invalidParams } from "../shared/errors.js";
 import { isPlainObject, lowercase } from "../shared/values.js";
 import { decodeAddressAtBlock, pinAddress } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
@@ -14,6 +15,13 @@ function toWord(value: unknown, what: string): Hex {
     throw new TypeError(
       `${what} must be hex of up to 32 bytes; got ${size(value)} bytes: ${value}.`,
     );
+  return pad(lowercase(value), { size: 32 });
+}
+
+/** A storage slot param as 32 bytes; refused as invalid params if it isn't hex of up to 32 bytes. */
+function slotParam(value: unknown): Hex {
+  if (!isHex(value) || size(value) > 32)
+    throw invalidParams(`expected a storage slot of up to 32 bytes; got ${formatValue(value)}`);
   return pad(lowercase(value), { size: 32 });
 }
 
@@ -36,7 +44,7 @@ export const getStorageAt = ({ state, registry }: ActionsContext): Definition<St
       [address, block],
       state.resolveBlock,
     );
-    return { address: checksummed, slot: toWord(slot, "A storage slot"), ...at };
+    return { address: checksummed, slot: slotParam(slot), ...at };
   },
   pin: pinStorage,
   zero: "0x",

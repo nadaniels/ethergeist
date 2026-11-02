@@ -20,7 +20,9 @@ shared → mocking → chain → logs → contracts → actions → history → 
   and usage), plus matching, matchers, faults (`MockFailure`), `zeroResult`,
   and outcomes (`MockOutcome`: how a mock answered, which history records).
 - **`chain/`:** the chain's own state (`createChainState`: block number, clock,
-  fees) and the node's shapes for blocks, transactions, receipts and errors.
+  fees) and the node's shapes for blocks, transactions, receipts and errors,
+  and for request params (`params.ts`: what a node can't parse is refused as
+  invalid params).
 - **`logs/`:** emitted logs and how `eth_getLogs` filters find them.
 - **`contracts/`:** mocked contracts, their registry, and `eth_call` dispatch,
   multicall included. It emits logs, so it sits above `logs/`; it owns

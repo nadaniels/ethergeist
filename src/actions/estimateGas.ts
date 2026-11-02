@@ -1,5 +1,6 @@
-import { type Hex, getAddress, hexToNumber, isHex, numberToHex } from "viem";
+import { type Hex, getAddress, isHex, numberToHex } from "viem";
 
+import { addressParam, numberParam } from "../chain/params.js";
 import { encodeGas } from "../mocking/gas.js";
 import type { MockEstimateAnswers, MockNodeFault, WithLimits } from "../mocking/types.js";
 import { isPlainObject } from "../shared/values.js";
@@ -42,15 +43,15 @@ function decodeEstimateGas(
   const { from, to, value, data, input, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } =
     isPlainObject(tx) ? tx : {};
   const fields = {
-    account: typeof from === "string" ? getAddress(from) : undefined,
-    to: typeof to === "string" ? getAddress(to) : undefined,
-    value: quantity(value) ?? 0n,
+    account: typeof from === "string" ? addressParam(from) : undefined,
+    to: typeof to === "string" ? addressParam(to) : undefined,
+    value: quantity(value, "a value") ?? 0n,
     data: isHex(data) ? data : isHex(input) ? input : undefined,
-    gas: quantity(gas),
-    gasPrice: quantity(gasPrice),
-    maxFeePerGas: quantity(maxFeePerGas),
-    maxPriorityFeePerGas: quantity(maxPriorityFeePerGas),
-    nonce: isHex(nonce) ? hexToNumber(nonce) : undefined,
+    gas: quantity(gas, "a gas limit"),
+    gasPrice: quantity(gasPrice, "a gas price"),
+    maxFeePerGas: quantity(maxFeePerGas, "a max fee per gas"),
+    maxPriorityFeePerGas: quantity(maxPriorityFeePerGas, "a max priority fee per gas"),
+    nonce: isHex(nonce) ? numberParam(nonce, "a nonce") : undefined,
     ...blockAt(block, resolveBlock),
   };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out

@@ -1,8 +1,8 @@
 import { formatTransaction, zeroHash } from "viem";
 
+import { hashParam } from "../chain/params.js";
 import { encodeTransaction } from "../chain/transactions.js";
 import { isPlainObject } from "../shared/values.js";
-import { hashParam } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { TransactionCall } from "./types.js";
 

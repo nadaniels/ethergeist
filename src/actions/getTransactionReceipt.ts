@@ -1,8 +1,8 @@
 import { formatTransactionReceipt, isHash } from "viem";
 
+import { hashParam } from "../chain/params.js";
 import { completeReceipt, toRpcReceipt } from "../chain/receipts.js";
 import { isPlainObject } from "../shared/values.js";
-import { hashParam } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ReceiptCall } from "./types.js";
 

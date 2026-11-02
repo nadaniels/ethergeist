@@ -4,11 +4,11 @@ import {
   type Address,
   type Hash,
   decodeAbiParameters,
-  getAddress,
   isHex,
   toEventSelector,
 } from "viem";
 
+import { addressParam } from "../chain/params.js";
 import { formatValue } from "../mocking/format.js";
 import { MockRpcError } from "../shared/errors.js";
 import { isPlainObject, lowercase } from "../shared/values.js";
@@ -40,9 +40,8 @@ export function decodeLogsCall(
   const fields = isPlainObject(filter) ? filter : {};
   const call: LogsCall = { topics: [] };
   const { address } = fields;
-  if (typeof address === "string") call.address = getAddress(address);
-  if (Array.isArray(address))
-    call.address = address.map((each: unknown) => getAddress(String(each)));
+  if (typeof address === "string") call.address = addressParam(address);
+  if (Array.isArray(address)) call.address = address.map((each: unknown) => addressParam(each));
   if (Array.isArray(fields.topics))
     call.topics = fields.topics.map((topic: unknown) => decodeTopic(topic));
   if (fields.blockHash === undefined) {

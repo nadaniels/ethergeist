@@ -52,6 +52,16 @@ describe("getStorageAt", () => {
     expect(mock.actions.getStorageAt.calls.map((call) => call.slot)).toEqual([zeroHash, one]);
   });
 
+  test("a request's slot matches in any case; a malformed pinned slot throws at registration", async () => {
+    const { mock, client } = setup();
+    mock.actions.getStorageAt({ address: proxy, slot: "0xab" }).returns("0x1");
+
+    expect(await client.getStorageAt({ address: proxy, slot: "0xAB" })).toBe(one);
+    expect(() => mock.actions.getStorageAt({ slot: "0xzz" })).toThrow(
+      "A storage slot must be hex of up to 32 bytes",
+    );
+  });
+
   test("slot pins take matchers, which see the slot as 32 bytes", async () => {
     const { mock, client } = setup();
     mock.actions

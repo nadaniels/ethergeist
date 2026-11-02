@@ -1,10 +1,11 @@
-import { type Chain, getAddress, hexToBigInt, isHex } from "viem";
+import { type Chain, getAddress, isHex } from "viem";
 import { mainnet } from "viem/chains";
 
 import { MockNotFoundError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { type BlockClock, type MockBlock, generateBlock, numberOfBlockHash } from "./blocks.js";
 import { type Fees, type MockFees, resolveFees } from "./fees.js";
+import { quantityParam } from "./params.js";
 
 /** What the mock knows about its chain without any mocks: see `createChainState`. */
 export type ChainState = ReturnType<typeof createChainState>;
@@ -43,10 +44,10 @@ export function createChainState(parameters: {
    * EIP-1898 `{ blockNumber }` or `{ blockHash }` of a generated block.
    */
   function resolveBlock(block: unknown): bigint {
-    if (isHex(block)) return hexToBigInt(block);
+    if (isHex(block)) return quantityParam(block, "a block number");
     if (block === "earliest") return 0n;
     if (isPlainObject(block)) {
-      if (isHex(block.blockNumber)) return hexToBigInt(block.blockNumber);
+      if (isHex(block.blockNumber)) return quantityParam(block.blockNumber, "a block number");
       if (isHex(block.blockHash)) {
         const number = numberOfBlockHash(block.blockHash);
         if (number === undefined)

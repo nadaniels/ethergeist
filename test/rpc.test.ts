@@ -1,4 +1,11 @@
-import { InvalidAddressError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
+import {
+  InvalidAddressError,
+  InvalidParamsRpcError,
+  createPublicClient,
+  erc20Abi,
+  getAddress,
+  parseAbi,
+} from "viem";
 import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
@@ -242,10 +249,39 @@ describe("malformed params", () => {
     ["a block count that isn't a number", "eth_feeHistory", ["many", "latest"]],
     ["an eth_call target that isn't an address", "eth_call", [{ to: 5, data: "0x313ce567" }]],
     ["an eth_call without a transaction", "eth_call", ["0x313ce567"]],
+    ["a storage slot that isn't hex", "eth_getStorageAt", [USDC, "0xzz", "latest"]],
+    ["a storage slot over 32 bytes", "eth_getStorageAt", [USDC, `0x${"11".repeat(33)}`, "latest"]],
+    ["an estimate's sender that isn't an address", "eth_estimateGas", [{ from: "0xzz", to: USDC }]],
+    ["an estimate's target that isn't an address", "eth_estimateGas", [{ to: "0x1234" }]],
+    [
+      "a nonce too large for a number",
+      "eth_estimateGas",
+      [{ to: USDC, nonce: "0x" + "f".repeat(20) }],
+    ],
+    ["a logs address that isn't one", "eth_getLogs", [{ address: "0x1234" }]],
+    ["a logs address list with one that isn't", "eth_getLogs", [{ address: [USDC, 5] }]],
+    ["a block count too large for a number", "eth_feeHistory", ["0x" + "f".repeat(20), "latest"]],
+    // A quantity has at least one digit: zero is "0x0".
+    ["an empty nonce", "eth_estimateGas", [{ to: USDC, nonce: "0x" }]],
+    ["an empty estimate value", "eth_estimateGas", [{ to: USDC, value: "0x" }]],
+    ["an empty block count", "eth_feeHistory", ["0x", "latest"]],
+    ["an empty block number", "eth_getBalance", [USDC, "0x"]],
+    ["an empty EIP-1898 block number", "eth_getBalance", [USDC, { blockNumber: "0x" }]],
+    ["an empty eth_call value", "eth_call", [{ to: USDC, data: "0x313ce567", value: "0x" }]],
   ])("%s is refused as invalid params", async (_, method, params) => {
     const mock = createMockRpc();
 
     await mock.request({ method, params }).catch(() => {});
     expect(mock.history[0]?.outcome).toMatchObject({ type: "rpcError", code: -32602 });
+  });
+
+  test("is refused once, not retried", async () => {
+    const mock = createMockRpc();
+
+    const error = await rejectionOf(
+      mock.publicClient().request({ method: "eth_getStorageAt", params: [USDC, "0xzz", "latest"] }),
+    );
+    expect(error).toBeInstanceOf(InvalidParamsRpcError);
+    expect(mock.history).toHaveLength(1);
   });
 });

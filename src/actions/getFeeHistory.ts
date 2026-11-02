@@ -1,6 +1,7 @@
-import { hexToBigInt, hexToNumber, isHex } from "viem";
+import { hexToBigInt, isHex } from "viem";
 
 import { feeHistory, toRpcFeeHistory } from "../chain/fees.js";
+import { numberParam } from "../chain/params.js";
 import { formatValue } from "../mocking/format.js";
 import { MockRpcError, invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
@@ -71,7 +72,7 @@ function decodeFeeHistory(
   [count, newest, percentiles]: readonly unknown[],
   resolveBlock: (block: unknown) => bigint,
 ): FeeHistoryCall {
-  const blockCount = isHex(count) ? hexToNumber(count) : count;
+  const blockCount = isHex(count) ? numberParam(count, "a block count") : count;
   if (typeof blockCount !== "number" || !Number.isInteger(blockCount))
     throw invalidParams(`expected a block count; got ${formatValue(count)}`);
   if (percentiles !== undefined && !isNumberList(percentiles))

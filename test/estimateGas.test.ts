@@ -4,6 +4,7 @@ import {
   HttpRequestError,
   FeeCapTooLowError,
   InsufficientFundsError,
+  InvalidAddressError,
   RpcRequestError,
   TipAboveFeeCapError,
   createPublicClient,
@@ -83,7 +84,9 @@ describe("estimateGas", () => {
     mock.actions.estimateGas({ to: bob, value: 0n }).returns(25_000n);
 
     expect(await client.estimateGas({ account: alice, to: bob })).toBe(25_000n);
-    expect(() => mock.actions.estimateGas({ account: "0x1234" })).toThrow();
+    // At registration, viem's own error: invalid params are for requests.
+    expect(() => mock.actions.estimateGas({ account: "0x1234" })).toThrow(InvalidAddressError);
+    expect(() => mock.actions.estimateGas({ to: "0x1234" })).toThrow(InvalidAddressError);
   });
 
   test("a resolver gets the request's fees and nonce, as a local account prepares them", async () => {

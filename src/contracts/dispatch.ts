@@ -1,5 +1,6 @@
-import { type Address, type Hex, getAddress, hexToBigInt, isAddress, isHex } from "viem";
+import { type Address, type Hex, getAddress, isAddress, isHex } from "viem";
 
+import { quantityParam } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
 import { formatValue } from "../mocking/format.js";
 import { errorOutcome } from "../mocking/outcomes.js";
@@ -104,7 +105,7 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
         data,
         {
           from: tx.from,
-          value: tx.value ? hexToBigInt(tx.value) : 0n,
+          value: tx.value ? quantityParam(tx.value, "a value") : 0n,
           blockNumber: state.resolveBlock(block),
           batch: undefined,
         },

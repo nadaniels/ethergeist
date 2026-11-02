@@ -1,15 +1,6 @@
-import {
-  type Address,
-  type BlockTag,
-  type Hash,
-  getAddress,
-  hexToBigInt,
-  isAddress,
-  isHash,
-  isHex,
-  numberToHex,
-} from "viem";
+import { type BlockTag, getAddress, hexToBigInt, isHex, numberToHex } from "viem";
 
+import { addressParam, quantityParam } from "../chain/params.js";
 import { formatValue } from "../mocking/format.js";
 import { invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
@@ -27,8 +18,12 @@ export function encodeQuantity(what: string) {
 /** A JSON-RPC quantity as viem's action returns it. */
 export const viewQuantity = (rpc: unknown) => (isHex(rpc) ? hexToBigInt(rpc) : rpc);
 
-/** A JSON-RPC quantity in a transaction, as a bigint; `undefined` when it's missing. */
-export const quantity = (value: unknown) => (isHex(value) ? hexToBigInt(value) : undefined);
+/**
+ * A JSON-RPC quantity in a transaction, as a bigint; `undefined` when it's
+ * missing. `what` names it if it's refused.
+ */
+export const quantity = (value: unknown, what: string) =>
+  isHex(value) ? quantityParam(value, what) : undefined;
 
 /** Checksums a pinned `address` (or each of several), which also validates it at registration. */
 export function pinAddress(pinned: unknown) {
@@ -64,20 +59,6 @@ export function blockAt(
 const blockTags = new Set<unknown>(["latest", "earliest", "pending", "safe", "finalized"]);
 
 const isBlockTag = (value: unknown): value is BlockTag => blockTags.has(value);
-
-/** An address param, checksummed; refused as invalid params if it isn't one. */
-function addressParam(value: unknown): Address {
-  if (typeof value !== "string" || !isAddress(value, { strict: false }))
-    throw invalidParams(`expected an address; got ${formatValue(value)}`);
-  return getAddress(value);
-}
-
-/** A 32-byte hash param; refused as invalid params if it isn't one. */
-export function hashParam(value: unknown): Hash {
-  if (typeof value !== "string" || !isHash(value))
-    throw invalidParams(`expected a 32-byte hash; got ${formatValue(value)}`);
-  return value;
-}
 
 /** An address and a block, as `eth_getBalance` and its kind take them; see `AddressAtBlockCall`. */
 export function decodeAddressAtBlock(
