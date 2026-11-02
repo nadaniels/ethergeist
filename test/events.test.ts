@@ -320,8 +320,10 @@ describe("mock.buildLog()", () => {
         transactionIndex: 2,
       }),
     ]);
-    // The block hash is the generated block's.
-    expect(logs[0]?.blockHash).toBe((await client.getBlock({ blockNumber: 7n })).hash);
+    // The block hash and timestamp are the generated block's, not the current one's.
+    const block = await client.getBlock({ blockNumber: 7n });
+    expect(logs[0]?.blockHash).toBe(block.hash);
+    expect(logs[0]?.blockTimestamp).toBe(block.timestamp);
   });
 
   test("defaults to the current block, and zeros for the rest", () => {

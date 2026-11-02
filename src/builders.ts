@@ -29,10 +29,11 @@ export function createBuilders(state: ChainState) {
       completeReceipt(receipt, {
         hash: receipt.transactionHash ?? zeroHash,
         blockNumber: state.blockNumber,
+        timestampAt: state.timestampAt,
       }),
     /** A finished log, in the current block unless given; see `buildLog`. */
     buildLog: <const abi extends Abi, eventName extends ContractEventName<abi>>(
       parameters: BuildLogParameters<abi, eventName>,
-    ) => buildLog(parameters, state.blockNumber),
+    ) => buildLog(parameters, state),
   };
 }

@@ -323,8 +323,14 @@ features land; tick them off as pages get written.
   - `mock.logs` lists every emitted log. `restore()` removes logs emitted
     since the checkpoint; `clearCalls()` keeps them.
   - Logs carry `blockTimestamp` (reth sends it; some nodes don't), from the
-    generated block. A `getBlock` mock with another timestamp doesn't
-    change it.
+    generated block: in `getLogs`, in receipts, and from `mock.buildLog()`,
+    so an emitted log equals the receipt's. A receipt log with another
+    block's timestamp is refused, like one with another block. A `getBlock`
+    mock with another timestamp doesn't change it.
+  - Testing for a node that doesn't send it (older versions, some L2s and
+    providers; viem types it optional): give a log `blockTimestamp:
+    undefined`, in a receipt's logs or a `getLogs` mock's answer, e.g.
+    `{ ...log, blockTimestamp: undefined }`. The mock answers it without one.
 - [ ] `mock.actions.getLogs(pins)` for one request rather than the logs:
       faults, limits, and overrides. Show:
   - Pins match the decoded filter (`address`, `topics`, `fromBlock`,

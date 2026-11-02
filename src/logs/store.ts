@@ -1,12 +1,11 @@
-import { Log as OxLog } from "ox";
-import { type Address, type Hash, type Hex, type RpcLog, getAddress, numberToHex } from "viem";
+import { type Address, type Hash, type Hex, type RpcLog, getAddress } from "viem";
 
 import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
-import { placeLog } from "../chain/receipts.js";
+import { placeLog, toRpcLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { MockNotFoundError, MockRpcError } from "../shared/errors.js";
 import { testHash } from "../shared/testValues.js";
-import { isPlainObject, nodeAddress } from "../shared/values.js";
+import { isPlainObject } from "../shared/values.js";
 import type { EmitOptions, EmittedLog, MockEventLog } from "./events.js";
 import { type LogsCall, decodeLogsCall, describeLogsCall, topicsMatch } from "./filter.js";
 
@@ -17,6 +16,7 @@ type PlacedLog = EmittedLog & { readonly blockTimestamp: bigint };
 const positionFields = [
   "blockHash",
   "blockNumber",
+  "blockTimestamp",
   "transactionHash",
   "transactionIndex",
   "logIndex",
@@ -85,12 +85,13 @@ export function createLogStore({
       const log = placeLog(value, {
         blockHash: blockHash(number),
         blockNumber: number,
+        blockTimestamp: state.timestampAt(number),
         transactionHash,
         transactionIndex,
         logIndex: firstIndex + i,
       });
       Object.freeze(log.topics);
-      return Object.freeze({ ...log, blockTimestamp: state.timestampAt(number) });
+      return Object.freeze(log);
     });
     if (emitOptions.mine === true) state.mine();
     logs.push(...placed);
@@ -227,16 +228,6 @@ function isLogList(
   return Array.isArray(given);
 }
 
-function toRpcLog(log: EmittedLog): RpcLog {
-  const { blockTimestamp } = log;
-  return {
-    // ox types a log's topics as non-empty, but a LOG0 log has none; it passes them through.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- ox's type is narrower than its runtime
-    ...OxLog.toRpc({ ...log, address: nodeAddress(log.address) } as OxLog.Log),
-    ...(typeof blockTimestamp === "bigint" ? { blockTimestamp: numberToHex(blockTimestamp) } : {}),
-  };
-}
-
 /** Fields a placed log has, with the types viem gives them. */
 const placedFields = {
   blockHash: "string",
@@ -260,6 +251,13 @@ function toRpc(value: unknown): RpcLog[] {
     if (!placed)
       throw new TypeError(
         `getLogs answers placed logs, e.g. from emit() or mock.buildLog(); log ${i} has no position.`,
+      );
+    // Left out for a node that doesn't send it; anything else would be dropped.
+    const { blockTimestamp } = log;
+    if (blockTimestamp !== undefined && typeof blockTimestamp !== "bigint")
+      throw new TypeError(
+        `getLogs log ${i}'s blockTimestamp must be a bigint, or left out; ` +
+          `got ${blockTimestamp === null ? "null" : typeof blockTimestamp}.`,
       );
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- its position is checked above; the rest is the mock's answer as given
     return toRpcLog(log as unknown as EmittedLog);

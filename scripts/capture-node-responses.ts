@@ -58,14 +58,16 @@ const unfunded = keyless("unfunded sender");
 const recipient = keyless("recipient");
 
 /**
- * The node's head: its number, hash and base fee, and a hash of each
- * transaction type in a recent block, by type (`eip1559`), when a case needs one.
+ * The node's head: its number, hash and base fee, and when a case needs them,
+ * a hash of each transaction type in a recent block, by type (`eip1559`), and
+ * of a recent transaction that emitted logs.
  */
 type Head = {
   number: bigint;
   hash: string;
   baseFeePerGas: bigint;
   transactions: Record<string, string>;
+  loggedTransaction: string | undefined;
 };
 
 /**
@@ -191,6 +193,14 @@ const cases: Case[] = [
         : { method: "eth_getTransactionByHash", params: [hash] };
     },
   })),
+  {
+    name: "get-receipt",
+    description: "eth_getTransactionReceipt for a mined transaction with logs",
+    request: ({ loggedTransaction }) =>
+      loggedTransaction === undefined
+        ? undefined
+        : { method: "eth_getTransactionReceipt", params: [loggedTransaction] },
+  },
 ];
 
 /**
@@ -230,16 +240,20 @@ async function send(endpoint: string, request: RpcRequest): Promise<Response> {
   return { status: response.status, body };
 }
 
-/** Keeps a successful log query to its first two logs; one block of USDC can have hundreds. */
+/** Keeps the first two logs of a log query (one block of USDC can have hundreds) or a receipt. */
 function trimmed(body: unknown): unknown {
+  if (typeof body !== "object" || body === null || !("result" in body)) return body;
+  const { result } = body;
+  if (Array.isArray(result)) return { ...body, result: result.slice(0, 2) };
+  // A receipt's logs, which a busy transaction has dozens of.
   if (
-    typeof body !== "object" ||
-    body === null ||
-    !("result" in body) ||
-    !Array.isArray(body.result)
+    typeof result === "object" &&
+    result !== null &&
+    "logs" in result &&
+    Array.isArray(result.logs)
   )
-    return body;
-  return { ...body, result: body.result.slice(0, 2) };
+    return { ...body, result: { ...result, logs: result.logs.slice(0, 2) } };
+  return body;
 }
 
 const pause = async () => {
@@ -289,6 +303,9 @@ async function main() {
   const transactions = selected.some(({ name }) => name.startsWith("get-transaction-"))
     ? await recentTransactions(setup, block.number)
     : {};
+  const loggedTransaction = selected.some(({ name }) => name.startsWith("get-receipt"))
+    ? await recentLoggedTransaction(setup, block.number)
+    : undefined;
   if (selected.some(({ name }) => name.startsWith("estimate-gas-"))) {
     await pause();
     const balance = await setup.getBalance({ address: unfunded });
@@ -300,6 +317,7 @@ async function main() {
     hash: block.hash,
     baseFeePerGas: block.baseFeePerGas ?? 0n,
     transactions,
+    loggedTransaction,
   };
   const name = values.name ?? defaultName(chainId, client);
   console.log(`${endpoint}: ${client}, chain ${chainId} (${name}), head ${head.number}\n`);
@@ -321,6 +339,13 @@ async function recentTransactions(setup: PublicClient, head: bigint) {
   const transactions: Record<string, string> = {};
   for (const tx of recent.transactions) transactions[tx.type] ??= tx.hash;
   return transactions;
+}
+
+/** A transaction that emitted a USDC log in a block a couple behind the head. */
+async function recentLoggedTransaction(setup: PublicClient, head: bigint) {
+  await pause();
+  const [log] = await setup.getLogs({ address: usdc, fromBlock: head - 2n, toBlock: head - 2n });
+  return log?.transactionHash;
 }
 
 /** Sends one case after a pause, prints the answer, and saves it to `outDir` if given. */

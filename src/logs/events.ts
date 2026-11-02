@@ -17,6 +17,7 @@ import {
 
 import { blockHash } from "../chain/blocks.js";
 import { placeLog } from "../chain/receipts.js";
+import type { ChainState } from "../chain/state.js";
 import { formatCall } from "../mocking/format.js";
 import { assertNoMatchers } from "../mocking/matching.js";
 import { type AllNamed, type PartialStructs, fillZeros } from "../shared/abiValues.js";
@@ -135,18 +136,20 @@ export type BuildLogParameters<
 /**
  * The log `address` emits for `eventName` with `args`, as a complete viem
  * log: the same encoding as a contract's `events`, and the same placement
- * as a mocked receipt's logs. The block is `currentBlock` unless given, its
- * hash is the mock's generated one, and other position fields left out are zero.
+ * as a mocked receipt's logs. The block is `chain`'s current one unless
+ * given, its hash and timestamp are the mock's generated ones, and other
+ * position fields left out are zero.
  */
 export function buildLog<const abi extends Abi, eventName extends ContractEventName<abi>>(
   parameters: BuildLogParameters<abi, eventName>,
-  currentBlock: bigint,
+  chain: Pick<ChainState, "blockNumber" | "timestampAt">,
 ): Log<bigint, number, false> {
-  const { abi, address, eventName, blockNumber = currentBlock } = parameters;
+  const { abi, address, eventName, blockNumber = chain.blockNumber } = parameters;
   const args: unknown = "args" in parameters ? parameters.args : undefined;
   return placeLog(encodeEventLog(abi, address, eventName, args), {
     blockHash: blockHash(blockNumber),
     blockNumber,
+    blockTimestamp: chain.timestampAt(blockNumber),
     transactionHash: parameters.transactionHash ?? zeroHash,
     transactionIndex: parameters.transactionIndex ?? 0,
     logIndex: parameters.logIndex ?? 0,

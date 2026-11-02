@@ -589,4 +589,24 @@ describe("mock.actions.getLogs", () => {
       "getLogs answers placed logs, e.g. from emit() or mock.buildLog(); log 0 has no position.",
     );
   });
+
+  test("refuses a blockTimestamp that isn't a bigint", () => {
+    const { mock, usdc } = setup();
+    const log = usdc.emit.Transfer({ from: alice, to: bob });
+
+    expect(() => {
+      // @ts-expect-error -- viem's logs have a bigint timestamp
+      mock.actions.getLogs().returns([{ ...log, blockTimestamp: "0x5" }]);
+    }).toThrow("getLogs log 0's blockTimestamp must be a bigint, or left out; got string.");
+  });
+
+  test("answers a log without blockTimestamp, as a node that doesn't send it", async () => {
+    const { mock, client, usdc } = setup();
+    const log = usdc.emit.Transfer({ from: alice, to: bob });
+    mock.actions.getLogs().returns([{ ...log, blockTimestamp: undefined }]);
+
+    const [answered] = await client.getLogs({ address: USDC });
+    expect(answered).toBeDefined();
+    expect(answered?.blockTimestamp).toBeUndefined();
+  });
 });

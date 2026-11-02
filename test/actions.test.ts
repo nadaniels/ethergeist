@@ -557,7 +557,33 @@ describe("getTransactionReceipt", () => {
     mock.actions.getTransactionReceipt({ hash: log.transactionHash }).returns({ logs: [log] });
 
     const receipt = await client.getTransactionReceipt({ hash: log.transactionHash });
-    expect(receipt.logs).toEqual([{ ...log, blockTimestamp: undefined }]);
+    expect(receipt.logs).toEqual([log]);
+  });
+
+  test("a log with another block's timestamp throws", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const log = usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
+    const { timestamp } = await client.getBlock({ blockNumber: log.blockNumber });
+
+    expect(() => {
+      mock.actions
+        .getTransactionReceipt({ hash: log.transactionHash })
+        .returns({ logs: [{ ...log, blockTimestamp: 1n }] });
+    }).toThrow(`Receipt log 0 has blockTimestamp 1n, but the receipt's is ${timestamp}n.`);
+  });
+
+  test("a log without blockTimestamp has none, as from a node that doesn't send it", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const log = usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
+    mock.actions
+      .getTransactionReceipt({ hash: log.transactionHash })
+      .returns({ logs: [{ ...log, blockTimestamp: undefined }] });
+
+    const receipt = await client.getTransactionReceipt({ hash: log.transactionHash });
+    expect(receipt.logs[0]?.blockTimestamp).toBeUndefined();
+    expect(receipt.logs[0]?.blockNumber).toBe(log.blockNumber);
   });
 
   test("an invalid static value fails at registration", () => {

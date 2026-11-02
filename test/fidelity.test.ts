@@ -396,6 +396,13 @@ function resultOf(body: unknown): unknown {
   return typeof body === "object" && body !== null && "result" in body ? body.result : undefined;
 }
 
+/** A JSON-RPC receipt's logs, if it has any. */
+function logsOf(receipt: unknown): unknown {
+  return typeof receipt === "object" && receipt !== null && "logs" in receipt
+    ? receipt.logs
+    : undefined;
+}
+
 /** An object's keys, in order; none for anything else. */
 function keysOf(value: unknown): string[] {
   return typeof value === "object" && value !== null ? Object.keys(value) : [];
@@ -659,6 +666,24 @@ describe("transactions", () => {
       expect(keysOf(firstAuthorization(mocked))).toEqual(keysOf(firstAuthorization(real)));
     },
   );
+});
+
+describe("receipts", () => {
+  test("a receipt's log has the fields reth sends", async () => {
+    const { body, client } = nodeResponse("get-receipt");
+    expect(client).toMatch(/^reth\//u);
+    const mock = createMockRpc({ blockNumber: 10n });
+    const log = mock
+      .contract({ abi, address: TOKEN })
+      .emit.Transfer({ from: alice, to: TOKEN, value: 1n });
+    mock.actions.getTransactionReceipt({ hash: log.transactionHash }).returns({ logs: [log] });
+
+    const mocked = await mock.request({
+      method: "eth_getTransactionReceipt",
+      params: [log.transactionHash],
+    });
+    expect(logKeys(logsOf(mocked))).toEqual(logKeys(logsOf(resultOf(body))));
+  });
 });
 
 describe("faults match the http transport's, retries included", () => {

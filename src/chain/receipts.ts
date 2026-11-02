@@ -1,9 +1,10 @@
-import { TransactionReceipt as OxTransactionReceipt } from "ox";
+import { Log as OxLog, TransactionReceipt as OxTransactionReceipt } from "ox";
 import {
   type Hex,
   type Hash,
   type Log,
   type TransactionReceipt,
+  numberToHex,
   zeroAddress,
   zeroHash,
 } from "viem";
@@ -28,13 +29,18 @@ const zeroBloom = `0x${"00".repeat(256)}` as const;
 /**
  * A receipt for `hash` with `receipt`'s fields over useful defaults: `status`
  * is `"success"` (zero would mean reverted), the block is `blockNumber` unless
- * given, and each log's position, block, and transaction come from the receipt.
- * Everything else is zero. Addresses are validated, and lowercase as nodes send them.
+ * given, and each log's position, block (with its timestamp, as reth sends it),
+ * and transaction come from the receipt. Everything else is zero. Addresses
+ * are validated, and lowercase as nodes send them.
  * `hash` is `undefined` while it isn't known yet, e.g. at registration.
  */
 export function completeReceipt(
   receipt: MockReceipt,
-  { hash, blockNumber }: { hash: Hash | undefined; blockNumber: bigint },
+  {
+    hash,
+    blockNumber,
+    timestampAt,
+  }: { hash: Hash | undefined; blockNumber: bigint; timestampAt: (number: bigint) => bigint },
 ): TransactionReceipt {
   const { logs = [], ...fields } = receipt;
   const number = fields.blockNumber ?? blockNumber;
@@ -59,15 +65,17 @@ export function completeReceipt(
   if (complete.contractAddress) complete.contractAddress = nodeAddress(complete.contractAddress);
   // Only a hash given now can be checked; a pinned request's arrives later.
   const known = receipt.transactionHash ?? hash;
+  const blockTimestamp = timestampAt(complete.blockNumber);
   logs.forEach((log, i) => {
     assertInReceipt(i, "blockNumber", log.blockNumber, complete.blockNumber);
     assertInReceipt(i, "blockHash", log.blockHash, complete.blockHash);
+    assertInReceipt(i, "blockTimestamp", log.blockTimestamp, blockTimestamp);
     if (known !== undefined) assertInReceipt(i, "transactionHash", log.transactionHash, known);
     assertInReceipt(i, "transactionIndex", log.transactionIndex, complete.transactionIndex);
   });
   return {
     ...complete,
-    logs: logs.map((log, logIndex) => placeLog(log, { ...complete, logIndex })),
+    logs: logs.map((log, logIndex) => placeLog(log, { ...complete, blockTimestamp, logIndex })),
   };
 }
 
@@ -91,18 +99,24 @@ function assertInReceipt<value extends bigint | number | string>(
     );
 }
 
-/** Where a log sits on the chain: its block, transaction, and index in the block. */
+/**
+ * Where a log sits on the chain: its block (with the block's timestamp, as
+ * reth sends it), transaction, and index in the block.
+ */
 type LogPosition = Pick<
   Log<bigint, number, false>,
   "blockHash" | "blockNumber" | "transactionHash" | "transactionIndex" | "logIndex"
->;
+> & { blockTimestamp: bigint };
 
 /**
  * A complete log: `log`'s fields over `position`, with zeros for the rest.
  * Fields the log sets win, so a receipt's log can name its own position.
  * The address is validated, and lowercase as nodes send it.
  */
-export function placeLog(log: MockLog, position: LogPosition): Log<bigint, number, false> {
+export function placeLog(
+  log: MockLog,
+  position: LogPosition,
+): Log<bigint, number, false> & { blockTimestamp: bigint } {
   return Object.assign(
     {
       address: zeroAddress,
@@ -110,11 +124,12 @@ export function placeLog(log: MockLog, position: LogPosition): Log<bigint, numbe
       data: "0x",
       blockHash: position.blockHash,
       blockNumber: position.blockNumber,
+      blockTimestamp: position.blockTimestamp,
       transactionHash: position.transactionHash,
       transactionIndex: position.transactionIndex,
       logIndex: position.logIndex,
       removed: false,
-    } satisfies Log<bigint, number, false>,
+    } satisfies Log<bigint, number, false> & { blockTimestamp: bigint },
     log,
     log.address === undefined ? {} : { address: nodeAddress(log.address) },
     // viem's tuple type only says "empty or not"; the hashes are the same.
@@ -125,8 +140,22 @@ export function placeLog(log: MockLog, position: LogPosition): Log<bigint, numbe
 
 /** A receipt in its JSON-RPC form, logs included. */
 export function toRpcReceipt(receipt: TransactionReceipt) {
-  // ox types a log's topics as non-empty, but a LOG0 log has none, as viem
-  // allows; ox passes topics through as they are.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- ox's type is narrower than its runtime
-  return OxTransactionReceipt.toRpc(receipt as OxTransactionReceipt.TransactionReceipt);
+  return {
+    ...OxTransactionReceipt.toRpc({ ...receipt, logs: [] }),
+    logs: receipt.logs.map(toRpcLog),
+  };
+}
+
+/**
+ * A log in its JSON-RPC form, with its block's timestamp when it has one, as
+ * reth sends it (ox's encoder drops it). The address is lowercase, as nodes send it.
+ */
+export function toRpcLog(log: Log<bigint, number, false>): Log<Hex, Hex, false> {
+  const { blockTimestamp } = log;
+  return {
+    // ox types a log's topics as non-empty, but a LOG0 log has none; it passes them through.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- ox's type is narrower than its runtime
+    ...OxLog.toRpc({ ...log, address: nodeAddress(log.address) } as OxLog.Log),
+    ...(typeof blockTimestamp === "bigint" ? { blockTimestamp: numberToHex(blockTimestamp) } : {}),
+  };
 }

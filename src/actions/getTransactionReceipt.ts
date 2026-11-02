@@ -24,7 +24,11 @@ export const getTransactionReceipt = ({
     if (!isPlainObject(value))
       throw new TypeError(`A receipt must be an object or null; got ${typeof value}.`);
     return toRpcReceipt(
-      completeReceipt(value, { hash: call?.hash, blockNumber: state.blockNumber }),
+      completeReceipt(value, {
+        hash: call?.hash,
+        blockNumber: state.blockNumber,
+        timestampAt: state.timestampAt,
+      }),
     );
   },
   view: (rpc) => (rpc === null ? null : formatTransactionReceipt(rpc)),
