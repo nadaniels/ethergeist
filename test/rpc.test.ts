@@ -238,8 +238,9 @@ describe("chainId", () => {
 });
 
 describe("malformed params", () => {
-  // A node refuses params it can't parse with -32602 (invalid params). The
-  // messages are the mock's own: none were captured from a node.
+  // Params are read to the Ethereum JSON-RPC spec (ethereum/execution-apis):
+  // what it rules out is refused with -32602, as nodes refuse it. The
+  // messages are the mock's own: viem classifies these by code.
   test.each([
     ["an address that isn't one", "eth_getBalance", ["0x1234", "latest"]],
     ["a block tag that isn't one", "eth_getBlockByNumber", ["banana", false]],
@@ -261,18 +262,117 @@ describe("malformed params", () => {
     ["a logs address that isn't one", "eth_getLogs", [{ address: "0x1234" }]],
     ["a logs address list with one that isn't", "eth_getLogs", [{ address: [USDC, 5] }]],
     ["a block count too large for a number", "eth_feeHistory", ["0x" + "f".repeat(20), "latest"]],
-    // A quantity has at least one digit: zero is "0x0".
+    // A quantity is compact hex: at least one digit, no leading zeros, never a JSON number.
     ["an empty nonce", "eth_estimateGas", [{ to: USDC, nonce: "0x" }]],
     ["an empty estimate value", "eth_estimateGas", [{ to: USDC, value: "0x" }]],
     ["an empty block count", "eth_feeHistory", ["0x", "latest"]],
     ["an empty block number", "eth_getBalance", [USDC, "0x"]],
     ["an empty EIP-1898 block number", "eth_getBalance", [USDC, { blockNumber: "0x" }]],
     ["an empty eth_call value", "eth_call", [{ to: USDC, data: "0x313ce567", value: "0x" }]],
+    ["a block number with a leading zero", "eth_getBalance", [USDC, "0x0a"]],
+    ["a value with a leading zero", "eth_estimateGas", [{ to: USDC, value: "0x01" }]],
+    ["a value as a JSON number", "eth_estimateGas", [{ to: USDC, value: 1 }]],
+    ["a nonce as a JSON number", "eth_estimateGas", [{ to: USDC, nonce: 7 }]],
+    [
+      "an eth_call value as a JSON number",
+      "eth_call",
+      [{ to: USDC, data: "0x313ce567", value: 0 }],
+    ],
+    ["a block count as a JSON number", "eth_feeHistory", [1, "latest", []]],
+    ["an estimate's value that isn't a quantity", "eth_estimateGas", [{ to: USDC, value: "abc" }]],
+    ["a nonce that isn't a quantity", "eth_estimateGas", [{ to: USDC, nonce: "abc" }]],
+    // A block is a number or a tag, and where the method takes them, a hash or an EIP-1898 object.
+    ["a block as a JSON number", "eth_getBalance", [USDC, 10]],
+    // A null at the end is a param left out (JSON writes one so); anywhere else it's refused.
+    ["a block that's null before another param", "eth_feeHistory", ["0x1", null, []]],
+    ["a storage slot that's null", "eth_getStorageAt", [USDC, null, "latest"]],
+    ["an eth_call block that isn't one", "eth_call", [{ to: USDC, data: "0x313ce567" }, "bogus"]],
+    ["an EIP-1898 block with neither", "eth_getBalance", [USDC, {}]],
+    [
+      "an EIP-1898 block where only a number or tag goes",
+      "eth_getBlockByNumber",
+      [{ blockNumber: "0x1" }, false],
+    ],
+    ["a block hash that isn't 32 bytes", "eth_getBlockByHash", ["0x12", false]],
+    // getLogs: a range takes no pending, and nothing is null but a whole topic position.
+    ["a logs range from pending", "eth_getLogs", [{ address: USDC, fromBlock: "pending" }]],
+    ["a logs range to pending", "eth_getLogs", [{ address: USDC, toBlock: "pending" }]],
+    ["a topic that isn't 32 bytes", "eth_getLogs", [{ address: USDC, topics: ["0xaa"] }]],
+    ["a logs block hash that isn't one", "eth_getLogs", [{ address: USDC, blockHash: "0x12" }]],
+    ["a logs range from null", "eth_getLogs", [{ address: USDC, fromBlock: null }]],
+    [
+      "a null in a topic list",
+      "eth_getLogs",
+      [{ address: USDC, topics: [[`0x${"aa".repeat(32)}`, null]] }],
+    ],
+
+    [
+      "topics that aren't a list",
+      "eth_getLogs",
+      [{ address: USDC, topics: `0x${"aa".repeat(32)}` }],
+    ],
+    ["a logs address that's a number", "eth_getLogs", [{ address: 5 }]],
+    ["a logs filter that isn't an object", "eth_getLogs", ["bogus"]],
+    ["a quantity with an uppercase 0X", "eth_estimateGas", [{ to: USDC, value: "0X1" }]],
+    [
+      "an EIP-1898 block with both a number and a hash",
+      "eth_getBalance",
+      [USDC, { blockNumber: "0x1", blockHash: `0x${"aa".repeat(32)}` }],
+    ],
   ])("%s is refused as invalid params", async (_, method, params) => {
     const mock = createMockRpc();
 
     await mock.request({ method, params }).catch(() => {});
     expect(mock.history[0]?.outcome).toMatchObject({ type: "rpcError", code: -32602 });
+  });
+
+  test("what the spec allows is read: any case, a block hash, a whole null topic", async () => {
+    const mock = createMockRpc({ blockNumber: 10n });
+    mock.actions.getBalance().returns(1n);
+    const block = await mock.request({ method: "eth_getBlockByNumber", params: ["0x5", false] });
+    const hash =
+      typeof block === "object" && block !== null && "hash" in block ? block.hash : undefined;
+
+    await mock.request({ method: "eth_getBalance", params: [USDC, "0xA"] });
+    await mock.request({ method: "eth_getBalance", params: [USDC, hash] });
+    await mock
+      .request({ method: "eth_getLogs", params: [{ address: USDC, topics: [null] }] })
+      .catch(() => {});
+
+    expect(mock.actions.getBalance.calls.map((call) => call.blockNumber)).toEqual([10n, 5n]);
+    expect(mock.history.at(-1)?.outcome.type).not.toBe("rpcError");
+  });
+
+  test("a null at the end of the params is a param left out", async () => {
+    // As JSON writes viem's getFeeHistory without percentiles: [count, block, undefined].
+    const mock = createMockRpc({ blockNumber: 10n });
+    mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
+
+    await mock.request({ method: "eth_feeHistory", params: ["0x4", "latest", null] });
+    await mock.request({ method: "eth_call", params: [{ to: USDC, data: "0x313ce567" }, null] });
+
+    expect(mock.history.map((entry) => entry.outcome.type)).toEqual(["result", "result"]);
+  });
+
+  test("a raw method's params are its own: a null at the end stays", async () => {
+    const mock = createMockRpc();
+    mock.method("debug_custom", ["a", null]).returns(({ params }) => params);
+
+    expect(await mock.request({ method: "debug_custom", params: ["a", null] })).toEqual([
+      "a",
+      null,
+    ]);
+  });
+
+  test("an eth_call to null is a creation, which the mock doesn't run", async () => {
+    // The spec allows `to: null`; without bytecode execution it's unsupported, not malformed.
+    const mock = createMockRpc();
+
+    await mock
+      .request({ method: "eth_call", params: [{ to: null, data: "0x6080" }] })
+      .catch(() => {});
+
+    expect(mock.unhandled[0]?.error.shortMessage).toBe("eth_call without `to` is not supported.");
   });
 
   test("is refused once, not retried", async () => {

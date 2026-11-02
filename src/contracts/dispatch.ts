@@ -1,6 +1,6 @@
 import { type Address, type Hex, getAddress, isAddress, isHex } from "viem";
 
-import { quantityParam } from "../chain/params.js";
+import { optionalQuantity } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
 import { formatValue } from "../mocking/format.js";
 import { errorOutcome } from "../mocking/outcomes.js";
@@ -22,9 +22,10 @@ function callTransaction(given: unknown) {
     return value;
   };
   return {
-    to: field("to", isAddressValue, "an address"),
+    // `null` is a contract creation, as the spec allows: unsupported, not malformed.
+    to: given.to === null ? undefined : field("to", isAddressValue, "an address"),
     from: field("from", isAddressValue, "an address"),
-    value: field("value", isHexValue, "a quantity"),
+    value: optionalQuantity(given.value, "a quantity for `value`"),
     data: field("data", isHexValue, "hex data"),
     input: field("input", isHexValue, "hex data"),
   };
@@ -107,7 +108,7 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
         data,
         {
           from: tx.from,
-          value: tx.value ? quantityParam(tx.value, "a value") : 0n,
+          value: tx.value ?? 0n,
           blockNumber: state.resolveBlock(block),
           batch: undefined,
         },

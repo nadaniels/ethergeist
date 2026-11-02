@@ -1,3 +1,4 @@
+import { withoutTrailingNulls } from "../chain/params.js";
 import { withCalls } from "../mocking/handlers.js";
 import { MockRpcError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
@@ -58,8 +59,10 @@ export function createActions(context: ActionsContext, recordLimit: RecordLimit)
         return Promise.reject(
           new MockRpcError(-32601, `the method ${name} does not exist/is not available`),
         );
+      // A typed action's method is the spec's; a raw method's params are the user's own.
+      const given = action === undefined ? params : withoutTrailingNulls(params);
       // JSON-RPC params are an array for every method viem sends.
-      return table?.answer(name, Array.isArray(params) ? params : [], report);
+      return table?.answer(name, Array.isArray(given) ? given : [], report);
     },
     /** The typed action answering `method`, if any: history records those as actions. */
     actionFor: (rpcMethod: string) => typedMethods.get(rpcMethod),

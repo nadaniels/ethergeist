@@ -1,8 +1,7 @@
 import { type BlockTag, getAddress, hexToBigInt, isHex, numberToHex } from "viem";
 
-import { addressParam, quantityParam } from "../chain/params.js";
-import { formatValue } from "../mocking/format.js";
-import { invalidParams, MockSetupError } from "../shared/errors.js";
+import { type BlockForm, type ResolveBlock, addressParam, isBlockTag } from "../chain/params.js";
+import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { AddressAtBlockCall } from "./types.js";
 
@@ -17,13 +16,6 @@ export function encodeQuantity(what: string) {
 
 /** A JSON-RPC quantity as viem's action returns it. */
 export const viewQuantity = (rpc: unknown) => (isHex(rpc) ? hexToBigInt(rpc) : rpc);
-
-/**
- * A JSON-RPC quantity in a transaction, as a bigint; `undefined` when it's
- * missing. `what` names it if it's refused.
- */
-export const quantity = (value: unknown, what: string) =>
-  isHex(value) ? quantityParam(value, what) : undefined;
 
 /** Checksums a pinned `address` (or each of several), which also validates it at registration. */
 export function pinAddress(pinned: unknown) {
@@ -45,25 +37,20 @@ export function pinAddress(pinned: unknown) {
  */
 export function blockAt(
   block: unknown,
-  resolveBlock: (block: unknown) => bigint,
+  resolveBlock: ResolveBlock,
+  form?: BlockForm,
 ): { blockNumber: bigint; blockTag?: BlockTag } {
-  const tagged = block ?? "latest";
-  if (typeof tagged === "string" && !isHex(tagged) && !isBlockTag(tagged))
-    throw invalidParams(`expected a block number, tag or hash; got ${formatValue(tagged)}`);
+  const tagged = block === undefined ? "latest" : block;
   return {
-    blockNumber: resolveBlock(tagged),
+    blockNumber: resolveBlock(tagged, form),
     ...(isBlockTag(tagged) && { blockTag: tagged }),
   };
 }
 
-const blockTags = new Set<unknown>(["latest", "earliest", "pending", "safe", "finalized"]);
-
-const isBlockTag = (value: unknown): value is BlockTag => blockTags.has(value);
-
 /** An address and a block, as `eth_getBalance` and its kind take them; see `AddressAtBlockCall`. */
 export function decodeAddressAtBlock(
   [address, block]: readonly unknown[],
-  resolveBlock: (block: unknown) => bigint,
+  resolveBlock: ResolveBlock,
 ): AddressAtBlockCall {
   return {
     address: addressParam(address),

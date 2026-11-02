@@ -21,8 +21,8 @@ shared → mocking → chain → logs → contracts → actions → history → 
   and outcomes (`MockOutcome`: how a mock answered, which history records).
 - **`chain/`:** the chain's own state (`createChainState`: block number, clock,
   fees) and the node's shapes for blocks, transactions, receipts and errors,
-  and for request params (`params.ts`: what a node can't parse is refused as
-  invalid params).
+  and for request params (`params.ts`: read to the Ethereum JSON-RPC spec,
+  refused as invalid params where it rules them out).
 - **`logs/`:** emitted logs and how `eth_getLogs` filters find them.
 - **`contracts/`:** mocked contracts, their registry, and `eth_call` dispatch,
   multicall included. It emits logs, so it sits above `logs/`; it owns

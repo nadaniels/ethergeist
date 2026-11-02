@@ -1,6 +1,7 @@
 import { numberToHex } from "viem";
 
 import type { Actions } from "../actions/createActions.js";
+import { withoutTrailingNulls } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
 import type { Dispatcher } from "../contracts/dispatch.js";
 import { retryHint } from "../history/format.js";
@@ -102,7 +103,7 @@ export function createRequestHandler({
       case "eth_blockNumber":
         return numberToHex(state.blockNumber);
       case "eth_call":
-        return await dispatcher.call(params, reporterFor(historyEntry));
+        return await dispatcher.call(withoutTrailingNulls(params), reporterFor(historyEntry));
       default: {
         const answered = actions.answer(method, params, (report) => {
           if (historyEntry.type !== "action") return;

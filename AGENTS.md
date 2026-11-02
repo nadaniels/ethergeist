@@ -55,13 +55,24 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 - The exception is a failed check (`MockCheckError`): its list is the failure, so it stays in the short message, and the recent requests are its `metaMessages`. Checks never reach viem, so its reasons for the rule don't apply.
 - viem's and ox's own validation errors (e.g. `getAddress` at registration) pass through unwrapped.
 
+## Request params
+
+- Read a request's params to the Ethereum JSON-RPC spec ([ethereum/execution-apis](https://github.com/ethereum/execution-apis), `src/schemas`), with the helpers in `src/chain/params.ts`: accept what it allows, refuse what it rules out with `invalidParams`, treat hex digits as case-insensitive, read `data` as the spec's `input` (clients send `data`), read a `null` at the end of the params as a param left out (as `JSON.stringify` writes one), and ignore what the spec doesn't define. Check each method's block form there (`BlockForm`). Refusals use the mock's own wording: viem classifies them by code. What the mock answers (shapes, errors, messages) still imitates reth.
+- Why the spec and not reth: viem and ethers send spec-shaped requests, so they never hit a refusal, and a hand-written request has to conform instead of relying on one node's leniency. Reth is the lenient outlier: it alone accepts JSON-number quantities, and only it and zkSync accept leading zeros, where geth, Erigon, Nethermind and Arbitrum Nitro refuse both.
+
+## Fidelity: what's worth matching a node for
+
+- The mock is a stub, not an emulator: it answers what's mocked, and imitates a node only where the app would see the difference.
+- Capture or match node behavior only where it changes what viem shows the app: the error class viem gives it, or the shape of an answer viem parses. Requests viem never sends, and the wording of errors nobody reads, get the spec rule above and nothing more: no captures, no cross-client sweeps, no exact messages.
+- Still worth matching: errors apps react to, like a log range too large (apps retry with a smaller one), and every answer shape viem decodes.
+
 ## Bugs
 
 - Fix bugs red/green: first write a test that reproduces the bug and watch it fail for the reason reported, then fix the code and watch it pass. A bug that's only in a doc comment gets a test that pins the real behavior, where practical.
 
 ## Independent review
 
-Any change beyond a trivial one (anything that changes behavior, types, matching, the engines or the public API; not a typo, a rename or a one-line doc fix) gets an independent review before it's reported as done:
+Any change beyond a trivial one (anything that changes behavior, types, matching, the engines or the public API; not a typo, a rename or a one-line doc fix) gets an independent review before it's reported as done. Scale it to the risk: engine, matching and public-API changes get the full loop below; a narrow change (one decoder, one message, a simplification) gets one round. Gather new evidence (node captures, cross-client sweeps) only when the owner asks for it.
 
 1. **When:** once the change is green (`vp check` and `vp run knip` clean, `vp run test` passing), before handing it over to commit.
 2. **Who:** a separate agent, briefed from scratch, so its read isn't anchored on the author's. It's read-only on the repo; probes go in a scratch directory outside the repo.

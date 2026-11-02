@@ -1,6 +1,7 @@
-import { type RpcBlock, formatBlock, isHex } from "viem";
+import { type RpcBlock, formatBlock } from "viem";
 
 import { numberOfBlockHash, toRpcBlock } from "../chain/blocks.js";
+import { hashParam } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
@@ -15,13 +16,15 @@ function decodeBlock(
   state: ChainState,
 ): BlockCall {
   const include = includeTransactions === true;
-  if (rpcMethod === "eth_getBlockByHash" && isHex(block))
+  if (rpcMethod === "eth_getBlockByHash") {
+    const blockHash = hashParam(block);
     return {
-      blockNumber: numberOfBlockHash(block) ?? state.blockNumber,
-      blockHash: block,
+      blockNumber: numberOfBlockHash(blockHash) ?? state.blockNumber,
+      blockHash,
       includeTransactions: include,
     };
-  return { ...blockAt(block, state.resolveBlock), includeTransactions: include };
+  }
+  return { ...blockAt(block, state.resolveBlock, "numberOrTag"), includeTransactions: include };
 }
 
 /** `eth_getBlockByNumber` and `eth_getBlockByHash`: unmocked, generated blocks up to the current one. */

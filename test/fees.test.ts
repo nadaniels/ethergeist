@@ -112,7 +112,7 @@ describe("getFeeHistory", () => {
   test("percentiles decide reward: none leaves it out, an empty list gives empty ones", async () => {
     const { mock } = setup();
 
-    expect(await feeHistoryRaw(mock, [2, "latest"])).not.toHaveProperty("reward");
+    expect(await feeHistoryRaw(mock, ["0x2", "latest"])).not.toHaveProperty("reward");
     expect(await feeHistoryRaw(mock, ["0x2", "latest", []])).toMatchObject({ reward: [[], []] });
   });
 

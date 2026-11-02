@@ -4,13 +4,12 @@ import {
   type Address,
   type Hash,
   decodeAbiParameters,
-  isHex,
   toEventSelector,
 } from "viem";
 
-import { addressParam } from "../chain/params.js";
+import { type ResolveBlock, addressParam, hashParam } from "../chain/params.js";
 import { formatValue } from "../mocking/format.js";
-import { MockRpcError } from "../shared/errors.js";
+import { MockRpcError, invalidParams } from "../shared/errors.js";
 import { isPlainObject, lowercase } from "../shared/values.js";
 
 /** A topic position in a filter: one hash, any of several, or `null` for any. */
@@ -18,7 +17,7 @@ export type LogsTopic = Hash | Hash[] | null;
 
 /**
  * What a call to `getLogs` (or `getContractEvents`) asked for. Addresses are
- * checksummed and topics lowercase. A block range is resolved to numbers,
+ * checksummed, and topics and a block hash lowercase. A block range is resolved to numbers,
  * with tags as the current block; a `blockHash` query has no range.
  */
 export type LogsCall = {
@@ -33,36 +32,41 @@ export type LogsCall = {
  * `eth_getLogs` params as a call, with `resolveBlock` turning a range's tags
  * into numbers. A filter with both a block hash and a range is refused.
  */
-export function decodeLogsCall(
-  [filter]: readonly unknown[],
-  resolveBlock: (block: unknown) => bigint,
-): LogsCall {
-  const fields = isPlainObject(filter) ? filter : {};
+export function decodeLogsCall([filter]: readonly unknown[], resolveBlock: ResolveBlock): LogsCall {
+  if (filter !== undefined && !isPlainObject(filter))
+    throw invalidParams(`expected a filter object; got ${formatValue(filter)}`);
+  const fields = filter ?? {};
   const call: LogsCall = { topics: [] };
-  const { address } = fields;
-  if (typeof address === "string") call.address = addressParam(address);
+  // `null` is any address, and no topics any topics, as the spec has them.
+  const { address, topics } = fields;
   if (Array.isArray(address)) call.address = address.map((each: unknown) => addressParam(each));
-  if (Array.isArray(fields.topics))
-    call.topics = fields.topics.map((topic: unknown) => decodeTopic(topic));
+  else if (address !== undefined && address !== null) call.address = addressParam(address);
+  if (Array.isArray(topics)) call.topics = topics.map((topic: unknown) => decodeTopic(topic));
+  else if (topics !== undefined && topics !== null)
+    throw invalidParams(`expected a list of topics; got ${formatValue(topics)}`);
   if (fields.blockHash === undefined) {
-    call.fromBlock = resolveBlock(fields.fromBlock);
-    call.toBlock = resolveBlock(fields.toBlock);
+    // The spec's range takes no `pending`.
+    if (fields.fromBlock === "pending" || fields.toBlock === "pending")
+      throw invalidParams("a log range can't be pending");
+    call.fromBlock = resolveBlock(fields.fromBlock, "numberOrTag");
+    call.toBlock = resolveBlock(fields.toBlock, "numberOrTag");
   } else {
     if (fields.fromBlock !== undefined || fields.toBlock !== undefined)
       throw new MockRpcError(
         -32602,
         "invalid argument 0: cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other",
       );
-    if (isHex(fields.blockHash)) call.blockHash = fields.blockHash;
+    call.blockHash = lowercase(hashParam(fields.blockHash));
   }
   return call;
 }
 
+/** A filter's topic: one hash, any of several, or `null` for any; each hash is 32 bytes. */
 function decodeTopic(topic: unknown): LogsTopic {
-  if (isHex(topic)) return lowercase(topic);
-  if (Array.isArray(topic))
-    return topic.filter((each) => isHex(each)).map((each) => lowercase(each));
-  return null;
+  if (topic === null) return null;
+  return Array.isArray(topic)
+    ? topic.map((each: unknown) => lowercase(hashParam(each)))
+    : lowercase(hashParam(topic));
 }
 
 /**

@@ -1,14 +1,31 @@
-import { type Chain, getAddress, isHex } from "viem";
+import { type Chain, type Hash, getAddress, isHash, isHex } from "viem";
 import { mainnet } from "viem/chains";
 
-import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
+import { formatValue } from "../mocking/format.js";
+import { MockNotFoundError, MockSetupError, invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { type BlockClock, type MockBlock, generateBlock, numberOfBlockHash } from "./blocks.js";
 import { type Fees, type MockFees, bigintOption, resolveFees } from "./fees.js";
-import { quantityParam } from "./params.js";
+import { type BlockForm, hashParam, isBlockTag, quantityParam } from "./params.js";
 
 /** What the mock knows about its chain without any mocks: see `createChainState`. */
 export type ChainState = ReturnType<typeof createChainState>;
+
+/** A generated block's number, by its hash. */
+function numberOfHash(hash: Hash): bigint {
+  const number = numberOfBlockHash(hash);
+  if (number === undefined)
+    throw new MockNotFoundError(`No block with hash ${hash}.`, {
+      metaMessages: ["Only generated blocks' hashes resolve to a block number."],
+    });
+  return number;
+}
+
+/** What each block form takes, for the error. */
+const expectedBlock: Record<BlockForm, string> = {
+  numberOrTag: "a block number or tag",
+  numberTagOrHash: "a block number, tag or hash",
+};
 
 /** A chain's block time, in milliseconds: 12s if it doesn't say. */
 function blockTimeOf(chain: Chain): number {
@@ -50,25 +67,28 @@ export function createChainState(parameters: {
   const generate = (number: bigint): MockBlock => generateBlock(number, clock, feesAt(number));
 
   /**
-   * A block parameter as a block number: a hex number, a tag (`earliest` is 0;
-   * every other tag is the current block, as there are no reorgs), or an
-   * EIP-1898 `{ blockNumber }` or `{ blockHash }` of a generated block.
+   * A block param as a block number, read to the spec's `form` for the
+   * method: a number or a tag (`earliest` is 0; every other tag is the
+   * current block, as there are no reorgs), and where the form takes them,
+   * a block hash or an EIP-1898 `{ blockNumber }` or `{ blockHash }` of a
+   * generated block. None is the current block; anything else is refused.
    */
-  function resolveBlock(block: unknown): bigint {
-    if (isHex(block)) return quantityParam(block, "a block number");
-    if (block === "earliest") return 0n;
-    if (isPlainObject(block)) {
-      if (isHex(block.blockNumber)) return quantityParam(block.blockNumber, "a block number");
-      if (isHex(block.blockHash)) {
-        const number = numberOfBlockHash(block.blockHash);
-        if (number === undefined)
-          throw new MockNotFoundError(`No block with hash ${block.blockHash}.`, {
-            metaMessages: ["Only generated blocks' hashes resolve to a block number."],
-          });
-        return number;
-      }
+  function resolveBlock(block: unknown, form: BlockForm = "numberTagOrHash"): bigint {
+    if (block === undefined) return blockNumber;
+    if (isBlockTag(block)) return block === "earliest" ? 0n : blockNumber;
+    if (form === "numberTagOrHash") {
+      if (typeof block === "string" && isHash(block)) return numberOfHash(block);
+      if (isPlainObject(block) && block.blockHash !== undefined && block.blockNumber !== undefined)
+        throw invalidParams(
+          `expected a block number or a block hash, not both; got ${formatValue(block)}`,
+        );
+      if (isPlainObject(block) && block.blockHash !== undefined)
+        return numberOfHash(hashParam(block.blockHash));
+      if (isPlainObject(block) && block.blockNumber !== undefined)
+        return quantityParam(block.blockNumber, "a block number");
     }
-    return blockNumber;
+    if (isHex(block)) return quantityParam(block, "a block number");
+    throw invalidParams(`expected ${expectedBlock[form]}; got ${formatValue(block)}`);
   }
 
   return {

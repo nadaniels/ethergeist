@@ -1,9 +1,8 @@
 import { hexToBigInt, isHex } from "viem";
 
 import { feeHistory, toRpcFeeHistory } from "../chain/fees.js";
-import { numberParam } from "../chain/params.js";
-import { formatValue } from "../mocking/format.js";
-import { invalidParams, MockRpcError, MockSetupError } from "../shared/errors.js";
+import { type ResolveBlock, numberParam } from "../chain/params.js";
+import { MockRpcError, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { blockAt } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
@@ -70,16 +69,14 @@ const isNumberList = (value: unknown): value is number[] =>
 /** `eth_feeHistory` takes a count (hex, or a number), the newest block, and maybe percentiles. */
 function decodeFeeHistory(
   [count, newest, percentiles]: readonly unknown[],
-  resolveBlock: (block: unknown) => bigint,
+  resolveBlock: ResolveBlock,
 ): FeeHistoryCall {
-  const blockCount = isHex(count) ? numberParam(count, "a block count") : count;
-  if (typeof blockCount !== "number" || !Number.isInteger(blockCount))
-    throw invalidParams(`expected a block count; got ${formatValue(count)}`);
+  const blockCount = numberParam(count, "a block count");
   if (percentiles !== undefined && !isNumberList(percentiles))
     throw new MockRpcError(-32602, "invalid reward percentiles");
   return {
     blockCount,
-    ...blockAt(newest, resolveBlock),
+    ...blockAt(newest, resolveBlock, "numberOrTag"),
     ...(percentiles !== undefined && { rewardPercentiles: percentiles }),
   };
 }

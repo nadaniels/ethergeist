@@ -1,7 +1,8 @@
-import { type Hex, decodeErrorResult, hexToBigInt, isHex } from "viem";
+import { type Hex, decodeErrorResult } from "viem";
 
 import type { MockNodeFault, NodeErrorName } from "../mocking/types.js";
 import { builtinErrors } from "../shared/abiValues.js";
+import { optionalQuantity } from "./params.js";
 
 /**
  * Reth's descriptions of Solidity's panic codes, as it puts them in the error
@@ -58,7 +59,8 @@ export const nodeErrors: Record<
     const tx: unknown = Array.isArray(params) ? params[0] : undefined;
     if (typeof tx !== "object" || tx === null || !("gasPrice" in tx || "maxFeePerGas" in tx))
       return { code: -32003, message: "EVM error: OutOfFunds" };
-    const value = "value" in tx && isHex(tx.value) ? hexToBigInt(tx.value) : 0n;
+    // Named errors answer estimates and calls, whose params are checked first.
+    const value = ("value" in tx ? optionalQuantity(tx.value, "a value") : undefined) ?? 0n;
     return {
       code: -32003,
       message: `insufficient funds for gas * price + value: have 0 want ${value}`,

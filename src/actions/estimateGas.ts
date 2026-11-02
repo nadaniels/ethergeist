@@ -1,10 +1,10 @@
 import { type Hex, getAddress, isHex, numberToHex } from "viem";
 
-import { addressParam, numberParam } from "../chain/params.js";
+import { type ResolveBlock, addressParam, numberParam, optionalQuantity } from "../chain/params.js";
 import { encodeGas } from "../mocking/gas.js";
 import type { MockEstimateAnswers, MockNodeFault, WithLimits } from "../mocking/types.js";
 import { isPlainObject } from "../shared/values.js";
-import { blockAt, quantity, viewQuantity } from "./decode.js";
+import { blockAt, viewQuantity } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { EstimateGasCall } from "./types.js";
 
@@ -38,20 +38,20 @@ function pinTransaction(pinned: unknown) {
 /** `eth_estimateGas` takes a transaction and maybe a block. */
 function decodeEstimateGas(
   [tx, block]: readonly unknown[],
-  resolveBlock: (block: unknown) => bigint,
+  resolveBlock: ResolveBlock,
 ): EstimateGasCall {
   const { from, to, value, data, input, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } =
     isPlainObject(tx) ? tx : {};
   const fields = {
     account: typeof from === "string" ? addressParam(from) : undefined,
     to: typeof to === "string" ? addressParam(to) : undefined,
-    value: quantity(value, "a value") ?? 0n,
+    value: optionalQuantity(value, "a value") ?? 0n,
     data: isHex(data) ? data : isHex(input) ? input : undefined,
-    gas: quantity(gas, "a gas limit"),
-    gasPrice: quantity(gasPrice, "a gas price"),
-    maxFeePerGas: quantity(maxFeePerGas, "a max fee per gas"),
-    maxPriorityFeePerGas: quantity(maxPriorityFeePerGas, "a max priority fee per gas"),
-    nonce: isHex(nonce) ? numberParam(nonce, "a nonce") : undefined,
+    gas: optionalQuantity(gas, "a gas limit"),
+    gasPrice: optionalQuantity(gasPrice, "a gas price"),
+    maxFeePerGas: optionalQuantity(maxFeePerGas, "a max fee per gas"),
+    maxPriorityFeePerGas: optionalQuantity(maxPriorityFeePerGas, "a max priority fee per gas"),
+    nonce: nonce === undefined ? undefined : numberParam(nonce, "a nonce"),
     ...blockAt(block, resolveBlock),
   };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
