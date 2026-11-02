@@ -4,6 +4,7 @@ import { MockResolverError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { formatValue } from "./format.js";
 import { type Matcher, isMatcher } from "./matchers.js";
+import type { PinnedKey } from "./types.js";
 
 /**
  * How narrowly a mock's pinned args or params constrain a call:
@@ -38,23 +39,23 @@ export function specificity(pinned: unknown): Specificity {
 }
 
 /**
- * The best candidate that matches. Candidates are ranked by specificity; at
- * equal specificity, limited mocks (`.once()`, `.times(n)`) queue ahead of
- * unlimited ones and are used oldest first, while among unlimited ones the
- * most recent wins. Used-up mocks are skipped. Candidates are tried best first,
- * each on its exact values before its predicates, so a predicate runs only for
- * a mock still in contention.
+ * The best candidate that matches, and the first key each one tried before
+ * it differed on. Candidates are ranked by specificity; at equal specificity,
+ * limited mocks (`.once()`, `.times(n)`) queue ahead of unlimited ones and are
+ * used oldest first, while among unlimited ones the most recent wins.
+ * Candidates are tried best first, each on its exact values before its
+ * predicates, so a predicate runs only for a mock still in contention.
+ * `differs` gives a candidate's first key that doesn't match, if any.
  */
 export function bestMatch<candidate extends Rankable>(
-  /** In registration order. */
+  /** In registration order; only those that can answer. */
   candidates: readonly candidate[],
-  matches: (candidate: candidate, options: MatchOptions) => boolean,
+  differs: (candidate: candidate, options: MatchOptions) => PinnedKey | undefined,
   /** The function or action, for the error when a predicate throws. */
   name: string,
-): candidate | undefined {
+): { best: candidate | undefined; missed: Map<candidate, PinnedKey> } {
   const ranked = candidates
     .map((candidate, index) => ({ candidate, index, limited: candidate.remaining !== undefined }))
-    .filter(({ candidate }) => candidate.remaining !== 0)
     .toSorted(
       (a, b) =>
         b.candidate.specificity[0] - a.candidate.specificity[0] ||
@@ -63,10 +64,16 @@ export function bestMatch<candidate extends Rankable>(
         (a.limited ? a.index - b.index : b.index - a.index),
     )
     .map(({ candidate }) => candidate);
+  const missed = new Map<candidate, PinnedKey>();
   try {
-    return ranked.find(
-      (candidate) => matches(candidate, { predicates: false }) && matches(candidate, {}),
-    );
+    for (const candidate of ranked) {
+      // Predicates run only when the exact values match (`null` is a mismatch too).
+      const exact = differs(candidate, { predicates: false });
+      const key = exact === undefined ? differs(candidate, {}) : exact;
+      if (key === undefined) return { best: candidate, missed };
+      missed.set(candidate, key);
+    }
+    return { best: undefined, missed };
   } catch (error) {
     if (!(error instanceof MatcherThrewError)) throw error;
     throw new MockResolverError(name, error.cause, { matcher: error.matcher });
@@ -79,23 +86,68 @@ export function bestMatch<candidate extends Rankable>(
  * Empty when everything pinned matches (or nothing is). A predicate that
  * throws counts as not matching.
  */
-export function mismatches(pinned: unknown, actual: unknown): (number | string)[] {
-  const entries: [number | string, unknown][] = Array.isArray(pinned)
-    ? pinned.map((value: unknown, i) => [i, value])
-    : isPlainObject(pinned)
-      ? Object.entries(pinned)
-      : [];
+export function mismatches(
+  pinned: unknown,
+  actual: unknown,
+  options: MatchOptions = {},
+): PinnedKey[] {
+  if (isMatcher(pinned) && pinned.type === "partial")
+    return mismatches(pinned.fields, actual, options);
+  if (!hasKeys(pinned)) {
+    try {
+      return isMatch(pinned, actual, options) ? [] : [null];
+    } catch {
+      return [null];
+    }
+  }
   const at = (key: number | string): unknown =>
     Array.isArray(actual) ? actual[Number(key)] : isPlainObject(actual) ? actual[key] : undefined;
-  return entries
+  return pinnedEntries(pinned)
     .filter(([key, value]) => {
       try {
-        return !isMatch(value, at(key));
+        return !isMatch(value, at(key), options);
       } catch {
         return true;
       }
     })
     .map(([key]) => key);
+}
+
+/**
+ * The first of `pinned`'s keys (an array of args, or an object of params)
+ * whose value doesn't match `actual`'s, or `undefined` when all match: the
+ * same verdict as `isMatch(pinned, actual)`, with where it failed. It stops at
+ * the first, so predicates run as they would in `isMatch`; one that throws
+ * throws here too.
+ */
+export function firstMismatch(
+  pinned: unknown,
+  actual: unknown,
+  options: MatchOptions = {},
+): PinnedKey | undefined {
+  // A matcher pinned in place of the whole params: a `partial` by its fields,
+  // as `isMatch` checks it, and any other as a whole.
+  if (isMatcher(pinned) && pinned.type === "partial")
+    return firstMismatch(pinned.fields, actual, options);
+  if (!hasKeys(pinned)) return isMatch(pinned, actual, options) ? undefined : null;
+  const entries = pinnedEntries(pinned);
+  const sameShape = Array.isArray(pinned)
+    ? Array.isArray(actual) && actual.length === pinned.length
+    : isPlainObject(actual);
+  if (!sameShape) return entries[0]?.[0] ?? null;
+  const at = (key: number | string): unknown =>
+    Array.isArray(actual) ? actual[Number(key)] : isPlainObject(actual) ? actual[key] : undefined;
+  return entries.find(([key, value]) => !isMatch(value, at(key), options))?.[0];
+}
+
+/** Whether `pinned` is args or params by key (an array or an object), not one matcher or value. */
+const hasKeys = (pinned: unknown) =>
+  Array.isArray(pinned) || (isPlainObject(pinned) && !isMatcher(pinned));
+
+/** A mock's pinned args or params as [index or key, value] pairs. */
+function pinnedEntries(pinned: unknown): [number | string, unknown][] {
+  if (Array.isArray(pinned)) return pinned.map((value: unknown, i) => [i, value]);
+  return isPlainObject(pinned) ? Object.entries(pinned) : [];
 }
 
 /** A mock's limit: `limit` answers in all, `remaining` of them left. */
@@ -117,7 +169,7 @@ type Rankable = {
   remaining: number | undefined;
 };
 
-type MatchOptions = {
+export type MatchOptions = {
   /** Run `match.where()` predicates; with `false`, they match anything. Defaults to `true`. */
   predicates?: boolean;
 };

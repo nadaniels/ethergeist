@@ -52,8 +52,9 @@ export function createMethods(actionFor: (method: string) => string | undefined)
         zero: null,
         encode: (value) => value,
         // Pinned params are a prefix: pin the leading ones, leave the rest open.
+        // One matcher in place of them all is matched against all the params.
         actual: (pinned, call) =>
-          Array.isArray(pinned) ? pinned.map((_, i) => call.params[i]) : call,
+          Array.isArray(pinned) ? pinned.map((_, i) => call.params[i]) : call.params,
       };
       table = createTable(definition);
       raw.set(name, table);

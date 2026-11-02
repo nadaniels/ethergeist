@@ -2,6 +2,7 @@ import { isHex } from "viem";
 
 import { isPlainObject } from "../shared/values.js";
 import { type Matcher, isMatcher } from "./matchers.js";
+import type { PinnedKey } from "./types.js";
 
 /**
  * A call for messages, e.g. `balanceOf(0x…)` or `getBalance({ address: 0x… })`.
@@ -53,13 +54,16 @@ function formatLimit(limit: number | undefined, remaining: number | undefined): 
 export function formatMismatch(
   name: string,
   actual: unknown,
-  mismatched: readonly (number | string)[],
+  mismatched: readonly PinnedKey[],
 ): string {
-  if (mismatched.length === 0) return formatCall(name, actual);
+  // Nothing in particular, or all of it (`null`): the whole call.
+  if (mismatched.length === 0 || mismatched.includes(null)) return formatCall(name, actual);
   if (Array.isArray(actual))
     return `${name}(${actual.map((v: unknown, i) => (mismatched.includes(i) ? formatValue(v) : "…")).join(", ")})`;
   if (isPlainObject(actual)) {
-    const fields = mismatched.map((key) => `${key}: ${formatValue(actual[key])}`);
+    const fields = mismatched.flatMap((key) =>
+      key === null ? [] : [`${key}: ${formatValue(actual[key])}`],
+    );
     return `${name}({ ${[...fields, "…"].join(", ")} })`;
   }
   return formatCall(name, actual);
@@ -67,6 +71,14 @@ export function formatMismatch(
 
 /** A call an unused mock's function received, and where it first differs from the mock. */
 export type ReceivedCall = { call: string; differs: string | undefined };
+
+/**
+ * After a registered mock in a "No mock for" message: which of its args or
+ * params didn't match the call, if one didn't. It can follow "used up" or
+ * "without an answer": that mock wouldn't have matched either.
+ */
+export const formatMissReason = (differs: string | undefined) =>
+  differs === undefined ? "" : `  ← ${differs} didn't match`;
 
 /**
  * For an unused mock without an answer, in place of the calls it received:

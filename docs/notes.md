@@ -454,7 +454,14 @@ features land; tick them off as pages get written.
       no `defaults`, take a checkpoint after registering them and use
       `restore({ assertAllUsed: true })`. That includes a per-test setup
       function: end it with `mock.checkpoint()` and return the checkpoint.
-- [ ] How to read "No mock for …" and its "Registered:" list.
+- [ ] How to read "No mock for …" and its "Registered:" list: each mock
+      registered for the function, with why it didn't answer. A mock whose
+      args differ says which (`← owner didn't match`, by the ABI's input
+      names, `arg N` for unnamed ones, the key for action params), as
+      matching found it, including the predicate that said no. A mock used
+      up or without an answer says so, and still names an exact arg that
+      differs (it wouldn't have matched either); its predicates aren't run
+      for the message.
 - [ ] How to read "never answered a call": under each unused mock, the calls
       its function received (up to 3, then a count) and the first arg, field
       or param that didn't match, by its ABI name; "matches; another mock

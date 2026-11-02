@@ -8,14 +8,15 @@ import {
 import type { PartSnapshot } from "../shared/parts.js";
 import { MockFailure, fail } from "./faults.js";
 import {
+  type MatchOptions,
   type Specificity,
   assertNoRunnerMatchers,
   bestMatch,
-  isMatch,
+  firstMismatch,
   setLimit,
   specificity,
 } from "./matching.js";
-import type { MockNodeFault } from "./types.js";
+import type { MockNodeFault, PinnedKey } from "./types.js";
 import { zeroResult } from "./zeroResult.js";
 
 /**
@@ -128,24 +129,43 @@ export function createHandlers<context, extra>() {
   }
 
   /**
-   * The best of `candidates` that matches and has an answer: the most
-   * specific; among equally specific ones, see `bestMatch`. One without an
-   * answer yet steps aside for the rest, however specific. A handler matches
-   * when it pins nothing, or when what it pins matches `actual(handler)`, what
-   * the call has for it. `name` names the function or action when a
-   * predicate throws.
+   * The best of `candidates` that can answer and matches: the most specific;
+   * among equally specific ones, see `bestMatch`. A handler can answer when
+   * it has an answer and answers left; one that can't steps aside for the
+   * rest, however specific. A handler matches when it pins nothing, or when
+   * what it pins matches `actual(handler)`, what the call has for it. `name`
+   * names the function or action when a predicate throws.
+   *
+   * `missed` says where each handler that didn't answer first differs from
+   * the call, for messages: as matching found it for those that were tried,
+   * and by exact values only for those that couldn't answer, so no predicate
+   * runs for the message.
    */
   function findAnswering(
     candidates: readonly Handler<context, extra>[],
     actual: (handler: Handler<context, extra>) => unknown,
     name: string,
-  ): Handler<context, extra> | undefined {
-    return bestMatch(
-      candidates.filter((handler) => handler.resolver !== undefined),
-      (handler, options) =>
-        handler.pinned === undefined || isMatch(handler.pinned, actual(handler), options),
+  ): {
+    handler: Handler<context, extra> | undefined;
+    missed: ReadonlyMap<Handler<context, extra>, PinnedKey>;
+  } {
+    const differs = (handler: Handler<context, extra>, options?: MatchOptions) =>
+      handler.pinned === undefined
+        ? undefined
+        : firstMismatch(handler.pinned, actual(handler), options);
+    const canAnswer = (handler: Handler<context, extra>) =>
+      handler.resolver !== undefined && handler.remaining !== 0;
+    const { best, missed } = bestMatch(
+      candidates.filter((handler) => canAnswer(handler)),
+      differs,
       name,
     );
+    if (best === undefined)
+      for (const handler of candidates) {
+        const key = canAnswer(handler) ? undefined : differs(handler, { predicates: false });
+        if (key !== undefined) missed.set(handler, key);
+      }
+    return { handler: best, missed };
   }
 
   /**

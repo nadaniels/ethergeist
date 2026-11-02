@@ -44,8 +44,8 @@ type Handler = MockHandler<Context, ContractFunction>;
 export type ContractEstimate = {
   /** Answers with the best matching mock; `undefined` when none matches. */
   answer(): Promise<Hex> | undefined;
-  /** The error for the estimate when nothing else answers it either. */
-  miss: MockNotFoundError;
+  /** The error for the estimate when nothing else answers it either; built only then. */
+  miss(): MockNotFoundError;
   /** The estimated call, for history; its outcome is the contract's, once it answers. */
   record: MockCallRecord;
 };
@@ -193,11 +193,11 @@ export function createMockContract<const abi extends Abi>(
       call = decode(data, context, "estimate");
     } catch (error) {
       if (!(error instanceof MockNotFoundError)) throw error;
-      return { answer: () => undefined, miss: error, record };
+      return { answer: () => undefined, miss: () => error, record };
     }
     record.call = call;
     record.abiItem = functionsBySelector.get(slice(data, 0, 4));
-    const handler = match(call, "estimate");
+    const { handler, missed } = match(call, "estimate");
     return {
       answer() {
         if (!handler) return undefined;
@@ -212,7 +212,7 @@ export function createMockContract<const abi extends Abi>(
           },
         );
       },
-      miss: missError(call, "estimate", label, candidates(call, "estimate")),
+      miss: () => missError(call, "estimate", label, candidates(call, "estimate"), missed),
       record,
     };
   }
@@ -229,8 +229,8 @@ export function createMockContract<const abi extends Abi>(
     const call = decode(data, context, "call");
     decoded.call = call;
     decoded.abiItem = functionsBySelector.get(slice(data, 0, 4));
-    const handler = match(call, "call");
-    if (!handler) throw missError(call, "call", label, candidates(call, "call"));
+    const { handler, missed } = match(call, "call");
+    if (!handler) throw missError(call, "call", label, candidates(call, "call"), missed);
     return { hex: await run(handler, call), abiItem: handler.abiItem };
   }
 
@@ -268,7 +268,7 @@ export function createMockContract<const abi extends Abi>(
 
   // The most specific matching handler wins; among equally specific ones,
   // the most recently registered wins, so per-test mocks override defaults.
-  function match(call: MockCall, kind: Kind): Handler | undefined {
+  function match(call: MockCall, kind: Kind) {
     return mocks.findAnswering(candidates(call, kind), () => call.args, call.functionName);
   }
 

@@ -1,4 +1,5 @@
 import {
+  type Address,
   type ContractFunctionArgs,
   InvalidAddressError,
   erc20Abi,
@@ -316,11 +317,11 @@ describe("messages", () => {
     expect(error.details).toBe(
       [
         "Registered:",
-        "  balanceOf(where(isCarol))",
-        "  balanceOf(where(() => false))",
-        "  balanceOf(where(isTreasury))",
+        "  balanceOf(where(isCarol))  ← account didn't match",
+        "  balanceOf(where(() => false))  ← account didn't match",
+        "  balanceOf(where(isTreasury))  ← account didn't match",
         // Unnamed: the source on one line, cut to 60 characters.
-        "  balanceOf(where((account) => isAddressEqual(account, carol) || isAddressEqu…))",
+        "  balanceOf(where((account) => isAddressEqual(account, carol) || isAddressEqu…))  ← account didn't match",
       ].join("\n"),
     );
     // Matchers are pinned args, so unused ones are reported, `any` included.
@@ -346,6 +347,132 @@ function labelsOf(sources: readonly string[]) {
   }
   return [...message.matchAll(/balanceOf\(where\((.*)\)\) on/gu)].map((m) => m[1]);
 }
+
+/** A predicate that counts its calls and answers `result`. */
+function counted(result: boolean, label: string) {
+  const calls: unknown[] = [];
+  return {
+    calls,
+    matcher: match.where((value: Address) => {
+      calls.push(value);
+      return result;
+    }, label),
+  };
+}
+const allowance = (client: ReturnType<typeof setup>["client"]) =>
+  client.readContract({
+    abi: erc20Abi,
+    address: USDC,
+    functionName: "allowance",
+    args: [alice, alice],
+  });
+
+describe("a miss's reasons", () => {
+  test("name the predicate that said no, run only while matching", async () => {
+    const { usdc, client } = setup();
+    const yes = counted(true, "yes");
+    const no = counted(false, "no");
+    usdc.read.allowance([yes.matcher, no.matcher]).returns(1n);
+    // An exact value that differs rules a mock out before any predicate runs.
+    usdc.read.allowance([bob, no.matcher]).returns(2n);
+
+    const error = expectCause(await rejectionOf(allowance(client)), MockNotFoundError);
+    expect(error.details).toBe(
+      [
+        "Registered:",
+        "  allowance(where(yes), where(no))  ← spender didn't match",
+        `  allowance(${getAddress(bob)}, where(no))  ← owner didn't match`,
+      ].join("\n"),
+    );
+    // Once each, for the one mock in contention; none for the message.
+    expect([yes.calls.length, no.calls.length]).toEqual([1, 1]);
+  });
+
+  test("a used-up mock, or one without an answer, says so, and still which arg differs", async () => {
+    const { usdc, balanceOf } = setup();
+    const never = counted(false, "never");
+    usdc.read.balanceOf([bob]).once().returns(1n);
+    await balanceOf(bob);
+    usdc.read.balanceOf([carol]);
+    // Not in contention, so its predicate isn't run, and no reason is guessed for it.
+    usdc.read.balanceOf([never.matcher]);
+
+    const error = expectCause(await rejectionOf(balanceOf(alice)), MockNotFoundError);
+    expect(error.details).toBe(
+      [
+        "Registered:",
+        `  balanceOf(${getAddress(bob)}) once, used up  ← account didn't match`,
+        `  balanceOf(${getAddress(carol)}) without an answer  ← account didn't match`,
+        "  balanceOf(where(never)) without an answer",
+      ].join("\n"),
+    );
+    expect(never.calls).toHaveLength(0);
+  });
+
+  test("a predicate inside a struct names the struct's arg", async () => {
+    const { book, filled } = setupBook();
+    book.read
+      .filled([match.partial({ sell: { token: USDC, amount: match.where(() => false) } })])
+      .returns(true);
+    book.read.filled([match.partial({ maker: bob })]).returns(true);
+
+    const error = expectCause(await rejectionOf(filled(order)), MockNotFoundError);
+    // One for the nested predicate, one for the exact field that differs.
+    expect(error.details).toBe(
+      [
+        "Registered:",
+        `  filled({ sell: { token: ${USDC}, amount: where(() => false) }, … })  ← order didn't match`,
+        `  filled({ maker: ${getAddress(bob)}, … })  ← order didn't match`,
+      ].join("\n"),
+    );
+  });
+
+  test("an estimate's miss says which arg differs", async () => {
+    const { usdc, client } = setup();
+    usdc.estimateGas.transfer([bob, 1n]).returns(50_000n);
+
+    const error = expectCause(
+      await rejectionOf(
+        client.estimateContractGas({
+          abi: erc20Abi,
+          address: USDC,
+          functionName: "transfer",
+          args: [bob, 2n],
+          account: alice,
+        }),
+      ),
+      MockNotFoundError,
+    );
+    expect(error.details).toBe(
+      `Registered:\n  transfer(${getAddress(bob)}, 1n)  ← amount didn't match`,
+    );
+  });
+
+  test("a raw method's miss names the param by position", async () => {
+    const { mock } = setup();
+    mock.method("eth_custom", ["0x1", match.where(() => false, "no")]).returns("0x");
+
+    const error = expectCause(
+      await rejectionOf(mock.request({ method: "eth_custom", params: ["0x1", "0x2"] })),
+      MockNotFoundError,
+    );
+    expect(error.details).toBe("Registered:\n  eth_custom(0x1, where(no))  ← param 2 didn't match");
+  });
+
+  test("assertAllUsed() shows the whole call a whole-params matcher didn't match", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance(match.where(() => false, "never")).returns(0n);
+    mock.actions.getBalance().returns(1n);
+    await client.getBalance({ address: alice });
+
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(
+      "  - getBalance(where(never))\n    received 1 call to getBalance:\n" +
+        `      getBalance({ address: ${getAddress(alice)}, blockNumber: 1n, blockTag: latest })  ← params didn't match`,
+    );
+  });
+});
 
 describe("predicate labels from source", () => {
   // How each tool's compiled modules read back an imported `isAddressEqual`.
@@ -514,6 +641,40 @@ describe("overloads", () => {
 });
 
 describe("actions and raw methods", () => {
+  test("a matcher can stand for all of an action's params, or a raw method's", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance(match.partial({ address: alice })).returns(1n);
+    mock.actions.getCode(match.any()).returns("0x60");
+    mock.actions
+      .getTransactionCount(
+        match.where(
+          (call) => call?.address !== undefined && isAddressEqual(call.address, bob),
+          "isBob",
+        ),
+      )
+      .returns(3);
+    mock
+      .method(
+        "eth_custom",
+        match.where((params) => params?.length === 2, "twoParams"),
+      )
+      .returns("0x1");
+
+    expect(await client.getBalance({ address: alice })).toBe(1n);
+    expect(await client.getCode({ address: bob })).toBe("0x60");
+    expect(await client.getTransactionCount({ address: bob })).toBe(3);
+    expect(await mock.request({ method: "eth_custom", params: ["0x1", "0x2"] })).toBe("0x1");
+
+    // When one doesn't match, it's all of the params that didn't.
+    const error = expectCause(
+      await rejectionOf(client.getTransactionCount({ address: alice })),
+      MockNotFoundError,
+    );
+    expect(error.details).toBe(
+      "Registered:\n  getTransactionCount(where(isBob))  ← params didn't match",
+    );
+  });
+
   test("action params take matchers", async () => {
     const { mock, client } = setup();
     mock.actions

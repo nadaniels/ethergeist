@@ -5,10 +5,12 @@ import {
   describeMock,
   formatCall,
   formatMismatch,
+  formatMissReason,
   formatNoAnswer,
   formatReceived,
 } from "../mocking/format.js";
 import { mismatches } from "../mocking/matching.js";
+import type { PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import type { Kind } from "./functions.js";
 import type { MockCall } from "./types.js";
@@ -24,15 +26,21 @@ type Mock = {
 
 /**
  * The error for a call no mock answers, on the contract `label`: the mocks
- * `registered` for its function, or that there are none.
+ * `registered` for its function, each with the arg it `missed` on, or that
+ * there are none.
  */
 export function missError(
   call: MockCall,
   kind: Kind,
   label: string,
   registered: readonly Mock[],
+  missed: ReadonlyMap<Mock, PinnedKey>,
 ): MockNotFoundError {
-  const lines = registered.map((mock) => `  ${describeMock(call.functionName, mock)}`);
+  const lines = registered.map((mock) => {
+    const key = missed.get(mock);
+    const reason = formatMissReason(key === undefined ? undefined : argName(mock, key));
+    return `  ${describeMock(call.functionName, mock)}${reason}`;
+  });
   const what = kind === "estimate" ? "estimateGas mock" : "mock";
   const none =
     kind === "estimate"
@@ -61,15 +69,22 @@ export function unusedLine(mock: Mock, label: string, calls: readonly MockCall[]
 function received(mock: Mock, call: MockCall): ReceivedCall {
   const mismatched = mock.pinned === undefined ? [] : mismatches(mock.pinned, call.args);
   const index = mismatched[0];
-  // Inputs may be unnamed (`""`); those are numbered from 1.
-  const inputName = typeof index === "number" ? mock.abiItem.inputs[index]?.name : undefined;
-  const differs =
-    index === undefined
-      ? undefined
-      : inputName === undefined || inputName === ""
-        ? `arg ${Number(index) + 1}`
-        : inputName;
-  return { call: formatMismatch(call.functionName, call.args, mismatched), differs };
+  return {
+    call: formatMismatch(call.functionName, call.args, mismatched),
+    differs: index === undefined ? undefined : argName(mock, index),
+  };
+}
+
+/**
+ * Arg `index` of `mock`'s function by its ABI name; unnamed inputs (`""`) are
+ * numbered from 1, and `null` is all of them.
+ */
+function argName(mock: Mock, index: PinnedKey): string {
+  if (index === null) return "args";
+  // Args are pinned as an array, so keys are always indexes.
+  if (typeof index === "string") return index;
+  const inputName = mock.abiItem.inputs[index]?.name;
+  return inputName === undefined || inputName === "" ? `arg ${index + 1}` : inputName;
 }
 
 /** A contract for messages: its name and address, or just the address. */

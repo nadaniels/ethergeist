@@ -2,7 +2,7 @@ import { BaseError, createPublicClient, erc20Abi, getAddress, parseAbi } from "v
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
+import { MockNotFoundError, createMockRpc, match, testAddress } from "../src/index.js";
 import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -204,9 +204,34 @@ describe("balanceOf", () => {
       BaseError,
     );
     expect(error.message).toContain(`No mock for balanceOf(${getAddress(alice)})`);
-    expect(error.message).toContain(`balanceOf(${getAddress(bob)})`);
-    expectCause(error, MockNotFoundError);
+    // Each registered mock says which arg didn't match.
+    expect(expectCause(error, MockNotFoundError).details).toBe(
+      `Registered:\n  balanceOf(${getAddress(bob)})  ← account didn't match`,
+    );
     expect(mock.requests).toHaveLength(1);
+  });
+
+  test("the miss names the first arg that differs, by its ABI name", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.read.allowance([alice, bob]).returns(1n);
+    usdc.read.allowance([bob, match.any()]).returns(2n);
+
+    const error = await rejectionOf(
+      client.readContract({
+        abi: erc20Abi,
+        address: USDC,
+        functionName: "allowance",
+        args: [alice, alice],
+      }),
+    );
+    expect(expectCause(error, MockNotFoundError).details).toBe(
+      [
+        "Registered:",
+        `  allowance(${getAddress(alice)}, ${getAddress(bob)})  ← spender didn't match`,
+        `  allowance(${getAddress(bob)}, any)  ← owner didn't match`,
+      ].join("\n"),
+    );
   });
 
   test("a mock without an answer doesn't answer", async () => {

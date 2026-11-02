@@ -8,6 +8,7 @@ import {
   type ReceivedCall,
   describeMock,
   formatCall,
+  formatMissReason,
   formatNoAnswer,
   formatMismatch,
   formatReceived,
@@ -15,6 +16,7 @@ import {
 import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
 import { assertNoMatchers, mismatches } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
+import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
@@ -81,6 +83,10 @@ export type ActionReport = {
 export type Table = ReturnType<typeof createTable>;
 type Handler = MockHandler<ActionContext<object>>;
 
+/** A param by its key, by its position from 1 for raw methods' params, or all of them. */
+const paramName = (key: PinnedKey) =>
+  key === null ? "params" : typeof key === "number" ? `param ${key + 1}` : key;
+
 export function createTable(definition: Definition) {
   const mocks = createHandlers<ActionContext<object>, unknown>();
   const history: object[] = [];
@@ -113,7 +119,7 @@ export function createTable(definition: Definition) {
       const [key] = mismatched;
       return {
         call: formatMismatch(definition.name, "params" in call ? call.params : call, mismatched),
-        differs: typeof key === "number" ? `param ${key + 1}` : key,
+        differs: key === undefined ? undefined : paramName(key),
       };
     });
   }
@@ -153,7 +159,7 @@ export function createTable(definition: Definition) {
     if (answered) return await answered;
     // The most specific matching handler wins; among equally specific ones,
     // the most recently registered wins.
-    const handler = mocks.findAnswering(
+    const { handler, missed } = mocks.findAnswering(
       mocks.handlers,
       (candidate) => actualOf(candidate.pinned, call),
       definition.name,
@@ -161,8 +167,12 @@ export function createTable(definition: Definition) {
     if (!handler) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
-      if (turn) throw turn.miss;
-      const registered = mocks.handlers.map((mock) => `  ${describeMock(definition.name, mock)}`);
+      if (turn) throw turn.miss();
+      const registered = mocks.handlers.map((mock) => {
+        const key = missed.get(mock);
+        const reason = formatMissReason(key === undefined ? undefined : paramName(key));
+        return `  ${describeMock(definition.name, mock)}${reason}`;
+      });
       throw new MockNotFoundError(`No mock for ${formatCall(definition.name, call)}.`, {
         details:
           registered.length > 0

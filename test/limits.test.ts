@@ -71,7 +71,11 @@ describe("once() and times()", () => {
     expect(await balanceOf()).toBe(1n);
     const error = expectCause(await rejectionOf(balanceOf()), MockNotFoundError);
     expect(error.details).toBe(
-      ["Registered:", "  balanceOf(*) once, used up", `  balanceOf(${USDC}) 3 times`].join("\n"),
+      [
+        "Registered:",
+        "  balanceOf(*) once, used up",
+        `  balanceOf(${USDC}) 3 times  ← account didn't match`,
+      ].join("\n"),
     );
   });
 

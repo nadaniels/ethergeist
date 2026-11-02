@@ -206,7 +206,7 @@ describe("getBalance", () => {
 
     expect(findCause(error, MockResolverError)).toBeUndefined();
     expect(expectCause(error, MockNotFoundError).details).toBe(
-      `Registered:\n  getBalance({ address: ${bob} }) once\n  getBalance({ address: ${alice} }) without an answer`,
+      `Registered:\n  getBalance({ address: ${bob} }) once  ← address didn't match\n  getBalance({ address: ${alice} }) without an answer`,
     );
   });
 

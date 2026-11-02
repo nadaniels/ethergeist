@@ -61,3 +61,10 @@ export type MockEstimateAnswers<context> = {
    */
   fails(fault: MockNodeFault): void;
 };
+
+/**
+ * An index or key of what a mock pins: a function's arg, or an action's
+ * param. `null` stands for all of them, when one matcher is pinned in place
+ * of the whole params, e.g. `getBalance(match.where(…))`.
+ */
+export type PinnedKey = number | string | null;
