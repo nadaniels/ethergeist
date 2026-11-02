@@ -1,14 +1,25 @@
 import { type Chain, getAddress, isHex } from "viem";
 import { mainnet } from "viem/chains";
 
-import { MockNotFoundError } from "../shared/errors.js";
+import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { type BlockClock, type MockBlock, generateBlock, numberOfBlockHash } from "./blocks.js";
-import { type Fees, type MockFees, resolveFees } from "./fees.js";
+import { type Fees, type MockFees, bigintOption, resolveFees } from "./fees.js";
 import { quantityParam } from "./params.js";
 
 /** What the mock knows about its chain without any mocks: see `createChainState`. */
 export type ChainState = ReturnType<typeof createChainState>;
+
+/** A chain's block time, in milliseconds: 12s if it doesn't say. */
+function blockTimeOf(chain: Chain): number {
+  const blockTime: unknown = chain.blockTime ?? 12_000;
+  if (typeof blockTime !== "number" || !Number.isInteger(blockTime) || blockTime < 0)
+    throw new MockSetupError(
+      "chain.blockTime must be a whole number of milliseconds, zero or more; got " +
+        `${typeof blockTime === "number" ? blockTime : typeof blockTime}.`,
+    );
+  return blockTime;
+}
 
 /**
  * The chain's own state, which the mock owns: its id, the current block, the
@@ -24,12 +35,12 @@ export function createChainState(parameters: {
   // A chain without a Multicall3 address can't multicall: viem throws, as without a mock.
   const chain = parameters.chain ?? mainnet;
   const multicall3 = chain.contracts?.multicall3?.address;
-  const initialBlockNumber = parameters.blockNumber ?? 1n;
+  const initialBlockNumber = bigintOption(parameters.blockNumber ?? 1n, "blockNumber");
   let blockNumber = initialBlockNumber;
   const clock: BlockClock = {
     startBlock: initialBlockNumber,
-    startTimestamp: parameters.timestamp ?? 1_700_000_000n,
-    blockTime: chain.blockTime ?? 12_000,
+    startTimestamp: bigintOption(parameters.timestamp ?? 1_700_000_000n, "timestamp"),
+    blockTime: blockTimeOf(chain),
   };
   const initialFees = resolveFees(parameters.fees);
   /** `setFees()` changes, oldest first; each applies from its block on. */
@@ -52,7 +63,7 @@ export function createChainState(parameters: {
         const number = numberOfBlockHash(block.blockHash);
         if (number === undefined)
           throw new MockNotFoundError(`No block with hash ${block.blockHash}.`, {
-            details: "Only generated blocks' hashes resolve to a block number.",
+            metaMessages: ["Only generated blocks' hashes resolve to a block number."],
           });
         return number;
       }

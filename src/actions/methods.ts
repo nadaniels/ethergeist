@@ -1,3 +1,4 @@
+import { MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import type { RecordLimit } from "../shared/records.js";
 import { type Definition, type Table, createTable } from "./table.js";
@@ -42,10 +43,11 @@ export function createMethods(
 
   function method(name: string, params?: readonly unknown[]): MockMethodBuilder {
     const builtIn = builtIns.get(name);
-    if (builtIn !== undefined) throw new Error(`"${name}" can't be mocked raw: ${builtIn}.`);
+    if (builtIn !== undefined)
+      throw new MockSetupError(`"${name}" can't be mocked raw: ${builtIn}.`);
     const action = actionFor(name);
     if (action !== undefined)
-      throw new Error(`"${name}" has a typed mock: use mock.actions.${action}().`);
+      throw new MockSetupError(`"${name}" has a typed mock: use mock.actions.${action}().`);
 
     let table = raw.get(name);
     if (!table) {

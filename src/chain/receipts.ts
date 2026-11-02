@@ -10,6 +10,7 @@ import {
 } from "viem";
 
 import { formatValue } from "../mocking/format.js";
+import { MockSetupError } from "../shared/errors.js";
 import { nodeAddress } from "../shared/values.js";
 import { blockHash } from "./blocks.js";
 
@@ -92,10 +93,15 @@ function assertInReceipt<value extends bigint | number | string>(
       ? actual.toLowerCase() === expected.toLowerCase()
       : actual === expected;
   if (!same)
-    throw new Error(
+    throw new MockSetupError(
       `Receipt log ${index} has ${field} ${formatValue(actual)}, but the receipt's is ` +
-        `${formatValue(expected)}. A receipt places its logs: pass only their content, e.g. from ` +
-        "contract.events, or contractEvents({ abi, address }) for a contract you don't mock.",
+        `${formatValue(expected)}.`,
+      {
+        metaMessages: [
+          "A receipt places its logs: pass only their content, e.g. from contract.events, " +
+            "or contractEvents({ abi, address }) for a contract you don't mock.",
+        ],
+      },
     );
 }
 

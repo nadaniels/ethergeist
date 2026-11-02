@@ -10,8 +10,8 @@ import {
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import { MockNotFoundError, MockSetupError, createMockRpc, testAddress } from "../src/index.js";
+import { expectCause, hintsOf, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = testAddress("alice");
@@ -70,7 +70,7 @@ describe("once() and times()", () => {
 
     expect(await balanceOf()).toBe(1n);
     const error = expectCause(await rejectionOf(balanceOf()), MockNotFoundError);
-    expect(error.details).toBe(
+    expect(hintsOf(error)).toBe(
       [
         "Registered:",
         "  balanceOf(*) once, used up",
@@ -140,7 +140,7 @@ describe("once() and times()", () => {
     expect(() => usdc.read.balanceOf().times(0)).toThrow(
       "times() takes a positive integer; got 0.",
     );
-    expect(() => usdc.read.balanceOf().times(1.5)).toThrow(RangeError);
+    expect(() => usdc.read.balanceOf().times(1.5)).toThrow(MockSetupError);
     const builder = usdc.read.balanceOf();
     builder.once();
     expect(() => builder.times(2)).toThrow("This mock already has a limit");
@@ -170,7 +170,7 @@ describe("retries past a limited fault", () => {
     usdc.read.balanceOf().once().fails("network");
 
     const error = expectCause(await rejectionOf(balanceOf()), MockNotFoundError);
-    expect(error.details).toBe(
+    expect(hintsOf(error)).toBe(
       [
         "Registered:",
         "  balanceOf(*) once, used up",
@@ -228,7 +228,7 @@ describe("retries past a limited fault", () => {
       ),
       MockNotFoundError,
     );
-    expect(error.details).not.toContain("retry");
+    expect(hintsOf(error)).not.toContain("retry");
     expect(mock.unhandled).toHaveLength(1);
   });
 
@@ -237,7 +237,7 @@ describe("retries past a limited fault", () => {
     mock.failRequests("network", { times: 1 });
 
     const error = expectCause(await rejectionOf(read(client)), MockNotFoundError);
-    expect(error.details).not.toContain("retry");
+    expect(hintsOf(error)).not.toContain("retry");
   });
 });
 

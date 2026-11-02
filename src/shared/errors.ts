@@ -1,40 +1,115 @@
 import { BaseError, type Hex } from "viem";
 
-// Every error the mock throws carries a numeric JSON-RPC `code` that viem's
-// `shouldRetry` does not retry. Without one, viem wraps the error in
-// `UnknownRpcError` (code -1) and retries it with backoff, so a broken test
-// fails slowly and repeatedly.
+/** What the mock's errors take besides their short message. */
+type MockErrorOptions = {
+  /** Lines under the short message: how to fix it, what's registered. */
+  metaMessages?: readonly string[] | undefined;
+  cause?: Error | undefined;
+};
 
-/** For a builder whose mock a `restore()` or `reset()` removed. */
-export function removedMockError(): Error {
-  return new Error("This mock was removed by restore() or reset(); register a new one.");
-}
+/**
+ * The base of every error the mock raises itself, as opposed to viem's errors
+ * for its answers (reverts, faults, a node's refusals), which it imitates.
+ *
+ * Each carries a numeric JSON-RPC `code` viem doesn't retry (without one,
+ * viem retries the request with backoff, so a broken test fails slowly), and
+ * the codes are stable: across a wire they're all a client gets.
+ *
+ * The message is the short message, then the `metaMessages` lines, with no
+ * viem version line. `details` is always empty and `docsPath` unset, though
+ * `BaseError` copies both from a cause: viem matches `details` against node
+ * errors (a resolver's `Error("nonce too low")` would become
+ * `NonceTooLowError`), and its wrappers prefer a cause's `docsPath` to their
+ * own. Hints go in `metaMessages`, which viem's wrappers carry into theirs.
+ */
+export abstract class MockError extends BaseError {
+  override name = "MockError";
+  abstract readonly code: number;
 
-/** Thrown when a request reaches the mock with nothing registered to answer it. */
-export class MockNotFoundError extends BaseError {
-  override name = "MockNotFoundError";
-  code = -32099;
-
-  constructor(shortMessage: string, { details }: { details?: string } = {}) {
-    super(shortMessage, details ? { details } : {});
+  constructor(shortMessage: string, { metaMessages, cause }: MockErrorOptions = {}) {
+    const lines = metaMessages === undefined ? [] : [...metaMessages];
+    super(shortMessage, {
+      ...(lines.length > 0 && { metaMessages: lines }),
+      ...(cause && { cause }),
+    });
+    this.message = lines.length > 0 ? [shortMessage, "", ...lines].join("\n") : shortMessage;
+    this.details = "";
+    this.docsPath = undefined;
   }
 }
 
+/** The mock's API was called wrong: a bad value or option, or a mock that's been removed. */
+export class MockSetupError extends MockError {
+  override name = "MockSetupError";
+  readonly code = -32097;
+}
+
+/** A check failed: `assertNoUnhandled()`, `assertAllUsed()`, `checkpoint()` or `restore()`. */
+export class MockCheckError extends MockError {
+  override name = "MockCheckError";
+  readonly code = -32096;
+}
+
+/** For a builder whose mock a `restore()` or `reset()` removed. */
+export const removedMockError = () =>
+  new MockSetupError("This mock was removed by restore() or reset(); register a new one.");
+
+/** Thrown when a request reaches the mock with nothing registered to answer it. */
+export class MockNotFoundError extends MockError {
+  override name = "MockNotFoundError";
+  readonly code = -32099;
+}
+
+/** An error's one-line summary: a viem or ox error's short message, or its message. */
+export const summaryOf = (error: unknown) =>
+  error instanceof Error
+    ? "shortMessage" in error && typeof error.shortMessage === "string"
+      ? error.shortMessage
+      : error.message
+    : String(error);
+
+/** An error's hint lines, if it's a viem or ox error that has them. */
+const metaMessagesOf = (error: Error) =>
+  "metaMessages" in error && Array.isArray(error.metaMessages)
+    ? error.metaMessages.filter((line): line is string => typeof line === "string")
+    : undefined;
+
 /**
  * Thrown when a resolver throws anything other than a revert, or when a
- * `match.where()` predicate throws while matching.
+ * `match.where()` predicate throws while matching. The cause's hints carry
+ * over, so a mock's own error thrown inside a resolver keeps them.
  */
-export class MockResolverError extends BaseError {
+export class MockResolverError extends MockError {
   override name = "MockResolverError";
-  code = -32098;
+  readonly code = -32098;
   /** The matcher that threw, e.g. `where(isLarge)`; `undefined` when it was the resolver. */
   matcher: string | undefined;
 
   constructor(functionName: string, cause: unknown, { matcher }: { matcher?: string } = {}) {
     const error = cause instanceof Error ? cause : new Error(String(cause));
     const thrower = matcher === undefined ? "Mock resolver" : `Matcher ${matcher}`;
-    super(`${thrower} for "${functionName}" threw: ${error.message}`, { cause: error });
+    super(`${thrower} for "${functionName}" threw: ${summaryOf(error)}`, {
+      cause: error,
+      metaMessages: metaMessagesOf(error),
+    });
     this.matcher = matcher;
+  }
+}
+
+/**
+ * Something the mock didn't anticipate went wrong while answering: a bug in
+ * the mock. The cause is what was thrown, with its stack.
+ */
+export class MockInternalError extends MockError {
+  override name = "MockInternalError";
+  readonly code = -32095;
+
+  constructor(cause: unknown) {
+    const error = cause instanceof Error ? cause : new Error(String(cause));
+    super(`The mock failed unexpectedly: ${summaryOf(error)}`, {
+      cause: error,
+      metaMessages: ["This is a bug in viem-transport-mock; please report it, with the request."],
+    });
   }
 }
 

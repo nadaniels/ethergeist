@@ -26,7 +26,7 @@ import {
   createMockRpc,
   testAddress,
 } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import { expectCause, hintsOf, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
@@ -363,7 +363,7 @@ describe("contract estimates", () => {
     expect(error.shortMessage).toBe(
       `No estimateGas mock for transfer(${bob}, 1n) on Token (${token.address}).`,
     );
-    expect(error.details).toBe(
+    expect(hintsOf(error)).toBe(
       'No estimateGas mocks registered for "transfer"; a simulate mock doesn\'t answer estimates.',
     );
     expect(mock.unhandled).toHaveLength(1);

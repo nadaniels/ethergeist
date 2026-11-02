@@ -208,7 +208,7 @@ describe("contract.events", () => {
     const { shapes } = setup();
 
     expect(() => shapes.events.Ping({ a: 1n })).toThrow(
-      "Ambiguous overload for event Ping({ a: 1n }): pass an arg that tells them apart. " +
+      "Ambiguous overload for event Ping({ a: 1n }): pass an arg that tells them apart.\n\n" +
         "It fits:\n  event Ping(uint256 a)\n  event Ping(uint256 a, uint256 b)",
     );
     expect(() => shapes.events.Ping({ a: 1n, b: 2n })).not.toThrow();
@@ -221,7 +221,7 @@ describe("contract.events", () => {
       // @ts-expect-error -- no overload has `c`
       shapes.events.Ping({ c: 1n }),
     ).toThrow(
-      'No overload of event "Ping" takes Ping({ c: 1n }). Overloads:\n' +
+      'No overload of event "Ping" takes Ping({ c: 1n }).\n\nOverloads:\n' +
         "  event Ping(uint256 a)\n  event Ping(uint256 a, uint256 b)",
     );
   });

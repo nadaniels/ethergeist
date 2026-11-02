@@ -3,7 +3,7 @@ import { hexToBigInt, isHex } from "viem";
 import { feeHistory, toRpcFeeHistory } from "../chain/fees.js";
 import { numberParam } from "../chain/params.js";
 import { formatValue } from "../mocking/format.js";
-import { MockRpcError, invalidParams } from "../shared/errors.js";
+import { invalidParams, MockRpcError, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { blockAt } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
@@ -25,9 +25,9 @@ function assertFeeHistory(history: Record<string, unknown>) {
   for (const [field, value] of Object.entries(history)) {
     const kind = kinds[field];
     if (kind === undefined)
-      throw new TypeError(
-        `A fee history has no field "${field}". Its fields: ${Object.keys(kinds).join(", ")}.`,
-      );
+      throw new MockSetupError(`A fee history has no field "${field}".`, {
+        metaMessages: [`Its fields: ${Object.keys(kinds).join(", ")}.`],
+      });
     const valid =
       kind === "bigint"
         ? typeof value === "bigint"
@@ -41,7 +41,7 @@ function assertFeeHistory(history: Record<string, unknown>) {
         bigint: "a bigint",
         rewards: "lists of bigints, one per block",
       }[kind];
-      throw new TypeError(`A fee history's ${field} must be ${expected}.`);
+      throw new MockSetupError(`A fee history's ${field} must be ${expected}.`);
     }
   }
 }
@@ -98,7 +98,7 @@ export const getFeeHistory = ({ state }: ActionsContext): Definition<FeeHistoryC
     zero: {},
     encode(value, call) {
       if (!isPlainObject(value))
-        throw new TypeError(`A fee history must be an object; got ${typeof value}.`);
+        throw new MockSetupError(`A fee history must be an object; got ${typeof value}.`);
       assertFeeHistory(value);
       const derived = call === undefined ? {} : feeHistoryOf(call);
       return toRpcFeeHistory({ ...derived, ...value });

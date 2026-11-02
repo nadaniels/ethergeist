@@ -1,5 +1,6 @@
 import { type Hex, numberToHex } from "viem";
 
+import { MockSetupError } from "../shared/errors.js";
 import { formatValue } from "./format.js";
 import { zeroResult } from "./zeroResult.js";
 
@@ -10,7 +11,7 @@ import { zeroResult } from "./zeroResult.js";
  */
 export function encodeGas(value: unknown): Hex {
   if (typeof value !== "bigint" || value < 0n)
-    throw new TypeError(
+    throw new MockSetupError(
       `A gas estimate must be a bigint, zero or more; got ${formatValue(value === zeroResult ? undefined : value)}.`,
     );
   return numberToHex(value);

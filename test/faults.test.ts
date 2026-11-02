@@ -11,7 +11,7 @@ import {
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { createMockRpc, testAddress } from "../src/index.js";
+import { MockSetupError, createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, failureOf, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -197,7 +197,7 @@ describe("lifecycle", () => {
   test("times must be a positive integer", () => {
     const { mock } = setup();
     expect(() => mock.failRequests("timeout", { times: 0 })).toThrow(
-      new RangeError("`times` takes a positive integer; got 0."),
+      new MockSetupError("`times` takes a positive integer; got 0."),
     );
     expect(() => mock.failRequests("timeout", { times: 1.5 })).toThrow("positive integer");
   });

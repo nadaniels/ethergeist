@@ -2,6 +2,7 @@ import { formatTransaction, zeroHash } from "viem";
 
 import { hashParam } from "../chain/params.js";
 import { encodeTransaction } from "../chain/transactions.js";
+import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { TransactionCall } from "./types.js";
@@ -17,7 +18,7 @@ export const getTransaction = ({
   encode(value, call) {
     if (value === null) return null;
     if (!isPlainObject(value))
-      throw new TypeError(`A transaction must be an object or null; got ${typeof value}.`);
+      throw new MockSetupError(`A transaction must be an object or null; got ${typeof value}.`);
     return encodeTransaction(state, value, call?.hash ?? zeroHash);
   },
   view: (rpc) => (rpc === null ? null : formatTransaction(rpc)),

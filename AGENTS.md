@@ -48,6 +48,13 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 - The exception is matching arbitrary hex values, like `isMatch` in `src/mocking/matching.ts`. Those may be `bytes` or `bytes32` rather than addresses, so they compare case-insensitively.
 - Addresses in answers (receipts, logs, blocks) go out lowercase, as nodes send them: validate with `getAddress`, then lowercase with `nodeAddress` in `src/shared/values.ts`. Compare them after `getAddress`, never as sent.
 
+## Errors
+
+- Throw the `MockError` family from `src/shared/errors.ts`, never a plain `Error`, `TypeError` or `RangeError` (`test/architecture.test.ts` checks): `MockSetupError` for the mock's API called wrong, `MockCheckError` for failed checks. A request param a node would refuse is `invalidParams` instead (`src/chain/params.ts`).
+- The short message says what's wrong, as one sentence. Hints (how to fix it, what's registered, lists) go in `metaMessages`, a line each; never in `details` or `docsPath`. See "Clients and errors" in `docs/architecture.md`.
+- The exception is a failed check (`MockCheckError`): its list is the failure, so it stays in the short message, and the recent requests are its `metaMessages`. Checks never reach viem, so its reasons for the rule don't apply.
+- viem's and ox's own validation errors (e.g. `getAddress` at registration) pass through unwrapped.
+
 ## Bugs
 
 - Fix bugs red/green: first write a test that reproduces the bug and watch it fail for the reason reported, then fix the code and watch it pass. A bug that's only in a doc comment gets a test that pins the real behavior, where practical.
@@ -61,11 +68,12 @@ Any change beyond a trivial one (anything that changes behavior, types, matching
 3. **The brief:** what the change is meant to do, the constraints and invariants it must keep (e.g. "predicates run only while a mock is in contention"), where the diff is (`git diff`), and `docs/architecture.md`. Give it the code and the intent, not your conclusions about it. Ask for:
    - **correctness:** is everything it claims true, across the tricky cases (list the ones you can think of, and ask for more);
    - **architectural fit:** does it follow the existing patterns and layers, and is there a better seam;
-   - **code quality:** naming, comments, consistency, missing tests.
+   - **code quality:** naming, comments, consistency, missing tests;
+   - **the smallest change:** whether the same full feature could be done with less code overall: a few lines in an existing place instead of a new module, a helper, an option or a layer. Count the code that exists after the change, not the size of the diff: a different seam or a small architecture shift that leaves less machinery behind is worth naming, even if it means more churn now. Ask for each piece that could shrink or go, and what it would cost. This is about less machinery, not fewer lines: never condense code so it reads worse.
 
    Ask for findings ranked most important first, each marked bug, design or nit, with a concrete failing scenario.
 
-4. **Verify before acting:** check each finding against the code yourself, and reproduce bugs red/green. Judge each one on its merits: decline any that don't hold up, and say why. A reviewer that's asked to find problems will always find something.
+4. **Verify before acting:** check each finding against the code yourself, and reproduce bugs red/green. Judge each one on its merits: decline any that don't hold up, and say why. A reviewer that's asked to find problems will always find something. An architecture shift is never taken as a cheap fix: bring it to the owner with what it saves and what it churns.
 5. **Fix, then send it back to the same reviewer** with what changed and where the risk is (new call sites, changed signatures). A re-review covers only the fixes and what they touch; it isn't a fresh review of everything.
 6. **When to stop:**
    - **Stop when a pass finds no bugs.** A bug is something wrong, with a concrete failing scenario. Design suggestions and nits don't keep the loop going: take them if they're clearly better and cheap, otherwise list them as declined or deferred.

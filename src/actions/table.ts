@@ -176,10 +176,10 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
         return `  ${describeMock(definition.name, mock)}${reason}`;
       });
       throw new MockNotFoundError(`No mock for ${formatCall(definition.name, call)}.`, {
-        details:
+        metaMessages:
           registered.length > 0
-            ? `Registered:\n${registered.join("\n")}`
-            : `Mock it with ${definition.hint}.`,
+            ? ["Registered:", ...registered]
+            : [`Mock it with ${definition.hint}.`],
       });
     }
 

@@ -1,6 +1,6 @@
 import { isHex } from "viem";
 
-import { MockResolverError } from "../shared/errors.js";
+import { MockResolverError, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { formatValue } from "./format.js";
 import { type Matcher, isMatcher } from "./matchers.js";
@@ -156,9 +156,9 @@ type Limit = { limit: number | undefined; remaining: number | undefined };
 /** Limits a mock to `count` answers, for `.once()` and `.times(count)`. */
 export function setLimit(mock: Limit, count: number): void {
   if (!Number.isInteger(count) || count < 1)
-    throw new RangeError(`times() takes a positive integer; got ${String(count)}.`);
+    throw new MockSetupError(`times() takes a positive integer; got ${String(count)}.`);
   if (mock.limit !== undefined)
-    throw new Error("This mock already has a limit; call once() or times() only once.");
+    throw new MockSetupError("This mock already has a limit; call once() or times() only once.");
   mock.limit = count;
   mock.remaining = count;
 }
@@ -240,7 +240,7 @@ export function findMatcher(value: unknown): Matcher | undefined {
 export function assertNoMatchers(value: unknown, place = "return values"): void {
   const found = findMatcher(value);
   if (found)
-    throw new TypeError(
+    throw new MockSetupError(
       `match.${found.type}() can't go in ${place}; matchers only go in args and params.`,
     );
 }
@@ -253,7 +253,7 @@ export function assertNoMatchers(value: unknown, place = "return values"): void 
 export function assertNoRunnerMatchers(pinned: unknown): void {
   const found = findRunnerMatcher(pinned, new Set());
   if (found !== undefined)
-    throw new TypeError(
+    throw new MockSetupError(
       `Args and params take the mock's own matchers, not Jest's or Vitest's (got ${found}): ` +
         "use match.any() or match.where(…) instead.",
     );

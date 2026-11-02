@@ -10,13 +10,14 @@ import {
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
+  MockSetupError,
   MockNotFoundError,
   MockResolverError,
   createMockRpc,
   match,
   testAddress,
 } from "../src/index.js";
-import { expectCause, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, hintsOf, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -314,7 +315,7 @@ describe("messages", () => {
     usdc.read.allowance([alice, match.any()]).returns(4n);
 
     const error = expectCause(await rejectionOf(balanceOf(alice)), MockNotFoundError);
-    expect(error.details).toBe(
+    expect(hintsOf(error)).toBe(
       [
         "Registered:",
         "  balanceOf(where(isCarol))  ← account didn't match",
@@ -377,7 +378,7 @@ describe("a miss's reasons", () => {
     usdc.read.allowance([bob, no.matcher]).returns(2n);
 
     const error = expectCause(await rejectionOf(allowance(client)), MockNotFoundError);
-    expect(error.details).toBe(
+    expect(hintsOf(error)).toBe(
       [
         "Registered:",
         "  allowance(where(yes), where(no))  ← spender didn't match",
@@ -398,7 +399,7 @@ describe("a miss's reasons", () => {
     usdc.read.balanceOf([never.matcher]);
 
     const error = expectCause(await rejectionOf(balanceOf(alice)), MockNotFoundError);
-    expect(error.details).toBe(
+    expect(hintsOf(error)).toBe(
       [
         "Registered:",
         `  balanceOf(${getAddress(bob)}) once, used up  ← account didn't match`,
@@ -418,7 +419,7 @@ describe("a miss's reasons", () => {
 
     const error = expectCause(await rejectionOf(filled(order)), MockNotFoundError);
     // One for the nested predicate, one for the exact field that differs.
-    expect(error.details).toBe(
+    expect(hintsOf(error)).toBe(
       [
         "Registered:",
         `  filled({ sell: { token: ${USDC}, amount: where(() => false) }, … })  ← order didn't match`,
@@ -443,7 +444,7 @@ describe("a miss's reasons", () => {
       ),
       MockNotFoundError,
     );
-    expect(error.details).toBe(
+    expect(hintsOf(error)).toBe(
       `Registered:\n  transfer(${getAddress(bob)}, 1n)  ← amount didn't match`,
     );
   });
@@ -456,7 +457,9 @@ describe("a miss's reasons", () => {
       await rejectionOf(mock.request({ method: "eth_custom", params: ["0x1", "0x2"] })),
       MockNotFoundError,
     );
-    expect(error.details).toBe("Registered:\n  eth_custom(0x1, where(no))  ← param 2 didn't match");
+    expect(hintsOf(error)).toBe(
+      "Registered:\n  eth_custom(0x1, where(no))  ← param 2 didn't match",
+    );
   });
 
   test("assertAllUsed() shows the whole call a whole-params matcher didn't match", async () => {
@@ -530,7 +533,9 @@ describe("registration", () => {
     // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
     expect(() => mock.actions.getBalance({ address: expect.anything() })).toThrow("(got Anything)");
     // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
-    expect(() => mock.method("eth_custom", [{ nested: expect.any(Number) }])).toThrow(TypeError);
+    expect(() => mock.method("eth_custom", [{ nested: expect.any(Number) }])).toThrow(
+      MockSetupError,
+    );
     // A call that throws registers nothing.
     expect(() => {
       mock.assertAllUsed();
@@ -585,7 +590,9 @@ describe("overloads", () => {
     const { token } = setupOverloads();
     expect(() => token.read.price([match.any()])).toThrow(
       [
-        "Ambiguous overload for price(any): pin an arg that tells them apart. It fits:",
+        "Ambiguous overload for price(any): pin an arg that tells them apart.",
+        "",
+        "It fits:",
         "  price(address)",
         "  price(uint256)",
       ].join("\n"),
@@ -605,7 +612,9 @@ describe("overloads", () => {
     const { token } = setupOverloads();
     expect(() => token.read.balanceOf()).toThrow(
       [
-        "Ambiguous overload for balanceOf(*): pin args to choose one, e.g. [match.any()]:",
+        "Ambiguous overload for balanceOf(*): pin args to choose one, e.g. [match.any()].",
+        "",
+        "Overloads:",
         "  balanceOf(address,uint256)",
         "  balanceOf(address)",
       ].join("\n"),
@@ -670,7 +679,7 @@ describe("actions and raw methods", () => {
       await rejectionOf(client.getTransactionCount({ address: alice })),
       MockNotFoundError,
     );
-    expect(error.details).toBe(
+    expect(hintsOf(error)).toBe(
       "Registered:\n  getTransactionCount(where(isBob))  ← params didn't match",
     );
   });

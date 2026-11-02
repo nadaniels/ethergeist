@@ -21,6 +21,7 @@ import type { ChainState } from "../chain/state.js";
 import { formatCall } from "../mocking/format.js";
 import { assertNoMatchers } from "../mocking/matching.js";
 import { type AllNamed, type PartialStructs, fillZeros } from "../shared/abiValues.js";
+import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 
 /**
@@ -198,7 +199,7 @@ export function encodeEventLog(
     (item): item is AbiEvent => item.type === "event" && item.name === eventName,
   );
   const [only] = overloads;
-  if (only === undefined) throw new Error(`No event "${eventName}" on this ABI.`);
+  if (only === undefined) throw new MockSetupError(`No event "${eventName}" on this ABI.`);
   // Checksummed, which also validates it.
   const emitter = getAddress(address);
   if (overloads.length === 1) return encodeWith(only, emitter, args);
@@ -213,11 +214,16 @@ export function encodeEventLog(
   const [fit] = fits;
   if (fit !== undefined && fits.length === 1) return fit.log;
   const call = formatCall(eventName, args ?? []);
-  throw new Error(
+  throw new MockSetupError(
     fits.length === 0
-      ? `No overload of event "${eventName}" takes ${call}. Overloads:\n${listEvents(overloads)}`
-      : `Ambiguous overload for event ${call}: pass an arg that tells them apart. It fits:\n` +
-          listEvents(fits.map(({ event }) => event)),
+      ? `No overload of event "${eventName}" takes ${call}.`
+      : `Ambiguous overload for event ${call}: pass an arg that tells them apart.`,
+    {
+      metaMessages:
+        fits.length === 0
+          ? ["Overloads:", listEvents(overloads)]
+          : ["It fits:", listEvents(fits.map(({ event }) => event))],
+    },
   );
 }
 
@@ -230,10 +236,10 @@ function encodeWith(event: AbiEvent, address: Address, args: unknown): MockEvent
     if (input.indexed !== true) return;
     const label = isNamed(input) ? input.name : `arg ${i + 1}`;
     if (values[i] === undefined)
-      throw new Error(`Indexed arg "${label}" of event "${name}" is required.`);
+      throw new MockSetupError(`Indexed arg "${label}" of event "${name}" is required.`);
     // A struct's or array's topic is a hash of a special encoding, which viem doesn't encode.
     if (input.type === "tuple" || input.type.endsWith("]"))
-      throw new Error(
+      throw new MockSetupError(
         `Indexed arg "${label}" of event "${name}" is a ${input.type}; ` +
           "indexed structs and arrays aren't supported.",
       );
@@ -268,14 +274,14 @@ function argValues(event: AbiEvent, args: unknown): unknown[] {
   if (inputs.every((input) => isNamed(input))) {
     if (args === undefined) return inputs.map(() => undefined);
     if (!isPlainObject(args))
-      throw new TypeError(`Event "${name}" takes its args as an object, by name.`);
+      throw new MockSetupError(`Event "${name}" takes its args as an object, by name.`);
     const unknown = Object.keys(args).find((key) => !inputs.some((input) => input.name === key));
     if (unknown !== undefined)
-      throw new Error(`No arg "${unknown}" on ${OxAbiEvent.format(event)}.`);
+      throw new MockSetupError(`No arg "${unknown}" on ${OxAbiEvent.format(event)}.`);
     return inputs.map((input) => (isNamed(input) ? args[input.name] : undefined));
   }
   if (!Array.isArray(args) || args.length !== inputs.length)
-    throw new TypeError(
+    throw new MockSetupError(
       `Event "${name}" has unnamed args: pass all ${inputs.length} of them, in order.`,
     );
   return args;

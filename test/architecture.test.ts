@@ -46,4 +46,31 @@ describe("architecture", () => {
     });
     expect(upward).toEqual([]);
   });
+
+  test("the mock throws its own errors, not plain ones", () => {
+    // See shared/errors.ts. Allowed: the family's base and the internal
+    // answers there, wrapping a thrown non-Error as a cause, and the internal
+    // signals that never leave the mock as they are.
+    const allowed = new Map([
+      [
+        "shared/errors.ts",
+        ["extends BaseError", "new Error(", "new Error(", "extends BaseError", "extends BaseError"],
+      ],
+      ["mocking/faults.ts", ["extends Error"]],
+      ["mocking/matching.ts", ["extends Error"]],
+    ]);
+    const plain = files
+      .filter((file) => !file.endsWith(".test.ts"))
+      .flatMap((file) => {
+        const found = [
+          ...readFileSync(join(src, file), "utf8").matchAll(
+            /(?:new|throw) (?:Type|Range|Syntax|Reference|Aggregate)?Error\(|extends (?:(?:Type|Range|Syntax|Reference|Aggregate)?Error|BaseError)\b/gv,
+          ),
+        ].map(([match]) => match);
+        // Sorted, so moving a declaration doesn't matter, but swapping one kind for another does.
+        const expected = (allowed.get(file) ?? []).toSorted();
+        return found.toSorted().join() === expected.join() ? [] : [`${file}: ${found.join(", ")}`];
+      });
+    expect(plain).toEqual([]);
+  });
 });

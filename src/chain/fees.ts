@@ -1,5 +1,7 @@
 import { type FeeHistory, numberToHex, parseGwei } from "viem";
 
+import { MockSetupError } from "../shared/errors.js";
+
 /**
  * The fees generated blocks and fee requests answer with: every block's
  * `baseFeePerGas`, and the tip a node suggests (`eth_maxPriorityFeePerGas`).
@@ -18,14 +20,18 @@ export type Fees = Required<MockFees>;
 // estimateFeesPerGas() gives 13 gwei (base × 1.2 + tip), eth_gasPrice 11.
 const defaults: Fees = { baseFeePerGas: parseGwei("10"), maxPriorityFeePerGas: parseGwei("1") };
 
+/** A bigint option, checked: zero or more; `name` names it in the error. */
+export function bigintOption(value: bigint, name: string): bigint {
+  if (typeof value !== "bigint")
+    throw new MockSetupError(`${name} must be a bigint; got ${typeof value}.`);
+  if (value < 0n) throw new MockSetupError(`${name} can't be negative; got ${value}.`);
+  return value;
+}
+
 /** `fees` over the defaults, checked: each is a bigint, zero or more. */
 export function resolveFees(fees: MockFees = {}): Fees {
   const resolved = { ...defaults, ...fees };
-  for (const [name, value] of Object.entries(resolved)) {
-    if (typeof value !== "bigint")
-      throw new TypeError(`fees.${name} must be a bigint; got ${typeof value}.`);
-    if (value < 0n) throw new RangeError(`fees.${name} can't be negative; got ${value}.`);
-  }
+  for (const [name, value] of Object.entries(resolved)) bigintOption(value, `fees.${name}`);
   return resolved;
 }
 

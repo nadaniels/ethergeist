@@ -53,12 +53,30 @@ up, move it down to where both can use it, as `MockOutcome` moved to
 
 ### Clients and errors
 
-`createRequestHandler` knows nothing about viem. It throws the mock's own
-errors: `MockFailure` for faults, `MockRevertError`, `MockRpcError` for a node's
-refusal, and `MockNotFoundError` or `MockResolverError` for what it couldn't
-answer. An adapter turns them into its client's errors: `toViemError` in
-`viem/errors.ts` for viem. Support for another client (wagmi, ethers) is a new
-adapter folder beside `viem/`, not a change to the layers under it.
+`createRequestHandler` knows nothing about viem. It throws answers, which
+`isAnswer` in `mocking/outcomes.ts` names (`MockFailure` for faults,
+`MockRevertError`, `MockRpcError` for a node's refusal), or the mock's own
+errors for what it couldn't answer: the `MockError` family in
+`shared/errors.ts`. Anything else thrown while answering is a bug in the mock,
+wrapped in `MockInternalError` (`asMockError`), so it's recorded as unhandled
+and isn't retried. An adapter turns answers into its client's errors:
+`toViemError` in `viem/errors.ts` for viem. Support for another client (wagmi,
+ethers) is a new adapter folder beside `viem/`, not a change to the layers
+under it.
+
+The mock's errors:
+
+- Every error the mock raises itself is a `MockError`, with a stable `code`
+  viem doesn't retry. Setup mistakes throw `MockSetupError`, failed checks
+  `MockCheckError`; `test/architecture.test.ts` rejects plain `Error`,
+  `TypeError` and `RangeError`.
+- The short message says what's wrong; hints (how to fix it, what's
+  registered, a list) go in `metaMessages`, a line each. Never `details` or
+  `docsPath`: viem matches `details` against node errors, and its wrappers
+  take a cause's `docsPath` with their own base URL. A failed check's list
+  is the failure, so it stays in the short message: checks never reach viem.
+- A request param a node can't parse is `invalidParams` (`chain/params.ts`),
+  never a setup error, even when the same check runs at registration.
 
 ## Naming
 

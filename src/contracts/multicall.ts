@@ -36,7 +36,7 @@ export async function resolveMulticall(
   if (decoded?.functionName !== "aggregate3")
     throw new MockNotFoundError(
       `Unsupported Multicall3 call on ${address}; only aggregate3 is mocked.`,
-      { details: `Call data: ${data.slice(0, 10)}…` },
+      { metaMessages: [`Call data: ${data.slice(0, 10)}…`] },
     );
 
   // Sequential, like the real contract: each sub-call finishes before the next

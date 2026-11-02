@@ -3,7 +3,7 @@ import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
 import { MockNotFoundError, createMockRpc, match, testAddress } from "../src/index.js";
-import { expectCause, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, hintsOf, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = testAddress("alice");
@@ -205,7 +205,7 @@ describe("balanceOf", () => {
     );
     expect(error.message).toContain(`No mock for balanceOf(${getAddress(alice)})`);
     // Each registered mock says which arg didn't match.
-    expect(expectCause(error, MockNotFoundError).details).toBe(
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       `Registered:\n  balanceOf(${getAddress(bob)})  ← account didn't match`,
     );
     expect(mock.requests).toHaveLength(1);
@@ -225,7 +225,7 @@ describe("balanceOf", () => {
         args: [alice, alice],
       }),
     );
-    expect(expectCause(error, MockNotFoundError).details).toBe(
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       [
         "Registered:",
         `  allowance(${getAddress(alice)}, ${getAddress(bob)})  ← spender didn't match`,
@@ -247,7 +247,7 @@ describe("balanceOf", () => {
       }),
     );
     expect(mock.unhandled[0]?.error).toBeInstanceOf(MockNotFoundError);
-    expect(mock.unhandled[0]?.error.details).toBe(
+    expect(hintsOf(mock.unhandled[0]?.error)).toBe(
       `Registered:\n  balanceOf(${getAddress(alice)}) without an answer`,
     );
   });

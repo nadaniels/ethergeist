@@ -15,7 +15,7 @@ import { type EmitOptions, type MockEventLog } from "../logs/events.js";
 import { fail } from "../mocking/faults.js";
 import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
-import { MockNotFoundError } from "../shared/errors.js";
+import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import {
   type RecordLimit,
@@ -109,7 +109,7 @@ export function createMockContract<const abi extends Abi>(
   /** Throws if `restore()` or `reset()` removed this contract. */
   function assertAttached() {
     if (detached)
-      throw new Error(
+      throw new MockSetupError(
         `The contract at ${label} was removed by restore() or reset(); register it again.`,
       );
   }

@@ -474,6 +474,19 @@ features land; tick them off as pages get written.
       answered it" for a shadowed mock; "received no calls" when the app never
       made it. Args that matched show as `…`, so the line shows what differed
       (the whole call when everything matched). Show an example.
+- [ ] The mock's own errors, all `MockError`s (viem's `BaseError`), each
+      with a stable `code` viem doesn't retry: `MockSetupError` (the mock's
+      API called wrong: a bad value or option, a removed mock),
+      `MockCheckError` (a failed check), `MockNotFoundError` (not mocked),
+      `MockResolverError` (a resolver or predicate threw; its cause is what
+      it threw) and `MockInternalError` (a bug in the mock: report it).
+      Everything else is viem's: reverts, faults and a node's refusals reach
+      the app as viem's own classes, as in production, and viem's and ox's
+      validation errors (an invalid address at registration) pass through.
+      A message is its short message, then hint lines (`metaMessages`, which
+      viem's errors carry too); `details` is always empty, so viem never
+      mistakes a hint for a node error. Assert with `toThrow(MockSetupError)`
+      plus the message, not the native `TypeError` / `RangeError`.
 - [ ] Failed checks' stacks start at the caller (the test or hook), not in
       the mock, so the runner's code frame points at the test.
 - [ ] Addresses in messages are always checksummed. Address args are
@@ -492,7 +505,9 @@ features land; tick them off as pages get written.
 - [ ] `mock.history`: one entry per JSON-RPC request, discriminated by
       `type` (`call`, `multicall`, `action`, `method`, `builtIn`), each with an
       `outcome` (`result` in viem's types, `revert` decoded, `fault` with its
-      source, `unhandled`, `error`, `pending`). Retries are separate entries.
+      source, `rpcError`, `unhandled`, `pending`). `unhandled` holds a
+      `MockError`: not mocked, a resolver threw, or the mock itself failed.
+      Retries are separate entries.
 - [ ] `mock.formatHistory({ builtIns })` for `console.log` while debugging,
       with an example of its output.
 - [ ] `createMockRpc({ debug })`: `true` for `console.log`, or a function

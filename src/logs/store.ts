@@ -3,7 +3,7 @@ import { type Address, type Hash, type Hex, type RpcLog, getAddress } from "viem
 import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
 import { placeLog, toRpcLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
-import { MockNotFoundError, MockRpcError } from "../shared/errors.js";
+import { MockNotFoundError, MockRpcError, MockSetupError } from "../shared/errors.js";
 import { testHash } from "../shared/testValues.js";
 import { isPlainObject } from "../shared/values.js";
 import type { EmitOptions, EmittedLog, MockEventLog } from "./events.js";
@@ -54,21 +54,25 @@ export function createLogStore({
 
   /** One transaction's logs, placed in a block; see `EmitOptions`. */
   function place(values: readonly MockEventLog[], emitOptions: EmitOptions = {}): PlacedLog[] {
-    if (values.length === 0) throw new Error("emit() requires at least one log.");
+    if (values.length === 0) throw new MockSetupError("emit() requires at least one log.");
     for (const value of values) {
       if (positionFields.some((field) => field in value))
-        throw new Error(
+        throw new MockSetupError(
           "emit() places logs itself, but this one already has a position (e.g. from " +
-            "mock.buildLog()). Pass a log from contract.events, and set its block or transaction " +
-            "in emit()'s options.",
+            "mock.buildLog()).",
+          {
+            metaMessages: [
+              "Pass a log from contract.events, and set its block or transaction in emit()'s options.",
+            ],
+          },
         );
       if (!registry.isContract(getAddress(value.address)))
-        throw new Error(
+        throw new MockSetupError(
           `No mocked contract at ${value.address} to emit this log; register it with contract().`,
         );
     }
     if (emitOptions.mine === true && emitOptions.blockNumber !== undefined)
-      throw new Error("emit() takes `mine` or `blockNumber`, not both.");
+      throw new MockSetupError("emit() takes `mine` or `blockNumber`, not both.");
     // The block to mine is placed into first, and mined only once every check
     // has passed, so a rejected emit changes nothing.
     const number =
@@ -111,17 +115,17 @@ export function createLogStore({
         : logs.find((log) => log.transactionHash.toLowerCase() === transactionHash.toLowerCase());
     if (existing !== undefined) {
       if (existing.blockNumber !== number)
-        throw new Error(
+        throw new MockSetupError(
           `Transaction ${transactionHash} is in block ${existing.blockNumber}; ` +
             "a transaction's logs are all in one block.",
         );
       if (existing.transactionIndex !== last?.transactionIndex)
-        throw new Error(
+        throw new MockSetupError(
           `Transaction ${transactionHash} isn't the last in block ${number}; logs can only ` +
             "be added to a block's last transaction.",
         );
       if (transactionIndex !== undefined && transactionIndex !== existing.transactionIndex)
-        throw new Error(
+        throw new MockSetupError(
           `Transaction ${transactionHash} has index ${existing.transactionIndex}, not ${transactionIndex}.`,
         );
       return {
@@ -132,7 +136,7 @@ export function createLogStore({
 
     const next = last === undefined ? 0 : last.transactionIndex + 1;
     if (transactionIndex !== undefined && transactionIndex < next)
-      throw new Error(
+      throw new MockSetupError(
         `Transaction index ${transactionIndex} in block ${number} isn't after the block's ` +
           `last transaction (${next - 1}); emit a block's transactions in order.`,
       );
@@ -172,9 +176,10 @@ export function createLogStore({
     const unknown = addresses.filter((address) => registry.codeAt(address) === undefined);
     if (unknown.length > 0)
       throw new MockNotFoundError(`No mocked contract at ${unknown.join(", ")}.`, {
-        details:
+        metaMessages: [
           "Logs come only from registered contracts: register it with contract(), or mark it " +
-          "empty() for an address without code.",
+            "empty() for an address without code.",
+        ],
       });
 
     return logs
@@ -243,19 +248,19 @@ const placedFields = {
  */
 function toRpc(value: unknown): RpcLog[] {
   if (!Array.isArray(value))
-    throw new TypeError(`getLogs answers a list of logs; got ${typeof value}.`);
+    throw new MockSetupError(`getLogs answers a list of logs; got ${typeof value}.`);
   return value.map((log: unknown, i) => {
     const placed =
       isPlainObject(log) &&
       Object.entries(placedFields).every(([field, type]) => typeof log[field] === type);
     if (!placed)
-      throw new TypeError(
+      throw new MockSetupError(
         `getLogs answers placed logs, e.g. from emit() or mock.buildLog(); log ${i} has no position.`,
       );
     // Left out for a node that doesn't send it; anything else would be dropped.
     const { blockTimestamp } = log;
     if (blockTimestamp !== undefined && typeof blockTimestamp !== "bigint")
-      throw new TypeError(
+      throw new MockSetupError(
         `getLogs log ${i}'s blockTimestamp must be a bigint, or left out; ` +
           `got ${blockTimestamp === null ? "null" : typeof blockTimestamp}.`,
       );

@@ -5,7 +5,12 @@ import type { LogsCall } from "../logs/filter.js";
 import { formatCall, formatValue } from "../mocking/format.js";
 import type { FaultOutcome, MockOutcome } from "../mocking/outcomes.js";
 import type { MockNodeFault } from "../mocking/types.js";
-import { MockResolverError } from "../shared/errors.js";
+import {
+  MockInternalError,
+  MockNotFoundError,
+  MockResolverError,
+  summaryOf,
+} from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { MockHistoryEntry } from "./types.js";
 
@@ -179,7 +184,11 @@ function formatParams(params: unknown): string {
     : "";
 }
 
-function formatOutcome(outcome: MockOutcome, action?: string): string {
+/**
+ * How a request or call ended, for history: `✓` and its value, or `✗` and why.
+ * @internal Exported for its unit test.
+ */
+export function formatOutcome(outcome: MockOutcome, action?: string): string {
   if (outcome.type === "pending") return "… pending";
   if (outcome.type === "result") return `→ ${summarize(outcome.value, action)}`;
   if (outcome.type === "revert") {
@@ -191,13 +200,15 @@ function formatOutcome(outcome: MockOutcome, action?: string): string {
   if (outcome.type === "fault")
     return `✗ fault: ${formatFault(outcome.fault)}${outcome.source === "failRequests" ? " (failRequests)" : ""}`;
   if (outcome.type === "rpcError") return `✗ rpc error ${outcome.code}: ${outcome.message}`;
-  if (outcome.type === "error")
-    return `✗ error: ${outcome.error instanceof Error ? outcome.error.message : String(outcome.error)}`;
   // "unhandled"
-  if (!(outcome.error instanceof MockResolverError)) return "✗ not mocked";
-  const { matcher, cause } = outcome.error;
-  const thrower = matcher === undefined ? "resolver" : `matcher ${matcher}`;
-  return `✗ ${thrower} threw: ${cause instanceof Error ? cause.message : ""}`;
+  const { error } = outcome;
+  if (error instanceof MockNotFoundError) return "✗ not mocked";
+  if (error instanceof MockResolverError) {
+    const thrower = error.matcher === undefined ? "resolver" : `matcher ${error.matcher}`;
+    return `✗ ${thrower} threw: ${summaryOf(error.cause)}`;
+  }
+  if (error instanceof MockInternalError) return `✗ mock failed: ${summaryOf(error.cause)}`;
+  return `✗ ${error.shortMessage}`;
 }
 
 /** Blocks and receipts are long; history shows what identifies them. */

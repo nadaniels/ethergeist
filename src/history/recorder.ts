@@ -12,7 +12,13 @@ import {
 import type { ActionName } from "../actions/typedActions.js";
 import type { MockCall, Reporter } from "../contracts/types.js";
 import { type FaultOutcome, failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
-import { MockNotFoundError, MockResolverError, MockRevertError } from "../shared/errors.js";
+import {
+  type MockError,
+  MockInternalError,
+  MockRevertError,
+  MockSetupError,
+  summaryOf,
+} from "../shared/errors.js";
 import { createRecordList, type RecordLimit } from "../shared/records.js";
 import { isPlainObject } from "../shared/values.js";
 import { type FormatContext, type HistoryView, formatEntry } from "./format.js";
@@ -156,13 +162,29 @@ export function createRecorder({
       numbers.set(entry, { number: history.total, clears });
       return entry;
     },
-    /** Records how a request ended, and logs it when `debug` is on. */
+    /**
+     * Records how a request ended, and logs it when `debug` is on. A `debug`
+     * function that throws is a setup error, thrown once it's recorded.
+     */
     settle(entry: MockHistoryEntry, outcome: MockOutcome) {
       entry.outcome = outcome;
-      log?.(formatEntry(view, entry, formatContext), entry);
+      if (log === undefined) return;
+      let line: string;
+      try {
+        line = formatEntry(view, entry, formatContext);
+      } catch (error) {
+        throw new MockInternalError(error);
+      }
+      try {
+        log(line, entry);
+      } catch (error) {
+        throw new MockSetupError(`The debug function threw: ${summaryOf(error)}`, {
+          cause: error instanceof Error ? error : undefined,
+        });
+      }
     },
     /** Records a request the mock couldn't answer, for `unhandled` and `assertNoUnhandled()`. */
-    markUnhandled(request: RpcRequest, error: MockNotFoundError | MockResolverError) {
+    markUnhandled(request: RpcRequest, error: MockError) {
       unhandled.add({ ...request, error });
     },
     /** Records a decoded contract call, from any contract. */

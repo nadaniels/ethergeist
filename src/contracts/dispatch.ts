@@ -77,9 +77,10 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
       return Promise.resolve("0x");
     }
     const error = new MockNotFoundError(`No mocked contract at ${to}.`, {
-      details:
-        `Call data: ${data}\n` +
+      metaMessages: [
+        `Call data: ${data}`,
         "Register it with contract(), or mark it empty() for an address without code.",
+      ],
     });
     report.call?.({ ...unknown, outcome: errorOutcome(error) }, context);
     throw error;
@@ -95,9 +96,10 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
       if (!data) throw new MockNotFoundError("eth_call without `data` is not supported.");
       if (!tx.to)
         throw new MockNotFoundError("eth_call without `to` is not supported.", {
-          details:
+          metaMessages: [
             "Deployless calls (including deployless multicall) need bytecode execution. " +
-            "Give the client's chain a Multicall3 address, or use `mock.publicClient()`.",
+              "Give the client's chain a Multicall3 address, or use `mock.publicClient()`.",
+          ],
         });
 
       return dispatch(

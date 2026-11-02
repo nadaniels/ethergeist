@@ -1,10 +1,15 @@
 import { type Address, type Hex, getAddress } from "viem";
 
+import { MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import type { InternalMockContract } from "./createMockContract.js";
 
 /** What's registered at addresses: see `createRegistry`. */
 export type Registry = ReturnType<typeof createRegistry>;
+
+/** The hint for a contract registered twice. */
+const earlierTest =
+  "If an earlier test registered it, restore a checkpoint after each test, or call reset().";
 
 /**
  * The addresses the mock knows: registered contracts, and addresses marked
@@ -37,17 +42,13 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
       const checksummed = getAddress(address);
       const existing = contractAt(checksummed);
       if (existing)
-        throw new Error(
-          `A contract is already registered at ${existing.label}. ` +
-            "Register it once with a " +
-            "combined ABI (abi: [...a, ...b]). If an earlier test registered it, restore " +
-            "a checkpoint after each test, or call reset().",
-        );
+        throw new MockSetupError(`A contract is already registered at ${existing.label}.`, {
+          metaMessages: ["Register it once with a combined ABI (abi: [...a, ...b]).", earlierTest],
+        });
       if (emptyAddresses.has(checksummed))
-        throw new Error(
-          `${checksummed} is already registered as empty. If an earlier test registered it, ` +
-            "restore a checkpoint after each test, or call reset().",
-        );
+        throw new MockSetupError(`${checksummed} is already registered as empty.`, {
+          metaMessages: [earlierTest],
+        });
     },
     add(contract: InternalMockContract<any>) {
       contracts.push(contract);

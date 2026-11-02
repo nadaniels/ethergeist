@@ -1,12 +1,7 @@
 import { type Abi, type Hex, decodeErrorResult } from "viem";
 
 import { builtinErrors } from "../shared/abiValues.js";
-import {
-  MockNotFoundError,
-  MockResolverError,
-  MockRevertError,
-  MockRpcError,
-} from "../shared/errors.js";
+import { MockError, MockInternalError, MockRevertError, MockRpcError } from "../shared/errors.js";
 import { MockFailure } from "./faults.js";
 import type { MockNodeFault } from "./types.js";
 
@@ -25,10 +20,11 @@ export type MockOutcome =
    * `getLogs` block range past the head. An answer, not unhandled.
    */
   | { type: "rpcError"; code: number; message: string }
-  /** Not answered: nothing was mocked, or a resolver threw. */
-  | { type: "unhandled"; error: MockNotFoundError | MockResolverError }
-  /** The mock itself failed unexpectedly, e.g. on a malformed request. */
-  | { type: "error"; error: unknown };
+  /**
+   * Not answered: nothing was mocked (`MockNotFoundError`), a resolver threw
+   * (`MockResolverError`), or the mock itself failed (`MockInternalError`).
+   */
+  | { type: "unhandled"; error: MockError };
 
 /** A fault's outcome: the request failed at the transport, from a mock or `failRequests()`. */
 export type FaultOutcome = Extract<MockOutcome, { type: "fault" }>;
@@ -45,13 +41,36 @@ function revertOutcome(abi: Abi, data: Hex): Extract<MockOutcome, { type: "rever
   }
 }
 
+/**
+ * Whether `error` is an answer: a revert, a fault, or a node's refusal. The
+ * mock throws these on purpose; adapters turn them into their client's errors.
+ */
+export const isAnswer = (error: unknown) =>
+  error instanceof MockRevertError || error instanceof MockFailure || error instanceof MockRpcError;
+
+const wrapped = new WeakMap<object, MockInternalError>();
+
+/**
+ * `error` as one of the mock's errors: as is if it's one, or else wrapped in
+ * a `MockInternalError`, the same one each time for the same error, so a
+ * request and the contract call inside it record the same error.
+ */
+export function asMockError(error: unknown): MockError {
+  if (error instanceof MockError) return error;
+  if (typeof error !== "object" || error === null) return new MockInternalError(error);
+  let internal = wrapped.get(error);
+  if (internal === undefined) {
+    internal = new MockInternalError(error);
+    wrapped.set(error, internal);
+  }
+  return internal;
+}
+
 /** The outcome of an error thrown while answering, other than reverts and faults. */
 export function errorOutcome(error: unknown): MockOutcome {
-  if (error instanceof MockNotFoundError || error instanceof MockResolverError)
-    return { type: "unhandled", error };
   if (error instanceof MockRpcError)
     return { type: "rpcError", code: error.code, message: error.shortMessage };
-  return { type: "error", error };
+  return { type: "unhandled", error: asMockError(error) };
 }
 
 /**

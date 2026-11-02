@@ -31,7 +31,7 @@ import {
   testAddress,
   testHash,
 } from "../src/index.js";
-import { expectCause, findCause, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, hintsOf, findCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -205,7 +205,7 @@ describe("getBalance", () => {
     const error = await rejectionOf(client.getBalance({ address: alice }));
 
     expect(findCause(error, MockResolverError)).toBeUndefined();
-    expect(expectCause(error, MockNotFoundError).details).toBe(
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       `Registered:\n  getBalance({ address: ${bob} }) once  ← address didn't match\n  getBalance({ address: ${alice} }) without an answer`,
     );
   });
@@ -522,7 +522,7 @@ describe("getTransactionReceipt", () => {
     expect(() => {
       mock.actions.getTransactionReceipt().returns({ blockNumber: 7n, logs: [placed] });
     }).toThrow(
-      "Receipt log 0 has blockNumber 10n, but the receipt's is 7n. A receipt places its logs: " +
+      "Receipt log 0 has blockNumber 10n, but the receipt's is 7n.\n\nA receipt places its logs: " +
         "pass only their content, e.g. from contract.events, or contractEvents({ abi, address }) " +
         "for a contract you don't mock.",
     );

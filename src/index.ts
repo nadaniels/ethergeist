@@ -69,7 +69,14 @@ export type { MockCallRecord } from "./contracts/types.js";
 export type { MockHistoryEntry } from "./history/types.js";
 export type { MockOutcome } from "./mocking/outcomes.js";
 export type { FormatHistoryOptions } from "./history/format.js";
-export { MockNotFoundError, MockResolverError } from "./shared/errors.js";
+export {
+  MockCheckError,
+  MockError,
+  MockInternalError,
+  MockNotFoundError,
+  MockResolverError,
+  MockSetupError,
+} from "./shared/errors.js";
 export type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
 export { match } from "./mocking/matchers.js";
 export type {

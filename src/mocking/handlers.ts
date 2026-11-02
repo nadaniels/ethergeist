@@ -1,12 +1,6 @@
-import {
-  MockNotFoundError,
-  MockResolverError,
-  MockRevertError,
-  MockRpcError,
-  removedMockError,
-} from "../shared/errors.js";
+import { MockNotFoundError, MockResolverError, removedMockError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
-import { MockFailure, fail } from "./faults.js";
+import { fail } from "./faults.js";
 import {
   type MatchOptions,
   type Specificity,
@@ -16,6 +10,7 @@ import {
   setLimit,
   specificity,
 } from "./matching.js";
+import { isAnswer } from "./outcomes.js";
 import type { MockNodeFault, PinnedKey } from "./types.js";
 import { zeroResult } from "./zeroResult.js";
 
@@ -54,11 +49,7 @@ export type Builder = {
  * fault, a node's refusal, or that it doesn't answer this call
  * (`MockNotFoundError`). Its context's `revert()` and `fail()` throw these.
  */
-const isDeliberate = (error: unknown) =>
-  error instanceof MockRevertError ||
-  error instanceof MockFailure ||
-  error instanceof MockRpcError ||
-  error instanceof MockNotFoundError;
+const isDeliberate = (error: unknown) => isAnswer(error) || error instanceof MockNotFoundError;
 
 /** `fn` with a `calls` getter, as `mock.actions.x` and a contract's functions have. */
 export function withCalls<fn extends (...args: never[]) => unknown>(

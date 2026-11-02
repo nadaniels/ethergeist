@@ -8,7 +8,8 @@ import { type Recorder, outcomeOf, reporterFor, valueOf } from "../history/recor
 import type { MockHistoryEntry, RpcRequest } from "../history/types.js";
 import { MockFailure } from "../mocking/faults.js";
 import type { MockOutcome } from "../mocking/outcomes.js";
-import { MockNotFoundError, MockResolverError } from "../shared/errors.js";
+import { asMockError, isAnswer } from "../mocking/outcomes.js";
+import { MockNotFoundError } from "../shared/errors.js";
 import type { Faults } from "./faults.js";
 
 /** Answers a request with the mock's own errors: see `createRequestHandler`. */
@@ -52,19 +53,28 @@ export function createRequestHandler({
       throw new MockFailure(fault);
     }
 
+    let answered: { rpc: unknown; value: unknown };
     try {
-      const answered = await answer(request, historyEntry);
-      recorder.settle(historyEntry, { type: "result", value: answered.value });
-      return answered.rpc;
+      answered = await answer(request, historyEntry);
     } catch (caught) {
-      const error = withRetryHint(caught, historyEntry, retryCount);
-      recorder.settle(historyEntry, outcomeOf(historyEntry, error));
+      // Anything that isn't an answer or one of the mock's errors is a bug in
+      // the mock: thrown as is, viem would retry it with backoff.
+      const error = withRetryHint(
+        isAnswer(caught) ? caught : asMockError(caught),
+        historyEntry,
+        retryCount,
+      );
+      const outcome = outcomeOf(historyEntry, error);
       // Recorded because callers can swallow these: app code with a fallback,
       // or viem's multicall turning a failed batch into per-call failures.
-      if (error instanceof MockNotFoundError || error instanceof MockResolverError)
-        recorder.markUnhandled(request, error);
+      // First, so a `debug` function that throws in `settle` can't skip it.
+      if (outcome.type === "unhandled") recorder.markUnhandled(request, outcome.error);
+      recorder.settle(historyEntry, outcome);
       throw error;
     }
+    // Outside the try: a `debug` function that throws here is the user's, not the answer's.
+    recorder.settle(historyEntry, { type: "result", value: answered.value });
+    return answered.rpc;
   }
 
   async function answer(
@@ -104,7 +114,7 @@ export function createRequestHandler({
         });
         if (answered) return await answered;
         throw new MockNotFoundError(`RPC method "${method}" is not mocked.`, {
-          details: `Mock it with mock.method("${method}", …).returns(…).`,
+          metaMessages: [`Mock it with mock.method("${method}", …).returns(…).`],
         });
       }
     }
@@ -120,7 +130,8 @@ export function createRequestHandler({
     const hint = retryHint(recorder.view.faultRetried(historyEntry), retryCount);
     if (hint === undefined) return error;
     return new MockNotFoundError(error.shortMessage, {
-      details: error.details === "" ? hint : `${error.details}\n${hint}`,
+      metaMessages: [...(error.metaMessages ?? []), hint],
+      cause: error.cause instanceof Error ? error.cause : undefined,
     });
   }
 

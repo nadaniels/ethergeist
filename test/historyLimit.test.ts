@@ -2,7 +2,7 @@ import { createPublicClient, erc20Abi, parseAbi } from "viem";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import { expectCause, hintsOf, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = testAddress("alice");
@@ -154,7 +154,7 @@ describe("historyLimit", () => {
       ),
       MockNotFoundError,
     );
-    expect(error.details).toContain("This is viem retrying after a `.once()`/`.times(n)` fault");
+    expect(hintsOf(error)).toContain("This is viem retrying after a `.once()`/`.times(n)` fault");
     expect(mock.formatHistory()).toContain("#2 eth_call (retry)");
   });
 

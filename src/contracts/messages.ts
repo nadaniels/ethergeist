@@ -48,7 +48,7 @@ export function missError(
       : `No mocks registered for "${call.functionName}".`;
   return new MockNotFoundError(
     `No ${what} for ${formatCall(call.functionName, call.args)} on ${label}.`,
-    { details: lines.length > 0 ? `Registered:\n${lines.join("\n")}` : none },
+    { metaMessages: lines.length > 0 ? ["Registered:", ...lines] : [none] },
   );
 }
 

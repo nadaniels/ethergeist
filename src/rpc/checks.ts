@@ -1,6 +1,7 @@
 import { type FormatContext, formatRecent } from "../history/format.js";
 import type { Recorder } from "../history/recorder.js";
 import type { UnhandledRequest } from "../history/types.js";
+import { MockCheckError, MockSetupError } from "../shared/errors.js";
 import type { RecordList } from "../shared/records.js";
 import type { Checkpoints } from "./checkpoints.js";
 /** `assertNoUnhandled()`'s message, if any request went unanswered. */
@@ -44,7 +45,7 @@ export function createChecks({
 }) {
   const historyOnFailure = given ?? 10;
   if (historyOnFailure !== false && (!Number.isInteger(historyOnFailure) || historyOnFailure < 0))
-    throw new RangeError(
+    throw new MockSetupError(
       `historyOnFailure takes a count of requests or false; got ${String(historyOnFailure)}.`,
     );
 
@@ -58,7 +59,9 @@ export function createChecks({
       historyOnFailure === false || historyOnFailure === 0
         ? undefined
         : formatRecent(recorder.view, historyOnFailure, formatContext);
-    const error = new Error(recent === undefined ? message : `${message}\n\n${recent}`);
+    const error = new MockCheckError(message, {
+      metaMessages: recent?.split("\n"),
+    });
     // Not every engine has it (Node's types say it's always there).
     if ("captureStackTrace" in Error) Error.captureStackTrace(error, check);
     return error;
@@ -87,7 +90,7 @@ export function createChecks({
 
     function restore(options: MockRestoreOptions = {}) {
       if (!saved.valid)
-        throw new Error(
+        throw new MockSetupError(
           "This checkpoint is no longer valid: an earlier checkpoint was restored, " +
             "or reset() was called, after it was taken.",
         );

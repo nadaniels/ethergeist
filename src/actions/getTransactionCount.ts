@@ -1,6 +1,7 @@
 import { hexToNumber, isHex, numberToHex } from "viem";
 
 import { formatValue } from "../mocking/format.js";
+import { MockSetupError } from "../shared/errors.js";
 import { decodeAddressAtBlock, pinAddress } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { TransactionCountCall } from "./types.js";
@@ -16,7 +17,7 @@ export const getTransactionCount = ({
   zero: 0,
   encode(value) {
     if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
-      throw new TypeError(
+      throw new MockSetupError(
         `A transaction count must be a whole number, zero or more; got ${formatValue(value)}.`,
       );
     return numberToHex(value);

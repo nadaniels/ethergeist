@@ -2,6 +2,7 @@ import { formatTransactionReceipt, isHash } from "viem";
 
 import { hashParam } from "../chain/params.js";
 import { completeReceipt, toRpcReceipt } from "../chain/receipts.js";
+import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ReceiptCall } from "./types.js";
@@ -22,7 +23,7 @@ export const getTransactionReceipt = ({
   encode(value, call) {
     if (value === null) return null;
     if (!isPlainObject(value))
-      throw new TypeError(`A receipt must be an object or null; got ${typeof value}.`);
+      throw new MockSetupError(`A receipt must be an object or null; got ${typeof value}.`);
     return toRpcReceipt(
       completeReceipt(value, {
         hash: call?.hash,

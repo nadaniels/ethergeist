@@ -3,13 +3,14 @@ import { base } from "viem/chains";
 import { describe, expect, expectTypeOf, test } from "vite-plus/test";
 
 import {
+  MockSetupError,
   type MockHistoryEntry,
   MockNotFoundError,
   MockResolverError,
   createMockRpc,
   testAddress,
 } from "../src/index.js";
-import { rejectionOf } from "./utils.js";
+import { findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -388,6 +389,25 @@ describe("debug", () => {
     }
     expect(logged).toEqual([`#1 eth_chainId → 1`]);
   });
+  test("a function that throws fails the request once, as setup, not as the mock's bug", async () => {
+    const mock = createMockRpc({
+      debug: () => {
+        throw new Error("boom");
+      },
+    });
+
+    const error = await rejectionOf(mock.publicClient().getChainId());
+
+    expect(findCause(error, MockSetupError)?.shortMessage).toBe("The debug function threw: boom");
+    expect(mock.history.map((entry) => entry.outcome.type)).toEqual(["result"]);
+    expect(mock.unhandled).toEqual([]);
+
+    // A request it couldn't answer is still counted.
+    await rejectionOf(mock.publicClient().getBlockTransactionCount());
+    expect(mock.unhandled.map(({ method }) => method)).toEqual([
+      "eth_getBlockTransactionCountByNumber",
+    ]);
+  });
 });
 
 function setupWith(historyOnFailure?: number | false) {
@@ -472,7 +492,7 @@ describe("historyOnFailure", () => {
         off.mock.assertNoUnhandled();
       }),
     ).not.toContain("Requests");
-    expect(() => createMockRpc({ historyOnFailure: -1 })).toThrow(RangeError);
+    expect(() => createMockRpc({ historyOnFailure: -1 })).toThrow(MockSetupError);
   });
 
   test("0 leaves it out, as false does", async () => {

@@ -26,6 +26,11 @@ export function expectCause<error>(error: unknown, type: ErrorClass<error>): err
   return found;
 }
 
+/** A mock error's hint lines, as its message shows them under the short message. */
+export function hintsOf(error: { metaMessages?: string[] | undefined } | undefined): string {
+  return (error?.metaMessages ?? []).join("\n");
+}
+
 /** The error of a `client.multicall` result that should have failed. */
 export function failureOf(
   result: { status: "success" | "failure"; error?: Error | undefined } | undefined,

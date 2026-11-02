@@ -14,6 +14,7 @@ import {
   zeroAddress,
 } from "viem";
 
+import { MockSetupError } from "../shared/errors.js";
 import { nodeAddress } from "../shared/values.js";
 import { blockHash } from "./blocks.js";
 import { type Fees, blobBaseFee } from "./fees.js";
@@ -147,7 +148,7 @@ function assertTransaction(transaction: TransactionFields): TransactionType {
   const own = typeFields[type];
   // Untyped callers can pass any type.
   if (own === undefined)
-    throw new TypeError(
+    throw new MockSetupError(
       `Unknown transaction type "${type}"; types: ${Object.keys(typeFields).join(", ")}.`,
     );
   for (const field of Object.keys(transaction)) {
@@ -155,7 +156,7 @@ function assertTransaction(transaction: TransactionFields): TransactionType {
     const types = Object.entries(typeFields)
       .filter(([, fields]) => fields.includes(field))
       .map(([name]) => name);
-    throw new TypeError(
+    throw new MockSetupError(
       types.length === 0
         ? `A transaction has no field "${field}".`
         : `An ${type} transaction has no ${field}: set \`type\` to one that has it (${types.join(", ")}).`,
@@ -165,13 +166,13 @@ function assertTransaction(transaction: TransactionFields): TransactionType {
   const pendingFields = [hash, transactionIndex].filter((field) => field === null).length;
   if (blockNumber === null) {
     if (pendingFields < 2 && (hash !== undefined || transactionIndex !== undefined))
-      throw new TypeError(
+      throw new MockSetupError(
         "A pending transaction (blockNumber: null) has a null blockHash and transactionIndex.",
       );
     if (blockTimestamp !== undefined)
-      throw new TypeError("A pending transaction (blockNumber: null) has no blockTimestamp.");
+      throw new MockSetupError("A pending transaction (blockNumber: null) has no blockTimestamp.");
   } else if (pendingFields > 0) {
-    throw new TypeError(
+    throw new MockSetupError(
       "Only a pending transaction has a null blockHash or transactionIndex: set blockNumber: null.",
     );
   }

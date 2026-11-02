@@ -1,3 +1,4 @@
+import { MockSetupError } from "../shared/errors.js";
 import type { RecordLimit } from "../shared/records.js";
 
 /** How many entries each record keeps when `historyLimit` isn't given. */
@@ -14,12 +15,12 @@ export function createRecordLimit(
   warn: (message: string) => void = console.warn,
 ): RecordLimit {
   if (historyLimit === 0)
-    throw new RangeError(
+    throw new MockSetupError(
       "historyLimit keeps at least 1 entry per record; use 1 for the least memory, " +
         "or Infinity to keep them all.",
     );
   if (historyLimit !== undefined && historyLimit !== Infinity && !isPositiveInteger(historyLimit))
-    throw new RangeError(
+    throw new MockSetupError(
       `historyLimit takes a positive whole number or Infinity; got ${String(historyLimit)}.`,
     );
   if (historyLimit !== undefined) return { limit: historyLimit, onDrop() {} };

@@ -9,7 +9,7 @@ import {
 import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
+import { MockNotFoundError, MockSetupError, createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -283,5 +283,31 @@ describe("malformed params", () => {
     );
     expect(error).toBeInstanceOf(InvalidParamsRpcError);
     expect(mock.history).toHaveLength(1);
+  });
+});
+
+describe("options", () => {
+  // Typed, but JavaScript callers (or a cast) can pass anything: without a
+  // check, the first block fails inside a request instead.
+  test.each([
+    [{ blockNumber: 5 }, "blockNumber must be a bigint; got number."],
+    [{ blockNumber: -1n }, "blockNumber can't be negative; got -1."],
+    [{ timestamp: 5 }, "timestamp must be a bigint; got number."],
+    [{ timestamp: -1n }, "timestamp can't be negative; got -1."],
+    [
+      { chain: { ...mainnet, blockTime: "x" } },
+      "chain.blockTime must be a whole number of milliseconds, zero or more; got string.",
+    ],
+    [
+      { chain: { ...mainnet, blockTime: 1.5 } },
+      "chain.blockTime must be a whole number of milliseconds, zero or more; got 1.5.",
+    ],
+    [
+      { chain: { ...mainnet, blockTime: -1 } },
+      "chain.blockTime must be a whole number of milliseconds, zero or more; got -1.",
+    ],
+  ])("%o is refused when the mock is created", (parameters, message) => {
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what a JavaScript caller can pass
+    expect(() => createMockRpc(parameters as never)).toThrow(new MockSetupError(message));
   });
 });

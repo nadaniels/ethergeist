@@ -2,7 +2,7 @@ import { type BlockTag, getAddress, hexToBigInt, isHex, numberToHex } from "viem
 
 import { addressParam, quantityParam } from "../chain/params.js";
 import { formatValue } from "../mocking/format.js";
-import { invalidParams } from "../shared/errors.js";
+import { invalidParams, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { AddressAtBlockCall } from "./types.js";
 
@@ -10,7 +10,7 @@ import type { AddressAtBlockCall } from "./types.js";
 export function encodeQuantity(what: string) {
   return (value: unknown) => {
     if (typeof value !== "bigint")
-      throw new TypeError(`${what} must be a bigint; got ${typeof value}.`);
+      throw new MockSetupError(`${what} must be a bigint; got ${typeof value}.`);
     return numberToHex(value);
   };
 }

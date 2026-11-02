@@ -1,4 +1,5 @@
 import type { MockFault } from "../mocking/types.js";
+import { MockSetupError } from "../shared/errors.js";
 
 export type FailRequestsOptions = {
   /** Only fail requests for these JSON-RPC methods. Defaults to every method. */
@@ -25,7 +26,7 @@ type ActiveFault = {
 function createActiveFault(fault: MockFault, options: FailRequestsOptions): ActiveFault {
   const { method, times = Infinity } = options;
   if (times !== Infinity && !(Number.isInteger(times) && times > 0))
-    throw new RangeError(`\`times\` takes a positive integer; got ${times}.`);
+    throw new MockSetupError(`\`times\` takes a positive integer; got ${times}.`);
   return {
     fault,
     methods: typeof method === "string" ? [method] : method,

@@ -2,6 +2,7 @@ import { type RpcBlock, formatBlock, isHex } from "viem";
 
 import { numberOfBlockHash, toRpcBlock } from "../chain/blocks.js";
 import type { ChainState } from "../chain/state.js";
+import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { blockAt } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
@@ -34,7 +35,7 @@ export const getBlock = ({
   encode(value, call) {
     if (value === null) return null;
     if (!isPlainObject(value))
-      throw new TypeError(`A block must be an object or null; got ${typeof value}.`);
+      throw new MockSetupError(`A block must be an object or null; got ${typeof value}.`);
     const generated = state.generateBlock(call?.blockNumber ?? state.blockNumber);
     const blockHash = call?.blockHash;
     // A pinned, unknown hash is the block's own hash.

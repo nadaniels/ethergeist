@@ -181,7 +181,7 @@ describe("emit", () => {
         }),
       ),
     ).toThrow(
-      "emit() places logs itself, but this one already has a position (e.g. from mock.buildLog()). " +
+      "emit() places logs itself, but this one already has a position (e.g. from mock.buildLog()).\n\n" +
         "Pass a log from contract.events, and set its block or transaction in emit()'s options.",
     );
     expect(() => mock.emit(other.events.Transfer({ from: alice, to: bob }))).toThrow(

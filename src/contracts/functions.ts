@@ -13,6 +13,7 @@ import { formatCall } from "../mocking/format.js";
 import { isMatcher, partialMatcher } from "../mocking/matchers.js";
 import { findMatcher } from "../mocking/matching.js";
 import { arrayElement } from "../shared/abiValues.js";
+import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 
 /** Where a contract's mocks go: `read`, `simulate`, or `estimateGas`. */
@@ -49,11 +50,12 @@ export function createFunctions(abi: Abi) {
   function notInNamespaceError(namespace: Namespace, functionName: string) {
     const other = namespace === "read" ? "simulate" : "read";
     const elsewhere = functionsIn[other].find((abiItem) => abiItem.name === functionName);
-    if (!elsewhere) return new Error(`No function "${functionName}" on this contract's ABI.`);
+    if (!elsewhere)
+      return new MockSetupError(`No function "${functionName}" on this contract's ABI.`);
     const kind = `"${functionName}" is a ${elsewhere.stateMutability} function`;
     return namespace === "estimateGas"
-      ? new Error(`${kind}; viem estimates gas only for nonpayable and payable functions.`)
-      : new Error(`${kind}; register it under ${other}, not ${namespace}.`);
+      ? new MockSetupError(`${kind}; viem estimates gas only for nonpayable and payable functions.`)
+      : new MockSetupError(`${kind}; register it under ${other}, not ${namespace}.`);
   }
 
   /**
@@ -72,9 +74,9 @@ export function createFunctions(abi: Abi) {
     const overloads = functionsIn[namespace].filter((abiItem) => abiItem.name === functionName);
     // viem would pick the first overload; "any args" can't say which one.
     if (args === undefined && overloads.length > 1)
-      throw new Error(
-        `Ambiguous overload for ${functionName}(*): pin args to choose one, e.g. ` +
-          `[match.any()]:\n${listSignatures(overloads)}`,
+      throw new MockSetupError(
+        `Ambiguous overload for ${functionName}(*): pin args to choose one, e.g. [match.any()].`,
+        { metaMessages: ["Overloads:", listSignatures(overloads)] },
       );
     if (overloads.length < 2 || findMatcher(args) === undefined) {
       const abiItem = getAbiItem({ abi: functionsIn[namespace], name: functionName, args });
@@ -92,10 +94,16 @@ export function createFunctions(abi: Abi) {
     );
     if (fits.length === 1) return fits[0]!;
     const call = formatCall(functionName, args);
-    throw new Error(
+    throw new MockSetupError(
       fits.length === 0
-        ? `No overload of "${functionName}" takes ${call}. Overloads:\n${listSignatures(overloads)}`
-        : `Ambiguous overload for ${call}: pin an arg that tells them apart. It fits:\n${listSignatures(fits)}`,
+        ? `No overload of "${functionName}" takes ${call}.`
+        : `Ambiguous overload for ${call}: pin an arg that tells them apart.`,
+      {
+        metaMessages:
+          fits.length === 0
+            ? ["Overloads:", listSignatures(overloads)]
+            : ["It fits:", listSignatures(fits)],
+      },
     );
   }
 
