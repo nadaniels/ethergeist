@@ -34,7 +34,7 @@ export type MockOutcome =
 export type FaultOutcome = Extract<MockOutcome, { type: "fault" }>;
 
 /** A revert's data, decoded against `abi` and the built-in errors where possible. */
-export function revertOutcome(abi: Abi, data: Hex): Extract<MockOutcome, { type: "revert" }> {
+function revertOutcome(abi: Abi, data: Hex): Extract<MockOutcome, { type: "revert" }> {
   try {
     const { errorName, args } = decodeErrorResult({ abi: [...abi, ...builtinErrors], data });
     if (errorName === "Error" && typeof args[0] === "string")

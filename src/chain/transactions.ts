@@ -190,7 +190,7 @@ const quantityOf = (value: Hex | undefined) =>
  * The signature is zero, and the rest is zero or empty. Addresses are
  * validated, and lowercase as nodes send them.
  */
-export function toRpcTransaction(
+function toRpcTransaction(
   transaction: TransactionFields,
   context: TransactionContext,
 ): Record<string, unknown> {

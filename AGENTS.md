@@ -34,6 +34,13 @@ release. Add a tool name to select part of the graph. For example, run
 
 Read `docs/architecture.md` before changing `src/`: the layers, naming, and how to add an action or a piece of state.
 
+## Checks
+
+- Run `vp check`, `vp run knip` and `vp run test` before handing a change over. The pre-commit hook runs `vp staged` and then `vp run knip`, so a commit fails if Knip isn't satisfied.
+- `vp run knip` runs [Knip](https://knip.dev) twice: the default mode (all code, tests included), then `--production --strict` (only what ships: `src/` minus colocated tests, with dependencies checked against what ships). Config is in `knip.json`.
+- Fix findings rather than configure around them: remove an `export` nothing outside its file uses, delete an unused file, add or remove the dependency. A file that a tool or a person runs directly is an `entry` in `knip.json`.
+- An export only a unit test needs gets `@internal` in its doc comment, which production mode skips. Don't export a value just so a test can read it back: a test should pin documented values as literals, or it can't catch them changing.
+
 ## Addresses
 
 - Normalize and compare addresses with viem's `getAddress` (checksummed) wherever they need to be valid: registration, lookups, address-keyed sets and maps. `getAddress` validates the input, so a malformed address fails at registration instead of silently never matching, and it accepts any casing.
@@ -49,7 +56,7 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 
 Any change beyond a trivial one (anything that changes behavior, types, matching, the engines or the public API; not a typo, a rename or a one-line doc fix) gets an independent review before it's reported as done:
 
-1. **When:** once the change is green (`vp check` clean, `vp run test` passing), before handing it over to commit.
+1. **When:** once the change is green (`vp check` and `vp run knip` clean, `vp run test` passing), before handing it over to commit.
 2. **Who:** a separate agent, briefed from scratch, so its read isn't anchored on the author's. It's read-only on the repo; probes go in a scratch directory outside the repo.
 3. **The brief:** what the change is meant to do, the constraints and invariants it must keep (e.g. "predicates run only while a mock is in contention"), where the diff is (`git diff`), and `docs/architecture.md`. Give it the code and the intent, not your conclusions about it. Ask for:
    - **correctness:** is everything it claims true, across the tricky cases (list the ones you can think of, and ask for more);

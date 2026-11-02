@@ -1,7 +1,7 @@
 import type { RecordLimit } from "../shared/records.js";
 
 /** How many entries each record keeps when `historyLimit` isn't given. */
-export const defaultHistoryLimit = 1000;
+const defaultHistoryLimit = 1000;
 
 /**
  * Each record's limit, from `createMockRpc()`'s `historyLimit`. Left out, it's

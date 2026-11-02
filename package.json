@@ -10,10 +10,12 @@
   "scripts": {
     "test": "vp test run --typecheck",
     "typecheck": "tsc",
+    "knip": "knip && knip --production --strict",
     "prepare": "vp config"
   },
   "devDependencies": {
     "@types/node": "^26.6.5",
+    "knip": "^6.44.1",
     "ox": "0.14.59",
     "typescript": "^7.0.2",
     "viem": "^2.57.12",

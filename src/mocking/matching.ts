@@ -178,6 +178,8 @@ export type MatchOptions = {
  * Deep equality where hex strings (addresses, bytes) compare case-insensitively
  * and equal integers match as either `number` or `bigint`. Objects match on the
  * fields `expected` has. `match.*` matchers in `expected` match as they say.
+ *
+ * @internal Exported for its unit test.
  */
 export function isMatch(expected: unknown, actual: unknown, options: MatchOptions = {}): boolean {
   if (isMatcher(expected)) {

@@ -66,7 +66,7 @@ const blockTags = new Set<unknown>(["latest", "earliest", "pending", "safe", "fi
 const isBlockTag = (value: unknown): value is BlockTag => blockTags.has(value);
 
 /** An address param, checksummed; refused as invalid params if it isn't one. */
-export function addressParam(value: unknown): Address {
+function addressParam(value: unknown): Address {
   if (typeof value !== "string" || !isAddress(value, { strict: false }))
     throw invalidParams(`expected an address; got ${formatValue(value)}`);
   return getAddress(value);

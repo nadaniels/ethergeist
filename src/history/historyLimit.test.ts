@@ -1,9 +1,9 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import { createRecordLimit, defaultHistoryLimit } from "./historyLimit.js";
+import { createRecordLimit } from "./historyLimit.js";
 
 describe("createRecordLimit()", () => {
-  test("defaults to defaultHistoryLimit, warning on the first drop only", () => {
+  test("defaults to 1000, warning on the first drop only", () => {
     const warnings: string[] = [];
     const { limit, onDrop } = createRecordLimit(undefined, (message) => {
       warnings.push(message);
@@ -11,7 +11,7 @@ describe("createRecordLimit()", () => {
     onDrop();
     onDrop();
 
-    expect(limit).toBe(defaultHistoryLimit);
+    expect(limit).toBe(1000);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain("createMockRpc({ historyLimit })");
   });
