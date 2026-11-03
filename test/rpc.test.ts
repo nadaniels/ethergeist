@@ -111,6 +111,71 @@ describe("rpc.calls", () => {
     ]);
   });
 
+  test("holds every namespace's calls, each tagged with its namespace, in order", async () => {
+    const { mock, client, decimals } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const dai = mock.contract({ abi: erc20Abi, address: DAI });
+    usdc.read.decimals().returns(6);
+    usdc.simulate.transfer().returns(true);
+    usdc.estimateGas.transfer().returns(65_000n);
+    dai.read.decimals().returns(18);
+    const transfer = { abi: erc20Abi, address: USDC, functionName: "transfer" } as const;
+
+    await decimals(USDC);
+    await client.simulateContract({ ...transfer, args: [DAI, 1n], account: alice });
+    await decimals(DAI);
+    await client.estimateContractGas({ ...transfer, args: [DAI, 2n], account: alice });
+
+    expect(mock.calls.map((c) => [c.namespace, c.address, c.functionName])).toEqual([
+      ["read", USDC, "decimals"],
+      ["simulate", USDC, "transfer"],
+      ["read", DAI, "decimals"],
+      ["estimateGas", USDC, "transfer"],
+    ]);
+    expect(usdc.calls.map((c) => c.namespace)).toEqual(["read", "simulate", "estimateGas"]);
+    expect(usdc.calls[2]).toEqual({
+      namespace: "estimateGas",
+      address: USDC,
+      functionName: "transfer",
+      args: [DAI, 2n],
+      from: alice,
+      value: 0n,
+      blockNumber: 100n,
+      batch: undefined,
+    });
+    // A function's own list is bare: its namespace is where it's read from.
+    expect(usdc.estimateGas.transfer.calls).toEqual([
+      {
+        address: USDC,
+        functionName: "transfer",
+        args: [DAI, 2n],
+        from: alice,
+        value: 0n,
+        blockNumber: 100n,
+        batch: undefined,
+      },
+    ]);
+    expect(usdc.simulate.transfer.calls.map((c) => c.args)).toEqual([[DAI, 1n]]);
+  });
+
+  test("tags multicall sub-calls, keeping their batch", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC }).simulate.approve().returns(true);
+    mock.contract({ abi: erc20Abi, address: DAI }).read.decimals().returns(18);
+
+    await client.multicall({
+      contracts: [
+        { abi: erc20Abi, address: DAI, functionName: "decimals" },
+        { abi: erc20Abi, address: USDC, functionName: "approve", args: [DAI, 1n] },
+      ],
+    });
+
+    expect(mock.calls).toMatchObject([
+      { namespace: "read", address: DAI, batch: { id: 1, index: 0 } },
+      { namespace: "simulate", address: USDC, batch: { id: 1, index: 1 } },
+    ]);
+  });
+
   test("contract.calls carries the address too", async () => {
     const { mock, decimals } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });

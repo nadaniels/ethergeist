@@ -13,8 +13,7 @@ import { zeroResult } from "../mocking/zeroResult.js";
 import { builtinErrors, fillZeros } from "../shared/abiValues.js";
 import { MockRevertError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-import type { Namespace } from "./functions.js";
-import type { RevertSpec } from "./types.js";
+import type { MockNamespace, RevertSpec } from "./types.js";
 
 /**
  * Turns what a resolver returned into the value viem's encoder expects: named
@@ -32,7 +31,7 @@ function normalizeResult(outputs: readonly AbiParameter[], value: unknown): unkn
 
 /** Answers a contract call `eth_call`'s way, or an estimate as gas, as a JSON-RPC quantity. */
 export function encodeAnswer(
-  { namespace, abiItem }: { namespace: Namespace; abiItem: AbiFunction },
+  { namespace, abiItem }: { namespace: MockNamespace; abiItem: AbiFunction },
   value: unknown,
 ): Hex {
   return namespace === "estimateGas" ? encodeGas(value) : encodeResult(abiItem, value);

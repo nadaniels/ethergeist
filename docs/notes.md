@@ -29,9 +29,13 @@ features land; tick them off as pages get written.
       `simulate`, for `estimateContractGas` and a write's prepare). A
       `simulate` mock doesn't answer estimates: a node runs them
       separately, and the mock doesn't derive one answer from another.
-      Estimates answer gas (`.returns(65_000n)`), revert like `simulate`,
-      and are their own calls: `estimateGas.transfer.calls`, not
-      `contract.calls`.
+      Estimates answer gas (`.returns(65_000n)`) and revert like `simulate`.
+      Every call of every namespace is in `contract.calls` and `mock.calls`,
+      in order, each a copy tagged with its `namespace` (`"read"`,
+      `"simulate"`, `"estimateGas"`), e.g.
+      `usdc.calls.map((call) => call.namespace)`; a function's list is its
+      own and untagged: `estimateGas.transfer.calls` holds only its
+      estimates, so a `toEqual` on it needs no `namespace`.
 - [ ] Test values: `testAddress("alice")` and `testHash("swap-1")`, stable
       and realistic (checksummed, full-width). Say why not random (faker):
       random values rarely find bugs fixed ones miss, and they make messages
@@ -542,7 +546,7 @@ features land; tick them off as pages get written.
       Jest has no equivalent hook; print in `afterEach` when needed.
 - [ ] What history shows: `(retry)` after a fault, named outputs by name
       (the value stays the tuple viem returns), `(no outputs)`, and
-      `abiItem` on each contract call record.
+      `namespace` and `abiItem` on each contract call record.
 - [ ] `historyLimit` (default 1,000 per list, `Infinity` for no limit):
       every record (`history`, `requests`, `calls`, `unhandled`, each
       action's and function's `.calls`) keeps its last N; each function and

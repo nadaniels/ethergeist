@@ -109,8 +109,7 @@ export function createRequestHandler({
           if (historyEntry.type !== "action") return;
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the table for historyEntry.action decoded it
           historyEntry.call = report.call as typeof historyEntry.call;
-          if (historyEntry.action === "estimateGas" && report.contract)
-            historyEntry.contract = report.contract;
+          if (report.contract) historyEntry.contract = report.contract;
           onAction(report.outcome);
         });
         if (answered) return await answered;

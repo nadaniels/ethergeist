@@ -48,17 +48,12 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
   /** Multicall batch ids, which count up across requests. */
   let batchCount = 0;
 
-  function dispatch(
-    to: Address,
-    data: Hex,
-    context: CallContext,
-    report: Reporter = {},
-  ): Promise<Hex> {
+  function dispatch(to: Address, data: Hex, context: CallContext, report: Reporter): Promise<Hex> {
     // Checksummed once here; lookups below compare checksummed addresses.
     const target = getAddress(to);
     if (target === state.multicallAddress) {
       const batchId = ++batchCount;
-      report.batch?.(batchId);
+      report.batch(batchId);
       return resolveMulticall(data, {
         address: state.multicallAddress,
         batchId,
@@ -70,11 +65,19 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
 
     const contract = registry.contractAt(target);
     if (contract)
-      return contract.resolve(data, context, (record) => report.call?.(record, context));
-    const unknown = { address: target, name: undefined, abiItem: undefined, call: undefined };
+      return contract.resolve(data, context, (record) => {
+        report.call(record, context);
+      });
+    const unknown = {
+      address: target,
+      name: undefined,
+      namespace: undefined,
+      abiItem: undefined,
+      call: undefined,
+    };
     // A real node answers a call to an address without code with empty data.
     if (registry.isEmpty(target)) {
-      report.call?.({ ...unknown, outcome: { type: "result", value: "0x" } }, context);
+      report.call({ ...unknown, outcome: { type: "result", value: "0x" } }, context);
       return Promise.resolve("0x");
     }
     const error = new MockNotFoundError(`No mocked contract at ${to}.`, {
@@ -83,7 +86,7 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
         "Register it with contract(), or mark it empty() for an address without code.",
       ],
     });
-    report.call?.({ ...unknown, outcome: errorOutcome(error) }, context);
+    report.call({ ...unknown, outcome: errorOutcome(error) }, context);
     throw error;
   }
 

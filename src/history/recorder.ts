@@ -10,7 +10,7 @@ import {
 } from "viem";
 
 import type { ActionName } from "../actions/typedActions.js";
-import type { MockCall, Reporter } from "../contracts/types.js";
+import type { Reporter, MockTaggedCall } from "../contracts/types.js";
 import { type FaultOutcome, failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import {
   type MockError,
@@ -27,33 +27,29 @@ import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./types.js"
 export function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
   // A contract's record already decoded a revert against the contract's ABI.
   const record =
-    entry.type === "call"
-      ? entry.call
-      : entry.type === "action" && entry.action === "estimateGas"
-        ? entry.contract
-        : undefined;
+    entry.type === "call" ? entry.call : entry.type === "action" ? entry.contract : undefined;
   if (error instanceof MockRevertError && record?.outcome.type === "revert") return record.outcome;
   return failureOutcome(error);
 }
 
 /** Where contract calls report their records: the entry's call, or its batch's slots. */
 export function reporterFor(entry: MockHistoryEntry): Reporter {
-  if (entry.type === "call")
-    return {
-      call(record) {
-        entry.call = record;
-      },
-    };
   if (entry.type === "multicall")
     return {
       batch(id) {
         entry.batchId = id;
       },
-      call(record, context) {
-        if (context.batch) entry.calls[context.batch.index] = record;
+      call(record, { batch }) {
+        if (batch) entry.calls[batch.index] = record;
       },
     };
-  return {};
+  return {
+    // Only a multicall's request is a batch.
+    batch() {},
+    call(record) {
+      if (entry.type === "call") entry.call = record;
+    },
+  };
 }
 
 /** The answer in viem's types, for history. */
@@ -93,7 +89,7 @@ export function createRecorder({
 }) {
   const requests = createRecordList<RpcRequest>(recordLimit);
   const history = createRecordList<MockHistoryEntry>(recordLimit);
-  const calls = createRecordList<MockCall>(recordLimit);
+  const calls = createRecordList<MockTaggedCall>(recordLimit);
   const unhandled = createRecordList<UnhandledRequest>(recordLimit);
   // Kept beside the entries, not in them, so they stay as users see them.
   // A number is good until the next clear, which starts them over.
@@ -187,8 +183,8 @@ export function createRecorder({
     markUnhandled(request: RpcRequest, error: MockError) {
       unhandled.add({ ...request, error });
     },
-    /** Records a decoded contract call, from any contract. */
-    onCall: (call: MockCall) => {
+    /** Records a decoded contract call, tagged, from any contract. */
+    onCall: (call: MockTaggedCall) => {
       calls.add(call);
     },
     clearCalls() {

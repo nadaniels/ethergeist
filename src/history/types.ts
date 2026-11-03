@@ -20,12 +20,12 @@ export type MockHistoryEntry =
       [action in keyof ActionCalls]: EntryBase<"action"> & {
         action: action;
         call: ActionCalls[action] | undefined;
-      } & (action extends "estimateGas"
-          ? {
-              /** The registered contract's function estimated, decoded, if `to` is one. */
-              contract?: MockCallRecord;
-            }
-          : unknown);
+        /**
+         * The registered contract's record of the call, when the contract had
+         * a turn at answering it: an estimate whose `to` is one.
+         */
+        contract?: MockCallRecord;
+      };
     }[keyof ActionCalls]
   | EntryBase<"method">
   | EntryBase<"builtIn">;

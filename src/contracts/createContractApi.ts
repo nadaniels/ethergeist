@@ -7,8 +7,7 @@ import {
   encodeEventLog,
 } from "../logs/events.js";
 import { withCalls } from "../mocking/handlers.js";
-import type { Namespace } from "./functions.js";
-import type { MockCall, MockContract } from "./types.js";
+import type { MockCall, MockContract, MockNamespace, MockTaggedCall } from "./types.js";
 
 /**
  * A contract's public API, the `MockContract` mocks are registered on: its
@@ -30,21 +29,21 @@ export function createContractApi<const abi extends Abi>({
   address: Address;
   name: string | undefined;
   functions: {
-    functionsIn: Record<Namespace, readonly AbiFunction[]>;
-    notInNamespaceError: (namespace: Namespace, functionName: string) => Error;
+    functionsIn: Record<MockNamespace, readonly AbiFunction[]>;
+    notInNamespaceError: (namespace: MockNamespace, functionName: string) => Error;
   };
-  register: (namespace: Namespace, functionName: string, args?: readonly unknown[]) => unknown;
-  /** The contract's `eth_call`s, as they arrive. */
-  calls: () => readonly MockCall[];
+  register: (namespace: MockNamespace, functionName: string, args?: readonly unknown[]) => unknown;
+  /** The contract's calls in every namespace, tagged, as they arrive. */
+  calls: () => readonly MockTaggedCall[];
   /** The calls a namespace's function received, every overload's. */
-  callsTo: (namespace: Namespace, functionName: string) => MockCall[];
+  callsTo: (namespace: MockNamespace, functionName: string) => MockCall[];
   /** Places a transaction's logs in the rpc's log store. */
   emit: (logs: readonly MockEventLog[], options?: EmitOptions) => readonly unknown[];
   /** Throws if the contract was removed. */
   assertAttached: () => void;
 }): MockContract<abi> {
   // Overloads share one entry, as in viem's `getContract`.
-  function buildNamespace(namespace: Namespace) {
+  function buildNamespace(namespace: MockNamespace) {
     const entries: Record<string, unknown> = {};
     for (const { name: functionName } of functionsIn[namespace]) {
       if (functionName in entries) continue;

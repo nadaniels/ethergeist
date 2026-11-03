@@ -348,10 +348,14 @@ describe("contract estimates", () => {
         batch: undefined,
       },
     ]);
-    // Estimates aren't eth_calls.
+    // A function's list is its own: simulate's has none. The contract's has
+    // every namespace's, tagged.
     expect(token.simulate.transfer.calls).toEqual([]);
-    expect(token.calls).toEqual([]);
-    expect(mock.calls).toEqual([]);
+    expect(token.calls.map((call) => [call.namespace, call.functionName])).toEqual([
+      ["estimateGas", "transfer"],
+      ["estimateGas", "mint"],
+    ]);
+    expect(mock.calls).toEqual(token.calls);
   });
 
   test("reverts decode against the contract's ABI, as viem decodes a node's", async () => {
@@ -408,6 +412,9 @@ describe("contract estimates", () => {
     expect(mock.formatHistory()).toBe(
       "#1 eth_estimateGas estimateGas Token.transfer(0x4292…207f, 1n) → 65000n",
     );
+    expect(mock.history[0]).toMatchObject({
+      contract: { namespace: "estimateGas", call: { functionName: "transfer" } },
+    });
   });
 
   test("a write's prepare uses the contract's estimate", async () => {
@@ -480,7 +487,11 @@ describe("estimate precedence", () => {
     );
     expect(mock.unhandled).toHaveLength(1);
     expect(mock.history[1]).toMatchObject({
-      contract: { call: undefined, outcome: { type: "result", value: 60_000n } },
+      contract: {
+        namespace: "estimateGas",
+        call: undefined,
+        outcome: { type: "result", value: 60_000n },
+      },
     });
     expect(mock.formatHistory().split("\n")[1]).toBe(
       "#2 eth_estimateGas estimateGas({ account: 0xa41f…2D9e, to: 0x0dc7…41c6, value: 0n, " +
@@ -488,6 +499,31 @@ describe("estimate precedence", () => {
     );
     // An estimate that didn't decode isn't a call of any function.
     expect(token.calls).toEqual([]);
+  });
+});
+
+describe("contract estimates answered by action mocks", () => {
+  test("are still the contract's calls, tagged, even of a view function", async () => {
+    const { mock, client, token } = tokenSetup();
+    mock.actions.estimateGas({ to: token.address }).returns(30_000n);
+
+    const gas = await client.estimateGas({
+      account: alice,
+      to: token.address,
+      data: encodeFunctionData({ abi: tokenAbi, functionName: "balanceOf", args: [bob] }),
+    });
+
+    expect(gas).toBe(30_000n);
+    expect(token.calls).toMatchObject([
+      { namespace: "estimateGas", functionName: "balanceOf", args: [bob] },
+    ]);
+    expect(mock.history[0]).toMatchObject({
+      contract: {
+        namespace: "estimateGas",
+        call: { functionName: "balanceOf" },
+        outcome: { type: "result", value: 30_000n },
+      },
+    });
   });
 });
 

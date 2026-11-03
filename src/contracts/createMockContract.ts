@@ -25,7 +25,7 @@ import {
 } from "../shared/records.js";
 import { encodeAnswer, createRevertError } from "./answers.js";
 import { createContractApi } from "./createContractApi.js";
-import { type Namespace, createFunctions, type Kind, pinArgs } from "./functions.js";
+import { createFunctions, pinArgs } from "./functions.js";
 import { formatContract, missError, unusedLine } from "./messages.js";
 import type {
   MockCallRecord,
@@ -33,26 +33,30 @@ import type {
   CreateMockContractParameters,
   MockCall,
   MockContract,
+  MockNamespace,
   ResolverContext,
   RevertFn,
   RevertSpec,
+  MockTaggedCall,
 } from "./types.js";
 
 type Context = ResolverContext<Abi, readonly unknown[]>;
 /** What a contract's mock adds to the engine's: which function it's for, and in which namespace. */
-type ContractFunction = { namespace: Namespace; abiItem: AbiFunction; selector: Hex };
+type ContractFunction = { namespace: MockNamespace; abiItem: AbiFunction; selector: Hex };
 type Handler = MockHandler<Context, ContractFunction>;
 
 /**
- * An estimate's turn at a contract, prepared when the estimate arrives: the
- * call is decoded and recorded then, and answered only if it gets its turn.
+ * A contract's turn at an action's call (an estimate of one of its
+ * functions), ahead of the action's own mocks, prepared when the call
+ * arrives: the call is decoded and recorded then, and answered only if it
+ * gets its turn.
  */
-export type ContractEstimate = {
+export type ContractTurn = {
   /** Answers with the best matching mock; `undefined` when none matches. */
   answer(): Promise<Hex> | undefined;
-  /** The error for the estimate when nothing else answers it either; built only then. */
+  /** The error for the call when nothing else answers it either; built only then. */
   miss(): MockNotFoundError;
-  /** The estimated call, for history; its outcome is the contract's, once it answers. */
+  /** The call, in its namespace, for history; its outcome is the contract's, once it answers. */
   record: MockCallRecord;
 };
 
@@ -64,9 +68,9 @@ export type InternalMockContract<abi extends Abi = Abi> = {
   /** Whether this contract is registered at `address`, which must be checksummed. */
   matches(address: Address): boolean;
   /** Answers a call; `report` hears the decoded call and its outcome, however it ends. */
-  resolve(data: Hex, context: CallContext, report?: (record: MockCallRecord) => void): Promise<Hex>;
-  /** Prepares an estimate of `data`: see `ContractEstimate`. */
-  estimate(data: Hex, context: CallContext): ContractEstimate;
+  resolve(data: Hex, context: CallContext, report: (record: MockCallRecord) => void): Promise<Hex>;
+  /** Prepares the contract's turn at an estimate of `data`: see `ContractTurn`. */
+  estimate(data: Hex, context: CallContext): ContractTurn;
   clearCalls(): void;
   /** Mocks other than defaults that haven't answered a call, formatted for messages. */
   unusedMocks(): string[];
@@ -79,8 +83,8 @@ export type InternalMockContract<abi extends Abi = Abi> = {
 export function createMockContract<const abi extends Abi>(
   parameters: CreateMockContractParameters<abi>,
   hooks: {
-    /** Called with every decoded call, so the rpc can keep a log across contracts. */
-    onCall?: (call: MockCall) => void;
+    /** Called with every decoded call, tagged, so the rpc can keep a log across contracts. */
+    onCall?: (call: MockTaggedCall) => void;
     /** Places a transaction's logs in the rpc's log store. */
     emit?: (logs: readonly MockEventLog[], options?: EmitOptions) => readonly unknown[];
     /** How many calls each list keeps: the contract's, and each function's. */
@@ -93,18 +97,17 @@ export function createMockContract<const abi extends Abi>(
   const address = getAddress(parameters.address);
   const label = formatContract(address, name);
   const mocks = createHandlers<Context, ContractFunction>();
-  // Estimates aren't calls: `calls` and `mock.calls` are what `eth_call` asked.
-  const calls = createRecordList<MockCall>(recordLimit);
-  // Each function's calls in a list of its own, by kind and selector, so a
-  // busy function can't push a quiet one's out. Unused mocks find theirs by
+  // Every namespace's calls, tagged, as `contract.calls` and `mock.calls` hold them.
+  const calls = createRecordList<MockTaggedCall>(recordLimit);
+  // Each function's calls in a list of its own, by namespace and selector, so
+  // a busy function can't push a quiet one's out. Unused mocks find theirs by
   // selector; a function's `.calls` merges its overloads' in the order received.
   const callsBySelector = new Map<
-    `${Kind}:${Hex}`,
+    `${MockNamespace}:${Hex}`,
     { functionName: string; list: RecordList<MockCall> }
   >();
   const order = new WeakMap<MockCall, number>();
   let received = 0;
-  const selectorOf = new WeakMap<MockCall, Hex>();
   let detached = false;
   /** Throws if `restore()` or `reset()` removed this contract. */
   function assertAttached() {
@@ -124,7 +127,7 @@ export function createMockContract<const abi extends Abi>(
     createFunctions(abi);
 
   function register(
-    namespace: Namespace,
+    namespace: MockNamespace,
     functionName: string,
     args: readonly unknown[] | undefined,
     /** For defaults: registered on a given overload, and exempt from `assertAllUsed()`. */
@@ -175,45 +178,56 @@ export function createMockContract<const abi extends Abi>(
   async function resolve(
     data: Hex,
     context: CallContext,
-    report?: (record: MockCallRecord) => void,
+    report: (record: MockCallRecord) => void,
   ): Promise<Hex> {
-    const decoded: Decoded = { abiItem: undefined, call: undefined };
+    let decoded: Decoded | undefined;
     const record = (outcome: MockOutcome): MockCallRecord => ({
       address,
       name,
-      abiItem: decoded.abiItem,
-      call: decoded.call,
+      namespace: decoded?.namespace,
+      abiItem: decoded?.abiItem,
+      call: decoded?.call,
       outcome,
     });
     try {
-      const { hex, abiItem } = await answer(data, context, decoded);
+      const { selector, abiItem, call } = decode(data, context);
+      // An `eth_call` is answered in its function's namespace.
+      const namespace = functionsIn.read.includes(abiItem) ? "read" : "simulate";
+      decoded = { namespace, selector, abiItem, call };
+      receive(decoded);
+      const { handler, missed } = match(decoded);
+      if (!handler) throw missError(call, namespace, label, candidates(decoded), missed);
+      const hex = await run(handler, call);
       const value = decodeFunctionResult({ abi: [abiItem], functionName: abiItem.name, data: hex });
-      report?.(record({ type: "result", value }));
+      report(record({ type: "result", value }));
       return hex;
     } catch (error) {
-      report?.(record(failureOutcome(error, abi)));
+      report(record(failureOutcome(error, abi)));
       throw error;
     }
   }
 
-  function estimate(data: Hex, context: CallContext): ContractEstimate {
+  function estimate(data: Hex, context: CallContext): ContractTurn {
     const record: MockCallRecord = {
       address,
       name,
+      namespace: "estimateGas",
       abiItem: undefined,
       call: undefined,
       outcome: { type: "pending" },
     };
-    let call: MockCall;
+    let decoded: Decoded;
     try {
-      call = decode(data, context, "estimate");
+      decoded = { ...decode(data, context), namespace: "estimateGas" };
     } catch (error) {
       if (!(error instanceof MockNotFoundError)) throw error;
       return { answer: () => undefined, miss: () => error, record };
     }
+    receive(decoded);
+    const { abiItem, call } = decoded;
+    record.abiItem = abiItem;
     record.call = call;
-    record.abiItem = functionsBySelector.get(slice(data, 0, 4));
-    const { handler, missed } = match(call, "estimate");
+    const { handler, missed } = match(decoded);
     return {
       answer() {
         if (!handler) return undefined;
@@ -228,56 +242,52 @@ export function createMockContract<const abi extends Abi>(
           },
         );
       },
-      miss: () => missError(call, "estimate", label, candidates(call, "estimate"), missed),
+      miss: () => missError(call, "estimateGas", label, candidates(decoded), missed),
       record,
     };
   }
 
-  /** What a call decoded to, for reporting however it ends. */
-  type Decoded = { abiItem: AbiFunction | undefined; call: MockCall | undefined };
+  /** A call to one of the contract's functions, decoded, and the namespace it's answered in. */
+  type Decoded = { namespace: MockNamespace; selector: Hex; abiItem: AbiFunction; call: MockCall };
 
-  /** Decodes and answers a call, leaving what it decoded in `decoded` for reporting. */
-  async function answer(
-    data: Hex,
-    context: CallContext,
-    decoded: Decoded,
-  ): Promise<{ hex: Hex; abiItem: AbiFunction }> {
-    const call = decode(data, context, "call");
-    decoded.call = call;
-    decoded.abiItem = functionsBySelector.get(slice(data, 0, 4));
-    const { handler, missed } = match(call, "call");
-    if (!handler) throw missError(call, "call", label, candidates(call, "call"), missed);
-    return { hex: await run(handler, call), abiItem: handler.abiItem };
+  /** Decodes a call to one of the contract's functions; throws if none has its selector. */
+  function decode(data: Hex, context: CallContext): Omit<Decoded, "namespace"> {
+    const selector = slice(data, 0, 4);
+    const abiItem = functionsBySelector.get(selector);
+    if (abiItem)
+      try {
+        // Typed by `Abi`, as viem leaves `args` out for a function without inputs.
+        const { args = [] } = decodeFunctionData<Abi>({ abi: [abiItem], data });
+        return {
+          selector,
+          abiItem,
+          call: { ...context, address, functionName: abiItem.name, args },
+        };
+      } catch {
+        // Data its selector's function can't decode is no call of it.
+      }
+    throw new MockNotFoundError(
+      `No function with selector ${selector} on mocked contract ${label}.`,
+    );
   }
 
-  /** Decodes a call and records it as `kind`: an `eth_call` or an estimate. */
-  function decode(data: Hex, context: CallContext, kind: Kind): MockCall {
-    const selector = slice(data, 0, 4);
-    let fn: { functionName: string; args: readonly unknown[] };
-    try {
-      const result = decodeFunctionData<Abi>({ abi, data });
-      fn = { functionName: result.functionName, args: result.args ?? [] };
-    } catch {
-      throw new MockNotFoundError(
-        `No function with selector ${selector} on mocked contract ${label}.`,
-      );
-    }
-
-    const call: MockCall = { ...context, address, ...fn };
-    selectorOf.set(call, selector);
+  /** Records a call: in its function's list, and tagged in the contract's and the rpc's. */
+  function receive({ namespace, selector, call }: Decoded) {
     received += 1;
     order.set(call, received);
-    functionCalls(kind, selector, fn.functionName).add(call);
-    if (kind === "call") {
-      calls.add(call);
-      onCall(call);
-    }
-    return call;
+    functionCalls(namespace, selector, call.functionName).add(call);
+    const tagged = { namespace, ...call };
+    calls.add(tagged);
+    onCall(tagged);
   }
 
-  /** The calls of `kind` to the function with `selector`, made on its first. */
-  function functionCalls(kind: Kind, selector: Hex, functionName: string): RecordList<MockCall> {
-    const key = `${kind}:${selector}` as const;
+  /** The calls in `namespace` to the function with `selector`, made on its first. */
+  function functionCalls(
+    namespace: MockNamespace,
+    selector: Hex,
+    functionName: string,
+  ): RecordList<MockCall> {
+    const key = `${namespace}:${selector}` as const;
     const existing = callsBySelector.get(key);
     if (existing) return existing.list;
     const list = createRecordList<MockCall>(recordLimit);
@@ -286,27 +296,27 @@ export function createMockContract<const abi extends Abi>(
   }
 
   /** The calls a namespace's function received, every overload's, in the order received. */
-  function callsTo(namespace: Namespace, functionName: string): MockCall[] {
-    const kind: Kind = namespace === "estimateGas" ? "estimate" : "call";
+  function callsTo(namespace: MockNamespace, functionName: string): MockCall[] {
     const lists = [...callsBySelector]
-      .filter(([key, each]) => key.startsWith(`${kind}:`) && each.functionName === functionName)
+      .filter(
+        ([key, each]) => key.startsWith(`${namespace}:`) && each.functionName === functionName,
+      )
       .map(([, each]) => each.list.kept);
     if (lists.length === 1) return [...lists[0]!];
     return lists.flat().toSorted((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
   }
 
-  /** The handlers that answer `kind` for the function `call` decoded to. */
-  const candidates = (call: MockCall, kind: Kind) =>
+  /** The handlers in the call's namespace for its function. */
+  const candidates = ({ namespace, selector }: Decoded) =>
     mocks.handlers.filter(
-      (handler) =>
-        handler.selector === selectorOf.get(call) &&
-        (handler.namespace === "estimateGas") === (kind === "estimate"),
+      (handler) => handler.namespace === namespace && handler.selector === selector,
     );
 
   // The most specific matching handler wins; among equally specific ones,
   // the most recently registered wins, so per-test mocks override defaults.
-  function match(call: MockCall, kind: Kind) {
-    return mocks.findAnswering(candidates(call, kind), () => call.args, call.functionName);
+  function match(decoded: Decoded) {
+    const { call } = decoded;
+    return mocks.findAnswering(candidates(decoded), () => call.args, call.functionName);
   }
 
   /** Answers `call` with `handler`. */
@@ -321,8 +331,7 @@ export function createMockContract<const abi extends Abi>(
   /** Unused mocks, each with its contract and the calls its function received instead. */
   const describeUnused = (list: Handler[]) =>
     list.map((handler) => {
-      const kind: Kind = handler.namespace === "estimateGas" ? "estimate" : "call";
-      const functionList = callsBySelector.get(`${kind}:${handler.selector}`)?.list;
+      const functionList = callsBySelector.get(`${handler.namespace}:${handler.selector}`)?.list;
       return unusedLine(handler, label, functionList?.kept ?? [], functionList?.total ?? 0);
     });
 

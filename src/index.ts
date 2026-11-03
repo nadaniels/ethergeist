@@ -41,6 +41,8 @@ export type {
   MockEstimateGasFunction,
   MockFunction,
   MockFunctionAnswers,
+  MockNamespace,
+  MockTaggedCall,
   MockContractFunction,
   MockReadFunction,
   MockSimulateFunction,

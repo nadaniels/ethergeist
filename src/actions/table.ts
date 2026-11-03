@@ -1,5 +1,5 @@
 import type { ChainState } from "../chain/state.js";
-import type { ContractEstimate } from "../contracts/createMockContract.js";
+import type { ContractTurn } from "../contracts/createMockContract.js";
 import type { Registry } from "../contracts/registry.js";
 import type { MockCallRecord } from "../contracts/types.js";
 import type { LogStore } from "../logs/store.js";
@@ -71,15 +71,16 @@ export type Definition<call extends object = object, rpc = unknown> = {
   /** Adds to what a resolver gets, beyond the call and `fail`. */
   extendContext?(context: object, call: call): void;
   /**
-   * For estimates: a registered contract's turn, prepared as the call
-   * arrives. Its mocks answer before this table's: it owns its functions.
+   * A registered contract's turn at the call (an estimate of one of its
+   * functions), prepared as the call arrives. Its mocks answer before this
+   * table's: it owns its functions.
    */
-  contractTurn?(call: call): ContractEstimate | undefined;
+  contractTurn?(call: call): ContractTurn | undefined;
 };
 
 /**
- * What a table tells the rpc about a call it answered, for history. An
- * estimate of a registered contract's function also has its decoded call.
+ * What a table tells the rpc about a call it answered, for history. A call a
+ * registered contract had a turn at also has the contract's record of it.
  */
 export type ActionReport = {
   call: object;
@@ -138,7 +139,7 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
   async function answer(
     method: string,
     params: readonly unknown[],
-    report?: (report: ActionReport) => void,
+    report: (report: ActionReport) => void,
   ): Promise<unknown> {
     const call = definition.decode(params, method);
     calls.add(call);
@@ -147,7 +148,7 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
       const contract = turn?.record;
       // The contract's own outcome if it answered; otherwise the request's.
       if (contract?.outcome.type === "pending") contract.outcome = outcome;
-      report?.({ call, outcome, ...(contract && { contract }) });
+      report({ call, outcome, ...(contract && { contract }) });
     };
     try {
       const rpc = await answerCall(call, turn);
@@ -165,7 +166,7 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
     return definition.encode(value === zeroResult ? definition.zero : value, call);
   }
 
-  async function answerCall(call: object, turn: ContractEstimate | undefined): Promise<unknown> {
+  async function answerCall(call: object, turn: ContractTurn | undefined): Promise<unknown> {
     const answered = turn?.answer();
     if (answered) return await answered;
     // The most specific matching handler wins; among equally specific ones,

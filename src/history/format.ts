@@ -141,8 +141,8 @@ export function formatEntry(
   }
   if (entry.type === "action" && entry.action === "getLogs" && entry.call !== undefined)
     return `${head}${context.describeLogs?.(entry.call) ?? formatCall("getLogs", entry.call, { short: true })} ${formatOutcome(entry.outcome, entry.action)}`;
-  if (entry.type === "action" && entry.action === "estimateGas" && entry.contract?.call)
-    return `${head}estimateGas ${formatLabel(entry.contract)} ${formatOutcome(entry.outcome)}`;
+  if (entry.type === "action" && entry.contract?.call)
+    return `${head}${entry.action} ${formatLabel(entry.contract)} ${formatOutcome(entry.outcome)}`;
   if (entry.type === "action")
     return `${head}${formatCall(entry.action, entry.call, { short: true })} ${formatOutcome(
       entry.outcome,

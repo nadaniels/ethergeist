@@ -12,8 +12,7 @@ import {
 import { mismatches } from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
-import type { Kind } from "./functions.js";
-import type { MockCall } from "./types.js";
+import type { MockCall, MockNamespace } from "./types.js";
 
 /** A contract's mock, as messages describe it. */
 type Mock = {
@@ -31,7 +30,7 @@ type Mock = {
  */
 export function missError(
   call: MockCall,
-  kind: Kind,
+  namespace: MockNamespace,
   label: string,
   registered: readonly Mock[],
   missed: ReadonlyMap<Mock, PinnedKey>,
@@ -41,9 +40,9 @@ export function missError(
     const reason = formatMissReason(key === undefined ? undefined : argName(mock, key));
     return `  ${describeMock(call.functionName, mock)}${reason}`;
   });
-  const what = kind === "estimate" ? "estimateGas mock" : "mock";
+  const what = namespace === "estimateGas" ? "estimateGas mock" : "mock";
   const none =
-    kind === "estimate"
+    namespace === "estimateGas"
       ? `No estimateGas mocks registered for "${call.functionName}"; a simulate mock doesn't answer estimates.`
       : `No mocks registered for "${call.functionName}".`;
   return new MockNotFoundError(

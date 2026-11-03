@@ -70,6 +70,7 @@ describe("history entries", () => {
     expect(entry.call).toMatchObject({
       address: USDC,
       name: "USDC",
+      namespace: "read",
       call: { functionName: "decimals", args: [] },
       outcome: { type: "result", value: 6 },
     });
@@ -126,7 +127,7 @@ describe("history entries", () => {
     expect(missing).toMatchObject({
       type: "call",
       to: DAI,
-      call: { address: DAI, call: undefined, outcome: { type: "unhandled" } },
+      call: { address: DAI, namespace: undefined, call: undefined, outcome: { type: "unhandled" } },
     });
     expect(missing?.outcome.type === "unhandled" && missing.outcome.error).toBeInstanceOf(
       MockNotFoundError,
@@ -332,6 +333,12 @@ describe("formatHistory()", () => {
     );
     // The value stays what viem returns: a tuple.
     expect(mock.history[0]?.outcome).toEqual({ type: "result", value: [5n, 7n, 0] });
+    // Each record has the namespace its function answers in.
+    expect(mock.history.map((entry) => entry.type === "call" && entry.call?.namespace)).toEqual([
+      "read",
+      "read",
+      "simulate",
+    ]);
   });
 
   test("a multicall of one says 1 call", async () => {

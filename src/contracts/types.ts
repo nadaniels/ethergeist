@@ -57,6 +57,19 @@ export type MockCall<
   args: args;
 };
 
+/**
+ * Where a contract's call is answered, as its mocks are registered: an
+ * `eth_call` in its function's `read` or `simulate`, an `eth_estimateGas` in
+ * `estimateGas`.
+ */
+export type MockNamespace = "read" | "simulate" | "estimateGas";
+
+/**
+ * A call in a list of every namespace's calls (`contract.calls`, `mock.calls`):
+ * a copy of the function's own, tagged with its namespace.
+ */
+export type MockTaggedCall<call = MockCall> = call & { namespace: MockNamespace };
+
 type CustomRevert<abi extends Abi, errorName extends ContractErrorName<abi>> = {
   errorName: errorName;
 } & (ContractErrorArgs<abi, errorName> extends readonly []
@@ -198,10 +211,13 @@ export type MockContract<abi extends Abi> = {
   name: string | undefined;
   abi: abi;
   /**
-   * Every call to any of this contract's functions, in order (the last
-   * `historyLimit`). Estimates aren't calls.
+   * Every call to any of this contract's functions, in every namespace, in
+   * order (the last `historyLimit`). Each is a copy tagged with its
+   * `namespace`; a function's own `.calls` aren't tagged.
    */
-  readonly calls: (NamespaceCall<abi, ReadMutability> | NamespaceCall<abi, WriteMutability>)[];
+  readonly calls: MockTaggedCall<
+    NamespaceCall<abi, ReadMutability> | NamespaceCall<abi, WriteMutability>
+  >[];
   /** View and pure functions. */
   read: {
     [functionName in ContractFunctionName<abi, ReadMutability>]: MockReadFunction<
@@ -330,6 +346,12 @@ export type MockCallRecord = {
   address: Address;
   /** The contract's name, if it was registered with one. */
   name: string | undefined;
+  /**
+   * Where the call was answered: see `MockNamespace`. `undefined` for an
+   * `eth_call` that wasn't decoded (no contract, unknown selector, an empty
+   * address), which has no function to say.
+   */
+  namespace: MockNamespace | undefined;
   /** The function called, from the contract's ABI; `undefined` when it couldn't be decoded. */
   abiItem: AbiFunction | undefined;
   /** The decoded call, or `undefined` if it couldn't be decoded (no contract, unknown selector, an empty address). */
@@ -339,6 +361,8 @@ export type MockCallRecord = {
 
 /** How a request's contract calls report back to its history entry. */
 export type Reporter = {
-  call?: (record: MockCallRecord, context: CallContext) => void;
-  batch?: (id: number) => void;
+  /** Hears each call's record: the request's own, or a multicall sub-call's. */
+  call: (record: MockCallRecord, context: CallContext) => void;
+  /** Hears a multicall's batch id, before its sub-calls. */
+  batch: (id: number) => void;
 };

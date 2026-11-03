@@ -15,12 +15,7 @@ import { findMatcher } from "../mocking/matching.js";
 import { arrayElement } from "../shared/abiValues.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-
-/** Where a contract's mocks go: `read`, `simulate`, or `estimateGas`. */
-export type Namespace = "read" | "simulate" | "estimateGas";
-
-/** What a contract answers: an `eth_call`, or an `eth_estimateGas`. */
-export type Kind = "call" | "estimate";
+import type { MockNamespace } from "./types.js";
 
 /**
  * A contract's functions by namespace, as its mocks find them: views and pure
@@ -47,7 +42,7 @@ export function createFunctions(abi: Abi) {
   );
 
   /** For a name that isn't in `namespace`: says where it is instead, if anywhere. */
-  function notInNamespaceError(namespace: Namespace, functionName: string) {
+  function notInNamespaceError(namespace: MockNamespace, functionName: string) {
     const other = namespace === "read" ? "simulate" : "read";
     const elsewhere = functionsIn[other].find((abiItem) => abiItem.name === functionName);
     if (!elsewhere)
@@ -67,7 +62,7 @@ export function createFunctions(abi: Abi) {
    * could rule overloads out field by field, but doesn't yet.
    */
   function findFunction(
-    namespace: Namespace,
+    namespace: MockNamespace,
     functionName: string,
     args: readonly unknown[] | undefined,
   ): AbiFunction {

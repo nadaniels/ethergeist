@@ -64,9 +64,10 @@ describe("historyLimit", () => {
 
     expect(mock.history).toHaveLength(2);
     expect(mock.requests).toHaveLength(2);
-    expect(mock.calls).toHaveLength(2);
     expect(mock.unhandled).toHaveLength(2);
-    expect(usdc.calls).toHaveLength(2);
+    // Every namespace's calls share the list: the last 2 are the estimates.
+    expect(mock.calls.map((call) => call.namespace)).toEqual(["estimateGas", "estimateGas"]);
+    expect(usdc.calls.map((call) => call.namespace)).toEqual(["estimateGas", "estimateGas"]);
     expect(usdc.read.totalSupply.calls).toHaveLength(2);
     expect(usdc.estimateGas.transfer.calls).toHaveLength(2);
     expect(mock.actions.getBalance.calls).toHaveLength(2);
@@ -104,6 +105,23 @@ describe("historyLimit", () => {
 
     // Each overload is a function of its own, keeping its own last 2.
     expect(token.read.quote.calls.map((call) => call.args)).toEqual([[1n], [bob], [2n]]);
+  });
+
+  test("a name in both read and simulate lists each namespace's overloads apart", async () => {
+    const { mock, client } = setup();
+    const abi = parseAbi([
+      "function quote(uint256 amount) view returns (uint256)",
+      "function quote(address token) returns (uint256)",
+    ]);
+    const token = mock.contract({ abi, address: alice });
+    token.read.quote().returns(1n);
+    token.simulate.quote().returns(2n);
+
+    await client.readContract({ abi, address: alice, functionName: "quote", args: [1n] });
+    await client.simulateContract({ abi, address: alice, functionName: "quote", args: [bob] });
+
+    expect(token.read.quote.calls.map((call) => call.args)).toEqual([[1n]]);
+    expect(token.simulate.quote.calls.map((call) => call.args)).toEqual([[bob]]);
   });
 
   test("history keeps numbering, and says how many it dropped", async () => {

@@ -50,7 +50,7 @@ export function createActions(context: ActionsContext, recordLimit: RecordLimit)
     answer(
       name: string,
       params: unknown,
-      report?: (report: ActionReport) => void,
+      report: (report: ActionReport) => void,
     ): Promise<unknown> | undefined {
       const action = typedMethods.get(name);
       const table = action === undefined ? methods.tableFor(name) : typed[action];

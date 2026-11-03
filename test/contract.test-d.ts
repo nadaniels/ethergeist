@@ -1,7 +1,13 @@
 import { type Address, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
 
-import { type MockBatch, type MockRpc, createMockRpc, zeroResult } from "../src/index.js";
+import {
+  type MockBatch,
+  type MockNamespace,
+  type MockRpc,
+  createMockRpc,
+  zeroResult,
+} from "../src/index.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
@@ -364,6 +370,14 @@ describe("contract.calls", () => {
 
   test("calls carry batch info", () => {
     expectTypeOf(usdc.calls[0]!.batch).toEqualTypeOf<MockBatch | undefined>();
+  });
+
+  test("calls are tagged with their namespace; a function's own aren't", () => {
+    expectTypeOf<MockNamespace>().toEqualTypeOf<"read" | "simulate" | "estimateGas">();
+    expectTypeOf(usdc.calls[0]!.namespace).toEqualTypeOf<MockNamespace>();
+    expectTypeOf(mock.calls[0]!.namespace).toEqualTypeOf<MockNamespace>();
+    expectTypeOf(usdc.read.balanceOf.calls[0]!).not.toHaveProperty("namespace");
+    expectTypeOf(usdc.estimateGas.transfer.calls[0]!).not.toHaveProperty("namespace");
   });
 });
 

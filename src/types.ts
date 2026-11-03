@@ -15,7 +15,11 @@ import type { MockMethodBuilder } from "./actions/types.js";
 import type { MockFees } from "./chain/fees.js";
 import type { MockReceipt } from "./chain/receipts.js";
 import type { BuiltTransaction, MockTransaction } from "./chain/transactions.js";
-import type { CreateMockContractParameters, MockCall, MockContract } from "./contracts/types.js";
+import type {
+  CreateMockContractParameters,
+  MockContract,
+  MockTaggedCall,
+} from "./contracts/types.js";
 import type { FormatHistoryOptions } from "./history/format.js";
 import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./history/types.js";
 import type { BuildLogParameters, EmitOptions, EmittedLog, MockEventLog } from "./logs/events.js";
@@ -195,10 +199,12 @@ export type MockRpc = {
    */
   setFees(fees: MockFees): void;
   /**
-   * Every decoded contract call, across all contracts, in the order
-   * received (the last `historyLimit`).
+   * Every decoded contract call, across all contracts and namespaces, in the
+   * order received (the last `historyLimit`), multicall sub-calls included.
+   * Each is a copy tagged with its `namespace`, e.g.
+   * `mock.calls.filter((call) => call.namespace === "estimateGas")`.
    */
-  readonly calls: MockCall[];
+  readonly calls: MockTaggedCall[];
   /**
    * Every request the mock received (the last `historyLimit`), in order,
    * with how it was answered: decoded contract calls (each multicall
