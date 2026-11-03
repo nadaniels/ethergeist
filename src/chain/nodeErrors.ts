@@ -1,4 +1,4 @@
-import { type Hex, decodeErrorResult } from "viem";
+import { type Hex, decodeErrorResult, isHex, parseTransaction } from "viem";
 
 import type { MockNodeFault, NodeErrorName } from "../mocking/types.js";
 import { builtinErrors } from "../shared/abiValues.js";
@@ -45,9 +45,24 @@ export function isNodeErrorName(fault: MockNodeFault): fault is NodeErrorName {
 }
 
 /**
- * Reth's errors for each name, from the request's params: a transaction
- * first, as `eth_estimateGas` and `eth_call` take it (captured from reth
- * nodes for Ethereum and Base, 2026-10-29).
+ * A request's transaction, for its error: `params[0]`, as `eth_estimateGas`,
+ * `eth_call` and `eth_sendTransaction` take it, or decoded from a raw send's
+ * bytes. Named errors answer after the params are checked, so they parse.
+ */
+function transactionOf(params: unknown): { value: bigint; paysFees: boolean } | undefined {
+  const tx: unknown = Array.isArray(params) ? params[0] : undefined;
+  if (isHex(tx)) return { value: parseTransaction(tx).value ?? 0n, paysFees: true };
+  if (typeof tx !== "object" || tx === null) return undefined;
+  return {
+    value: ("value" in tx ? optionalQuantity(tx.value, "a value") : undefined) ?? 0n,
+    paysFees: "gasPrice" in tx || "maxFeePerGas" in tx,
+  };
+}
+
+/**
+ * Reth's errors for each name, from the request's params: its transaction
+ * (see `transactionOf`). Captured from reth nodes for Ethereum and Base,
+ * 2026-10-29.
  */
 export const nodeErrors: Record<
   NodeErrorName,
@@ -56,14 +71,11 @@ export const nodeErrors: Record<
   // Reth checks the balance against the value alone. With fee fields it
   // reports that check; without them, the EVM's.
   insufficientFunds(params) {
-    const tx: unknown = Array.isArray(params) ? params[0] : undefined;
-    if (typeof tx !== "object" || tx === null || !("gasPrice" in tx || "maxFeePerGas" in tx))
-      return { code: -32003, message: "EVM error: OutOfFunds" };
-    // Named errors answer estimates and calls, whose params are checked first.
-    const value = ("value" in tx ? optionalQuantity(tx.value, "a value") : undefined) ?? 0n;
+    const tx = transactionOf(params);
+    if (tx?.paysFees !== true) return { code: -32003, message: "EVM error: OutOfFunds" };
     return {
       code: -32003,
-      message: `insufficient funds for gas * price + value: have 0 want ${value}`,
+      message: `insufficient funds for gas * price + value: have 0 want ${tx.value}`,
     };
   },
   feeCapTooLow: () => ({ code: -32000, message: "max fee per gas less than block base fee" }),

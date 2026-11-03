@@ -12,7 +12,7 @@ import {
   formatMismatch,
   formatReceived,
 } from "../mocking/format.js";
-import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
+import { type Builder, type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
 import { assertNoMatchers, mismatches } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import type { PinnedKey } from "../mocking/types.js";
@@ -21,36 +21,48 @@ import { MockNotFoundError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, createRecordList } from "../shared/records.js";
 import type { TransactionStore } from "../transactions/store.js";
-import type { ActionContext } from "./types.js";
+import type { ActionCalls, ActionContext } from "./types.js";
 
-/** What an action's definition reads: the chain's state, what's registered, and its transactions. */
+/**
+ * What an action's definition reads: the chain's state, what's registered,
+ * its transactions, and the other actions' mocks.
+ */
 export type ActionsContext = {
   state: ChainState;
   registry: Registry;
   transactions: TransactionStore;
+  /** The mock of action `name` that would answer `call` now, if any: see `findMock`. */
+  mockFor: <name extends keyof ActionCalls>(
+    name: name,
+    call: ActionCalls[name],
+  ) => Handler | undefined;
 };
 
 /**
  * How a table answers one action: decoding its calls, encoding answers, and
  * what it answers unmocked. `call` is what `decode` returns and every other
- * member receives; `rpc` is the JSON-RPC answer `encode` and `fallback` give.
+ * member receives; `answer` is what `encode` and `fallback` give, and `rpc`
+ * the JSON-RPC answer `commit` makes of it (the answer itself, without one).
  *
  * Members are methods, whose parameters TypeScript checks both ways, so a
  * `Definition<BalanceCall>` is a `Definition`: the table holds every action's
  * the same way. That's sound because the table only passes each member what
  * the same definition's `decode`, `encode` or `fallback` produced.
  */
-export type Definition<call extends object = object, rpc = unknown> = {
+export type Definition<call extends object = object, rpc = unknown, answer = rpc> = {
   /** How calls and mocks are named in messages, e.g. `getBalance`. */
   name: string;
   /** Where to register a mock, for "not mocked" messages. */
   hint: string;
-  decode(params: readonly unknown[], method: string): call;
+  /** `hint` for a call, where it depends on the call; `undefined` for `hint` itself. */
+  hintFor?(call: call): string | undefined;
+  /** The call `params` ask for; it may take a moment (a raw send's sender is recovered). */
+  decode(params: readonly unknown[], method: string): call | Promise<call>;
   /**
    * Validates a value in viem's types and converts it to its JSON-RPC form.
    * `call` is `undefined` when validating a static value at registration.
    */
-  encode(value: unknown, call: call | undefined): rpc;
+  encode(value: unknown, call: call | undefined): answer;
   zero: unknown;
   /**
    * Fixes what a static answer leaves to the chain at registration, as it
@@ -70,7 +82,22 @@ export type Definition<call extends object = object, rpc = unknown> = {
   /** What pinned params are matched against, deeply. Defaults to the call itself. */
   actual?(pinned: unknown, call: call): unknown;
   /** The answer when no mock matches, or `undefined` to report the call as unhandled. */
-  fallback?(call: call): rpc | undefined;
+  fallback?(call: call): answer | undefined;
+  /**
+   * Turns the answer to a call into its JSON-RPC answer, once it's chosen
+   * (a contract's, a mock's or the fallback's): a send places its
+   * transaction on the chain and answers its hash. It runs only to answer,
+   * never at registration, so it may change the chain; anything it throws,
+   * it throws before changing anything.
+   */
+  commit?(answer: answer, call: call): rpc;
+  /**
+   * The answer a call already has, before any mock is asked: a repeated raw
+   * send's hash, once its transaction is on the chain.
+   */
+  known?(call: call): rpc | undefined;
+  /** Adds to a mock's builder, beyond `.returns()` and `.fails()`, e.g. a send's `.emits()`. */
+  extendBuilder?(builder: Builder): void;
   /** A JSON-RPC answer in viem's types, as the action returns it; for history. Defaults to as is. */
   view?(rpc: rpc): unknown;
   /** Adds to what a resolver gets, beyond the call and `fail`. */
@@ -110,13 +137,15 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
   function register(params: unknown) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
     const handler = mocks.register(pinned, undefined);
-    return mocks.createBuilder(handler, (value) => {
+    const builder = mocks.createBuilder(handler, (value) => {
       const given = value === zeroResult ? definition.zero : value;
       const call = definition.pinnedCall?.(pinned);
       const fixed = definition.fixAtRegistration?.(given, call) ?? given;
       encode(fixed, call);
       return fixed;
     });
+    definition.extendBuilder?.(builder);
+    return builder;
   }
 
   /** Unused mocks, each with the calls this table received instead. */
@@ -147,9 +176,10 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
     params: readonly unknown[],
     report: (report: ActionReport) => void,
   ): Promise<unknown> {
-    const call = definition.decode(params, method);
+    const call = await definition.decode(params, method);
     calls.add(call);
-    const turn = definition.contractTurn?.(call);
+    const known = definition.known?.(call);
+    const turn = known === undefined ? definition.contractTurn?.(call) : undefined;
     const reportAs = (outcome: MockOutcome) => {
       const contract = turn?.record;
       // The contract's own outcome if it answered; otherwise the request's.
@@ -157,7 +187,7 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
       report({ call, outcome, ...(contract && { contract }) });
     };
     try {
-      const rpc = await answerCall(call, turn);
+      const rpc = known ?? (await answerAndCommit(call, turn));
       reportAs({ type: "result", value: definition.view ? definition.view(rpc) : rpc });
       return rpc;
     } catch (error) {
@@ -172,16 +202,24 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
     return definition.encode(value === zeroResult ? definition.zero : value, call);
   }
 
-  async function answerCall(call: object, turn: ContractTurn | undefined): Promise<unknown> {
-    const answered = turn?.answer();
-    if (answered) return await answered;
-    // The most specific matching handler wins; among equally specific ones,
-    // the most recently registered wins.
-    const { handler, missed } = mocks.findAnswering(
+  // The most specific matching handler wins; among equally specific ones,
+  // the most recently registered wins.
+  const match = (call: object) =>
+    mocks.findAnswering(
       mocks.handlers,
       (candidate) => actualOf(candidate.pinned, call),
       definition.name,
     );
+
+  async function answerAndCommit(call: object, turn: ContractTurn | undefined) {
+    const answered = await answerCall(call, turn);
+    return definition.commit ? definition.commit(answered, call) : answered;
+  }
+
+  async function answerCall(call: object, turn: ContractTurn | undefined): Promise<unknown> {
+    const answered = turn?.answer();
+    if (answered) return await answered;
+    const { handler, missed } = match(call);
     if (!handler) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
@@ -195,7 +233,7 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
         metaMessages:
           registered.length > 0
             ? ["Registered:", ...registered]
-            : [`Mock it with ${definition.hint}.`],
+            : [`Mock it with ${definition.hintFor?.(call) ?? definition.hint}.`],
       });
     }
 
@@ -212,6 +250,11 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
   return {
     register,
     answer,
+    /**
+     * The mock that would answer `call` now, if any, found without answering
+     * it: nothing runs, and no use is counted. A contract's turn isn't asked.
+     */
+    findMock: (call: object) => match(call).handler,
     /** The calls this table received, as they arrive. */
     calls,
     clearCalls() {

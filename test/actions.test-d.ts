@@ -14,6 +14,7 @@ import {
   type EstimateGasCall,
   type LogsCall,
   type RpcValue,
+  type SendTransactionCall,
   type StorageCall,
   createMockRpc,
   zeroResult,
@@ -219,6 +220,32 @@ describe("getLogs", () => {
     mock.actions.estimateGas().fails("nonceTooLow");
     // @ts-expect-error a node doesn't refuse a balance read by name
     mock.actions.getBalance().fails("insufficientFunds");
+  });
+
+  test("sends pin a transaction and answer with what the chain did", () => {
+    mock.actions.sendTransaction({ account: alice, to: null }).returns({ contractAddress: alice });
+    mock.actions.sendTransaction({ to: alice, value: 1n }).once().emits([]);
+    mock.actions.sendTransaction().returns();
+    mock.actions.sendTransaction().reverts("paused");
+    mock.actions.sendTransaction().reverts({ panic: 0x11 });
+    mock.actions.sendTransaction().fails("insufficientFunds");
+    mock.actions.sendTransaction().returns(({ account, to, nonce, type, fail }) => {
+      expectTypeOf(account).toEqualTypeOf<Address>();
+      expectTypeOf(to).toEqualTypeOf<Address | null>();
+      expectTypeOf(nonce).toEqualTypeOf<number | undefined>();
+      expectTypeOf(type).toEqualTypeOf<"legacy" | "eip2930" | "eip1559" | "eip4844" | "eip7702">();
+      if (nonce === 1) return fail("tipAboveFeeCap");
+      return { status: "reverted" };
+    });
+    // A resolver may return nothing, for a success.
+    mock.actions.sendTransaction().returns(() => {});
+    expectTypeOf(mock.actions.sendTransaction.calls).toEqualTypeOf<SendTransactionCall[]>();
+    // @ts-expect-error a write answers with its outcome, not an ABI value
+    mock.actions.sendTransaction().returns(true);
+    // @ts-expect-error derived fields come from where it's mined
+    mock.actions.sendTransaction().returns({ blockNumber: 1n });
+    // @ts-expect-error without an ABI, there are no custom errors
+    mock.actions.sendTransaction().reverts({ errorName: "Paused" });
   });
 
   test("fee history pins the call's fields and answers partial histories", () => {

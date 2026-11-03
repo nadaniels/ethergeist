@@ -1,5 +1,6 @@
 import type { Address, BlockTag, Hash, Hex } from "viem";
 
+import type { TransactionType } from "../chain/transactions.js";
 import type { LogsCall } from "../logs/filter.js";
 import type { MockFault, WithLimits } from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";
@@ -69,6 +70,27 @@ export type EstimateGasCall = {
   blockNumber: bigint;
   blockTag?: BlockTag;
 };
+/**
+ * What a send asked for (`eth_sendTransaction`, or `eth_sendRawTransaction`'s
+ * signed bytes): the transaction. `account` is the sender: the request's
+ * `from`, or the signer, recovered from a raw send's signature. `to` is
+ * `null` for a deploy; `value` is `0n` when it has none, and `data` is left
+ * out when it's empty. A raw send has its nonce and gas; other fields are
+ * left out when the request has none. `type` is the request's, or else
+ * `"legacy"` with a `gasPrice` and `"eip1559"` without.
+ */
+export type SendTransactionCall = {
+  account: Address;
+  to: Address | null;
+  value: bigint;
+  data?: Hex;
+  nonce?: number;
+  gas?: bigint;
+  gasPrice?: bigint;
+  maxFeePerGas?: bigint;
+  maxPriorityFeePerGas?: bigint;
+  type: TransactionType;
+};
 /** What a call to an action without params asked for: nothing. */
 export type EmptyCall = Record<string, never>;
 /**
@@ -98,6 +120,7 @@ export type ActionCalls = {
   getTransactionCount: TransactionCountCall;
   getStorageAt: StorageCall;
   estimateGas: EstimateGasCall;
+  sendTransaction: SendTransactionCall;
 };
 
 export type ActionContext<call> = call & {

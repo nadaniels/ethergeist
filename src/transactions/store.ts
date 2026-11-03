@@ -3,7 +3,7 @@ import { type Address, type Hash, type Hex, formatTransaction, getAddress } from
 import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
 import { completeReceipt, placeLog, toRpcReceipt } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
-import { encodeTransaction } from "../chain/transactions.js";
+import { type TransactionType, encodeTransaction } from "../chain/transactions.js";
 import type { EmitOptions, EmittedLog, MockEventLog } from "../logs/events.js";
 import { type LogsCall, topicsMatch } from "../logs/filter.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
@@ -16,11 +16,12 @@ import { testHash } from "../shared/testValues.js";
  */
 export type TransactionRecord = {
   readonly hash: Hash;
-  /** What put it on the chain: `emit()`. */
-  readonly origin: "emit";
+  /** What put it on the chain: `emit()`, or a send (`eth_sendTransaction`, `eth_sendRawTransaction`). */
+  readonly origin: "emit" | "write";
   /**
-   * The transaction's own fields; any left out answer a node's defaults
-   * (zero, empty). An emit's are all left out.
+   * The transaction's own fields, as its request or signed bytes had them;
+   * any left out answer a node's defaults: zero or empty, an `"eip1559"`
+   * type, and fees suggested at its block. An emit's are all left out.
    */
   readonly fields: Readonly<{
     from?: Address;
@@ -29,9 +30,22 @@ export type TransactionRecord = {
     value?: bigint;
     input?: Hex;
     gas?: bigint;
+    type?: TransactionType;
+    gasPrice?: bigint;
+    maxFeePerGas?: bigint;
+    maxPriorityFeePerGas?: bigint;
   }>;
-  /** What its receipt says beyond its position and logs; left out, a success. */
-  readonly receipt: Readonly<{ status?: "success" | "reverted" }>;
+  /**
+   * What its receipt says beyond its position and logs, where a write's
+   * outcome set it or it's a deploy's address. Left out, a success that
+   * used the gas it was sent with (none for an emit), at the price it paid.
+   */
+  readonly receipt: Readonly<{
+    status?: "success" | "reverted";
+    gasUsed?: bigint;
+    effectiveGasPrice?: bigint;
+    contractAddress?: Address;
+  }>;
   /** Its logs, placed in its block, with indexes counted across the block. */
   readonly logs: readonly EmittedLog[];
   /** Its block and index in it; a record is on the chain once its block is mined. */
@@ -59,11 +73,17 @@ const positionFields = [
 
 const emitOptionNames = new Set(["blockNumber", "transactionHash"]);
 
+/** Whether `log` already has a position on the chain (e.g. from `mock.buildLog()`): it's placed only once. */
+export const isPlaced = (log: object) => positionFields.some((field) => field in log);
+
+/** The gas a transaction used: its receipt's, or else what it was sent with. */
+const gasUsedBy = ({ receipt, fields }: TransactionRecord) => receipt.gasUsed ?? fields.gas ?? 0n;
+
 export type TransactionStore = ReturnType<typeof createTransactionStore>;
 
 /**
  * The chain's transactions, one record each, in blocks of `state`: what
- * `emit` puts on the chain, and what receipts, transactions, blocks and
+ * `emit` and sends put on the chain, and what receipts, transactions, blocks and
  * `eth_getLogs` answer from once a request doesn't match a mock. A record is
  * on the chain once its block is mined (at or below the head); placed in a
  * later block, it's waiting, as a pending transaction is.
@@ -160,7 +180,7 @@ export function createTransactionStore({
     const values = isLogList(given) ? given : [given];
     if (values.length === 0) throw new MockSetupError("emit() requires at least one log.");
     for (const value of values)
-      if (positionFields.some((field) => field in value))
+      if (isPlaced(value))
         throw new MockSetupError(
           "emit() places logs itself, but this one already has a position (e.g. from " +
             "mock.buildLog()).",
@@ -234,6 +254,7 @@ export function createTransactionStore({
   const allLogs = () => records.flatMap((record) => record.logs);
 
   return {
+    add,
     emit,
     mine,
     logsFor,
@@ -248,14 +269,17 @@ export function createTransactionStore({
       if (mined === undefined) return null;
       // What it shares with its transaction comes from it, so the two agree.
       const { from, to, type, gasPrice } = formatTransaction(transactionOf(record));
+      const upToIt = inBlock(mined.blockNumber).slice(0, mined.index + 1);
       return toRpcReceipt(
         completeReceipt(
           {
+            effectiveGasPrice: gasPrice ?? 0n,
             ...record.receipt,
             from,
             to,
             type,
-            effectiveGasPrice: gasPrice ?? 0n,
+            gasUsed: gasUsedBy(record),
+            cumulativeGasUsed: upToIt.reduce((sum, each) => sum + gasUsedBy(each), 0n),
             blockNumber: mined.blockNumber,
             transactionIndex: mined.index,
             logs: [...record.logs],

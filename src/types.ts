@@ -177,7 +177,7 @@ export type MockRpc = {
    */
   readonly logs: EmittedLog[];
   /**
-   * The chain's transactions, by block and index: what `emit` put on it.
+   * The chain's transactions, by block and index: what `emit` and sends put on it.
    * State, like registered mocks: `checkpoint()` and `reset()` restore it,
    * `clearCalls()` and `historyLimit` leave it.
    */

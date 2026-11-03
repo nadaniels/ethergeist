@@ -9,12 +9,19 @@ import {
   type TransactionEIP4844,
   type TransactionEIP7702,
   type TransactionLegacy,
+  type TransactionSerialized,
+  getAddress,
   hexToBigInt,
+  isHex,
+  keccak256,
   numberToHex,
+  parseTransaction,
+  recoverTransactionAddress,
   zeroAddress,
 } from "viem";
 
-import { MockSetupError } from "../shared/errors.js";
+import { formatValue } from "../mocking/format.js";
+import { MockSetupError, invalidParams } from "../shared/errors.js";
 import { nodeAddress } from "../shared/values.js";
 import { blockHash } from "./blocks.js";
 import { type Fees, blobBaseFee } from "./fees.js";
@@ -265,8 +272,11 @@ function toRpcTransaction(
   return rpc;
 }
 
-/** A transaction's JSON-RPC form, with the mock's defaults: the current block and its fees. */
-export const encodeTransaction = (state: ChainState, transaction: MockTransaction, hash: Hash) =>
+/**
+ * A transaction's JSON-RPC form, with the mock's defaults: the current block
+ * and its fees. Its fields are checked against its type: see `MockTransaction`.
+ */
+export const encodeTransaction = (state: ChainState, transaction: TransactionFields, hash: Hash) =>
   toRpcTransaction(transaction, {
     hash,
     blockNumber: state.blockNumber,
@@ -274,3 +284,89 @@ export const encodeTransaction = (state: ChainState, transaction: MockTransactio
     feesAt: state.feesAt,
     timestampAt: state.timestampAt,
   });
+
+/** A transaction's fees, as a send has them: a legacy `gasPrice`, or EIP-1559's max fees. */
+type SentFees = {
+  gasPrice?: bigint | undefined;
+  maxFeePerGas?: bigint | undefined;
+  maxPriorityFeePerGas?: bigint | undefined;
+};
+
+/** The transaction types by number, as a request's `type` param has them. */
+const typeNames: readonly TransactionType[] = [
+  "legacy",
+  "eip2930",
+  "eip1559",
+  "eip4844",
+  "eip7702",
+];
+
+/**
+ * A sent transaction's type: its request's `type` param (the spec's `byte`),
+ * or else legacy with a `gasPrice` and EIP-1559 without. Refused as invalid
+ * params for a type viem doesn't know, or fees the type doesn't have, as a
+ * node refuses both.
+ */
+export function sentType(type: unknown, fees: SentFees): TransactionType {
+  const named =
+    type === undefined
+      ? fees.gasPrice === undefined
+        ? "eip1559"
+        : "legacy"
+      : typeof type === "string" && /^0x[0-9a-fA-F]{1,2}$/u.test(type)
+        ? typeNames[Number(type)]
+        : undefined;
+  if (named === undefined)
+    throw invalidParams(`expected a transaction type; got ${formatValue(type)}`);
+  // A dynamic-fee transaction's `gasPrice` is its effective price, which a node works out.
+  const other =
+    named === "legacy" || named === "eip2930"
+      ? (["maxFeePerGas", "maxPriorityFeePerGas"] as const).find(
+          (field) => fees[field] !== undefined,
+        )
+      : fees.gasPrice === undefined
+        ? undefined
+        : "gasPrice";
+  if (other !== undefined) throw invalidParams(`${named} transactions have no ${other}`);
+  return named;
+}
+
+/**
+ * A signed transaction's fields, hash and sender, as a node reads them from
+ * its bytes: the hash is `keccak256` of the bytes, and the sender is
+ * recovered from the signature. Refused as invalid params unless it's a
+ * signed transaction. Its chain id isn't checked: clients check it themselves.
+ */
+export async function decodeRawTransaction(serialized: unknown) {
+  const refused = () =>
+    invalidParams(`expected a signed transaction; got ${formatValue(serialized)}`);
+  if (!isHex(serialized)) throw refused();
+  let parsed: ReturnType<typeof parseTransaction>;
+  let from: Address;
+  try {
+    parsed = parseTransaction(serialized);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- it parsed, so it's one
+    const serializedTransaction = serialized as TransactionSerialized;
+    from = await recoverTransactionAddress({ serializedTransaction });
+  } catch {
+    throw refused();
+  }
+  // viem parses a type for every transaction it can parse.
+  const { to, value = 0n, data, nonce = 0, gas = 0n, type = "legacy" } = parsed;
+  const { gasPrice, maxFeePerGas, maxPriorityFeePerGas } = parsed;
+  return {
+    hash: keccak256(serialized),
+    from,
+    fields: {
+      to: to === undefined || to === null ? null : getAddress(to),
+      value,
+      ...(data !== undefined && data !== "0x" && { data }),
+      nonce,
+      gas,
+      ...(gasPrice !== undefined && { gasPrice }),
+      ...(maxFeePerGas !== undefined && { maxFeePerGas }),
+      ...(maxPriorityFeePerGas !== undefined && { maxPriorityFeePerGas }),
+      type,
+    },
+  };
+}

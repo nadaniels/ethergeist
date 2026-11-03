@@ -14,9 +14,11 @@ export type Actions = ReturnType<typeof createActions>;
  * The typed actions (`mock.actions`) and raw methods (`mock.method()`): their
  * mocks, and answering the requests they're for.
  */
-export function createActions(context: ActionsContext, recordLimit: RecordLimit) {
+export function createActions(chain: Omit<ActionsContext, "mockFor">, recordLimit: RecordLimit) {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
   const names = Object.keys(typedActions) as ActionName[];
+  // Asked only while answering, once every table is made.
+  const context: ActionsContext = { ...chain, mockFor: (name, call) => typed[name].findMock(call) };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- one table per name, as built
   const typed = Object.fromEntries(
     names.map((name) => [name, createTable(typedActions[name].define(context), recordLimit)]),

@@ -932,7 +932,7 @@ describe("eth_fillTransaction", () => {
 describe("wallet_* methods", () => {
   test("wallet_sendTransaction is refused, so a failed send keeps the error the test set up", async () => {
     const { mock, wallet } = nodeAccountSetup();
-    mock.method("eth_sendTransaction").fails({ code: -32000, message: "insufficient funds" });
+    mock.actions.sendTransaction().fails({ code: -32000, message: "insufficient funds" });
 
     const error = expectCause(
       await rejectionOf(wallet.sendTransaction({ to: bob, value: 1n })),
@@ -959,7 +959,7 @@ describe("wallet_* methods", () => {
     { code: -32003, retried: false },
   ])("a send failing with $code keeps its error (retried: $retried)", async ({ code, retried }) => {
     const { mock, wallet } = nodeAccountSetup();
-    mock.method("eth_sendTransaction").fails({ code, message: "failed" });
+    mock.actions.sendTransaction().fails({ code, message: "failed" });
 
     const error = await rejectionOf(wallet.sendTransaction({ to: bob, value: 1n }));
     expect(findCause(error, RpcError)?.code).toBe(code);
@@ -970,7 +970,7 @@ describe("wallet_* methods", () => {
 
   test("method() answers wallet_sendTransaction instead", async () => {
     const { mock, wallet } = nodeAccountSetup();
-    mock.method("eth_sendTransaction").fails({ code: -32601, message: "not here" });
+    mock.actions.sendTransaction().fails({ code: -32601, message: "not here" });
     mock.method("wallet_sendTransaction").returns(testHash("sent"));
 
     expect(await wallet.sendTransaction({ to: bob, value: 1n })).toBe(testHash("sent"));
@@ -978,14 +978,13 @@ describe("wallet_* methods", () => {
 
   test("wallet_sendCalls is refused, so sendCalls falls back to separate sends", async () => {
     const { mock, wallet } = nodeAccountSetup();
-    mock.method("eth_sendTransaction").returns(testHash("sent"));
 
     const { id } = await wallet.sendCalls({
       calls: [{ to: bob, value: 1n }],
       experimental_fallback: true,
       experimental_fallbackDelay: 0,
     });
-    expect(id.startsWith(testHash("sent"))).toBe(true);
+    expect(id.startsWith(mock.transactions[0]!.hash)).toBe(true);
     expect(() => {
       mock.assertNoUnhandled();
     }).not.toThrow();

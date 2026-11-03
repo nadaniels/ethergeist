@@ -126,7 +126,8 @@ everything, then mutate.
 
 1. Add its file in `actions/`, named for the action (`getGasPrice.ts`). It
    exports a function that takes the `ActionsContext` (`state`, `registry`,
-   `transactions`) and returns its `Definition<call, rpc>`: how to decode the
+   `transactions`, and `mockFor`, another action's mock that would answer a
+   call) and returns its `Definition<call, rpc>`: how to decode the
    call, encode and view answers, and what to answer when it isn't mocked.
    `call` is its decoded call's type and `rpc` its JSON-RPC answer's, so its
    members get them typed, without casts. If `encode` checks the answer against the call
@@ -135,6 +136,10 @@ everything, then mutate.
    time. If a static answer takes a default from the chain that a node would
    never change, give `fixAtRegistration` (as receipts take the block they
    were mined in).
+   An action that changes the chain (a send) answers in two steps: `encode`
+   checks the answer, as at registration, and `commit` places it on the
+   chain once it's chosen, answering the JSON-RPC value; its `Definition`
+   takes that answer's type as a third parameter.
 2. Add it to the `typedActions` catalog in `actions/typedActions.ts`, with the
    JSON-RPC methods it answers.
 3. Add its mock's type, with its documentation, to `MockActions` in the same

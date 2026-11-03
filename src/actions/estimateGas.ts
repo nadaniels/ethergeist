@@ -1,12 +1,19 @@
-import { type Hex, getAddress, isHex, numberToHex } from "viem";
+import { type Address, type Hex, numberToHex } from "viem";
 
-import { type ResolveBlock, addressParam, numberParam, optionalQuantity } from "../chain/params.js";
-import { encodeGas } from "../mocking/gas.js";
+import type { ResolveBlock } from "../chain/params.js";
+import { encodeGas, impliedGas } from "../mocking/gas.js";
 import type { MockEstimateAnswers, MockNodeFault, WithLimits } from "../mocking/types.js";
-import { isPlainObject } from "../shared/values.js";
-import { blockAt, viewQuantity } from "./decode.js";
+import { registeredRevert } from "../transactions/writeOutcome.js";
+import {
+  blockAt,
+  decodeTransactionRequest,
+  isPlainTransfer,
+  pinTransaction,
+  viewQuantity,
+  withoutUndefined,
+} from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
-import type { EstimateGasCall } from "./types.js";
+import type { EstimateGasCall, SendTransactionCall } from "./types.js";
 
 /**
  * What an estimate's resolver gets: the call, and `fail`, which also takes a
@@ -24,50 +31,49 @@ export type MockEstimateGasAction = {
   readonly calls: EstimateGasCall[];
 };
 
-/** Checksums a pinned `account` and `to`, which also validates them at registration. */
-function pinTransaction(pinned: unknown) {
-  if (!isPlainObject(pinned)) return pinned;
-  const { account, to } = pinned;
-  return {
-    ...pinned,
-    ...(typeof account === "string" && { account: getAddress(account) }),
-    ...(typeof to === "string" && { to: getAddress(to) }),
-  };
-}
-
 /** `eth_estimateGas` takes a transaction and maybe a block. */
 function decodeEstimateGas(
   [tx, block]: readonly unknown[],
   resolveBlock: ResolveBlock,
 ): EstimateGasCall {
-  const { from, to, value, data, input, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } =
-    isPlainObject(tx) ? tx : {};
-  const fields = {
-    account: typeof from === "string" ? addressParam(from) : undefined,
-    to: typeof to === "string" ? addressParam(to) : undefined,
-    value: optionalQuantity(value, "a value") ?? 0n,
-    data: isHex(data) ? data : isHex(input) ? input : undefined,
-    gas: optionalQuantity(gas, "a gas limit"),
-    gasPrice: optionalQuantity(gasPrice, "a gas price"),
-    maxFeePerGas: optionalQuantity(maxFeePerGas, "a max fee per gas"),
-    maxPriorityFeePerGas: optionalQuantity(maxPriorityFeePerGas, "a max priority fee per gas"),
-    nonce: nonce === undefined ? undefined : numberParam(nonce, "a nonce"),
-    ...blockAt(block, resolveBlock),
-  };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
-  return Object.fromEntries(
-    Object.entries(fields).filter(([, each]) => each !== undefined),
-  ) as EstimateGasCall;
+  return withoutUndefined({
+    ...decodeTransactionRequest(tx),
+    ...blockAt(block, resolveBlock),
+  }) as EstimateGasCall;
+}
+
+/**
+ * The send an estimate is for, as send mocks are matched against it. Its
+ * type follows its fees, as an estimate's call has none.
+ */
+function sendOf(call: EstimateGasCall, account: Address): SendTransactionCall {
+  const { to, value, data, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } = call;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
+  return withoutUndefined({
+    account,
+    to: to ?? null,
+    value,
+    data: data === "0x" ? undefined : data,
+    nonce,
+    gas,
+    gasPrice,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    type: gasPrice === undefined ? "eip1559" : "legacy",
+  }) as SendTransactionCall;
 }
 
 /**
  * `eth_estimateGas`. A registered contract's own mocks answer estimates of
- * its functions first; unmocked, a plain transfer to an address without code
- * is 21000 gas, as a node estimates it.
+ * its functions first. Unmocked, a plain transfer to an address without code
+ * is 21000 gas, as a node estimates it, and a send mock that would answer
+ * the transaction implies its estimate (see `impliedGas`).
  */
 export const estimateGas = ({
   state,
   registry,
+  mockFor,
 }: ActionsContext): Definition<EstimateGasCall, Hex> => ({
   name: "estimateGas",
   hint: "mock.actions.estimateGas({ to }).returns(…)",
@@ -85,11 +91,14 @@ export const estimateGas = ({
       .contractAt(to)
       ?.estimate(data, { from: account, value, blockNumber, batch: undefined });
   },
-  // A plain transfer to an address without code costs the base 21000 gas.
+  // A send mock implies its transaction's estimate, without running: a
+  // `.reverts()` one reverts it. A plain transfer to an address without code
+  // is the base 21000 gas, mocked or not.
   fallback(call) {
-    const { to, data = "0x" } = call;
-    if (to === undefined || data !== "0x") return undefined;
-    const code = registry.codeAt(to);
-    return code === undefined || code === "0x" ? numberToHex(21_000n) : undefined;
+    const send = call.account && mockFor("sendTransaction", sendOf(call, call.account));
+    const revert = send && registeredRevert(send.resolver);
+    if (revert) throw revert;
+    if (isPlainTransfer(registry, call)) return numberToHex(21_000n);
+    return send ? numberToHex(impliedGas) : undefined;
   },
 });

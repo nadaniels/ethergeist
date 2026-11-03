@@ -19,6 +19,7 @@ import { getStorageAt } from "./getStorageAt.js";
 import { getTransaction } from "./getTransaction.js";
 import { getTransactionCount } from "./getTransactionCount.js";
 import { getTransactionReceipt } from "./getTransactionReceipt.js";
+import { type MockSendTransactionAction, sendTransaction } from "./sendTransaction.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type {
   ActionCalls,
@@ -58,6 +59,10 @@ export const typedActions = {
   getTransactionCount: { define: getTransactionCount, methods: ["eth_getTransactionCount"] },
   getStorageAt: { define: getStorageAt, methods: ["eth_getStorageAt"] },
   estimateGas: { define: estimateGas, methods: ["eth_estimateGas"] },
+  sendTransaction: {
+    define: sendTransaction,
+    methods: ["eth_sendTransaction", "eth_sendRawTransaction"],
+  },
 } satisfies {
   // Each action decodes to its call type in `ActionCalls`, and every action has one.
   [name in keyof ActionCalls]: {
@@ -82,7 +87,7 @@ export type MockActions = {
    * `eth_getBlockByNumber` and `eth_getBlockByHash`. Unmocked, blocks up to the
    * current one are generated: number, hash, parent hash, a timestamp that
    * follows the chain's `blockTime`, the base fee (see `fees`), and the
-   * emitted transactions in it (`mock.emit()`), with everything else zero. A
+   * transactions in it (emitted or sent), with everything else zero. A
    * mock's fields are merged over the generated block, its transactions too
    * unless the mock sets `transactions` (a block past the head, or a hash
    * only the mock knows, lists none); `null` answers "no such block".
@@ -93,13 +98,13 @@ export type MockActions = {
    * `"success"`, the block is the current one, and logs get their index, block,
    * and transaction from the receipt; the rest is zero. A static receipt is
    * mined when it's registered, so it stays in that block as more are mined:
-   * for a hash pinned exactly that's on the chain (emitted), its
+   * for a hash pinned exactly that's on the chain (emitted or sent), its
    * transaction's block and index, so register it after the emit (and after
    * its block is mined). A resolver's is in the block current when
    * it answers. `null` answers "no
    * such transaction". A mock is an override, for answers the chain
-   * shouldn't give (`null`, a reverted status): unmocked, an emitted
-   * transaction's hash answers its receipt (`null` while it's placed in a
+   * shouldn't give (`null`, a reverted status): unmocked, the hash of a
+   * transaction on the chain answers its receipt (`null` while it's placed in a
    * block not mined yet), and other hashes aren't answered.
    * Its `logs` are legacy: for a receipt with these logs, emit them instead,
    * `mock.emit(logs, { transactionHash })`.
@@ -110,10 +115,10 @@ export type MockActions = {
    * `"eip1559"` transaction mined in the current block, at index 0, that paid
    * the suggested fees (see `fees`), with a zero signature; the rest is zero.
    * Like a receipt, a static one is mined when it's registered (where its
-   * emitted transaction is, if it has one), a resolver's when it answers. Fields its `type` doesn't have throw, and
+   * transaction on the chain is, if it has one), a resolver's when it answers. Fields its `type` doesn't have throw, and
    * `blockNumber: null` makes it pending. `null` answers "no such
-   * transaction". A mock is an override: unmocked, an emitted transaction's
-   * hash answers it (see `mock.emit()`; pending while it's placed in a block
+   * transaction". A mock is an override: unmocked, the hash of a transaction
+   * on the chain answers it (emitted or sent; pending while it's placed in a block
    * not mined yet), and other hashes aren't answered.
    * `mock.buildTransaction()` builds the same transaction.
    */
@@ -177,4 +182,28 @@ export type MockActions = {
    * `"insufficientFunds"`.
    */
   estimateGas: MockEstimateGasAction;
+  /**
+   * `eth_sendTransaction` and `eth_sendRawTransaction`, for `sendTransaction`,
+   * `writeContract` and `deployContract`. A send always goes on the chain:
+   * answered, it's a transaction mined in a new block, which its receipt,
+   * its transaction, its block and `getLogs` answer from (see
+   * `mock.transactions`); only a refusal (`.fails()`, or a send nothing
+   * answers) leaves the chain as it was.
+   *
+   * `.returns()` takes what the chain did (`MockWriteOutcome`): its logs, a
+   * reverted status, its gas, a deploy's address; `.emits(logs)` is
+   * `.returns({ logs })`. `.reverts(spec)` reverts its estimate and mines it
+   * reverted if it's sent anyway. `.fails()` takes a node's refusal by name,
+   * e.g. `"insufficientFunds"`. A matching mock also answers the
+   * transaction's `eth_estimateGas` (when no estimate mock does) with
+   * 100,000 gas, without running it or using it up.
+   *
+   * A raw send's sender is recovered from its signature, and its hash is
+   * its bytes' (`keccak256`); sending the same bytes again answers the same
+   * hash, without a second transaction. An `eth_sendTransaction` without a
+   * nonce or gas is sent with nonce 0 and 100,000 gas. Unmocked, a send
+   * without data to an address without code succeeds, as on a node;
+   * anything else isn't answered.
+   */
+  sendTransaction: MockSendTransactionAction;
 };

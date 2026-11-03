@@ -348,9 +348,9 @@ features land; tick them off as pages get written.
     hash, more than 4 topics. They're answers, not unhandled; history shows
     `✗ rpc error`.
   - `mock.logs` lists every emitted log, and `mock.transactions` every
-    emit's transaction. They're state: `restore()` removes what was emitted
-    since the checkpoint, `reset()` all of it; `clearCalls()` and
-    `historyLimit` keep them.
+    transaction on the chain, emitted or sent. They're state: `restore()`
+    removes what was emitted or sent since the checkpoint, `reset()` all of
+    it; `clearCalls()` and `historyLimit` keep them.
   - Logs carry `blockTimestamp` (reth sends it; some nodes don't), from the
     generated block: in `getLogs`, in receipts, and from `mock.buildLog()`,
     so an emitted log equals the receipt's. A receipt log with another
@@ -436,6 +436,43 @@ features land; tick them off as pages get written.
     `token.estimateGas.transfer().fails("insufficientFunds")`.
   - Estimating with a local account first prepares the transaction, which
     asks for the nonce: mock `getTransactionCount` too.
+  - A send mock that would answer the transaction implies its estimate
+    (below), when no estimate mock answers: 100,000 gas (21000 for a plain
+    transfer to an address without code), and a `.reverts()` send mock
+    reverts it. Nothing runs and no `.once()` is used up.
+- [ ] Sends: `mock.actions.sendTransaction({ account, to, value, data })`
+      answers `eth_sendTransaction` (a node's account, unsigned, with
+      `from`) and `eth_sendRawTransaction` (a local account's signed bytes),
+      for `sendTransaction`, `writeContract` and `deployContract`.
+  - Sends always go on the chain: a successful send is a transaction
+    mined in a new block, and its receipt, transaction, block and logs
+    answer from it, so `waitForTransactionReceipt` resolves on its first
+    poll, and `getTransaction` answers from the moment of the send. Any of
+    them can still be mocked over it. There's no mode that answers a hash
+    without a transaction: a hash the chain doesn't know hangs every
+    client's polling. Only a refusal (`.fails()`, a send nothing answers)
+    leaves the chain as it was.
+  - `.returns()` takes what the chain did, not an ABI value:
+    `{ logs, status, gasUsed, effectiveGasPrice, contractAddress }`, all
+    optional; the rest of the receipt comes from where it's mined.
+    `.emits(logs)` is `.returns({ logs })`; `.returns({ status:
+    "reverted" })` mines it reverted (no logs). `.reverts(spec)` reverts the
+    estimate, so a local account throws before sending, and mines it
+    reverted if it's sent anyway (`gas` set, or a node's account). A
+    resolver returns the same, or nothing for a success.
+  - Unmocked, a send without data to an address without code succeeds
+    (sending ETH needs no mock); anything else isn't answered, with a hint:
+    data to an unknown or `empty()` address, a registered contract, a
+    deploy, Multicall3.
+  - The receipt's gas: `gasUsed` is the gas it was sent with,
+    `effectiveGasPrice` the base fee plus the tip at its block (capped at
+    its max fee), `cumulativeGasUsed` summed over its block. A deploy's
+    `contractAddress` is `getContractAddress({ from, nonce })`.
+  - A raw send's hash is `keccak256` of its bytes (ethers checks it), and
+    its sender is recovered from its signature. The same bytes sent again
+    answer the same hash, without a second transaction.
+  - An `eth_sendTransaction` without a nonce is sent with nonce 0 for now,
+    and without gas with 100,000. Nonces don't follow sends yet (072).
 - [ ] Storage: `mock.actions.getStorageAt({ address, slot }).returns(value)`.
       Slots in pins and requests are compared as 32 bytes (`"0x0"` matches
       slot zero written in full); values are up to 32 bytes, padded to 32 as
@@ -465,7 +502,7 @@ features land; tick them off as pages get written.
     support. viem retries an `eth_sendTransaction` that fails with
     `-32000`, `-32602`, `-32601` or `-32004` as `wallet_sendTransaction`;
     refused, it rethrows the send's own error, so a test's
-    `mock.method("eth_sendTransaction").fails(…)` is what the app sees.
+    `mock.actions.sendTransaction().fails(…)` is what the app sees.
     viem remembers the refusal per client, so it retries only once.
     `sendCalls` with `experimental_fallback` sends each call with
     `eth_sendTransaction` instead; without it, it rejects as unsupported.

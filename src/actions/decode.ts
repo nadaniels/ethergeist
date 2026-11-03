@@ -1,6 +1,8 @@
 import {
+  type Address,
   type BlockTag,
   type Hash,
+  type Hex,
   getAddress,
   hexToBigInt,
   isHash,
@@ -8,8 +10,16 @@ import {
   numberToHex,
 } from "viem";
 
-import { type BlockForm, type ResolveBlock, addressParam, isBlockTag } from "../chain/params.js";
+import {
+  type BlockForm,
+  type ResolveBlock,
+  addressParam,
+  isBlockTag,
+  numberParam,
+  optionalQuantity,
+} from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
+import type { Registry } from "../contracts/registry.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { TransactionStore } from "../transactions/store.js";
@@ -38,6 +48,60 @@ export function pinAddress(pinned: unknown) {
       address: address.map((each: unknown) => (typeof each === "string" ? getAddress(each) : each)),
     };
   return pinned;
+}
+
+/** Checksums a pinned `account` and `to`, which also validates them at registration. */
+export function pinTransaction(pinned: unknown) {
+  if (!isPlainObject(pinned)) return pinned;
+  const { account, to } = pinned;
+  return {
+    ...pinned,
+    ...(typeof account === "string" && { account: getAddress(account) }),
+    ...(typeof to === "string" && { to: getAddress(to) }),
+  };
+}
+
+const optionalAddress = (address: unknown) =>
+  address === undefined || address === null ? undefined : addressParam(address);
+
+/**
+ * A transaction request's fields, as `eth_estimateGas` and
+ * `eth_sendTransaction` take it: `from` as `account`, the spec's `input` or
+ * the `data` clients send, and `value` as `0n` when it has none. Fields it
+ * leaves out (or sends as `null`) are `undefined`.
+ */
+export function decodeTransactionRequest(tx: unknown) {
+  const { from, to, value, data, input, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } =
+    isPlainObject(tx) ? tx : {};
+  return {
+    account: optionalAddress(from),
+    to: optionalAddress(to),
+    value: optionalQuantity(value, "a value") ?? 0n,
+    data: isHex(data) ? data : isHex(input) ? input : undefined,
+    gas: optionalQuantity(gas, "a gas limit"),
+    gasPrice: optionalQuantity(gasPrice, "a gas price"),
+    maxFeePerGas: optionalQuantity(maxFeePerGas, "a max fee per gas"),
+    maxPriorityFeePerGas: optionalQuantity(maxPriorityFeePerGas, "a max priority fee per gas"),
+    nonce: nonce === undefined ? undefined : numberParam(nonce, "a nonce"),
+  };
+}
+
+/** `fields` without the ones left out (`undefined`), as a call has them. */
+export const withoutUndefined = (fields: object) =>
+  Object.fromEntries(Object.entries(fields).filter(([, each]) => each !== undefined));
+
+/**
+ * Whether a transaction is a plain transfer to an address without code: no
+ * data, to an address the mock knows has none, or doesn't know. A node runs
+ * nothing for one: it estimates the base 21000 gas, and the transfer succeeds.
+ */
+export function isPlainTransfer(
+  registry: Registry,
+  { to, data }: { to?: Address | null; data?: Hex },
+) {
+  if (to === undefined || to === null || (data !== undefined && data !== "0x")) return false;
+  const code = registry.codeAt(to);
+  return code === undefined || code === "0x";
 }
 
 /**
