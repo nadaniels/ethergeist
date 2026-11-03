@@ -2,6 +2,7 @@ import {
   ContractFunctionRevertedError,
   createPublicClient,
   defineChain,
+  encodeFunctionData,
   erc20Abi,
   getAddress,
   multicall3Abi,
@@ -150,6 +151,33 @@ describe("aggregate3 called directly", () => {
     );
     const revert = expectCause(error, ContractFunctionRevertedError);
     expect(revert.reason).toBe("Multicall3: call failed");
+  });
+});
+
+describe("other Multicall3 functions", () => {
+  test("aren't answered: only aggregate3 is mocked", async () => {
+    const { mock, client } = setup();
+    const to = mainnet.contracts.multicall3.address;
+    const timestamp = encodeFunctionData({
+      abi: multicall3Abi,
+      functionName: "getCurrentBlockTimestamp",
+    });
+
+    const errors = [
+      await rejectionOf(client.call({ to, data: timestamp })),
+      // Not a Multicall3 function at all.
+      await rejectionOf(client.call({ to, data: "0x12345678" })),
+    ];
+
+    for (const error of errors)
+      expect(expectCause(error, MockNotFoundError).shortMessage).toBe(
+        `Unsupported Multicall3 call on ${getAddress(to)}; only aggregate3 is mocked.`,
+      );
+    expect(mock.unhandled).toHaveLength(2);
+    expect(mock.history).toMatchObject([
+      { type: "multicall", calls: [], outcome: { type: "unhandled" } },
+      { type: "multicall", calls: [], outcome: { type: "unhandled" } },
+    ]);
   });
 });
 

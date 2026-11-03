@@ -211,6 +211,26 @@ describe("balanceOf", () => {
     expect(mock.requests).toHaveLength(1);
   });
 
+  test("a function not on the contract's ABI isn't answered, and isn't a call", async () => {
+    const { mock, client } = setup();
+    const owned = mock.contract({
+      abi: parseAbi(["function owner() view returns (address)"]),
+      address: USDC,
+      name: "Owned",
+    });
+
+    const error = await rejectionOf(
+      client.readContract({ abi: erc20Abi, address: USDC, functionName: "decimals" }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).shortMessage).toBe(
+      `No function with selector 0x313ce567 on mocked contract Owned (${USDC}).`,
+    );
+    expect(mock.unhandled).toHaveLength(1);
+    expect(owned.calls).toEqual([]);
+    expect(mock.calls).toEqual([]);
+  });
+
   test("the miss names the first arg that differs, by its ABI name", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });

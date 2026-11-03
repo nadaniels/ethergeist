@@ -1,4 +1,4 @@
-import { createPublicClient, parseAbi, zeroAddress } from "viem";
+import { InvalidArrayError, createPublicClient, parseAbi, zeroAddress } from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
@@ -117,6 +117,29 @@ describe("named outputs", () => {
         args: [7n],
       }),
     ).toEqual([7n, 1n, 2n, 3n, 7n]);
+  });
+
+  test("an answer of the wrong shape fails at registration, as viem's encoder refuses it", () => {
+    const { mock } = setup();
+    const feed = mock.contract({
+      abi: [...feedAbi, ...parseAbi(["function quote() view returns (uint256 amount, uint256)"])],
+      address: FEED,
+    });
+
+    // An object answers only when every output is named.
+    expect(() => {
+      // @ts-expect-error unnamed outputs take a tuple
+      feed.read.getRoundData().returns({ roundId: 7n });
+    }).toThrow(InvalidArrayError);
+    expect(() => {
+      // @ts-expect-error one unnamed output is enough
+      feed.read.quote().returns({ amount: 1n });
+    }).toThrow(InvalidArrayError);
+    // Several outputs take a tuple or an object, not one value.
+    expect(() => {
+      // @ts-expect-error several outputs
+      feed.read.latestRoundData().returns(7n);
+    }).toThrow(InvalidArrayError);
   });
 });
 

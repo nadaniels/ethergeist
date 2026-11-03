@@ -195,6 +195,8 @@ describe("history entries", () => {
       { type: "builtIn", method: "eth_chainId", outcome: { type: "result", value: base.id } },
       { type: "builtIn", method: "eth_blockNumber", outcome: { type: "result", value: 10n } },
     ]);
+    // A raw method's params are its own: there's no decoded call.
+    expect(mock.history[0]).not.toHaveProperty("call");
   });
 
   test("an entry is pending until its answer arrives", async () => {

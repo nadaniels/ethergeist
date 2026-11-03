@@ -79,6 +79,16 @@ describe("estimateGas", () => {
     ]);
   });
 
+  test("a transaction without a sender is answered, without an account", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ to: bob }).returns(30_000n);
+
+    expect(await client.estimateGas({ to: bob })).toBe(30_000n);
+    expect(mock.actions.estimateGas.calls).toEqual([
+      { to: bob, value: 0n, blockNumber: 10n, blockTag: "latest" },
+    ]);
+  });
+
   test("a value of 0n matches a request without one; malformed pins throw", async () => {
     const { client, mock } = setup();
     mock.actions.estimateGas({ to: bob, value: 0n }).returns(25_000n);
@@ -182,16 +192,32 @@ describe("estimateGas unmocked", () => {
       { account: alice, to: testAddress("empty"), data: "0x1234" as const },
       // A deployment.
       { account: alice, data: "0x6000" as const },
+      // A deployment without init code isn't a plain transfer either.
+      { account: alice },
     ];
     const errors = await Promise.all(
       requests.map((request) => rejectionOf(client.estimateGas(request))),
     );
     for (const error of errors) expectCause(error, MockNotFoundError);
 
-    expect(mock.unhandled).toHaveLength(4);
+    expect(mock.unhandled).toHaveLength(5);
     expect(mock.unhandled[0]!.error.message).toContain(
       "Mock it with mock.actions.estimateGas({ to }).returns(…).",
     );
+  });
+
+  test("empty data to a registered contract isn't an estimate of one of its functions", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
+
+    const error = await rejectionOf(
+      client.estimateGas({ account: alice, to: usdc.address, data: "0x" }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).shortMessage).toMatch(
+      /^No mock for estimateGas\(/u,
+    );
+    expect(mock.history[0]).not.toHaveProperty("contract");
   });
 });
 
@@ -300,7 +326,7 @@ function tokenSetup(defaults?: MockContractDefaults<typeof tokenAbi>) {
       account: alice,
       value,
     });
-  return { mock, token, transfer, mint };
+  return { mock, client, token, transfer, mint };
 }
 
 describe("contract estimates", () => {
@@ -367,6 +393,10 @@ describe("contract estimates", () => {
       'No estimateGas mocks registered for "transfer"; a simulate mock doesn\'t answer estimates.',
     );
     expect(mock.unhandled).toHaveLength(1);
+    // The contract didn't answer, so its record has the request's outcome.
+    expect(mock.history[0]).toMatchObject({
+      contract: { call: { functionName: "transfer" }, outcome: { type: "unhandled" } },
+    });
   });
 
   test("history shows the function estimated", async () => {
@@ -425,6 +455,39 @@ describe("estimate precedence", () => {
       "#1 eth_estimateGas estimateGas Token.mint(1n) → 100000n\n" +
         "#2 eth_estimateGas estimateGas Token.mint(1n) ✗ fault: insufficientFunds",
     );
+    // The contract didn't answer, so its record has the request's outcome.
+    expect(mock.history[0]).toMatchObject({
+      contract: { call: { functionName: "mint" }, outcome: { type: "result", value: 100_000n } },
+    });
+  });
+
+  test("a function not on the contract's ABI falls through to action mocks", async () => {
+    const { mock, client, token } = tokenSetup();
+    // The token's ABI has no approve.
+    const approve = () =>
+      client.estimateGas({
+        account: alice,
+        to: token.address,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: "approve", args: [bob, 1n] }),
+      });
+
+    const error = expectCause(await rejectionOf(approve()), MockNotFoundError);
+    mock.actions.estimateGas({ to: token.address }).returns(60_000n);
+    expect(await approve()).toBe(60_000n);
+
+    expect(error.shortMessage).toBe(
+      `No function with selector 0x095ea7b3 on mocked contract Token (${token.address}).`,
+    );
+    expect(mock.unhandled).toHaveLength(1);
+    expect(mock.history[1]).toMatchObject({
+      contract: { call: undefined, outcome: { type: "result", value: 60_000n } },
+    });
+    expect(mock.formatHistory().split("\n")[1]).toBe(
+      "#2 eth_estimateGas estimateGas({ account: 0xa41f…2D9e, to: 0x0dc7…41c6, value: 0n, " +
+        "data: 0x095e…0001, blockNumber: 10n, blockTag: latest }) → 60000n",
+    );
+    // An estimate that didn't decode isn't a call of any function.
+    expect(token.calls).toEqual([]);
   });
 });
 
