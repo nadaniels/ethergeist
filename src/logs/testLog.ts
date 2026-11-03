@@ -8,7 +8,7 @@ import type { MockEventLog } from "./events.js";
  * signature, and no data. For a receipt's noise, e.g. testing that code skips
  * logs it doesn't know. It's from `testAddress(label)`, or from `address`
  * (any valid address, checksummed) for an unknown event at a contract the
- * code does know. To `emit()` it, its contract must be registered.
+ * code does know.
  */
 export function testLog(label: string, { address }: { address?: Address } = {}): MockEventLog {
   return {

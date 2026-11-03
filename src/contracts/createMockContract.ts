@@ -85,7 +85,7 @@ export function createMockContract<const abi extends Abi>(
   hooks: {
     /** Called with every decoded call, tagged, so the rpc can keep a log across contracts. */
     onCall?: (call: MockTaggedCall) => void;
-    /** Places a transaction's logs in the rpc's log store. */
+    /** Puts a transaction with these logs on the rpc's chain. */
     emit?: (logs: readonly MockEventLog[], options?: EmitOptions) => readonly unknown[];
     /** How many calls each list keeps: the contract's, and each function's. */
     recordLimit?: RecordLimit;

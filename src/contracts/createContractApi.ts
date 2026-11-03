@@ -37,7 +37,7 @@ export function createContractApi<const abi extends Abi>({
   calls: () => readonly MockTaggedCall[];
   /** The calls a namespace's function received, every overload's. */
   callsTo: (namespace: MockNamespace, functionName: string) => MockCall[];
-  /** Places a transaction's logs in the rpc's log store. */
+  /** Puts a transaction with these logs on the rpc's chain. */
   emit: (logs: readonly MockEventLog[], options?: EmitOptions) => readonly unknown[];
   /** Throws if the contract was removed. */
   assertAttached: () => void;

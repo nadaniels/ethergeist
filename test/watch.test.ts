@@ -33,7 +33,7 @@ afterEach(() => {
 });
 
 describe("watchContractEvent", () => {
-  test("delivers a log emitted into a newly mined block", async () => {
+  test("delivers what a plain emit puts on the chain, in a newly mined block", async () => {
     const { mock, client, usdc } = setup();
     const { batches, onLogs } = collector();
     const unwatch = client.watchContractEvent({
@@ -47,9 +47,34 @@ describe("watchContractEvent", () => {
     await vi.waitFor(() => {
       expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
     });
-    usdc.emit.Transfer({ from: alice, to: bob, value: 5n }, { mine: true });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
     await vi.waitFor(() => {
       expect(batches).toEqual([[5n]]);
+    });
+    unwatch();
+  });
+
+  test("misses a log emitted into a block it has read, as with any block that grows", async () => {
+    const { mock, client, usdc } = setup();
+    const { batches, onLogs } = collector();
+    const unwatch = client.watchContractEvent({
+      abi: erc20Abi,
+      address: USDC,
+      eventName: "Transfer",
+      onLogs,
+    });
+
+    await vi.waitFor(() => {
+      expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
+    });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
+    await vi.waitFor(() => {
+      expect(batches).toEqual([[1n]]);
+    });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 2n }, { blockNumber: mock.blockNumber });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 3n });
+    await vi.waitFor(() => {
+      expect(batches).toEqual([[1n], [3n]]);
     });
     unwatch();
   });
@@ -67,7 +92,7 @@ describe("watchContractEvent", () => {
     await vi.waitFor(() => {
       expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
     });
-    usdc.emit.Transfer({ from: alice, to: bob, value: 5n }, { mine: true });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
     await vi.waitFor(() => {
       expect(batches).toHaveLength(1);
     });
@@ -100,7 +125,7 @@ describe("watchContractEvent", () => {
     await vi.waitFor(() => {
       expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
     });
-    usdc.emit.Transfer({ from: alice, to: bob, value: 2n }, { mine: true });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 2n });
     await vi.waitFor(() => {
       expect(batches).toEqual([[2n]]);
     });
@@ -128,8 +153,8 @@ describe("watchContractEvent", () => {
     await vi.waitFor(() => {
       expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
     });
-    usdc.emit.Transfer({ from: alice, to: bob, value: 1n }, { mine: true });
-    usdc.emit.Transfer({ from: alice, to: bob, value: 2n }, { mine: true });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 2n });
     await vi.waitFor(() => {
       expect(batched.batches.flat()).toEqual([1n, 2n]);
     });
@@ -155,13 +180,10 @@ describe("watchEvent", () => {
     await vi.waitFor(() => {
       expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
     });
-    mock.emit(
-      [
-        usdc.events.Transfer({ from: alice, to: alice, value: 1n }),
-        usdc.events.Transfer({ from: alice, to: bob, value: 2n }),
-      ],
-      { mine: true },
-    );
+    mock.emit([
+      usdc.events.Transfer({ from: alice, to: alice, value: 1n }),
+      usdc.events.Transfer({ from: alice, to: bob, value: 2n }),
+    ]);
     await vi.waitFor(() => {
       expect(batches).toEqual([[2n]]);
     });
@@ -192,7 +214,7 @@ describe("polling", () => {
     // One poll at a time, whatever the interval: the first notes the current block,
     // the next reads the block mined after it.
     await vi.runOnlyPendingTimersAsync();
-    usdc.emit.Transfer({ from: alice, to: bob, value: 5n }, { mine: true });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
     await vi.runOnlyPendingTimersAsync();
     expect(batches).toEqual([[5n]]);
     unwatch();

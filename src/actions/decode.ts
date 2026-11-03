@@ -1,8 +1,18 @@
-import { type BlockTag, getAddress, hexToBigInt, isHex, numberToHex } from "viem";
+import {
+  type BlockTag,
+  type Hash,
+  getAddress,
+  hexToBigInt,
+  isHash,
+  isHex,
+  numberToHex,
+} from "viem";
 
 import { type BlockForm, type ResolveBlock, addressParam, isBlockTag } from "../chain/params.js";
+import type { ChainState } from "../chain/state.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
+import type { TransactionStore } from "../transactions/store.js";
 import type { AddressAtBlockCall } from "./types.js";
 
 /** Encodes a bigint answer as a JSON-RPC quantity; `what` names it in the error. */
@@ -55,5 +65,33 @@ export function decodeAddressAtBlock(
   return {
     address: addressParam(address),
     ...blockAt(block, resolveBlock),
+  };
+}
+
+/** The hash a receipt or transaction mock pins exactly, as its call; `undefined` for a matcher. */
+export const pinnedHash = (pinned: unknown): { hash: Hash } | undefined =>
+  isPlainObject(pinned) && typeof pinned.hash === "string" && isHash(pinned.hash)
+    ? { hash: pinned.hash }
+    : undefined;
+
+/**
+ * Fixes a static receipt's or transaction's block, which a node never moves,
+ * at registration: where its transaction is on the chain, if its pinned hash
+ * is one there, and otherwise the current block, as if mined now. A
+ * transaction placed in a block not mined yet isn't on the chain, so it's
+ * the current block too. Pending (`blockNumber: null`) and a given block
+ * stay as they are.
+ */
+export function minedWhenRegistered(state: ChainState, transactions: TransactionStore) {
+  return (value: unknown, call: { hash: Hash } | undefined) => {
+    if (!isPlainObject(value) || value.blockNumber !== undefined) return value;
+    const mined = call === undefined ? undefined : transactions.minedAt(call.hash);
+    return mined === undefined
+      ? { ...value, blockNumber: state.blockNumber }
+      : {
+          ...value,
+          blockNumber: mined.blockNumber,
+          transactionIndex: value.transactionIndex ?? mined.index,
+        };
   };
 }

@@ -6,7 +6,6 @@ import { createChainState } from "../chain/state.js";
 import { createDispatch } from "../contracts/dispatch.js";
 import { createRegistry } from "../contracts/registry.js";
 import { createRecorder } from "../history/recorder.js";
-import { createLogStore } from "../logs/store.js";
 import {
   MockInternalError,
   MockRpcError,
@@ -14,6 +13,7 @@ import {
   removedMockError,
 } from "../shared/errors.js";
 import { unlimited } from "../shared/records.js";
+import { createTransactionStore } from "../transactions/store.js";
 import { createFaults } from "./faults.js";
 import { createRequestHandler } from "./requestHandler.js";
 
@@ -21,8 +21,8 @@ import { createRequestHandler } from "./requestHandler.js";
 function setup(thrown: unknown) {
   const state = createChainState({});
   const registry = createRegistry(state);
-  const logStore = createLogStore({ state, registry });
-  const actions = createActions({ state, registry, logStore }, unlimited);
+  const transactions = createTransactionStore({ state, registry });
+  const actions = createActions({ state, registry, transactions }, unlimited);
   const recorder = createRecorder({
     multicallAddress: state.multicallAddress,
     actionFor: actions.actionFor,

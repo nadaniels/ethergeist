@@ -9,7 +9,7 @@ Each folder owns one part of the mock, and imports only from its own folder
 and the layers before it:
 
 ```
-shared → mocking → chain → logs → contracts → actions → history → rpc → viem → (top of src/)
+shared → mocking → chain → logs → transactions → contracts → actions → history → rpc → viem → (top of src/)
 ```
 
 - **`shared/`:** what every layer uses: the mock's errors, small value helpers,
@@ -23,13 +23,21 @@ shared → mocking → chain → logs → contracts → actions → history → 
   fees) and the node's shapes for blocks, transactions, receipts and errors,
   and for request params (`params.ts`: read to the Ethereum JSON-RPC spec,
   refused as invalid params where it rules them out).
-- **`logs/`:** emitted logs and how `eth_getLogs` filters find them.
+- **`logs/`:** a log's content (`contract.events`, `testLog`) and how
+  `eth_getLogs` filters match logs.
+- **`transactions/`:** the chain's transactions, one record each
+  (`createTransactionStore`): what `emit` puts on the chain, and what
+  receipts, transactions, blocks and `eth_getLogs` answer from when no mock
+  answers first. Every record goes in through `add`, and all mining through
+  its `mine`; a record is on the chain once its block is mined (at or below
+  the head).
 - **`contracts/`:** mocked contracts, their registry, and `eth_call` dispatch,
-  multicall included. It emits logs, so it sits above `logs/`; it owns
-  `MockCallRecord`, the record of a call it answered.
+  multicall included. It emits logs, so it sits above `transactions/`; it
+  owns `MockCallRecord`, the record of a call it answered.
 - **`actions/`:** typed actions (`mock.actions.getBalance`, …), one file each,
-  and raw `mock.method()` mocks. `getLogs` reads the log store and
-  `estimateGas` asks contracts first, so it sits above both.
+  and raw `mock.method()` mocks. Receipts, transactions, blocks and `getLogs`
+  read the transaction store and `estimateGas` asks contracts first, so it
+  sits above both.
 - **`history/`:** what the mock received and how it answered: the recorder,
   history entries, and formatting.
 - **`rpc/`:** the request pipeline (`createRequestHandler`, a
@@ -81,8 +89,8 @@ The mock's errors:
 ## Naming
 
 1. **A file is named for what it holds.** A file built around one factory names
-   it `create` plus that thing, read together with its folder: `logs/store.ts`
-   exports `createLogStore`, `contracts/registry.ts` exports `createRegistry`.
+   it `create` plus that thing, read together with its folder: `transactions/store.ts`
+   exports `createTransactionStore`, `contracts/registry.ts` exports `createRegistry`.
 2. **A folder's entry point, or a file whose thing has no good noun, is named
    for its factory:** `actions/createActions.ts`,
    `contracts/createMockContract.ts`, `contracts/createContractApi.ts`,
@@ -118,10 +126,10 @@ everything, then mutate.
 
 1. Add its file in `actions/`, named for the action (`getGasPrice.ts`). It
    exports a function that takes the `ActionsContext` (`state`, `registry`,
-   `logStore`) and returns its `Definition<call, rpc>`: how to decode the call,
-   encode and view answers, and what to answer when it isn't mocked. `call` is
-   its decoded call's type and `rpc` its JSON-RPC answer's, so its members get
-   them typed, without casts. If `encode` checks the answer against the call
+   `transactions`) and returns its `Definition<call, rpc>`: how to decode the
+   call, encode and view answers, and what to answer when it isn't mocked.
+   `call` is its decoded call's type and `rpc` its JSON-RPC answer's, so its
+   members get them typed, without casts. If `encode` checks the answer against the call
    (as receipts check their logs' placement), also give `pinnedCall`, so a
    static answer that can't fit fails at `.returns()` instead of at request
    time. If a static answer takes a default from the chain that a node would

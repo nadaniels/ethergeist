@@ -26,6 +26,7 @@ import type { BuildLogParameters, EmitOptions, EmittedLog, MockEventLog } from "
 import type { MockFault } from "./mocking/types.js";
 import type { MockCheckpoint } from "./rpc/checks.js";
 import type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
+import type { TransactionRecord } from "./transactions/store.js";
 import type { MockPublicClientParameters } from "./viem/adapter.js";
 
 export type CreateMockRpcParameters = {
@@ -82,8 +83,8 @@ export type CreateMockRpcParameters = {
    * records, and a 10-call multicall about 21 KB, since one entry carries
    * the whole batch; so about 3 MB and 21 MB at the default. Pass a number
    * to choose without the warning, or `Infinity` to keep everything.
-   * Registered mocks and `mock.logs` aren't records; they grow only as code
-   * adds to them.
+   * Registered mocks and the chain's transactions (`mock.transactions`,
+   * `mock.logs`) aren't records; they grow only as code adds to them.
    */
   historyLimit?: number;
 };
@@ -155,20 +156,32 @@ export type MockRpc = {
     parameters: BuildLogParameters<abi, eventName>,
   ): Log<bigint, number, false>;
   /**
-   * Emits logs as one transaction, for `getLogs` and watchers to find:
-   * values from a contract's `events`, in the current block, or in a newly
-   * mined one with `{ mine: true }`. Returns the placed logs, e.g. for a
-   * mocked receipt. See `EmitOptions` for choosing the block and transaction.
-   * Placed logs' addresses are lowercase, as nodes send them: compare with
-   * `isAddressEqual`, not `toBe`.
+   * Puts a transaction with these logs on the chain: values from a
+   * contract's `events`, or `contractEvents()` or `testLog()` for any other
+   * address (not one marked `empty()`). It's placed like a sent transaction,
+   * in a newly mined block, so watchers see it, and it moves the clock and a
+   * pending `waitForTransactionReceipt({ confirmations })` on a block; see
+   * `EmitOptions` for another block. Its receipt, transaction and block
+   * answer from it (from the zero address, to the zero address, no gas),
+   * unless a mock for its hash answers first. One call is one transaction:
+   * a swap's logs from several contracts go in one `mock.emit([…])`.
+   * Returns the placed logs; their addresses are lowercase, as nodes send
+   * them: compare with `isAddressEqual`, not `toBe`.
    */
   emit(log: MockEventLog, options?: EmitOptions): EmittedLog;
   emit(logs: readonly MockEventLog[], options?: EmitOptions): EmittedLog[];
   /**
-   * Every emitted log, by block and log index, as `getLogs` would answer them,
-   * with lowercase addresses: compare with `isAddressEqual`, not `toBe`.
+   * Every log on the chain, by block and log index, as `getLogs` would answer
+   * them, with lowercase addresses: compare with `isAddressEqual`, not `toBe`.
+   * Logs in blocks not mined yet are listed, though `getLogs` doesn't find them.
    */
   readonly logs: EmittedLog[];
+  /**
+   * The chain's transactions, by block and index: what `emit` put on it.
+   * State, like registered mocks: `checkpoint()` and `reset()` restore it,
+   * `clearCalls()` and `historyLimit` leave it.
+   */
+  readonly transactions: TransactionRecord[];
   /**
    * Mocks a JSON-RPC method that has no typed mock, answering with raw JSON-RPC
    * values. Pinned `params` match a prefix of the request's params.

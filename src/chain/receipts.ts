@@ -22,7 +22,11 @@ export type MockLog = Partial<Omit<Log<bigint, number, false>, "topics">> & {
   topics?: readonly Hex[];
 };
 
-/** A mocked receipt: any receipt fields, with logs that may be partial too. */
+/**
+ * A mocked receipt: any receipt fields, with logs that may be partial too.
+ * Its `logs` are legacy: for a receipt with these logs, emit them instead,
+ * `mock.emit(logs, { transactionHash })`, whose receipt answers itself.
+ */
 export type MockReceipt = Partial<Omit<TransactionReceipt, "logs">> & { logs?: MockLog[] };
 
 const zeroBloom = `0x${"00".repeat(256)}` as const;

@@ -10,6 +10,7 @@ const layers = [
   "mocking",
   "chain",
   "logs",
+  "transactions",
   "contracts",
   "actions",
   "history",

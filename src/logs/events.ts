@@ -37,9 +37,8 @@ export type MockEventLog = {
 };
 
 /**
- * Where a log goes: its block and transaction. Left out, `mock.buildLog` uses
- * the current block and zeros, and `emit` the current block and the block's
- * next transaction.
+ * Where `mock.buildLog` puts a log: its block and transaction. Left out, the
+ * current block and zeros.
  */
 export type LogPlacement = {
   blockNumber?: bigint;
@@ -48,13 +47,25 @@ export type LogPlacement = {
 };
 
 /**
- * Where `emit` puts a transaction's logs: `LogPlacement`, or `mine: true` for
- * a newly mined block, as for a transaction that just happened. Watchers only
- * see logs in blocks mined after they last polled.
+ * Where `emit` puts a transaction: placed like a sent one, in a newly mined
+ * block, unless `blockNumber` names one. Each call is one transaction, so
+ * two calls are two blocks: emit a transaction's logs together, as
+ * `mock.emit([a, b])`.
  */
-export type EmitOptions = LogPlacement & {
-  /** Mine a block and put the logs in it. Defaults to `false`: the current block. */
-  mine?: boolean;
+export type EmitOptions = {
+  /**
+   * The block to place the transaction in, after the transactions already
+   * there, without mining: an earlier block for history, the current one
+   * to share a block, or a later one, which is on the chain once it's mined.
+   * A watcher that has already polled the block misses it, as it misses
+   * anything added to a block it has read.
+   */
+  blockNumber?: bigint;
+  /**
+   * The transaction's hash, e.g. one the app reads from a URL. Defaults to
+   * one made from its position. Refused if it's already on the chain.
+   */
+  transactionHash?: Hash;
 };
 
 /** An indexed input's value is required; a non-indexed one may be a partial struct. */

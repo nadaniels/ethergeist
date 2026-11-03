@@ -90,3 +90,4 @@ export type {
 export { zeroResult } from "./mocking/zeroResult.js";
 export { testAddress, testHash } from "./shared/testValues.js";
 export { testLog } from "./logs/testLog.js";
+export type { TransactionRecord } from "./transactions/store.js";

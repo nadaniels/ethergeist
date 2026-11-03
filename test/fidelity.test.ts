@@ -676,7 +676,6 @@ describe("receipts", () => {
     const log = mock
       .contract({ abi, address: TOKEN })
       .emit.Transfer({ from: alice, to: TOKEN, value: 1n });
-    mock.actions.getTransactionReceipt({ hash: log.transactionHash }).returns({ logs: [log] });
 
     const mocked = await mock.request({
       method: "eth_getTransactionReceipt",

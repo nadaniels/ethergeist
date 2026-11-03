@@ -2,7 +2,6 @@ import type { ChainState } from "../chain/state.js";
 import type { ContractTurn } from "../contracts/createMockContract.js";
 import type { Registry } from "../contracts/registry.js";
 import type { MockCallRecord } from "../contracts/types.js";
-import type { LogStore } from "../logs/store.js";
 import { fail } from "../mocking/faults.js";
 import {
   type ReceivedCall,
@@ -21,10 +20,15 @@ import { zeroResult } from "../mocking/zeroResult.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, createRecordList } from "../shared/records.js";
+import type { TransactionStore } from "../transactions/store.js";
 import type { ActionContext } from "./types.js";
 
-/** What an action's definition reads: the chain's state, what's registered, and emitted logs. */
-export type ActionsContext = { state: ChainState; registry: Registry; logStore: LogStore };
+/** What an action's definition reads: the chain's state, what's registered, and its transactions. */
+export type ActionsContext = {
+  state: ChainState;
+  registry: Registry;
+  transactions: TransactionStore;
+};
 
 /**
  * How a table answers one action: decoding its calls, encoding answers, and
@@ -50,10 +54,11 @@ export type Definition<call extends object = object, rpc = unknown> = {
   zero: unknown;
   /**
    * Fixes what a static answer leaves to the chain at registration, as it
-   * stands then, e.g. a receipt's block: the one it was mined in. A
-   * resolver's answer is made when it answers, so it's left to `encode`.
+   * stands then, e.g. a receipt's block: the one it was mined in. `call` is
+   * `pinnedCall`'s, when the pins settle it. A resolver's answer is made
+   * when it answers, so it's left to `encode`.
    */
-  fixAtRegistration?(value: unknown): unknown;
+  fixAtRegistration?(value: unknown, call: call | undefined): unknown;
   /** Normalizes pinned fields at registration, e.g. checksumming addresses. */
   pin?(pinned: unknown): unknown;
   /**
@@ -107,8 +112,9 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
     const handler = mocks.register(pinned, undefined);
     return mocks.createBuilder(handler, (value) => {
       const given = value === zeroResult ? definition.zero : value;
-      const fixed = definition.fixAtRegistration?.(given) ?? given;
-      encode(fixed, definition.pinnedCall?.(pinned));
+      const call = definition.pinnedCall?.(pinned);
+      const fixed = definition.fixAtRegistration?.(given, call) ?? given;
+      encode(fixed, call);
       return fixed;
     });
   }

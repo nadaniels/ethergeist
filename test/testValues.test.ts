@@ -15,6 +15,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test } from "vite-plus/test";
 
 import { contractEvents, createMockRpc, testAddress, testHash, testLog } from "../src/index.js";
+import { lowercase } from "./utils.js";
 
 describe("testAddress()", () => {
   test("is checksummed, and the same for a label in every run", () => {
@@ -94,14 +95,16 @@ describe("testLog()", () => {
     expect(() => testLog("noise", { address: "0x1234" })).toThrow(InvalidAddressError);
   });
 
-  test("emits only from a registered contract, like any log", () => {
+  test("emits at any address, like any log, but not one marked empty()", () => {
     const mock = createMockRpc();
     const USDC: Address = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
     mock.contract({ abi: erc20Abi, address: USDC });
+    mock.empty(testAddress("empty"));
 
     expect(mock.emit(testLog("noise", { address: USDC })).topics).toEqual([
       testHash("Unknown(noise)"),
     ]);
-    expect(() => mock.emit(testLog("noise"))).toThrow("No mocked contract at");
+    expect(mock.emit(testLog("noise")).address).toBe(lowercase(testAddress("noise")));
+    expect(() => mock.emit(testLog("empty"))).toThrow("is marked empty()");
   });
 });

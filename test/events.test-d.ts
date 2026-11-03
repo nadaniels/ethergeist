@@ -143,7 +143,7 @@ describe("emit", () => {
   const shapes = mock.contract({ abi: shapesAbi, address: testAddress("shapes") });
 
   test("contract.emit takes the event's args, then options, and returns the placed log", () => {
-    expectTypeOf(usdc.emit.Transfer({ from: alice, to: bob }, { mine: true })).toEqualTypeOf<
+    expectTypeOf(usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 3n })).toEqualTypeOf<
       Readonly<Log<bigint, number, false>>
     >();
     shapes.emit.Paused();
@@ -152,6 +152,10 @@ describe("emit", () => {
     usdc.emit.Transfer({ from: alice });
     // @ts-expect-error -- not an option
     usdc.emit.Transfer({ from: alice, to: bob }, { logIndex: 2 });
+    // @ts-expect-error -- gone: a plain emit mines a new block
+    usdc.emit.Transfer({ from: alice, to: bob }, { mine: true });
+    // @ts-expect-error -- gone: a block's transactions have no holes
+    mock.emit(usdc.events.Transfer({ from: alice, to: bob }), { transactionIndex: 1 });
   });
 
   test("mock.emit returns one log for one, and an array for an array", () => {

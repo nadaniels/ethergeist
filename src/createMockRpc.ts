@@ -12,12 +12,13 @@ import { type FormatContext, type FormatHistoryOptions, formatHistory } from "./
 import { createRecordLimit } from "./history/historyLimit.js";
 import { createRecorder } from "./history/recorder.js";
 import type { EmittedLog } from "./logs/events.js";
-import { createLogStore } from "./logs/store.js";
+import { describeLogsCall } from "./logs/filter.js";
 import type { MockFault } from "./mocking/types.js";
 import { createCheckpoints } from "./rpc/checkpoints.js";
 import { createChecks } from "./rpc/checks.js";
 import { type FailRequestsOptions, type MockFaultHandle, createFaults } from "./rpc/faults.js";
 import { createRequestHandler } from "./rpc/requestHandler.js";
+import { type TransactionRecord, createTransactionStore } from "./transactions/store.js";
 import type { CreateMockRpcParameters, MockRpc } from "./types.js";
 import { createViemAdapter } from "./viem/adapter.js";
 
@@ -30,14 +31,14 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
   const recordLimit = createRecordLimit(parameters.historyLimit);
   const state = createChainState(parameters);
   const registry = createRegistry(state);
-  const logStore = createLogStore({ state, registry });
+  const transactions = createTransactionStore({ state, registry });
   const faults = createFaults();
 
-  const actions = createActions({ state, registry, logStore }, recordLimit);
+  const actions = createActions({ state, registry, transactions }, recordLimit);
   // History names a getLogs filter's events with the registered contracts' ABIs.
   const formatContext: FormatContext = {
     describeLogs: (call) =>
-      logStore.describe(
+      describeLogsCall(
         call,
         registry.contracts.map(({ contract }) => contract),
       ),
@@ -55,7 +56,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     state,
     registry,
     actions,
-    logStore,
+    transactions,
     faults,
     dispatcher,
     recorder,
@@ -81,7 +82,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
       registry.assertUnregistered(contractParameters.address);
       const internal = createMockContract(contractParameters, {
         onCall: recorder.onCall,
-        emit: logStore.emit,
+        emit: transactions.emit,
         recordLimit,
       });
       registry.add(internal);
@@ -91,9 +92,12 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     buildTransaction: builders.buildTransaction,
     buildReceipt: builders.buildReceipt,
     buildLog: builders.buildLog,
-    emit: logStore.emit,
+    emit: transactions.emit,
     get logs(): EmittedLog[] {
-      return logStore.logs;
+      return transactions.logs;
+    },
+    get transactions(): TransactionRecord[] {
+      return transactions.transactions;
     },
     method: actions.method,
     failRequests(fault: MockFault, options: FailRequestsOptions = {}): MockFaultHandle {
@@ -113,7 +117,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
       return state.blockNumber;
     },
     mine(blocks = 1n) {
-      state.mine(blocks);
+      transactions.mine(blocks);
     },
     setFees(fees: MockFees) {
       state.setFees(fees);

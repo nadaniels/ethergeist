@@ -45,8 +45,7 @@ features land; tick them off as pages get written.
       The address belongs to a key derived from the label (signing later).
       `testLog("noise")` is a log that matches no event, for a receipt's
       noise; `testLog("noise", { address: USDC })` for an unknown event at a
-      contract the code does know (any address; `emit()` needs it
-      registered).
+      contract the code does know (any address).
 
 ## 3. Mocking contract calls
 
@@ -288,9 +287,14 @@ features land; tick them off as pages get written.
   - Overloaded events use the overload the args fit; "ambiguous" when
     several do.
   - A receipt's log that names another block or transaction throws (e.g. a
-    `mock.buildLog()` result for another block). An emitted log fits the
-    receipt of its own transaction; one emitted as a block's second
-    transaction needs the receipt's `transactionIndex: 1` too.
+    `mock.buildLog()` result for another block).
+  - Legacy: a receipt mock's `logs`. For a receipt with these logs for a
+    hash the app has, emit them instead, `mock.emit(logs, { transactionHash })`:
+    the emit's receipt, transaction and block answer from it. Receipt and
+    transaction mocks are for answers the chain shouldn't give: `null`, a
+    dropped transaction, a reverted status. A static one pinned to an
+    emitted hash takes that transaction's block and index, as of
+    registration: register it after the emit, and after its block is mined.
   - `mock.buildLog({ abi, address, eventName, args, blockNumber, … })` for a
     complete viem log where no mock places it (`toEqual`, Storybook props,
     a function that parses logs). Inside a mock, receipts and `emit` place
@@ -298,30 +302,44 @@ features land; tick them off as pages get written.
     logs from a contract the app decodes but never calls (an indexer, a
     receipt parser), `contractEvents({ abi, address })` builds the same logs
     without registering it, so it doesn't answer `getCode`, claim its
-    address, or show in "Registered" lists. `emit` still needs the contract
-    registered (`mock.contract({ abi, address })`, no mocks needed), since
-    `getLogs` treats an unknown address as unmocked. And
+    address, or show in "Registered" lists; `emit` takes them too. And
     `mock.buildReceipt(fields)` for the receipt `.returns(fields)` answers
     (pass `transactionHash` to match the request's). Both default to the
     mock's current block. Both share the mock's encoding and
     defaults, so `toEqual` against what the app got works.
-- [ ] Emitting logs for `getLogs`: `contract.emit.Transfer(args, options)`, or
+- [ ] Emitting logs: `contract.emit.Transfer(args, options)`, or
       `mock.emit(logs, options)` for several logs in one transaction
       (e.g. a swap's transfers and its `Swap`). Show:
-  - One call is one transaction in one block: the current block, a
-    `blockNumber`, or a newly mined one with `{ mine: true }` (what a
-    watcher needs: it only reads blocks mined after its last poll). Logs
-    in a block after the head appear once `mine()` reaches it.
+  - One call is one transaction, placed like a sent one: in a newly mined
+    block, so watchers see it. Two `contract.emit` calls are two
+    transactions in two blocks: a swap's logs from several contracts go in
+    one `mock.emit([…])`.
+  - Each emit mines a block, so it moves a pending
+    `waitForTransactionReceipt({ confirmations })` on by one, and the
+    clock by one block time: seeding 100 transfers moves `latest`'s
+    timestamp by 20 minutes. Seed history with `{ blockNumber }` instead.
+  - `{ blockNumber }` places it in that block without mining, after the
+    transactions already there: an earlier block for history, the current
+    one to share a block, or a later one, which is on the chain once
+    `mine()` reaches it (until then its receipt is `null` and its
+    transaction pending). So `{ blockNumber: mock.blockNumber + 1n }`
+    places a transaction in the next block, while a plain emit mines that
+    block, after the ones placed there.
   - Positions are assigned: `logIndex` counts per block, each call is the
     block's next transaction, with a generated hash. Pass `transactionHash`
-    to match a mocked receipt, or to add logs to the block's last
-    transaction. A block's transactions go in order.
-  - `emit` returns the placed logs, which equal what `getLogs` answers and
-    can go into a mocked receipt.
-  - Logs come only from registered contracts; `getLogs` for an address
-    with no mocked contract is unhandled (a real node would quietly answer
-    `[]`, hiding the wrong address; viem checks a result's event and args,
-    never its address). `empty()` addresses have no logs.
+    for a hash the app already has (one from a URL); a hash already on the
+    chain is refused, since a transaction's receipt never grows.
+  - The emit's receipt, transaction and block answer from it: a success
+    from the zero address to the zero address, no input, nonce 0, no gas.
+    A mock for its hash answers first. A `getBlock` mock still lists the
+    block's emitted transactions, unless it sets `transactions`.
+  - `emit` returns the placed logs, which equal what `getLogs` and the
+    receipt answer.
+  - Logs come from any address, registered or not (`contractEvents()`,
+    `testLog()`), except one marked `empty()`, which has no code to emit
+    them. `getLogs` answers for any address: `[]` where nothing emitted, as
+    a node does (viem checks a result's event and args, never its address,
+    so a wrong address shows only as no logs).
   - Filtering is a node's: addresses, topics (`null` for any, arrays for
     any of several), and blocks. Without a range, only the current block
     (a common production bug the mock reproduces).
@@ -329,8 +347,10 @@ features land; tick them off as pages get written.
     ending before it starts, a block hash with a range, an unknown block
     hash, more than 4 topics. They're answers, not unhandled; history shows
     `✗ rpc error`.
-  - `mock.logs` lists every emitted log. `restore()` removes logs emitted
-    since the checkpoint; `clearCalls()` keeps them.
+  - `mock.logs` lists every emitted log, and `mock.transactions` every
+    emit's transaction. They're state: `restore()` removes what was emitted
+    since the checkpoint, `reset()` all of it; `clearCalls()` and
+    `historyLimit` keep them.
   - Logs carry `blockTimestamp` (reth sends it; some nodes don't), from the
     generated block: in `getLogs`, in receipts, and from `mock.buildLog()`,
     so an emitted log equals the receipt's. A receipt log with another
@@ -345,8 +365,7 @@ features land; tick them off as pages get written.
   - Pins match the decoded filter (`address`, `topics`, `fromBlock`,
     `toBlock` as resolved bigints, `blockHash`), with matchers.
   - A mock answers before the emitted logs and the node's rules, so an
-    override works for an address without a contract or a range past the
-    head. `.returns([...])` takes placed logs (from `emit()` or
+    override works for a range past the head. `.returns([...])` takes placed logs (from `emit()` or
     `mock.buildLog()`), not `contract.events` content; `.returns()` is `[]`.
   - Recipes: a block range cap, with a resolver that fails big ranges and
     answers `logs` (the emitted logs the filter matches) otherwise; a
@@ -365,9 +384,10 @@ features land; tick them off as pages get written.
     watchers poll `eth_getLogs` for new blocks, as they would against
     those endpoints. To test code that uses filters directly, mock the
     methods with `mock.method()` (you keep the filter's state).
-  - A watcher only reads blocks mined after it started: emit with
-    `{ mine: true }`. Logs from before it started aren't delivered, as on
-    a real chain. Several blocks mined between polls arrive together (or
+  - A watcher only reads blocks mined after it started, which a plain emit
+    is. Logs from before it started aren't delivered, as on a real chain,
+    and nor are ones emitted with `{ blockNumber }` into a block it has
+    already read. Several blocks mined between polls arrive together (or
     one log per call with `batch: false`).
   - Timing: `mock.publicClient()` polls every 50ms; viem's default is up to
     4s, longer than `vi.waitFor`'s 1s timeout, so clients you build

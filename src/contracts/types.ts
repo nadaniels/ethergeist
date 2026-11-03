@@ -259,10 +259,11 @@ export type MockContract<abi extends Abi> = {
    */
   events: MockContractEvents<abi>;
   /**
-   * Emits one of the contract's events, as a transaction of its own, e.g.
-   * `emit.Transfer({ from, to, value }, { mine: true })`, for `getLogs` and
-   * watchers to find. Returns the placed log. Shorthand for
-   * `mock.emit(contract.events.X(args), options)`.
+   * Emits one of the contract's events, as a transaction of its own in a
+   * newly mined block, e.g. `emit.Transfer({ from, to, value })`, for
+   * `getLogs`, watchers and receipts to find. Returns the placed log.
+   * Shorthand for `mock.emit(contract.events.X(args), options)`; see
+   * `EmitOptions`.
    */
   emit: MockContractEmit<abi>;
 };
