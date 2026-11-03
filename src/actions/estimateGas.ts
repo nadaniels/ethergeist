@@ -1,6 +1,7 @@
 import { type Address, type Hex, numberToHex } from "viem";
 
 import type { ResolveBlock } from "../chain/params.js";
+import { type TransactionType, sentType } from "../chain/transactions.js";
 import { encodeGas, impliedGas } from "../mocking/gas.js";
 import type { MockEstimateAnswers, MockNodeFault, WithLimits } from "../mocking/types.js";
 import { registeredRevert } from "../transactions/writeOutcome.js";
@@ -31,21 +32,30 @@ export type MockEstimateGasAction = {
   readonly calls: EstimateGasCall[];
 };
 
-/** `eth_estimateGas` takes a transaction and maybe a block. */
+/** Each estimate's send's type, which the call leaves out. */
+const sendTypes = new WeakMap<EstimateGasCall, TransactionType>();
+
+/**
+ * `eth_estimateGas` takes a transaction and maybe a block. Its send's type is
+ * worked out here (see `sentType`), so one a send would refuse is refused
+ * however it would be answered, a registered contract's own mocks included.
+ */
 function decodeEstimateGas(
   [tx, block]: readonly unknown[],
   resolveBlock: ResolveBlock,
 ): EstimateGasCall {
+  const fields = decodeTransactionRequest(tx);
+  const type = sentType(tx, fields);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
-  return withoutUndefined({
-    ...decodeTransactionRequest(tx),
-    ...blockAt(block, resolveBlock),
-  }) as EstimateGasCall;
+  const call = withoutUndefined({ ...fields, ...blockAt(block, resolveBlock) }) as EstimateGasCall;
+  sendTypes.set(call, type);
+  return call;
 }
 
 /**
  * The send an estimate is for, as send mocks are matched against it. Its
- * type follows its fees, as an estimate's call has none.
+ * type is its request's, as a send's is. viem's estimate carries no `type`,
+ * so an `eip2930` send without an `accessList` looks legacy.
  */
 function sendOf(call: EstimateGasCall, account: Address): SendTransactionCall {
   const { to, value, data, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } = call;
@@ -60,7 +70,7 @@ function sendOf(call: EstimateGasCall, account: Address): SendTransactionCall {
     gasPrice,
     maxFeePerGas,
     maxPriorityFeePerGas,
-    type: gasPrice === undefined ? "eip1559" : "legacy",
+    type: sendTypes.get(call),
   }) as SendTransactionCall;
 }
 

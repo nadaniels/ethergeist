@@ -338,6 +338,26 @@ describe("eth_sendTransaction (node account)", () => {
   });
 
   test.each([
+    [{}, "eip1559"],
+    [{ gasPrice: "0x1" }, "legacy"],
+    [{ gasPrice: "0x1", accessList: [] }, "eip2930"],
+    [{ maxFeePerGas: "0x1", accessList: [] }, "eip1559"],
+    [{ blobVersionedHashes: [] }, "eip4844"],
+    [{ maxFeePerBlobGas: "0x1" }, "eip4844"],
+    [{ authorizationList: [], blobVersionedHashes: [] }, "eip7702"],
+  ])("an untyped request's type is its fields': %o is %s", async (fields, type) => {
+    const { mock } = setup();
+    mock.actions.sendTransaction().returns();
+
+    await mock.request({
+      method: "eth_sendTransaction",
+      params: [{ from: alice, to: bob, ...fields }],
+    });
+
+    expect(mock.actions.sendTransaction.calls[0]?.type).toBe(type);
+  });
+
+  test.each([
     { tx: { to: bob }, details: "expected a transaction with a sender (from)" },
     { tx: { from: alice, type: "0x9" }, details: "expected a transaction type; got 0x9" },
     {
@@ -747,6 +767,78 @@ describe("the estimate a send mock implies", () => {
     }).sendTransaction({ to: USDC, value: 1n });
     expect(usdc.calls).toEqual([]);
     expect(mock.transactions).toHaveLength(1);
+  });
+
+  test.each(["legacy", "eip2930", "eip1559", "eip7702"] as const)(
+    "a mock pinning %s implies the estimate of a send of that type",
+    async (type) => {
+      const { mock, wallet } = localSetup();
+      mock.actions.sendTransaction({ to: bob, type }).returns();
+      const gasPrice = parseGwei("1");
+      const send = { to: bob, data: "0x12" } as const;
+
+      if (type === "legacy") await wallet.sendTransaction({ ...send, type, gasPrice });
+      if (type === "eip2930")
+        await wallet.sendTransaction({ ...send, type, gasPrice, accessList: [] });
+      if (type === "eip1559") await wallet.sendTransaction(send);
+      if (type === "eip7702") {
+        const authorization = await signer.signAuthorization({
+          contractAddress: USDC,
+          chainId: mock.chainId,
+          nonce: 1,
+        });
+        await wallet.sendTransaction({ ...send, authorizationList: [authorization] });
+      }
+
+      expect(mock.transactions[0]!.fields).toMatchObject({ type, gas: 100_000n });
+    },
+  );
+
+  test.each([
+    { fields: { type: "0x9" }, details: "expected a transaction type; got 0x9" },
+    {
+      fields: { gasPrice: "0x1", maxFeePerGas: "0x1" },
+      details: "legacy transactions have no maxFeePerGas",
+    },
+  ])(
+    "an estimate a send would refuse is refused, mocked or not: $details",
+    async ({ fields, details }) => {
+      const { mock } = setup();
+      mock.actions.estimateGas().returns(5n);
+
+      const error = await rejectionOf(
+        mock.request({ method: "eth_estimateGas", params: [{ to: bob, ...fields }] }),
+      );
+
+      expect(expectCause(error, RpcRequestError)).toMatchObject({
+        code: InvalidParamsRpcError.code,
+        details: `invalid params: ${details}`,
+      });
+    },
+  );
+
+  test("an estimate's own type, or blob fields, set its send's", async () => {
+    const { mock } = setup();
+    mock.actions.sendTransaction({ type: "eip2930" }).returns();
+    mock.actions.sendTransaction({ type: "eip4844" }).returns();
+    const estimate = (fields: object) =>
+      mock.request({
+        method: "eth_estimateGas",
+        params: [{ from: alice, to: bob, input: "0x12", ...fields }],
+      });
+
+    expect(await estimate({ type: "0x1", gasPrice: "0x1" })).toBe("0x186a0");
+    expect(await estimate({ blobVersionedHashes: [testHash("blob")] })).toBe("0x186a0");
+    await expect(estimate({ gasPrice: "0x1" })).rejects.toThrow(MockNotFoundError);
+  });
+
+  test("a mock pinning another type doesn't imply it", async () => {
+    const { mock, wallet } = localSetup();
+    mock.actions.sendTransaction({ to: bob, type: "eip2930" }).returns();
+
+    const error = await rejectionOf(wallet.sendTransaction({ to: bob, data: "0x12" }));
+
+    expectCause(error, MockNotFoundError);
   });
 
   test("a mock that doesn't match the estimate doesn't imply it", async () => {

@@ -77,7 +77,8 @@ export type EstimateGasCall = {
  * `null` for a deploy; `value` is `0n` when it has none, and `data` is left
  * out when it's empty. A raw send has its nonce and gas; other fields are
  * left out when the request has none. `type` is the request's, or else
- * `"legacy"` with a `gasPrice` and `"eip1559"` without.
+ * as viem's `getTransactionType` reads its fields: e.g. `"legacy"` with a
+ * `gasPrice`, `"eip2930"` with an `accessList` too, `"eip1559"` without.
  */
 export type SendTransactionCall = {
   account: Address;

@@ -22,7 +22,7 @@ import {
 
 import { formatValue } from "../mocking/format.js";
 import { MockSetupError, invalidParams } from "../shared/errors.js";
-import { nodeAddress } from "../shared/values.js";
+import { isPlainObject, nodeAddress } from "../shared/values.js";
 import { blockHash } from "./blocks.js";
 import { type Fees, blobBaseFee } from "./fees.js";
 import type { ChainState } from "./state.js";
@@ -301,18 +301,28 @@ const typeNames: readonly TransactionType[] = [
   "eip7702",
 ];
 
+/** A request's type by its fields, as viem's `getTransactionType` reads them. */
+function typeByFields(request: Record<string, unknown>): TransactionType {
+  if (request.authorizationList !== undefined) return "eip7702";
+  if (request.blobVersionedHashes !== undefined || request.maxFeePerBlobGas !== undefined)
+    return "eip4844";
+  if (request.gasPrice === undefined) return "eip1559";
+  return request.accessList === undefined ? "legacy" : "eip2930";
+}
+
 /**
  * A sent transaction's type: its request's `type` param (the spec's `byte`),
- * or else legacy with a `gasPrice` and EIP-1559 without. Refused as invalid
- * params for a type viem doesn't know, or fees the type doesn't have, as a
- * node refuses both.
+ * or else its fields': EIP-7702 with an `authorizationList`, EIP-4844 with
+ * blob fields, EIP-1559 without a `gasPrice`, and with one, EIP-2930 with an
+ * `accessList` or else legacy. Refused as invalid params for a type viem
+ * doesn't know, or fees the type doesn't have, as a node refuses both.
  */
-export function sentType(type: unknown, fees: SentFees): TransactionType {
+export function sentType(request: unknown, fees: SentFees): TransactionType {
+  const fields = isPlainObject(request) ? request : {};
+  const { type } = fields;
   const named =
     type === undefined
-      ? fees.gasPrice === undefined
-        ? "eip1559"
-        : "legacy"
+      ? typeByFields(fields)
       : typeof type === "string" && /^0x[0-9a-fA-F]{1,2}$/u.test(type)
         ? typeNames[Number(type)]
         : undefined;

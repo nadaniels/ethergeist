@@ -68,7 +68,7 @@ function decodeSendTransaction([tx]: readonly unknown[]): SendTransactionCall {
     gasPrice,
     maxFeePerGas,
     maxPriorityFeePerGas,
-    type: sentType(isPlainObject(tx) ? tx.type : undefined, fields),
+    type: sentType(tx, fields),
   }) as SendTransactionCall;
 }
 
