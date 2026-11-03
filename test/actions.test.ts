@@ -523,6 +523,50 @@ describe("getTransactionReceipt", () => {
     expect(await client.getTransactionConfirmations({ transactionReceipt: receipt })).toBe(3n);
   });
 
+  test("a static receipt stays in the block it was registered in, as a mined one does", async () => {
+    const { mock, client } = setup();
+    mock.actions.getTransactionReceipt({ hash: txHash }).returns();
+    const { hash } = await client.getBlock();
+    mock.mine();
+
+    const receipt = await client.getTransactionReceipt({ hash: txHash });
+    expect(receipt).toMatchObject({ blockNumber: 10n, blockHash: hash });
+    expect(await client.getTransactionConfirmations({ transactionReceipt: receipt })).toBe(2n);
+    await expect(
+      client.waitForTransactionReceipt({ hash: txHash, confirmations: 2, timeout: 1000 }),
+    ).resolves.toMatchObject({ blockNumber: 10n });
+    // Its logs stay in its block too, with its timestamp.
+    mock.actions.getTransactionReceipt({ hash: otherHash }).returns({ logs: [transferLog] });
+    mock.mine();
+    const { logs } = await client.getTransactionReceipt({ hash: otherHash });
+    expect(logs[0]).toMatchObject({ blockNumber: 11n });
+    expect(logs[0]?.blockTimestamp).toBe((await client.getBlock({ blockNumber: 11n })).timestamp);
+    // A hash pinned with a matcher too: only the hash waits for the request.
+    mock.actions.getTransactionReceipt({ hash: match.any() }).returns();
+    mock.mine();
+    expect((await client.getTransactionReceipt({ hash: testHash("any") })).blockNumber).toBe(12n);
+  });
+
+  test("a receipt with an emitted log stays consistent with it after mine()", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const log = usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
+    mock.actions.getTransactionReceipt({ hash: log.transactionHash }).returns({ logs: [log] });
+    mock.mine();
+
+    const receipt = await client.getTransactionReceipt({ hash: log.transactionHash });
+    expect(receipt.blockNumber).toBe(log.blockNumber);
+    expect(receipt.logs).toEqual([log]);
+  });
+
+  test("a resolver's receipt is made when it answers, in the block current then", async () => {
+    const { mock, client } = setup();
+    mock.actions.getTransactionReceipt({ hash: txHash }).returns(() => ({}));
+    mock.mine();
+
+    expect((await client.getTransactionReceipt({ hash: txHash })).blockNumber).toBe(11n);
+  });
+
   test("a log placed elsewhere throws, naming where", () => {
     const { mock } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });

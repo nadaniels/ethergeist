@@ -89,21 +89,25 @@ export function createHandlers<context, extra>() {
   }
 
   /**
-   * `handler`'s builder. `validate` checks a static answer at registration,
-   * so one that can't be encoded fails there, not inside a request.
+   * `handler`'s builder. `prepare` checks a static answer at registration, so
+   * one that can't be encoded fails there, not inside a request, and returns
+   * what the mock answers with.
    */
   function createBuilder(
     handler: Handler<context, extra>,
-    validate: (value: unknown) => void,
+    prepare: (value: unknown) => unknown,
   ): Builder {
     const builder: Builder = {
       returns(value: unknown = zeroResult) {
         if (handler.removed) throw removedMockError();
-        if (typeof value !== "function") validate(value);
-        handler.resolver =
+        if (typeof value === "function") {
           // The types guarantee a resolver's signature; it can't be checked at runtime.
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function
-          typeof value === "function" ? (value as Handler<context>["resolver"]) : () => value;
+          handler.resolver = value as Handler<context>["resolver"];
+          return;
+        }
+        const answer = prepare(value);
+        handler.resolver = () => answer;
       },
       // Named node errors are typed only where a node can refuse with them.
       fails(fault: MockNodeFault) {

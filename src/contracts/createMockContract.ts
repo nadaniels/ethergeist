@@ -142,6 +142,7 @@ export function createMockContract<const abi extends Abi>(
     );
     const builder = mocks.createBuilder(handler, (value) => {
       encodeAnswer(handler, value);
+      return value;
     });
     return Object.assign(builder, {
       reverts(spec?: RevertSpec) {

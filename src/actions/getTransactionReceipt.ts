@@ -7,7 +7,11 @@ import { isPlainObject } from "../shared/values.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ReceiptCall } from "./types.js";
 
-/** `eth_getTransactionReceipt`: a mock's fields over a successful receipt in the current block. */
+/**
+ * `eth_getTransactionReceipt`: a mock's fields over a successful receipt in
+ * the current block: when it's registered for a static one, which a node
+ * never moves, and when it answers for a resolver's.
+ */
 export const getTransactionReceipt = ({
   state,
 }: ActionsContext): Definition<ReceiptCall, ReturnType<typeof toRpcReceipt> | null> => ({
@@ -20,6 +24,10 @@ export const getTransactionReceipt = ({
       ? { hash: pinned.hash }
       : undefined,
   zero: {},
+  fixAtRegistration: (value) =>
+    isPlainObject(value) && value.blockNumber === undefined
+      ? { ...value, blockNumber: state.blockNumber }
+      : value,
   encode(value, call) {
     if (value === null) return null;
     if (!isPlainObject(value))

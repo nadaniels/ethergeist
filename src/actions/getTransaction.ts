@@ -7,7 +7,11 @@ import { isPlainObject } from "../shared/values.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { TransactionCall } from "./types.js";
 
-/** `eth_getTransactionByHash`: a mock's fields over the defaults `encodeTransaction` gives. */
+/**
+ * `eth_getTransactionByHash`: a mock's fields over the defaults
+ * `encodeTransaction` gives. A static one without a `blockNumber` is mined in
+ * the block current when it's registered; a pending one (`null`) stays pending.
+ */
 export const getTransaction = ({
   state,
 }: ActionsContext): Definition<TransactionCall, ReturnType<typeof encodeTransaction> | null> => ({
@@ -15,6 +19,10 @@ export const getTransaction = ({
   hint: "mock.actions.getTransaction({ hash }).returns(…)",
   decode: ([hash]) => ({ hash: hashParam(hash) }),
   zero: {},
+  fixAtRegistration: (value) =>
+    isPlainObject(value) && value.blockNumber === undefined
+      ? { ...value, blockNumber: state.blockNumber }
+      : value,
   encode(value, call) {
     if (value === null) return null;
     if (!isPlainObject(value))

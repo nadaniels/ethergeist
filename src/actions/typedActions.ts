@@ -89,7 +89,9 @@ export type MockActions = {
   /**
    * `eth_getTransactionReceipt`. A mock's fields go over defaults: `status` is
    * `"success"`, the block is the current one, and logs get their index, block,
-   * and transaction from the receipt; the rest is zero. `null` answers "no
+   * and transaction from the receipt; the rest is zero. A static receipt is
+   * mined when it's registered, so it stays in that block as more are mined;
+   * a resolver's is in the block current when it answers. `null` answers "no
    * such transaction". Unmocked hashes aren't answered.
    */
   getTransactionReceipt: MockAction<ReceiptCall, MockReceipt | null>;
@@ -97,9 +99,11 @@ export type MockActions = {
    * `eth_getTransactionByHash`. A mock's fields go over defaults: an
    * `"eip1559"` transaction mined in the current block, at index 0, that paid
    * the suggested fees (see `fees`), with a zero signature; the rest is zero.
-   * Fields its `type` doesn't have throw, and `blockNumber: null` makes it
-   * pending. `null` answers "no such transaction". Unmocked hashes aren't
-   * answered. `mock.buildTransaction()` builds the same transaction.
+   * Like a receipt, a static one is mined when it's registered, a resolver's
+   * when it answers. Fields its `type` doesn't have throw, and
+   * `blockNumber: null` makes it pending. `null` answers "no such
+   * transaction". Unmocked hashes aren't answered. `mock.buildTransaction()`
+   * builds the same transaction.
    */
   getTransaction: MockAction<TransactionCall, MockTransaction | null>;
   /**

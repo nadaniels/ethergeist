@@ -11,8 +11,9 @@ import { type BuildLogParameters, buildLog } from "./logs/events.js";
 
 /**
  * Builders of what the mock answers, in viem's types, with the same defaults
- * as its answers: `state`'s current block, fees, and chain. For `toEqual`
- * against what the app got, and for props.
+ * as its answers: `state`'s current block, fees, and chain. A value is in the
+ * block current when it's built, as a static answer is in the block current
+ * at `.returns()`. For `toEqual` against what the app got, and for props.
  */
 export function createBuilders(state: ChainState) {
   return {

@@ -64,6 +64,22 @@ describe("getTransaction", () => {
     expect(mock.unhandled).toHaveLength(1);
   });
 
+  test("a static one stays in the block it was registered in, with that block's fees; a pending one stays pending", async () => {
+    const { mock, client } = setup();
+    const mined = mock.buildTransaction({ hash });
+    mock.actions.getTransaction({ hash }).returns({});
+    mock.actions.getTransaction({ hash: testHash("tx-2") }).returns({ blockNumber: null });
+    mock.mine();
+    mock.setFees({ baseFeePerGas: parseGwei("50") });
+
+    expect(await client.getTransaction({ hash })).toEqual(mined);
+    expect(await client.getTransactionConfirmations({ hash })).toBe(2n);
+    expect((await client.getTransaction({ hash: testHash("tx-2") })).blockNumber).toBeNull();
+    // A resolver's is made when it answers.
+    mock.actions.getTransaction({ hash }).returns(() => ({}));
+    expect((await client.getTransaction({ hash })).blockNumber).toBe(11n);
+  });
+
   test("fees come from the transaction's block; set ones give its effective gas price", () => {
     const { mock } = setup();
     mock.setFees({ baseFeePerGas: parseGwei("50") });

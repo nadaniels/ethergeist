@@ -135,7 +135,10 @@ const typeHexes: Record<TransactionType, Hex> = {
 /** What a transaction's defaults come from: the request, and the mock's chain, blocks and fees. */
 type TransactionContext = {
   hash: Hash;
-  /** The current block, where a transaction without a `blockNumber` was mined. */
+  /**
+   * The current block, where a transaction without a `blockNumber` is mined;
+   * a static mock's is fixed at registration.
+   */
   blockNumber: bigint;
   chainId: number;
   feesAt: (number: bigint) => Fees;

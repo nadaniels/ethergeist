@@ -124,7 +124,9 @@ everything, then mutate.
    them typed, without casts. If `encode` checks the answer against the call
    (as receipts check their logs' placement), also give `pinnedCall`, so a
    static answer that can't fit fails at `.returns()` instead of at request
-   time.
+   time. If a static answer takes a default from the chain that a node would
+   never change, give `fixAtRegistration` (as receipts take the block they
+   were mined in).
 2. Add it to the `typedActions` catalog in `actions/typedActions.ts`, with the
    JSON-RPC methods it answers.
 3. Add its mock's type, with its documentation, to `MockActions` in the same

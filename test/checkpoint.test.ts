@@ -7,6 +7,7 @@ import {
   MockNotFoundError,
   createMockRpc,
   testAddress,
+  testHash,
 } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 
@@ -168,6 +169,25 @@ describe("restore()", () => {
     baseline.restore();
     expect(mock.blockNumber).toBe(10n);
     expect(await batchId()).toBe(first);
+  });
+
+  test("a baseline receipt keeps the block it was registered in, even answered again since", async () => {
+    const { mock, client } = setup();
+    const hash = testHash("tx-1");
+    const receipt = mock.actions.getTransactionReceipt({ hash });
+    receipt.returns();
+    mock.mine();
+    const baseline = mock.checkpoint();
+
+    mock.mine(2n);
+    receipt.returns({ status: "reverted" });
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({ blockNumber: 13n });
+    baseline.restore();
+    mock.mine();
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      blockNumber: 10n,
+      status: "success",
+    });
   });
 
   test("faults go back, including their counts and clear()", async () => {

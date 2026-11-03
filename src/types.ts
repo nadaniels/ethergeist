@@ -120,7 +120,8 @@ export type MockRpc = {
   /**
    * The transaction `mock.actions.getTransaction()` answers when mocked with
    * `.returns(transaction)`, in viem's types, with the same defaults: the
-   * current block and fees, and the mock's chain. Its hash is zero unless
+   * current block (as of this call, as `.returns()` fixes a static answer's
+   * as of its call) and fees, and the mock's chain. Its hash is zero unless
    * given. For `toEqual` against what the app got, and for props.
    */
   buildTransaction<const transaction extends MockTransaction = { type?: "eip1559" }>(
@@ -129,7 +130,8 @@ export type MockRpc = {
   /**
    * The receipt `mock.actions.getTransactionReceipt()` answers when mocked
    * with `.returns(receipt)`: the same defaults, logs placed the same way,
-   * in the current block unless given. Its hash is zero unless given
+   * in the current block unless given (as of this call, as `.returns()` fixes
+   * a static answer's as of its call). Its hash is zero unless given
    * (`transactionHash`). For `toEqual` against what the app got, and for props.
    * Its addresses are lowercase, as nodes send them: compare them with viem's
    * `isAddressEqual`, not `toBe(contract.address)`.

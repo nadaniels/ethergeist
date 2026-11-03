@@ -240,6 +240,11 @@ features land; tick them off as pages get written.
     with `mock.method()`.
 - [ ] Receipts: the defaults (status `"success"`, block, log context), and
       `.returns(null)` for "not found".
+  - A static receipt or transaction is mined at `.returns()`: it stays in
+    that block as `mine()` adds more, so confirmations count up
+    (`waitForTransactionReceipt({ confirmations: 2 })`, ethers `wait(2)`).
+    A resolver's is in the block current when it answers, and a builder's
+    when it's built.
 - [ ] Transactions: `mock.actions.getTransaction({ hash }).returns(fields)`,
       by hash only. Defaults: an `"eip1559"` transaction mined in the current
       block at index 0, with the block's timestamp, that paid the suggested

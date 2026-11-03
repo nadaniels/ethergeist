@@ -29,7 +29,8 @@ const zeroBloom = `0x${"00".repeat(256)}` as const;
 
 /**
  * A receipt for `hash` with `receipt`'s fields over useful defaults: `status`
- * is `"success"` (zero would mean reverted), the block is `blockNumber` unless
+ * is `"success"` (zero would mean reverted), the block is `blockNumber` (the
+ * head when it's made: a static mock's is fixed at registration) unless
  * given, and each log's position, block (with its timestamp, as reth sends it),
  * and transaction come from the receipt. Everything else is zero. Addresses
  * are validated, and lowercase as nodes send them.
