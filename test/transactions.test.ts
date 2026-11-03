@@ -99,7 +99,21 @@ describe("getTransaction", () => {
         maxPriorityFeePerGas: parseGwei("15"),
       }).gasPrice,
     ).toBe(parseGwei("60"));
+    // With room under the max fee, the tip is paid in full.
+    expect(
+      mock.buildTransaction({
+        maxFeePerGas: parseGwei("100"),
+        maxPriorityFeePerGas: parseGwei("2"),
+      }).gasPrice,
+    ).toBe(parseGwei("52"));
     expect(mock.buildTransaction({ type: "legacy", gasPrice: 7n }).gasPrice).toBe(7n);
+  });
+
+  test("a deploy's to is null", async () => {
+    const { mock, client } = setup();
+    mock.actions.getTransaction({ hash }).returns({ to: null, input: "0x6080" });
+
+    expect((await client.getTransaction({ hash })).to).toBeNull();
   });
 
   test("each type has its own fields and defaults", () => {

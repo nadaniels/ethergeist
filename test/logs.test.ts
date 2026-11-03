@@ -1,15 +1,24 @@
 import {
   InvalidInputRpcError,
   InvalidParamsRpcError,
+  type LogTopic,
   RpcRequestError,
   createPublicClient,
   encodeEventTopics,
   erc20Abi,
+  pad,
   parseAbiItem,
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockNotFoundError, createMockRpc, match, testAddress, testHash } from "../src/index.js";
+import {
+  MockNotFoundError,
+  MockSetupError,
+  createMockRpc,
+  match,
+  testAddress,
+  testHash,
+} from "../src/index.js";
 import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -189,6 +198,43 @@ describe("emit", () => {
     );
   });
 
+  test("each block's transactions and logs are indexed from 0", () => {
+    const { usdc } = setup();
+
+    const earlier = usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 9n });
+    const later = usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 10n });
+    expect(
+      [earlier, later].map((log) => [log.blockNumber, log.transactionIndex, log.logIndex]),
+    ).toEqual([
+      [9n, 0, 0],
+      [10n, 0, 0],
+    ]);
+  });
+
+  test("a new transaction hash names the transaction, with other logs on the chain", () => {
+    const { usdc } = setup();
+    const hash = testHash("swap-1");
+
+    usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 9n });
+    const log = usdc.emit.Transfer(
+      { from: bob, to: carol },
+      { blockNumber: 10n, transactionHash: hash },
+    );
+    expect(log.transactionHash).toBe(hash);
+  });
+
+  test("refuses a log with even one position field", () => {
+    const { mock, usdc } = setup();
+    const log = {
+      ...usdc.events.Transfer({ from: alice, to: bob }),
+      transactionHash: testHash("x"),
+    };
+
+    const emit = () => mock.emit(log, { blockNumber: 10n });
+    expect(emit).toThrow(MockSetupError);
+    expect(emit).toThrow("emit() places logs itself, but this one already has a position");
+  });
+
   test("returns frozen logs: changing one throws", () => {
     const { mock, usdc } = setup();
 
@@ -205,12 +251,24 @@ describe("emit", () => {
     expect({ ...log, logIndex: 7 }.logIndex).toBe(7);
   });
 
-  test("mock.logs lists every log by block and log index", () => {
-    const { mock, usdc } = setup();
+  test("mock.logs lists every log by block and log index, whatever order they were emitted in", () => {
+    const { mock, usdc, dai } = setup();
 
-    usdc.emit.Transfer({ from: alice, to: bob, value: 2n });
-    usdc.emit.Transfer({ from: alice, to: bob, value: 1n }, { blockNumber: 3n });
-    expect(mock.logs.map((log) => log.blockNumber)).toEqual([3n, 10n]);
+    mock.emit(
+      [
+        usdc.events.Transfer({ from: alice, to: bob }),
+        dai.events.Transfer({ from: bob, to: alice }),
+      ],
+      { blockNumber: 9n },
+    );
+    usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 10n });
+    usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 5n });
+    expect(mock.logs.map((log) => [log.blockNumber, log.logIndex])).toEqual([
+      [5n, 0],
+      [9n, 0],
+      [9n, 1],
+      [10n, 0],
+    ]);
   });
 });
 
@@ -303,6 +361,25 @@ describe("getLogs filters", () => {
     expect(await getLogsRaw(mock, { topics: [selector, []] })).toHaveLength(1);
   });
 
+  test("by topic: one value, any of several, or any, in raw requests viem can't filter", async () => {
+    const { client, usdc } = setup();
+    const block = { blockNumber: 10n };
+    usdc.emit.Transfer({ from: alice, to: bob, value: 1n }, block);
+    usdc.emit.Transfer({ from: bob, to: carol, value: 2n }, block);
+    usdc.emit.Approval({ owner: alice, spender: bob, value: 3n }, block);
+    const [selector] = encodeEventTopics({ abi: [transfer], eventName: "Transfer" });
+
+    // Raw, since viem drops what doesn't match its own filter; typed, for the answer's logIndex.
+    const indexes = async (topics: LogTopic[]) =>
+      (await client.request({ method: "eth_getLogs", params: [{ topics }] })).map(
+        (log) => log.logIndex,
+      );
+    expect(await indexes([selector])).toEqual(["0x0", "0x1"]);
+    expect(await indexes([selector, pad(alice)])).toEqual(["0x0"]);
+    expect(await indexes([selector, [pad(carol), pad(alice)]])).toEqual(["0x0"]);
+    expect(await indexes([null, pad(alice)])).toEqual(["0x0", "0x2"]);
+  });
+
   test("an address without a mocked contract is unhandled; an empty one has no logs", async () => {
     const { mock, client } = setup();
     mock.empty(alice);
@@ -373,6 +450,26 @@ describe("getLogs refuses what reth refuses", () => {
     });
   });
 
+  test("a block hash past the head; the head's own answers", async () => {
+    const { mock, client, usdc } = setup();
+    usdc.emit.Transfer({ from: alice, to: bob, value: 1n }, { blockNumber: 10n });
+    usdc.emit.Transfer({ from: alice, to: bob, value: 2n }, { blockNumber: 11n });
+    const head = await client.getBlock();
+    // The next block's hash, from a chain that has mined it.
+    const checkpoint = mock.checkpoint();
+    mock.mine();
+    const next = await client.getBlock();
+    checkpoint.restore();
+
+    const logs = await client.getLogs({ blockHash: head.hash });
+    expect(logs.map((log) => log.blockNumber)).toEqual([10n]);
+    expectCause(await rejectionOf(client.getLogs({ blockHash: next.hash })), InvalidInputRpcError);
+    expect(await refusal(mock, client.getLogs({ blockHash: next.hash }))).toEqual({
+      code: -32000,
+      message: `block not found: ${next.hash.slice(2)}`,
+    });
+  });
+
   test("more than 4 topics", async () => {
     const { mock } = setup();
     expect(
@@ -397,6 +494,16 @@ describe("history", () => {
       "#2 eth_getLogs getLogs([USDC, DAI], Approval | Transfer, blocks 1–10) → 1 log",
       "#3 eth_getLogs getLogs(USDC, blocks 8–7) ✗ rpc error -32602: invalid block range params",
     ]);
+  });
+
+  test("shows an address with no contract name as hex", async () => {
+    const { mock, client } = setup();
+    mock.empty(alice);
+
+    await client.getLogs({ address: alice });
+    expect(mock.formatHistory({ builtIns: false })).toBe(
+      "#1 eth_getLogs getLogs(0xa41f…2D9e, block 10) → 0 logs",
+    );
   });
 
   test("records the decoded filter and the logs in viem's types", async () => {

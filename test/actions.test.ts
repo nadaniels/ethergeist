@@ -18,6 +18,7 @@ import {
   erc20Abi,
   getAddress,
   parseEther,
+  zeroAddress,
   zeroHash,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -365,6 +366,7 @@ describe("getBlock", () => {
     expect(latest.timestamp).toBe(1_700_000_000n);
     expect(await client.getBlock({ blockNumber: 9n })).toMatchObject({
       number: 9n,
+      hash: latest.parentHash,
       timestamp: 1_234n,
       baseFeePerGas: parseGwei("10"),
     });
@@ -741,6 +743,25 @@ describe("mock.buildReceipt()", () => {
     expect(await client.getTransactionReceipt({ hash })).toEqual(
       mock.buildReceipt({ ...fields, transactionHash: hash }),
     );
+  });
+
+  test("a deploy's to is null", async () => {
+    const { mock, client } = setup();
+    const hash = testHash("deploy");
+    mock.actions.getTransactionReceipt({ hash }).returns({ to: null, contractAddress: USDC });
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      to: null,
+      contractAddress: lowercase(USDC),
+    });
+  });
+
+  test("a log's content defaults to empty, at the zero address", () => {
+    const { mock } = setup();
+
+    expect(mock.buildReceipt({ logs: [{}] }).logs).toMatchObject([
+      { address: zeroAddress, topics: [], data: "0x", logIndex: 0, removed: false },
+    ]);
   });
 
   test("defaults to a successful receipt in the current block, with a zero hash", () => {

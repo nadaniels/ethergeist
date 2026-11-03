@@ -400,11 +400,18 @@ describe("malformed params", () => {
 
     await mock.request({ method: "eth_getBalance", params: [USDC, "0xA"] });
     await mock.request({ method: "eth_getBalance", params: [USDC, hash] });
+    await mock.request({ method: "eth_getBalance", params: [USDC, { blockNumber: "0x7" }] });
+    await mock.request({ method: "eth_getBalance", params: [USDC, { blockHash: hash }] });
     await mock
       .request({ method: "eth_getLogs", params: [{ address: USDC, topics: [null] }] })
       .catch(() => {});
 
-    expect(mock.actions.getBalance.calls.map((call) => call.blockNumber)).toEqual([10n, 5n]);
+    expect(mock.actions.getBalance.calls.map((call) => call.blockNumber)).toEqual([
+      10n,
+      5n,
+      7n,
+      5n,
+    ]);
     expect(mock.history.at(-1)?.outcome.type).not.toBe("rpcError");
   });
 

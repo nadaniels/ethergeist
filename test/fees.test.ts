@@ -276,6 +276,16 @@ describe("setFees()", () => {
     expect((await client.getBlock({ blockNumber: 9n })).baseFeePerGas).toBe(parseGwei("10"));
   });
 
+  test("a change in a later block leaves an earlier block's change", async () => {
+    const { mock, client } = setup();
+    mock.setFees({ baseFeePerGas: parseGwei("50") });
+    mock.mine();
+    mock.setFees({ baseFeePerGas: parseGwei("60") });
+
+    expect((await client.getBlock({ blockNumber: 10n })).baseFeePerGas).toBe(parseGwei("50"));
+    expect((await client.getBlock()).baseFeePerGas).toBe(parseGwei("60"));
+  });
+
   test("restore() undoes changes since the checkpoint, and reset() all of them", async () => {
     const { mock, client } = setup();
     mock.setFees({ baseFeePerGas: parseGwei("20") });
