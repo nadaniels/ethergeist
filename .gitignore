@@ -4,3 +4,7 @@ node_modules/
 
 # Local planning notes, not committed for now
 docs/backlog/
+
+# Stryker (vp run mutate)
+.stryker-tmp/
+reports/

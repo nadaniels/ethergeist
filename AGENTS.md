@@ -39,6 +39,7 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 - Run `vp check`, `vp run knip` and `vp run test` before handing a change over. The pre-commit hook runs `vp staged` and then `vp run knip`, so a commit fails if Knip isn't satisfied.
 - `vp run knip` runs [Knip](https://knip.dev) twice: the default mode (all code, tests included), then `--production --strict` (only what ships: `src/` minus colocated tests, with dependencies checked against what ships). Config is in `knip.json`.
 - Fix findings rather than configure around them: remove an `export` nothing outside its file uses, delete an unused file, add or remove the dependency. A file that a tool or a person runs directly is an `entry` in `knip.json`.
+- `vp run mutate` runs [Stryker](https://stryker-mutator.io) mutation testing (config in `stryker.config.mjs`; reports in `reports/mutation/`). It's slow, so it isn't part of the checks: run it before an engine or matching change, on the files the change touches (`vp run mutate --mutate "src/contracts/**/*.ts"`). Close the gaps it finds with tests of behavior the change keeps, through the public API in `test/` where possible, so they outlive the refactor; skip survivors in code the change removes, and in error wording and answer fields viem doesn't read (see "Fidelity").
 - An export only a unit test needs gets `@internal` in its doc comment, which production mode skips. Don't export a value just so a test can read it back: a test should pin documented values as literals, or it can't catch them changing.
 
 ## Addresses

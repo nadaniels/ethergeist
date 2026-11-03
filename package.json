@@ -11,15 +11,19 @@
     "test": "vp test run --typecheck",
     "typecheck": "tsc",
     "knip": "knip && knip --production --strict",
+    "mutate": "stryker run",
     "prepare": "vp config"
   },
   "devDependencies": {
+    "@stryker-mutator/core": "10.1.1",
+    "@stryker-mutator/vitest-runner": "10.1.1",
     "@types/node": "^26.6.5",
     "knip": "^6.44.1",
     "ox": "0.14.59",
     "typescript": "^7.0.2",
     "viem": "^2.57.12",
-    "vite-plus": "catalog:"
+    "vite-plus": "catalog:",
+    "vitest": "catalog:"
   },
   "peerDependencies": {
     "ox": "^0.14.0",
