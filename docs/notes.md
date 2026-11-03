@@ -10,7 +10,7 @@ features land; tick them off as pages get written.
       shared process.
 - [ ] What it isn't: nothing executes, and no answer is derived from another.
       For example, a mocked receipt with a `Transfer` log doesn't change any
-      balance.
+      balance; state a test wants to change is the test's (section 11).
 - [ ] When to use anvil (or an anvil fork) instead: tests that need real
       execution or real chain state.
 
@@ -160,6 +160,11 @@ features land; tick them off as pages get written.
   - A used-up mock steps aside; with nothing behind it, the call isn't
     mocked, and "Registered:" shows `once, used up`.
   - Each multicall sub-call uses an answer.
+  - A request a mock answered uses its answer even when it then fails: a
+    `.fails()`, a resolver that throws, or a send refused after its mock
+    answered (a log at an `empty()` address). The chain doesn't change, but
+    the `.once()` is spent. That's what makes `.once().fails(…)` then a
+    normal mock test a retry.
   - `clearCalls()` keeps counts; `restore()` refills them, so a baseline
     `.once()` is fresh in every test.
   - `assertAllUsed()`: answering at least once counts as used; messages show
@@ -768,3 +773,83 @@ features land; tick them off as pages get written.
       kept builder, never by registering a new mock on a timer: each
       registration is kept (and matched against) for good. Likewise, `emit`
       on a timer grows `mock.logs`, which `getLogs` searches on every poll.
+
+## 11. State your test owns (controlled mocks)
+
+- [ ] Why: nothing executes, so no answer follows from another. A mined
+      `Transfer` changes no balance, and a payable call or a plain ETH
+      transfer moves no ETH. State a test wants to change (balances,
+      allowances, a vault's shares) is the test's: it lives in a closure,
+      resolvers that read answer from it, and a write's resolver changes it.
+      No `createLedger()` helper: a `Map` is the whole ledger.
+- [ ] The worked example, ERC-20 balances (in `test/write.test.ts`, "state
+      the test owns"). Show:
+  - The closure, the read that answers from it, and the write that changes
+    it. `erc20Abi` has no errors, so the ABI adds the one it reverts with:
+    ```ts
+    const tokenAbi = [
+      ...erc20Abi,
+      ...parseAbi([
+        "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
+      ]),
+    ] as const;
+    const token = mock.contract({ abi: tokenAbi, address: TOKEN, name: "Token" });
+    const balances = new Map([[alice, parseEther("10")]]);
+    token.read.balanceOf().returns(({ args: [who] }) => balances.get(who) ?? 0n);
+    token.write.transfer().returns(({ from, args: [to, amount], emit, revert }) => {
+      const have = balances.get(from) ?? 0n;
+      if (have < amount)
+        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
+      emit(token.events.Transfer({ from, to, value: amount }));
+      balances.set(from, have - amount);
+      balances.set(to, (balances.get(to) ?? 0n) + amount);
+    });
+    ```
+  - The app's `writeContract` then `readContract` sees the balances move,
+    and `getContractEvents` the `Transfer`. Too large a transfer is mined
+    reverted (the receipt's `status: "reverted"`, no logs) and changes
+    nothing.
+  - That's not what a node does for a local account: its estimate reverts,
+    so `writeContract` throws before sending. For that path (an app's
+    "insufficient balance" error), add an estimate that reads the same map
+    and only answers (an estimate's `from` is optional):
+    ```ts
+    token.estimateGas.transfer().returns(({ from = zeroAddress, args: [, amount], revert }) => {
+      const have = balances.get(from) ?? 0n;
+      if (have < amount)
+        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
+      return 50_000n;
+    });
+    ```
+  - `from` and decoded address args are checksummed, so key the map with
+    checksummed addresses (`testAddress`, `getAddress`).
+- [ ] Why only a write's resolver changes state: it runs once per
+      transaction, at the send. Read and simulate resolvers run whenever the
+      app asks, any number of times (polling, re-renders, wagmi's simulate
+      before its write), so a change there counts twice. The estimate a
+      write mock implies doesn't run its resolver, so estimating first
+      changes nothing; an `estimateGas` mock's resolver, like a simulate's,
+      runs per estimate and only answers.
+- [ ] Change state last, after every `revert()` and `fail()` check.
+      `revert()` mines the transaction reverted and drops what was emitted,
+      but the mock can't undo the closure: a change made before it stays. A
+      resolver that throws, or `fail()`s, puts nothing on the chain, yet
+      keeps what it changed too, so the app's next attempt starts from a
+      ledger that already moved.
+- [ ] Native balances: `mock.actions.getBalance().returns(({ address }) =>
+      native.get(address) ?? 0n)`, and a payable write's resolver moves
+      `value` (`vault.write.deposit().returns(({ from, value }) => { … })`).
+      A plain transfer (no data) to an address without code, which needs no
+      mock, moves nothing unless a `mock.actions.sendTransaction` resolver
+      does it.
+- [ ] What the mock won't do for you: move `value`, deduct gas or fees,
+      check a balance before a send. Each depends on execution or on a
+      policy the mock would have to invent, and the mock stores facts and
+      derives nothing (what a request or the test put on the chain). The
+      test writes what it needs; most need far less than a ledger.
+- [ ] The closure is the test's, so `restore()` doesn't reset it (section
+      8): create it per test, in the setup factory (section 9) or a
+      `beforeEach`, next to the mocks that read it. With baseline mocks
+      registered once (section 8), keep one map and re-seed it in
+      `beforeEach` (`balances.clear()`, then `set`): a new map is one the
+      baseline resolvers never see.
