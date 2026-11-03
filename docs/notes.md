@@ -432,6 +432,14 @@ features land; tick them off as pages get written.
     and geth-family nodes fail it for an empty account; after those, viem
     falls back without remembering, so it tries again on every prepare. The
     transaction viem builds is the same either way.
+  - `wallet_sendTransaction` and `wallet_sendCalls`, which nodes don't
+    support. viem retries an `eth_sendTransaction` that fails with
+    `-32000`, `-32602`, `-32601` or `-32004` as `wallet_sendTransaction`;
+    refused, it rethrows the send's own error, so a test's
+    `mock.method("eth_sendTransaction").fails(…)` is what the app sees.
+    viem remembers the refusal per client, so it retries only once.
+    `sendCalls` with `experimental_fallback` sends each call with
+    `eth_sendTransaction` instead; without it, it rejects as unsupported.
 
 ## 6. Assertions and error messages
 

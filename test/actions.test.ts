@@ -1,6 +1,9 @@
 import {
   HttpRequestError,
   InvalidAddressError,
+  InvalidInputRpcError,
+  MethodNotFoundRpcError,
+  RpcError,
   BlockNotFoundError,
   TimeoutError,
   TransactionReceiptNotFoundError,
@@ -58,6 +61,17 @@ function walletSetup() {
   mock.actions.getTransactionCount().returns(0);
   const wallet = createWalletClient({
     account: privateKeyToAccount(keccak256(toHex("alice"))),
+    chain: mock.chain,
+    transport: mock.transport({ retryCount: 0 }),
+  });
+  return { mock, wallet };
+}
+
+/** A wallet client whose account is the node's: viem sends eth_sendTransaction unsigned. */
+function nodeAccountSetup() {
+  const { mock } = setup();
+  const wallet = createWalletClient({
+    account: alice,
     chain: mock.chain,
     transport: mock.transport({ retryCount: 0 }),
   });
@@ -847,6 +861,83 @@ describe("eth_fillTransaction", () => {
       method: "eth_fillTransaction",
       outcome: { type: "fault" },
     });
+  });
+});
+
+describe("wallet_* methods", () => {
+  test("wallet_sendTransaction is refused, so a failed send keeps the error the test set up", async () => {
+    const { mock, wallet } = nodeAccountSetup();
+    mock.method("eth_sendTransaction").fails({ code: -32000, message: "insufficient funds" });
+
+    const error = expectCause(
+      await rejectionOf(wallet.sendTransaction({ to: bob, value: 1n })),
+      InvalidInputRpcError,
+    );
+    expect(error.details).toBe("insufficient funds");
+    expect(() => {
+      mock.assertNoUnhandled();
+    }).not.toThrow();
+    expect(mock.history.at(-1)).toMatchObject({
+      method: "wallet_sendTransaction",
+      outcome: {
+        type: "rpcError",
+        code: -32601,
+        message: "the method wallet_sendTransaction does not exist/is not available",
+      },
+    });
+  });
+
+  test.each([
+    { code: -32602, retried: true },
+    { code: -32601, retried: true },
+    { code: -32004, retried: true },
+    { code: -32003, retried: false },
+  ])("a send failing with $code keeps its error (retried: $retried)", async ({ code, retried }) => {
+    const { mock, wallet } = nodeAccountSetup();
+    mock.method("eth_sendTransaction").fails({ code, message: "failed" });
+
+    const error = await rejectionOf(wallet.sendTransaction({ to: bob, value: 1n }));
+    expect(findCause(error, RpcError)?.code).toBe(code);
+    expect(mock.unhandled).toHaveLength(0);
+    const retries = mock.history.filter((entry) => entry.method === "wallet_sendTransaction");
+    expect(retries).toHaveLength(retried ? 1 : 0);
+  });
+
+  test("method() answers wallet_sendTransaction instead", async () => {
+    const { mock, wallet } = nodeAccountSetup();
+    mock.method("eth_sendTransaction").fails({ code: -32601, message: "not here" });
+    mock.method("wallet_sendTransaction").returns(testHash("sent"));
+
+    expect(await wallet.sendTransaction({ to: bob, value: 1n })).toBe(testHash("sent"));
+  });
+
+  test("wallet_sendCalls is refused, so sendCalls falls back to separate sends", async () => {
+    const { mock, wallet } = nodeAccountSetup();
+    mock.method("eth_sendTransaction").returns(testHash("sent"));
+
+    const { id } = await wallet.sendCalls({
+      calls: [{ to: bob, value: 1n }],
+      experimental_fallback: true,
+      experimental_fallbackDelay: 0,
+    });
+    expect(id.startsWith(testHash("sent"))).toBe(true);
+    expect(() => {
+      mock.assertNoUnhandled();
+    }).not.toThrow();
+    expect(mock.history[0]).toMatchObject({
+      method: "wallet_sendCalls",
+      outcome: { type: "rpcError", code: -32601 },
+    });
+  });
+
+  test("without the fallback, sendCalls rejects as unsupported", async () => {
+    const { mock, wallet } = nodeAccountSetup();
+
+    expectCause(
+      await rejectionOf(wallet.sendCalls({ calls: [{ to: bob, value: 1n }] })),
+      MethodNotFoundRpcError,
+    );
+    expect(mock.unhandled).toHaveLength(0);
   });
 });
 

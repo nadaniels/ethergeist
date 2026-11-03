@@ -12,6 +12,11 @@ import type { MockMethodBuilder } from "./types.js";
  * - `eth_fillTransaction`, which reth and geth support: viem fills a
  *   transaction's nonce, fees, and gas with their own requests instead, which
  *   are what tests mock.
+ * - `wallet_sendTransaction`, which nodes don't support: viem retries a failed
+ *   `eth_sendTransaction` with it, and on this refusal rethrows the send's own
+ *   error.
+ * - `wallet_sendCalls`, which nodes don't support: `sendCalls` with
+ *   `experimental_fallback` sends each call with `eth_sendTransaction` instead.
  */
 const refusedMethods = new Set([
   "eth_newFilter",
@@ -21,6 +26,8 @@ const refusedMethods = new Set([
   "eth_getFilterLogs",
   "eth_uninstallFilter",
   "eth_fillTransaction",
+  "wallet_sendTransaction",
+  "wallet_sendCalls",
 ]);
 
 /** Methods answered outside `mock.method()`, with where to mock them instead. */
