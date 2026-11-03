@@ -528,6 +528,8 @@ describe("send mocks", () => {
       mock.actions.sendTransaction({ to: bob }).returns({ contractAddress: USDC });
     }).toThrow("Only a deploy (to: null) has a contractAddress.");
     mock.actions.sendTransaction({ to: null }).returns({ contractAddress: USDC });
+    // Without a pinned `to`, it may be a deploy: that's checked at the send.
+    mock.actions.sendTransaction({ account: alice }).returns({ contractAddress: USDC });
   });
 
   test("only a deploy has a contractAddress", async () => {
@@ -630,12 +632,6 @@ describe("sends unmocked", () => {
       hint: `({ to }).returns(…): ${testAddress("empty")} is marked empty(), with no code to run the data.`,
     },
     {
-      name: "a function of a registered contract",
-      to: USDC,
-      data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [bob, 1n] }),
-      hint: "({ to }).returns(…).",
-    },
-    {
       name: "a plain send to a registered contract",
       to: USDC,
       data: undefined,
@@ -736,6 +732,21 @@ describe("the estimate a send mock implies", () => {
       "execution reverted: no refunds",
     );
     expect(mock.transactions).toEqual([]);
+  });
+
+  test("a plain send to a registered contract is implied too, with no function for it to run", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    mock.actions.sendTransaction({ to: USDC }).returns();
+
+    expect(await client.estimateGas({ account: alice, to: USDC, value: 1n })).toBe(100_000n);
+    await createWalletClient({
+      account: alice,
+      chain: mock.chain,
+      transport: mock.transport(),
+    }).sendTransaction({ to: USDC, value: 1n });
+    expect(usdc.calls).toEqual([]);
+    expect(mock.transactions).toHaveLength(1);
   });
 
   test("a mock that doesn't match the estimate doesn't imply it", async () => {

@@ -22,6 +22,11 @@ import type {
 } from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";
 import type { AllNamed, PartialStructs } from "../shared/abiValues.js";
+import type {
+  MockWriteAnswers,
+  MockWriteContext,
+  MockWriteOutcome,
+} from "../transactions/writeOutcome.js";
 
 type ReadMutability = "pure" | "view";
 type WriteMutability = "nonpayable" | "payable";
@@ -60,9 +65,9 @@ export type MockCall<
 /**
  * Where a contract's call is answered, as its mocks are registered: an
  * `eth_call` in its function's `read` or `simulate`, an `eth_estimateGas` in
- * `estimateGas`.
+ * `estimateGas`, and a sent transaction in `write`.
  */
-export type MockNamespace = "read" | "simulate" | "estimateGas";
+export type MockNamespace = "read" | "simulate" | "estimateGas" | "write";
 
 /**
  * A call in a list of every namespace's calls (`contract.calls`, `mock.calls`):
@@ -100,8 +105,9 @@ export type ResolverContext<abi extends Abi, args, fault = MockFault> = MockCall
   revert: RevertFn<abi>;
   /**
    * Fail the whole JSON-RPC request with a transport-level fault, e.g.
-   * `fail({ status: 503 })`. See `MockFault` for the kinds. In `simulate`, it
-   * also takes a node's refusal by name, e.g. `fail("insufficientFunds")`.
+   * `fail({ status: 503 })`. See `MockFault` for the kinds. In `simulate`,
+   * `estimateGas` and `write`, it also takes a node's refusal by name, e.g.
+   * `fail("insufficientFunds")`.
    */
   fail: (fault: fault) => never;
 };
@@ -187,6 +193,60 @@ export type MockEstimateGasFunction<
   >[];
 };
 
+/**
+ * What a write's resolver gets: the call, whose `from` is the sender, and
+ * `emit`; its `revert` mines the transaction reverted (see
+ * `MockWriteContext`).
+ */
+export type MockWriteResolverContext<abi extends Abi, args> = ResolverContext<
+  abi,
+  args,
+  MockNodeFault
+> &
+  MockWriteContext & {
+    from: Address;
+    /** Mine the transaction reverted, e.g. `revert("paused")`: see `MockWriteContext`. */
+    revert: RevertFn<abi>;
+  };
+
+/**
+ * How a contract's write answers: with what the chain did (see
+ * `MockWriteAnswers`), its revert spelled with the contract's errors.
+ */
+export type MockContractWriteAnswers<abi extends Abi, args> = Omit<
+  MockWriteAnswers<MockWriteResolverContext<abi, args>, never>,
+  "reverts"
+> & {
+  /**
+   * The transaction reverts: its estimate reverts with `spec`, so a client
+   * that estimates first throws before it sends; a send that reaches the
+   * chain anyway is mined reverted. See `RevertSpec` for the forms.
+   */
+  reverts<errorName extends ContractErrorName<abi> = ContractErrorName<abi>>(
+    spec?: RevertSpec<abi, errorName>,
+  ): void;
+};
+
+/** Mirrors `writeContract` for one function, but registers a mock. */
+export type MockWriteFunction<
+  abi extends Abi,
+  functionName extends ContractFunctionName<abi, WriteMutability>,
+> = {
+  <const args extends ContractFunctionArgs<abi, WriteMutability, functionName>>(
+    args?: args,
+  ): WithLimits<MockContractWriteAnswers<abi, args>>;
+  /**
+   * Every send of this function the mock has received, in order (the last
+   * `historyLimit` of each overload). Its nonce, gas and fees are on
+   * `mock.actions.sendTransaction.calls`, and what was mined on
+   * `mock.transactions`.
+   */
+  readonly calls: (MockCall<
+    ContractFunctionArgs<abi, WriteMutability, functionName>,
+    functionName
+  > & { from: Address })[];
+};
+
 /** A call to any function in a namespace, discriminated by `functionName`. */
 type NamespaceCall<abi extends Abi, mutability extends ReadMutability | WriteMutability> = {
   [functionName in ContractFunctionName<abi, mutability>]: MockCall<
@@ -239,10 +299,33 @@ export type MockContract<abi extends Abi> = {
    * Nonpayable and payable functions' gas, answered over `eth_estimateGas`
    * as `estimateContractGas` sends them, and as viem prepares a write. A
    * `simulate` mock doesn't answer estimates. These answer before
-   * `mock.actions.estimateGas`, which answers what they don't.
+   * `mock.actions.estimateGas`, which answers what they don't; a `write`
+   * mock implies the rest.
    */
   estimateGas: {
     [functionName in ContractFunctionName<abi, WriteMutability>]: MockEstimateGasFunction<
+      abi,
+      functionName
+    >;
+  };
+  /**
+   * Nonpayable and payable functions, sent as transactions
+   * (`eth_sendTransaction`, `eth_sendRawTransaction`), as `writeContract`
+   * sends them: a mock answers with what the chain did, and the
+   * transaction is mined in a new block. These answer before
+   * `mock.actions.sendTransaction`, which answers what they don't.
+   *
+   * `.returns()` takes the outcome (`MockWriteOutcome`): its logs, a
+   * reverted status, its gas; `.emits(logs)` is `.returns({ logs })`. The
+   * return value isn't on the chain: it goes on `simulate`. `.reverts(spec)`
+   * reverts its estimate and mines it reverted if it's sent anyway.
+   * `.fails()` takes a node's refusal by name, e.g. `"insufficientFunds"`. A
+   * matching mock also answers the transaction's `eth_estimateGas` (when no
+   * `estimateGas` mock does) with 100,000 gas, without running it or using
+   * it up. Nothing here answers an `eth_call`: `simulate` does.
+   */
+  write: {
+    [functionName in ContractFunctionName<abi, WriteMutability>]: MockWriteFunction<
       abi,
       functionName
     >;
@@ -293,8 +376,8 @@ type NamespaceDefaults<abi extends Abi, mutability extends ReadMutability | Writ
 
 /**
  * One resolver per function, keyed by namespace like `MockContract`. Defaults
- * are registered before any other mock, so `read`/`simulate`/`estimateGas`
- * mocks always override them.
+ * are registered before any other mock, so `read`/`simulate`/`estimateGas`/
+ * `write` mocks always override them.
  */
 export type MockContractDefaults<abi extends Abi> = {
   read?: NamespaceDefaults<abi, ReadMutability>;
@@ -309,6 +392,16 @@ export type MockContractDefaults<abi extends Abi> = {
             MockNodeFault
           >,
         ) => bigint | Promise<bigint>);
+  };
+  write?: {
+    [functionName in ContractFunctionName<abi, WriteMutability>]?:
+      | MockWriteOutcome
+      | ((
+          context: MockWriteResolverContext<
+            abi,
+            ContractFunctionArgs<abi, WriteMutability, functionName>
+          >,
+        ) => MockWriteOutcome | void | Promise<MockWriteOutcome | void>);
   };
 };
 

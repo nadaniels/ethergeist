@@ -106,6 +106,50 @@ features land; tick them off as pages get written.
       resolvers, and what viem throws.
 - [ ] Multicall: batching, `batch` info on calls, how reverts and faults
       behave inside a batch.
+- [ ] Writes: `usdc.write.transfer([bob, 5n]).emits([log])` answers the
+      app's `writeContract`, then `waitForTransactionReceipt`, with nothing
+      for gas or fees (and, until 072, the nonce mocked for a local
+      account). Show:
+  - A write mock answers a send of its function (`eth_sendTransaction`,
+    `eth_sendRawTransaction`) to the contract, before
+    `mock.actions.sendTransaction`, which answers what it doesn't. The
+    transaction is mined in a new block, as every send is (section 5,
+    "Sends").
+  - `.returns()` takes what the chain did, as a send mock's does (`{ logs,
+    status, gasUsed, effectiveGasPrice }`), not the function's return
+    value: nothing on chain reads that, and `simulate` has its own mock.
+    `write.transfer().returns(true)` is a type error. A call to a contract
+    has no `contractAddress`.
+  - Resolvers get the call (`from` is the sender) and `emit(logs)`, which
+    adds logs to the transaction; `mock.emit()` is refused inside one (up
+    to its first `await`; code elsewhere can still emit while it waits), as
+    it would mine a transaction of its own mid-send. `revert(spec)` mines
+    it reverted, dropping what it emitted. Send mocks' resolvers get both
+    too.
+  - The estimate: a matching write mock answers the transaction's
+    `eth_estimateGas` with 100,000 gas when no estimate mock does
+    (`estimateGas.fn()`, `defaults.estimateGas`,
+    `mock.actions.estimateGas`), without running it or using up a
+    `.once()`; it's recorded as an `estimateGas` call, and doesn't count
+    as used for `assertAllUsed`.
+  - Reverts, by client path: `.reverts(spec)` reverts the estimate, so a
+    local account's `writeContract` throws the decoded error before
+    sending; with `gas` set, or from a node's account, nothing estimates and
+    it's mined reverted. `.returns({ status: "reverted" })` passes the
+    estimate and mines it reverted for any client. A resolver's
+    `revert()` runs only at the send, so it's always mined reverted: for an
+    estimate-time revert, add `estimateGas.fn(args).reverts(spec)`.
+    `.fails("insufficientFunds")` is the node refusing the send: nothing
+    goes on the chain.
+  - `simulate` is separate: wagmi's simulate-then-write needs both
+    registered, and the `eth_call` wagmi replays for a reverted receipt
+    answers from `simulate`.
+  - `defaults.write`, like other defaults, answers every send of a
+    function and is exempt from `assertAllUsed`.
+  - Calls: `write.fn.calls` holds the function's calls (`from` always
+    set); nonce, gas and fees are on `mock.actions.sendTransaction.calls`,
+    and what was mined on `mock.transactions`. `contract.calls` and
+    `mock.calls` tag them `namespace: "write"`.
 - [ ] `mock.empty(address)` for addresses without code.
 - [ ] Limits: `.once()` and `.times(n)` before the answer, on every builder
       (contracts, actions, `method`). Show:
@@ -436,10 +480,11 @@ features land; tick them off as pages get written.
     `token.estimateGas.transfer().fails("insufficientFunds")`.
   - Estimating with a local account first prepares the transaction, which
     asks for the nonce: mock `getTransactionCount` too.
-  - A send mock that would answer the transaction implies its estimate
-    (below), when no estimate mock answers: 100,000 gas (21000 for a plain
-    transfer to an address without code), and a `.reverts()` send mock
-    reverts it. Nothing runs and no `.once()` is used up.
+  - A write or send mock that would answer the transaction implies its
+    estimate (below, and section 3, "Writes"), when no estimate mock
+    answers: 100,000 gas (21000 for a plain transfer to an address without
+    code), and a `.reverts()` mock reverts it. Nothing runs and no
+    `.once()` is used up.
 - [ ] Sends: `mock.actions.sendTransaction({ account, to, value, data })`
       answers `eth_sendTransaction` (a node's account, unsigned, with
       `from`) and `eth_sendRawTransaction` (a local account's signed bytes),
@@ -460,10 +505,12 @@ features land; tick them off as pages get written.
     estimate, so a local account throws before sending, and mines it
     reverted if it's sent anyway (`gas` set, or a node's account). A
     resolver returns the same, or nothing for a success.
+  - A registered contract's `write` mocks answer sends of its functions
+    first (section 3, "Writes"); send mocks answer the rest.
   - Unmocked, a send without data to an address without code succeeds
     (sending ETH needs no mock); anything else isn't answered, with a hint:
-    data to an unknown or `empty()` address, a registered contract, a
-    deploy, Multicall3.
+    data to an unknown or `empty()` address, a registered contract's
+    function (its `write` mocks), a deploy, Multicall3.
   - The receipt's gas: `gasUsed` is the gas it was sent with,
     `effectiveGasPrice` the base fee plus the tip at its block (capped at
     its max fee), `cumulativeGasUsed` summed over its block. A deploy's

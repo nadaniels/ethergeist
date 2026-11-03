@@ -2,7 +2,9 @@ import { type Address, getAddress } from "viem";
 
 import type { MockEventLog } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
+import type { Builder } from "../mocking/handlers.js";
 import type { MockNodeFault } from "../mocking/types.js";
+import { zeroResult } from "../mocking/zeroResult.js";
 import { MockRevertError, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { isPlaced } from "./store.js";
@@ -25,6 +27,22 @@ export type MockWriteOutcome = {
   gasUsed?: bigint;
   effectiveGasPrice?: bigint;
   contractAddress?: Address;
+};
+
+/**
+ * What a write's resolver gets beyond its call and its `fail` and `revert`,
+ * to answer the transaction as it's mined. A write's `revert(spec)` mines
+ * it reverted, dropping what it emitted: a resolver runs only at the send,
+ * so its estimate doesn't revert (see `.reverts()`).
+ */
+export type MockWriteContext = {
+  /**
+   * Adds logs to the transaction, placed when it's mined, as `.emits()`
+   * does. Use it rather than `mock.emit()`, which would put a transaction
+   * of its own on the chain, and is refused in a write's resolver up to its
+   * first `await` (after it, it would still place that separate transaction).
+   */
+  emit: (logs: MockEventLog | readonly MockEventLog[]) => void;
 };
 
 /**
@@ -73,10 +91,16 @@ const fieldsHint =
 
 /**
  * A write's outcome, checked, with its contract address checksummed. A
- * resolver that returns nothing answers a success.
+ * resolver that returns nothing, like `.returns()`, answers a success. Only
+ * a deploy has a contract address: `isDeploy` is whether the write is one,
+ * or `undefined` when that isn't known yet (a static answer whose `to`
+ * isn't pinned).
  */
-export function encodeWriteOutcome(value: unknown): MockWriteOutcome {
-  if (value === undefined) return {};
+export function encodeWriteOutcome(
+  value: unknown,
+  isDeploy: boolean | undefined,
+): MockWriteOutcome {
+  if (value === undefined || value === zeroResult) return {};
   if (!isPlainObject(value))
     throw new MockSetupError(`A write's outcome must be an object; got ${formatValue(value)}.`, {
       metaMessages: [fieldsHint],
@@ -108,6 +132,8 @@ export function encodeWriteOutcome(value: unknown): MockWriteOutcome {
     throw new MockSetupError(
       `A write's contractAddress must be an address; got ${formatValue(contractAddress)}.`,
     );
+  if (contractAddress !== undefined && isDeploy === false)
+    throw new MockSetupError("Only a deploy (to: null) has a contractAddress.");
   if (logs.some((log: object) => isPlaced(log)))
     throw new MockSetupError(
       "A write's logs are placed when it's mined, but one already has a position (e.g. from " +
@@ -125,8 +151,65 @@ export function encodeWriteOutcome(value: unknown): MockWriteOutcome {
  * the chain is. The resolver carries `error`, so an estimate the mock
  * implies reverts with it without running anything (see `registeredRevert`).
  */
-export const revertedWith = (error: MockRevertError) =>
+const revertedWith = (error: MockRevertError) =>
   Object.assign((): MockWriteOutcome => ({ status: "reverted" }), { revert: error });
+
+/** What a write mock's builder takes from its engine: see `extendWriteBuilder`. */
+type WriteEngine = {
+  /** What a resolver's `revert(spec)` and `.reverts(spec)` revert with. */
+  revertError(spec?: unknown): MockRevertError;
+  /** Runs a resolver, refusing `mock.emit()` in its body. */
+  whileWriting<result>(run: () => result): result;
+};
+
+/**
+ * Gives a write mock's builder `.emits()` and `.reverts()`, and its
+ * resolvers `emit` and `revert` (see `MockWriteContext`).
+ */
+export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void {
+  const returns = builder.returns.bind(builder);
+  /** A resolver with `emit` and `revert`, answering its outcome with what it emitted. */
+  const withWriteContext =
+    (resolver: (context: object) => unknown) =>
+    async (context: object): Promise<unknown> => {
+      const emitted: MockEventLog[] = [];
+      const writeContext: MockWriteContext & { revert: (spec?: unknown) => never } = {
+        emit(logs) {
+          emitted.push(...[logs].flat());
+        },
+        revert(spec) {
+          throw engine.revertError(spec);
+        },
+      };
+      try {
+        const outcome = await engine.whileWriting(() => resolver({ ...context, ...writeContext }));
+        if (emitted.length === 0) return outcome;
+        if (outcome === undefined) return { logs: emitted };
+        const logs: unknown = isPlainObject(outcome) ? (outcome.logs ?? []) : undefined;
+        // Anything else isn't an outcome, which encodeWriteOutcome says.
+        if (!isPlainObject(outcome) || !Array.isArray(logs)) return outcome;
+        const returned: unknown[] = logs;
+        return { ...outcome, logs: [...emitted, ...returned] };
+      } catch (error) {
+        // A revert at the send is mined: the transaction still goes on the chain.
+        if (error instanceof MockRevertError) return { status: "reverted" };
+        throw error;
+      }
+    };
+  Object.assign(builder, {
+    returns(value?: unknown) {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the types guarantee a resolver's signature
+      returns(typeof value === "function" ? withWriteContext(value as () => unknown) : value);
+    },
+    emits(logs: readonly MockEventLog[]) {
+      returns({ logs });
+    },
+    // The unwrapped `returns`, so the estimate still sees the resolver's `revert`.
+    reverts(spec?: unknown) {
+      returns(revertedWith(engine.revertError(spec)));
+    },
+  });
+}
 
 /** The revert a write mock's `.reverts()` registered, if its resolver is one. */
 export const registeredRevert = (resolver: unknown): MockRevertError | undefined =>

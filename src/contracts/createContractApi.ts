@@ -79,6 +79,7 @@ export function createContractApi<const abi extends Abi>({
     read: buildNamespace("read"),
     simulate: buildNamespace("simulate"),
     estimateGas: buildNamespace("estimateGas"),
+    write: buildNamespace("write"),
     events: contractEvents({ abi, address }),
     emit: Object.fromEntries(
       events.map((eventName) => [

@@ -44,6 +44,7 @@ export type {
   MockContract,
   MockContractDefaults,
   MockContractEstimateAnswers,
+  MockContractWriteAnswers,
   MockEstimateGasFunction,
   MockFunction,
   MockFunctionAnswers,
@@ -52,6 +53,8 @@ export type {
   MockContractFunction,
   MockReadFunction,
   MockSimulateFunction,
+  MockWriteFunction,
+  MockWriteResolverContext,
   ResolverContext,
   RevertFn,
   RevertSpec,
@@ -97,4 +100,8 @@ export { zeroResult } from "./mocking/zeroResult.js";
 export { testAddress, testHash } from "./shared/testValues.js";
 export { testLog } from "./logs/testLog.js";
 export type { TransactionRecord } from "./transactions/store.js";
-export type { MockWriteAnswers, MockWriteOutcome } from "./transactions/writeOutcome.js";
+export type {
+  MockWriteAnswers,
+  MockWriteContext,
+  MockWriteOutcome,
+} from "./transactions/writeOutcome.js";

@@ -2,17 +2,17 @@ import { type Hash, getContractAddress } from "viem";
 
 import { decodeRawTransaction, sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
-import type { RevertSpec } from "../contracts/types.js";
-import type { MockEventLog } from "../logs/events.js";
+import type { CallContext, RevertFn, RevertSpec } from "../contracts/types.js";
 import { impliedGas } from "../mocking/gas.js";
 import type { MockNodeFault, WithLimits } from "../mocking/types.js";
-import { MockSetupError, invalidParams } from "../shared/errors.js";
+import { invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import {
   type MockWriteAnswers,
+  type MockWriteContext,
   type MockWriteOutcome,
   encodeWriteOutcome,
-  revertedWith,
+  extendWriteBuilder,
 } from "../transactions/writeOutcome.js";
 import {
   decodeTransactionRequest,
@@ -21,15 +21,20 @@ import {
   withoutUndefined,
 } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
-import type { SendTransactionCall } from "./types.js";
+import type { ActionContext, SendTransactionCall } from "./types.js";
 
 /**
- * What a send's resolver gets: the call, and `fail`, which also takes a
- * node's refusal by name, e.g. `fail("insufficientFunds")`.
+ * What a send's resolver gets: the call; `fail`, which also takes a node's
+ * refusal by name, e.g. `fail("insufficientFunds")`; and `emit` and
+ * `revert`, which answer the transaction as it's mined (see
+ * `MockWriteContext`). Without an ABI, `revert` takes a reason, a panic
+ * code or raw data.
  */
-export type SendTransactionContext = SendTransactionCall & {
-  fail: (fault: MockNodeFault) => never;
-};
+export type SendTransactionContext = ActionContext<SendTransactionCall, MockNodeFault> &
+  MockWriteContext & {
+    /** Mine the transaction reverted, e.g. `revert("paused")`: see `MockWriteContext`. */
+    revert: RevertFn<readonly []>;
+  };
 
 /**
  * Like `MockActionBuilder`, for a send: it answers with what the chain did
@@ -78,6 +83,22 @@ export function sendTransaction({
   registry,
   transactions,
 }: ActionsContext): Definition<SendTransactionCall, Hash, MockWriteOutcome> {
+  /**
+   * The contract a send calls one of the functions of, if `to` is a
+   * registered contract and it has data, with the call's context: its
+   * `write` mocks answer it first.
+   */
+  const contractCall = ({ account, to, data, value }: SendTransactionCall) => {
+    if (to === null || data === undefined) return undefined;
+    const contract = registry.contractAt(to);
+    const context: CallContext = {
+      from: account,
+      value,
+      blockNumber: state.blockNumber,
+      batch: undefined,
+    };
+    return contract && { contract, data, context };
+  };
   // A raw send's hash is its bytes'; an `eth_sendTransaction`'s is made where it's mined.
   const rawHashes = new WeakMap<SendTransactionCall, Hash>();
   /**
@@ -115,24 +136,24 @@ export function sendTransaction({
           ({ to: pinned.to } as SendTransactionCall)
         : undefined,
     zero: {},
-    encode(value, call) {
-      const outcome = encodeWriteOutcome(value);
-      if (call !== undefined && call.to !== null && outcome.contractAddress !== undefined)
-        throw new MockSetupError("Only a deploy (to: null) has a contractAddress.");
-      return outcome;
-    },
+    encode: (value, call) => encodeWriteOutcome(value, call && call.to === null),
     // Sending the same bytes again is the same transaction: answered with its
     // hash, without asking the mocks again.
     known: sentBefore,
     extendBuilder(builder) {
-      Object.assign(builder, {
-        emits(logs: readonly MockEventLog[]) {
-          builder.returns({ logs });
-        },
-        reverts(spec?: RevertSpec) {
-          builder.returns(revertedWith(createRevertError([], spec)));
-        },
+      extendWriteBuilder(builder, {
+        revertError: (spec?: RevertSpec) => createRevertError([], spec),
+        whileWriting: transactions.whileWriting,
       });
+    },
+    // A registered contract's turn at a send of one of its functions.
+    contractTurn(call) {
+      const called = contractCall(call);
+      return called && called.contract.write(called.data, called.context);
+    },
+    contractMock(call) {
+      const called = contractCall(call);
+      return called && called.contract.writeMock(called.data, called.context);
     },
     // A plain transfer to an address without code runs nothing, so it succeeds.
     fallback: (call) => (isPlainTransfer(registry, call) ? {} : undefined),

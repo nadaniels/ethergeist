@@ -13,13 +13,13 @@ import {
   withoutUndefined,
 } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
-import type { EstimateGasCall, SendTransactionCall } from "./types.js";
+import type { ActionContext, EstimateGasCall, SendTransactionCall } from "./types.js";
 
 /**
  * What an estimate's resolver gets: the call, and `fail`, which also takes a
  * node's refusal by name, e.g. `fail("insufficientFunds")`.
  */
-export type EstimateGasContext = EstimateGasCall & { fail: (fault: MockNodeFault) => never };
+export type EstimateGasContext = ActionContext<EstimateGasCall, MockNodeFault>;
 
 /** Like `MockActionBuilder`, for an estimate. */
 export type MockEstimateBuilder<context> = WithLimits<MockEstimateAnswers<context>>;
@@ -67,8 +67,8 @@ function sendOf(call: EstimateGasCall, account: Address): SendTransactionCall {
 /**
  * `eth_estimateGas`. A registered contract's own mocks answer estimates of
  * its functions first. Unmocked, a plain transfer to an address without code
- * is 21000 gas, as a node estimates it, and a send mock that would answer
- * the transaction implies its estimate (see `impliedGas`).
+ * is 21000 gas, as a node estimates it, and a write or send mock that would
+ * answer the transaction implies its estimate (see `impliedGas`).
  */
 export const estimateGas = ({
   state,
@@ -91,9 +91,10 @@ export const estimateGas = ({
       .contractAt(to)
       ?.estimate(data, { from: account, value, blockNumber, batch: undefined });
   },
-  // A send mock implies its transaction's estimate, without running: a
-  // `.reverts()` one reverts it. A plain transfer to an address without code
-  // is the base 21000 gas, mocked or not.
+  // The mock that would answer the send (a contract's write mock, or else a
+  // send mock) implies its estimate, without running: a `.reverts()` one
+  // reverts it. A plain transfer to an address without code is the base
+  // 21000 gas, mocked or not.
   fallback(call) {
     const send = call.account && mockFor("sendTransaction", sendOf(call, call.account));
     const revert = send && registeredRevert(send.resolver);

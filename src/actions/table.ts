@@ -35,7 +35,7 @@ export type ActionsContext = {
   mockFor: <name extends keyof ActionCalls>(
     name: name,
     call: ActionCalls[name],
-  ) => Handler | undefined;
+  ) => { resolver: unknown } | undefined;
 };
 
 /**
@@ -103,11 +103,16 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
   /** Adds to what a resolver gets, beyond the call and `fail`. */
   extendContext?(context: object, call: call): void;
   /**
-   * A registered contract's turn at the call (an estimate of one of its
-   * functions), prepared as the call arrives. Its mocks answer before this
-   * table's: it owns its functions.
+   * A registered contract's turn at the call (an estimate or a send of one
+   * of its functions), prepared as the call arrives. Its mocks answer before
+   * this table's: it owns its functions.
    */
-  contractTurn?(call: call): ContractTurn | undefined;
+  contractTurn?(call: call): ContractTurn<answer> | undefined;
+  /**
+   * The contract's mock that would answer the call in its turn, if any,
+   * found without preparing the turn: nothing is recorded, and nothing runs.
+   */
+  contractMock?(call: call): { resolver: unknown } | undefined;
 };
 
 /**
@@ -252,9 +257,10 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
     answer,
     /**
      * The mock that would answer `call` now, if any, found without answering
-     * it: nothing runs, and no use is counted. A contract's turn isn't asked.
+     * it: nothing runs, and no use is counted. A registered contract's mock
+     * comes first, as in its turn.
      */
-    findMock: (call: object) => match(call).handler,
+    findMock: (call: object) => definition.contractMock?.(call) ?? match(call).handler,
     /** The calls this table received, as they arrive. */
     calls,
     clearCalls() {

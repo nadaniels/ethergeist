@@ -170,6 +170,25 @@ export function createTransactionStore({
     state.mine(blocks);
   }
 
+  /** Whether a write's resolver is running its body, during which `emit` is refused. */
+  let writing = false;
+
+  /**
+   * Runs a write's resolver, refusing `emit` in its body: it would put a
+   * transaction of its own on the chain, mined in the middle of the send.
+   * Only up to its first `await`, so code elsewhere (a demo's ticker) can
+   * still emit while a resolver waits.
+   */
+  function whileWriting<result>(run: () => result): result {
+    const outer = writing;
+    writing = true;
+    try {
+      return run();
+    } finally {
+      writing = outer;
+    }
+  }
+
   /** Places one transaction's logs, returning one for one and an array for an array. */
   function emit(log: MockEventLog, options?: EmitOptions): EmittedLog;
   function emit(logs: readonly MockEventLog[], options?: EmitOptions): EmittedLog[];
@@ -177,6 +196,13 @@ export function createTransactionStore({
     given: MockEventLog | readonly MockEventLog[],
     options: EmitOptions = {},
   ): EmittedLog | EmittedLog[] {
+    if (writing)
+      throw new MockSetupError("emit() can't run while a write's resolver answers a send.", {
+        metaMessages: [
+          "Use the resolver's emit(), which adds logs to the transaction it answers; this one " +
+            "would put a transaction of its own on the chain, mined mid-send.",
+        ],
+      });
     const values = isLogList(given) ? given : [given];
     if (values.length === 0) throw new MockSetupError("emit() requires at least one log.");
     for (const value of values)
@@ -256,6 +282,7 @@ export function createTransactionStore({
   return {
     add,
     emit,
+    whileWriting,
     mine,
     logsFor,
     /**

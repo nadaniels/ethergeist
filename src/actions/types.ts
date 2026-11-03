@@ -123,12 +123,19 @@ export type ActionCalls = {
   sendTransaction: SendTransactionCall;
 };
 
-export type ActionContext<call> = call & {
+/**
+ * What an action's resolver gets: the call, and `fail`. `fault` is what
+ * `fail` takes: a `MockFault`, or also a node's refusal by name
+ * (`MockNodeFault`) where a node can refuse.
+ */
+export type ActionContext<call, fault = MockFault> = call & {
   /**
    * Fail the whole JSON-RPC request with a transport-level fault, e.g.
-   * `fail({ status: 503 })`. See `MockFault` for the kinds.
+   * `fail({ status: 503 })`. See `MockFault` for the kinds. Where a node can
+   * refuse (estimates, sends), it also takes the refusal by name, e.g.
+   * `fail("insufficientFunds")`.
    */
-  fail: (fault: MockFault) => never;
+  fail: (fault: fault) => never;
 };
 
 /** What an action mock answers with: a value in viem's types, or `zeroResult` for its zero. */

@@ -40,11 +40,14 @@ export function missError(
     const reason = formatMissReason(key === undefined ? undefined : argName(mock, key));
     return `  ${describeMock(call.functionName, mock)}${reason}`;
   });
-  const what = namespace === "estimateGas" ? "estimateGas mock" : "mock";
-  const none =
-    namespace === "estimateGas"
-      ? `No estimateGas mocks registered for "${call.functionName}"; a simulate mock doesn't answer estimates.`
-      : `No mocks registered for "${call.functionName}".`;
+  const name = `"${call.functionName}"`;
+  const what = namespace === "read" || namespace === "simulate" ? "mock" : `${namespace} mock`;
+  const none = {
+    read: `No mocks registered for ${name}.`,
+    simulate: `No mocks registered for ${name}.`,
+    estimateGas: `No estimateGas mocks registered for ${name}; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
+    write: `No write mocks registered for ${name}; a simulate mock doesn't answer sends.`,
+  }[namespace];
   return new MockNotFoundError(
     `No ${what} for ${formatCall(call.functionName, call.args)} on ${label}.`,
     { metaMessages: lines.length > 0 ? ["Registered:", ...lines] : [none] },

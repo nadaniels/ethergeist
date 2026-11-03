@@ -42,7 +42,11 @@ export default defineConfig({
         plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise", "vitest"],
       },
       {
-        files: ["src/createMockRpc.ts", "src/actions/typedActions.ts"],
+        files: [
+          "src/createMockRpc.ts",
+          "src/actions/typedActions.ts",
+          "src/contracts/createMockContract.ts",
+        ],
         rules: { "import/max-dependencies": "off" },
       },
       {

@@ -394,7 +394,7 @@ describe("contract estimates", () => {
       `No estimateGas mock for transfer(${bob}, 1n) on Token (${token.address}).`,
     );
     expect(hintsOf(error)).toBe(
-      'No estimateGas mocks registered for "transfer"; a simulate mock doesn\'t answer estimates.',
+      'No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn\'t answer estimates.',
     );
     expect(mock.unhandled).toHaveLength(1);
     // The contract didn't answer, so its record has the request's outcome.

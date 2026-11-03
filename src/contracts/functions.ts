@@ -19,8 +19,8 @@ import type { MockNamespace } from "./types.js";
 
 /**
  * A contract's functions by namespace, as its mocks find them: views and pure
- * functions under `read`, writes under `simulate` and `estimateGas`, by name
- * and overload, or by selector.
+ * functions under `read`, writes under `simulate`, `estimateGas` and `write`,
+ * by name and overload, or by selector.
  */
 export function createFunctions(abi: Abi) {
   const functionsOf = (mutabilities: readonly string[]) =>
@@ -33,6 +33,7 @@ export function createFunctions(abi: Abi) {
     read: functionsOf(["view", "pure"]),
     simulate: writes,
     estimateGas: writes,
+    write: writes,
   };
   const functionsBySelector = new Map(
     [...functionsIn.read, ...functionsIn.simulate].map((abiItem) => [

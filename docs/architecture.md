@@ -31,8 +31,10 @@ shared → mocking → chain → logs → transactions → contracts → actions
   answers first. Every record goes in through `add`, and all mining through
   its `mine`; a record is on the chain once its block is mined (at or below
   the head).
-- **`contracts/`:** mocked contracts, their registry, and `eth_call` dispatch,
-  multicall included. It emits logs, so it sits above `transactions/`; it
+- **`contracts/`:** mocked contracts, their registry, and `eth_call`
+  dispatch, multicall included; a contract also takes a turn at the
+  estimates and sends of its functions, ahead of the action's own mocks
+  (`ContractTurn`). It emits logs, so it sits above `transactions/`; it
   owns `MockCallRecord`, the record of a call it answered.
 - **`actions/`:** typed actions (`mock.actions.getBalance`, …), one file each,
   and raw `mock.method()` mocks. Receipts, transactions, blocks and `getLogs`
@@ -176,4 +178,7 @@ much, not a limit to design around: if splitting the file or moving code
 elsewhere would read worse than the imports, leave it, and if needed exempt the
 file in `vite.config.ts`. Two files are exempt because importing everything is
 their job: `createMockRpc.ts`, the composition root, and
-`actions/typedActions.ts`, the catalog of actions.
+`actions/typedActions.ts`, the catalog of actions. A third,
+`contracts/createMockContract.ts`, is the contract engine, answering every
+namespace's mocks, `write`'s outcomes included; splitting it would scatter
+one engine across files.

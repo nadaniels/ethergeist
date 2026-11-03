@@ -294,6 +294,50 @@ describe("estimateGas", () => {
   });
 });
 
+describe("write", () => {
+  const token = createMockRpc().contract({
+    abi: parseAbi([
+      "function transfer(address to, uint256 amount) returns (bool)",
+      "function balanceOf(address owner) view returns (uint256)",
+      "event Transfer(address indexed from, address indexed to, uint256 value)",
+      "error Paused(address by)",
+    ]),
+    address: USDC,
+    defaults: { write: { transfer: ({ fail }) => fail("insufficientFunds") } },
+  });
+
+  test("takes write functions' args and answers with the outcome", () => {
+    token.write.transfer([USDC, 1n]).returns();
+    token.write.transfer().returns({ status: "reverted", gasUsed: 21_000n });
+    token.write.transfer().emits([token.events.Transfer({ from: USDC, to: USDC, value: 1n })]);
+    token.write.transfer().once().fails("insufficientFunds");
+    token.write.transfer().reverts({ errorName: "Paused", args: [USDC] });
+    token.write.transfer().returns(({ args, from, emit, revert }) => {
+      expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
+      expectTypeOf(from).toEqualTypeOf<Address>();
+      emit(token.events.Transfer({ from, to: args[0], value: args[1] }));
+      if (args[1] > 5n) revert({ errorName: "Paused", args: [from] });
+    });
+    token.write.transfer().returns(() => Promise.resolve({ logs: [] }));
+    expectTypeOf(token.write.transfer.calls[0]!.from).toEqualTypeOf<Address>();
+
+    // @ts-expect-error a write answers with its outcome; the return value goes on simulate
+    token.write.transfer().returns(true);
+    // @ts-expect-error the block comes from where it's mined
+    token.write.transfer().returns({ blockNumber: 1n });
+    // @ts-expect-error not an error on the ABI
+    token.write.transfer().reverts({ errorName: "Nope" });
+    // @ts-expect-error only writes are sent
+    token.write.balanceOf; // oxlint-disable-line typescript/no-unused-expressions -- a type test
+    createMockRpc().contract({
+      abi: erc20Abi,
+      address: USDC,
+      // @ts-expect-error a default is an outcome too
+      defaults: { write: { transfer: true } },
+    });
+  });
+});
+
 describe("returns: named outputs and partial structs", () => {
   const feed = mock.contract({
     abi: parseAbi([
@@ -373,11 +417,12 @@ describe("contract.calls", () => {
   });
 
   test("calls are tagged with their namespace; a function's own aren't", () => {
-    expectTypeOf<MockNamespace>().toEqualTypeOf<"read" | "simulate" | "estimateGas">();
+    expectTypeOf<MockNamespace>().toEqualTypeOf<"read" | "simulate" | "estimateGas" | "write">();
     expectTypeOf(usdc.calls[0]!.namespace).toEqualTypeOf<MockNamespace>();
     expectTypeOf(mock.calls[0]!.namespace).toEqualTypeOf<MockNamespace>();
     expectTypeOf(usdc.read.balanceOf.calls[0]!).not.toHaveProperty("namespace");
     expectTypeOf(usdc.estimateGas.transfer.calls[0]!).not.toHaveProperty("namespace");
+    expectTypeOf(usdc.write.transfer.calls[0]!).not.toHaveProperty("namespace");
   });
 });
 
