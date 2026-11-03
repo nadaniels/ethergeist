@@ -1,4 +1,5 @@
 import {
+  type Address,
   ContractFunctionRevertedError,
   InsufficientFundsError,
   createWalletClient,
@@ -8,6 +9,7 @@ import {
   keccak256,
   parseAbi,
   toHex,
+  zeroAddress,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test, vi } from "vite-plus/test";
@@ -737,5 +739,147 @@ describe("a send mock's resolver", () => {
       status: "reverted",
       logs: [],
     });
+  });
+});
+
+describe("state the test owns (controlled mocks)", () => {
+  const tokenAbi = [
+    ...erc20Abi,
+    ...parseAbi([
+      "error ERC20InsufficientBalance(address sender, uint256 balance, uint256 needed)",
+    ]),
+  ] as const;
+  // setup() registers USDC with viem's erc20Abi, which has no errors.
+  const TOKEN = testAddress("token");
+
+  /** The docs' example: balances in a closure, read by `balanceOf`, changed only by `transfer`. */
+  function ledger() {
+    const { mock, client, wallet, from: sender } = setup();
+    const token = mock.contract({ abi: tokenAbi, address: TOKEN, name: "Token" });
+    const balances = new Map([[sender, 10n]]);
+    token.read.balanceOf().returns(({ args: [who] }) => balances.get(who) ?? 0n);
+    token.write.transfer().returns(({ from, args: [to, amount], emit, revert }) => {
+      const have = balances.get(from) ?? 0n;
+      if (have < amount)
+        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
+      emit(token.events.Transfer({ from, to, value: amount }));
+      balances.set(from, have - amount);
+      balances.set(to, (balances.get(to) ?? 0n) + amount);
+    });
+    const balanceOf = (who: Address) =>
+      client.readContract({
+        address: TOKEN,
+        abi: tokenAbi,
+        functionName: "balanceOf",
+        args: [who],
+      });
+    const transfer = (amount: bigint) =>
+      wallet.writeContract({
+        address: TOKEN,
+        abi: tokenAbi,
+        functionName: "transfer",
+        args: [bob, amount],
+      });
+    return { mock, client, token, balances, sender, balanceOf, transfer };
+  }
+
+  test("a transfer moves the balances its reads answer, once, though it's estimated first", async () => {
+    const { mock, client, token, sender, balanceOf, transfer } = ledger();
+
+    const hash = await transfer(4n);
+
+    expect(await client.waitForTransactionReceipt({ hash, pollingInterval: 10 })).toMatchObject({
+      status: "success",
+      logs: [{ address: TOKEN.toLowerCase() }],
+    });
+    expect([await balanceOf(sender), await balanceOf(bob)]).toEqual([6n, 4n]);
+    // The implied estimate didn't run the resolver: the balances moved once.
+    expect(sentMethods(mock)).toEqual(["eth_estimateGas", "eth_sendRawTransaction"]);
+    expect(
+      await client.getContractEvents({ abi: tokenAbi, address: TOKEN, eventName: "Transfer" }),
+    ).toMatchObject([{ args: { from: sender, to: bob, value: 4n } }]);
+    expect(token.write.transfer.calls).toHaveLength(1);
+  });
+
+  test("a transfer over the balance is mined reverted and changes nothing", async () => {
+    const { mock, client, sender, balanceOf, transfer } = ledger();
+
+    // The resolver runs only at the send, so its revert isn't the estimate's: it's mined reverted.
+    const hash = await transfer(11n);
+
+    expect(await client.waitForTransactionReceipt({ hash, pollingInterval: 10 })).toMatchObject({
+      status: "reverted",
+      logs: [],
+    });
+    expect([await balanceOf(sender), await balanceOf(bob)]).toEqual([10n, 0n]);
+    expect(mock.transactions).toMatchObject([{ hash, origin: "write" }]);
+  });
+
+  test("an estimate that reads the closure makes an overdraft throw before it's sent", async () => {
+    const { mock, token, balances, sender, balanceOf, transfer } = ledger();
+    token.estimateGas.transfer().returns(({ from = zeroAddress, args: [, amount], revert }) => {
+      const have = balances.get(from) ?? 0n;
+      if (have < amount)
+        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
+      return 50_000n;
+    });
+
+    const error = await rejectionOf(transfer(11n));
+
+    expect(expectCause(error, ContractFunctionRevertedError).data?.errorName).toBe(
+      "ERC20InsufficientBalance",
+    );
+    expect(mock.transactions).toEqual([]);
+    expect(await balanceOf(sender)).toBe(10n);
+    // Within the balance, the estimate answers and the write moves it.
+    await transfer(4n);
+    expect(await balanceOf(sender)).toBe(6n);
+  });
+
+  test("a resolver's revert() undoes nothing it changed before it", async () => {
+    const { mock, client, wallet } = setup();
+    const token = mock.contract({ abi: tokenAbi, address: TOKEN });
+    let transfers = 0;
+    let after = false;
+    token.write.transfer().returns(({ revert }) => {
+      transfers += 1;
+      revert("paused");
+      after = true;
+    });
+
+    const hash = await wallet.writeContract({
+      address: TOKEN,
+      abi: tokenAbi,
+      functionName: "transfer",
+      args: [bob, 1n],
+    });
+
+    expect(transfers).toBe(1);
+    expect(after).toBe(false);
+    expect((await client.getTransactionReceipt({ hash })).status).toBe("reverted");
+  });
+
+  test("a native balance: getBalance reads the closure, and a payable write changes it", async () => {
+    const { mock, client, wallet, from: sender } = setup();
+    const vault = mock.contract({ abi: vaultAbi, address: VAULT, name: "Vault" });
+    const native = new Map([[sender, 10n]]);
+    mock.actions.getBalance().returns(({ address }) => native.get(address) ?? 0n);
+    vault.write.deposit().returns(({ from, value }) => {
+      native.set(from, (native.get(from) ?? 0n) - value);
+      native.set(VAULT, (native.get(VAULT) ?? 0n) + value);
+    });
+
+    await wallet.writeContract({
+      address: VAULT,
+      abi: vaultAbi,
+      functionName: "deposit",
+      value: 3n,
+    });
+    // Nothing moves ETH but the test: a plain transfer, unmocked, changes no balance.
+    await wallet.sendTransaction({ to: bob, value: 1n });
+
+    expect(await client.getBalance({ address: sender })).toBe(7n);
+    expect(await client.getBalance({ address: VAULT })).toBe(3n);
+    expect(await client.getBalance({ address: bob })).toBe(0n);
   });
 });
