@@ -11,7 +11,7 @@ import {
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockSetupError, createMockRpc, testAddress } from "../src/index.js";
+import { MockResolverError, MockSetupError, createMockRpc, testAddress } from "../src/index.js";
 import { expectCause, failureOf, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -331,5 +331,102 @@ describe(".fails()", () => {
     // The first attempt fails; viem's retry gets the answer.
     expect(await read(USDC, "decimals")).toBe(6);
     expect(mock.requests).toHaveLength(2);
+  });
+});
+
+describe("a fault that isn't one", () => {
+  const notFaults: unknown[] = [
+    undefined,
+    null,
+    "nonce too low",
+    ["nonceTooLow"],
+    503,
+    {},
+    { status: "503" },
+    { status: 503, retryAfter: "1" },
+    { code: "-32005" },
+    { code: -32005, message: 5 },
+  ];
+
+  test.each(notFaults)(".fails(%o) is refused at registration, on every builder", (fault) => {
+    const { mock, usdc } = setupTokens();
+    const builders = [
+      () => mock.actions.getBalance(),
+      () => mock.actions.estimateGas(),
+      () => mock.actions.sendTransaction(),
+      () => mock.method("eth_foo"),
+      () => usdc.read.decimals(),
+      () => usdc.simulate.transfer(),
+      () => usdc.estimateGas.transfer(),
+      () => usdc.write.transfer(),
+    ];
+    // oxlint-disable typescript/no-unsafe-type-assertion -- what a JavaScript caller can pass
+    for (const builder of builders)
+      expect(() => {
+        builder().fails(fault as never);
+      }).toThrow(MockSetupError);
+    expect(() => mock.failRequests(fault as never)).toThrow(MockSetupError);
+    // oxlint-enable typescript/no-unsafe-type-assertion
+  });
+
+  test("names what was given, and the kinds", () => {
+    const { usdc } = setupTokens();
+    expect(() => {
+      // @ts-expect-error -- no fault
+      usdc.read.decimals().fails();
+    }).toThrow(
+      new MockSetupError("Expected a fault; got undefined.", {
+        metaMessages: [
+          "A fault is one of:",
+          "- { status, retryAfter? }: an HTTP error response, e.g. { status: 503 };",
+          "- { code, message?, data? }: a JSON-RPC error response;",
+          '- "timeout" or "network";',
+          '- a node\'s refusal by name, where one is typed, e.g. "insufficientFunds".',
+        ],
+      }),
+    );
+  });
+
+  // The types allow a name only where a node can refuse with it; the check lets any through.
+  test.each([
+    { name: "insufficientFunds", code: -32003 },
+    { name: "gasExceedsAllowance", code: -32000 },
+  ])("$name where its types refuse it answers as a node's error", async ({ name, code }) => {
+    const { mock, client } = setupTokens({ retryCount: 0 });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what a JavaScript caller can pass
+    mock.actions.getBalance().fails(name as never);
+
+    const error = await rejectionOf(client.getBalance({ address: alice }));
+    expect(expectCause(error, RpcRequestError).code).toBe(code);
+  });
+
+  // No types guard failRequests() with a name; hex that isn't a transaction has none.
+  test("failRequests() with a name answers as a node's error, on any request", async () => {
+    const { mock, client } = setupTokens({ retryCount: 0 });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what a JavaScript caller can pass
+    mock.failRequests("insufficientFunds" as never);
+
+    const balance = await rejectionOf(client.getBalance({ address: alice }));
+    expect(expectCause(balance, RpcRequestError).code).toBe(-32003);
+    const send = await rejectionOf(
+      client.request({ method: "eth_sendRawTransaction", params: ["0xdead"] }),
+    );
+    expect(expectCause(send, RpcRequestError)).toMatchObject({
+      code: -32003,
+      details: "EVM error: OutOfFunds",
+    });
+    expect(
+      mock.formatHistory().match(/✗ fault: insufficientFunds \(failRequests\)/gu),
+    ).toHaveLength(2);
+  });
+
+  test("a resolver's fail() with one is a MockResolverError, and history still formats", async () => {
+    const { mock, usdc, read } = setupTokens({ retryCount: 0 });
+    // @ts-expect-error -- no fault
+    usdc.read.decimals().returns(({ fail }) => fail());
+
+    const rejection = await rejectionOf(read(USDC, "decimals"));
+    expect(mock.formatHistory()).toContain("✗ resolver threw: Expected a fault; got undefined.");
+    expect(expectCause(rejection, MockResolverError).cause).toBeInstanceOf(MockSetupError);
   });
 });

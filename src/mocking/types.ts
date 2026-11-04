@@ -41,7 +41,19 @@ export type MockFault =
  *   - `"alreadyKnown"`: the node has this transaction already, a double
  *     submit, viem's `NonceTooLowError`.
  */
-export type NodeErrorName = SendErrorName | CallErrorName;
+export type NodeErrorName = (typeof nodeErrorNames)[number];
+
+/** Every `NodeErrorName`, for a check at runtime. */
+export const nodeErrorNames = [
+  "insufficientFunds",
+  "feeCapTooLow",
+  "tipAboveFeeCap",
+  "gasExceedsAllowance",
+  "intrinsicGasTooLow",
+  "nonceTooLow",
+  "nonceTooHigh",
+  "alreadyKnown",
+] as const;
 
 type TransactionErrorName = "insufficientFunds" | "feeCapTooLow" | "tipAboveFeeCap";
 /** The names a send can be refused with: see `NodeErrorName`. */

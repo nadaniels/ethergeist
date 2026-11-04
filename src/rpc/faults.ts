@@ -1,3 +1,4 @@
+import { checkFault } from "../mocking/faults.js";
 import type { MockFault } from "../mocking/types.js";
 import { MockSetupError } from "../shared/errors.js";
 
@@ -24,6 +25,7 @@ type ActiveFault = {
 };
 
 function createActiveFault(fault: MockFault, options: FailRequestsOptions): ActiveFault {
+  checkFault(fault);
   const { method, times = Infinity } = options;
   if (times !== Infinity && !(Number.isInteger(times) && times > 0))
     throw new MockSetupError(`\`times\` takes a positive integer; got ${times}.`);

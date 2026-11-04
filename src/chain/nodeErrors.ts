@@ -1,6 +1,6 @@
 import { type Hex, decodeErrorResult, isHex, parseTransaction } from "viem";
 
-import type { MockNodeFault, NodeErrorName } from "../mocking/types.js";
+import type { NodeErrorName } from "../mocking/types.js";
 import { builtinErrors } from "../shared/abiValues.js";
 import { isPlainObject } from "../shared/values.js";
 import { optionalQuantity } from "./params.js";
@@ -41,21 +41,21 @@ export function nodeRevertMessage(data: Hex): string {
   }
 }
 
-export function isNodeErrorName(fault: MockNodeFault): fault is NodeErrorName {
-  return typeof fault === "string" && Object.hasOwn(nodeErrors, fault);
-}
-
 /**
  * A request's transaction, for its error: `params[0]`, as `eth_estimateGas`,
  * `eth_call` and `eth_sendTransaction` take it, or decoded from a raw send's
- * bytes. Named errors answer after the params are checked, so they parse.
+ * bytes. Hex that doesn't decode (`getBalance`'s address, under a name its
+ * types refuse) is no transaction.
  */
 function transactionOf(params: unknown) {
   const tx: unknown = Array.isArray(params) ? params[0] : undefined;
-  if (isHex(tx)) {
-    const { value, gas } = parseTransaction(tx);
-    return { value: value ?? 0n, gas, paysFees: true };
-  }
+  if (isHex(tx))
+    try {
+      const { value, gas } = parseTransaction(tx);
+      return { value: value ?? 0n, gas, paysFees: true };
+    } catch {
+      // No transaction: see above.
+    }
   const fields = isPlainObject(tx) ? tx : {};
   return {
     value: optionalQuantity(fields.value, "a value") ?? 0n,

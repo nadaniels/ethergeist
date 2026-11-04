@@ -1,7 +1,7 @@
 import { HttpRequestError, RpcRequestError, TimeoutError } from "viem";
 
-import { isNodeErrorName, nodeErrors, nodeRevertMessage } from "../chain/nodeErrors.js";
-import { MockFailure } from "../mocking/faults.js";
+import { nodeErrors, nodeRevertMessage } from "../chain/nodeErrors.js";
+import { MockFailure, isNodeErrorName } from "../mocking/faults.js";
 import type { MockNodeFault } from "../mocking/types.js";
 import { MockRevertError, MockRpcError } from "../shared/errors.js";
 

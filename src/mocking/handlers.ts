@@ -1,6 +1,6 @@
 import { MockNotFoundError, MockResolverError, removedMockError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
-import { fail } from "./faults.js";
+import { checkFault, fail } from "./faults.js";
 import {
   type MatchOptions,
   type Specificity,
@@ -117,6 +117,7 @@ export function createHandlers<context, extra>() {
       },
       // Named node errors are typed only where a node can refuse with them.
       fails(fault: MockNodeFault) {
+        checkFault(fault);
         builder.returns(() => fail(fault));
       },
       once: () => builder.times(1),
