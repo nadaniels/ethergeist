@@ -1,4 +1,4 @@
-import { type Address, erc20Abi, parseAbi } from "viem";
+import { type Abi, type Address, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
 
 import {
@@ -7,6 +7,7 @@ import {
   type MockNamespace,
   type MockRpc,
   createMockRpc,
+  match,
   zeroResult,
 } from "../src/index.js";
 
@@ -494,5 +495,53 @@ describe("zeroResult", () => {
 
     // @ts-expect-error balanceOf has an output
     usdc.read.balanceOf().returns(undefined);
+  });
+});
+
+describe("pins: fn(args, { from, value })", () => {
+  const vaultAbi = parseAbi([
+    "function deposit() payable",
+    "function withdraw(uint256 amount)",
+    "function withdraw(uint256 amount, address to)",
+  ]);
+  const vault = createMockRpc().contract({ abi: vaultAbi, address: USDC });
+
+  test("from on every namespace, as an address or a matcher", () => {
+    usdc.read.balanceOf([USDC], { from: USDC });
+    usdc.simulate.transfer(undefined, { from: match.any() });
+    usdc.estimateGas.transfer([USDC, 1n], { from: USDC });
+    usdc.write.transfer(undefined, { from: match.where((from) => from !== USDC) });
+    // @ts-expect-error from is an address
+    usdc.read.balanceOf([USDC], { from: 1n });
+    // @ts-expect-error only from and value
+    usdc.write.transfer(undefined, { account: USDC });
+  });
+
+  test("value only on a payable function", () => {
+    vault.write.deposit([], { value: 1n });
+    vault.simulate.deposit(undefined, { from: USDC, value: 1n });
+    vault.estimateGas.deposit([], { value: match.where((value) => value > 0n, "positive") });
+    // @ts-expect-error withdraw is nonpayable
+    vault.write.withdraw([1n], { value: 1n });
+    // @ts-expect-error views take no value
+    usdc.read.balanceOf([USDC], { value: 0n });
+  });
+
+  test("on an overloaded name, value is typed if any overload is payable", () => {
+    const mixed = createMockRpc().contract({
+      abi: parseAbi(["function f(uint256) payable", "function f(uint256, address)"]),
+      address: USDC,
+    });
+    mixed.write.f([1n], { value: 1n });
+    mixed.write.f([1n], { value: match.where((value) => value > 0n, "positive") });
+    mixed.estimateGas.f([1n], { value: match.any() });
+    // Typed by name: only the runtime refuses the nonpayable overload's value.
+    mixed.write.f([1n, USDC], { value: 1n });
+  });
+
+  test("an ABI without literal types takes value anywhere; the runtime refuses it", () => {
+    const loose: Abi = vaultAbi;
+    const token = createMockRpc().contract({ abi: loose, address: USDC });
+    token.write.withdraw?.([1n], { value: 1n });
   });
 });

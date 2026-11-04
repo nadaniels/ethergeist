@@ -42,6 +42,7 @@ export type {
   CallContext,
   MockBatch,
   MockCall,
+  MockCallPins,
   MockContract,
   MockContractDefaults,
   MockContractEstimateAnswers,

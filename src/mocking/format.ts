@@ -20,19 +20,22 @@ export function formatCall(name: string, args: unknown, options: FormatOptions =
 }
 
 /**
- * A mock as messages name it: its call, its limit, and whether it's still
- * without an answer, e.g. `balanceOf(*) once` or `getBalance() without an answer`.
+ * A mock as messages name it: its call, what else it pins, its limit, and
+ * whether it's still without an answer, e.g. `balanceOf(*) once`,
+ * `transfer(*) { from: 0x… }` or `getBalance() without an answer`.
  */
 export const describeMock = (
   name: string,
   mock: {
     pinned: unknown;
+    /** A contract's mock's `from` and `value`, if it pins them. */
+    pins?: object | undefined;
     limit: number | undefined;
     remaining: number | undefined;
     resolver: unknown;
   },
 ) =>
-  `${formatCall(name, mock.pinned)}${formatLimit(mock.limit, mock.remaining)}${
+  `${formatCall(name, mock.pinned)}${mock.pins ? ` ${formatValue(mock.pins)}` : ""}${formatLimit(mock.limit, mock.remaining)}${
     mock.resolver === undefined ? " without an answer" : ""
   }`;
 

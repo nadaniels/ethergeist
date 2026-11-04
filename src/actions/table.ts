@@ -13,7 +13,7 @@ import {
   formatReceived,
 } from "../mocking/format.js";
 import { type Builder, type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
-import { assertNoMatchers, mismatches } from "../mocking/matching.js";
+import { assertNoMatchers, firstMismatch, mismatches } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
@@ -212,7 +212,8 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
   const match = (call: object) =>
     mocks.findAnswering(
       mocks.handlers,
-      (candidate) => actualOf(candidate.pinned, call),
+      (candidate, options) =>
+        firstMismatch(candidate.pinned, actualOf(candidate.pinned, call), options),
       definition.name,
     );
 

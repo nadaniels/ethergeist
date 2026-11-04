@@ -105,6 +105,33 @@ features land; tick them off as pages get written.
     overload": pin args, e.g. `[match.any()]`, to choose one. A default for
     an overloaded name answers every overload.
   - Matchers can't be return values.
+- [ ] Pinning the sender and value: `fn(args, { from, value })` on every
+      namespace, e.g. `token.read.balanceOf([bob], { from: alice })` for a
+      `msg.sender`-dependent view, `weth.write.deposit([], { value:
+      parseEther("1") })`, `token.write.transfer(undefined, { from: alice })`
+      for any args from alice. Show:
+  - Pins match like args (matchers allowed) and count toward specificity:
+    `transfer([bob, 5n], { from: alice })` beats `transfer([bob, 5n])`,
+    which beats `transfer(undefined, { from: alice })`.
+  - `from` is compared checksummed, in any casing. It doesn't match a
+    request without one: viem's `readContract` without an `account` sends
+    none, so a pinned `from` needs the app's account on the read.
+  - In a multicall, a sub-call is from the Multicall3 address (its
+    `msg.sender` on chain), and the batch's sender is `batch.from`, which no
+    pin matches. viem's `batch.multicall` only batches reads without an
+    account anyway; `client.multicall({ account })` sets `batch.from`.
+  - `value` is typed only on payable functions, and a value pinned on a
+    nonpayable one throws at registration (an ABI without `as const` types
+    it everywhere). A request without a value has `0n`, so `{ value: 0n }`
+    matches it.
+  - A write mock's pins narrow the estimate it implies too: a send's
+    estimate from someone else isn't implied, and the miss says the write
+    mock's `from` didn't match.
+  - Messages show pins after the call: `transfer(*) { from: 0x… }`, `← {
+    from } didn't match` (braced, so it can't be read as an input named
+    `from`, as in `transferFrom`), and the call's own `from` or `value`
+    where they differ.
+  - `defaults` take no pins: they're one answer per function.
 - [ ] Return values: named outputs as objects, partial structs zero-filled,
       `zeroResult`, resolvers that receive the call.
 - [ ] Reverts: reason strings, custom errors, panics, raw data, `revert()` in

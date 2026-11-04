@@ -112,7 +112,8 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
         tx.to,
         data,
         {
-          from: tx.from,
+          // Checksummed, as a send's is, for `from` pins and predicates.
+          from: tx.from && getAddress(tx.from),
           value: tx.value ?? 0n,
           blockNumber: state.resolveBlock(block),
           batch: undefined,

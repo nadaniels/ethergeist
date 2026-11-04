@@ -14,6 +14,7 @@ import {
 import { type EmitOptions, type MockEventLog } from "../logs/events.js";
 import { fail } from "../mocking/faults.js";
 import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
+import { assertNoRunnerMatchers, firstMismatch, specificity } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
@@ -30,7 +31,7 @@ import {
 } from "../transactions/writeOutcome.js";
 import { encodeAnswer, createRevertError } from "./answers.js";
 import { createContractApi } from "./createContractApi.js";
-import { createFunctions, pinArgs } from "./functions.js";
+import { type Pins, createFunctions, firstPinMismatch, pinArgs, pinCall } from "./functions.js";
 import { formatContract, missError, unusedLine } from "./messages.js";
 import type {
   MockCallRecord,
@@ -46,8 +47,16 @@ import type {
 } from "./types.js";
 
 type Context = ResolverContext<Abi, readonly unknown[]>;
-/** What a contract's mock adds to the engine's: which function it's for, and in which namespace. */
-type ContractFunction = { namespace: MockNamespace; abiItem: AbiFunction; selector: Hex };
+/**
+ * What a contract's mock adds to the engine's: which function it's for, in
+ * which namespace, and the `from` and `value` it pins beside its args.
+ */
+type ContractFunction = {
+  namespace: MockNamespace;
+  abiItem: AbiFunction;
+  selector: Hex;
+  pins: Pins | undefined;
+};
 type Handler = MockHandler<Context, ContractFunction>;
 
 /**
@@ -149,6 +158,7 @@ export function createMockContract<const abi extends Abi>(
     namespace: MockNamespace,
     functionName: string,
     args: readonly unknown[] | undefined,
+    given?: unknown,
     /** For defaults: registered on a given overload, and exempt from `assertAllUsed()`. */
     asDefault?: { abiItem: AbiFunction },
   ) {
@@ -157,10 +167,13 @@ export function createMockContract<const abi extends Abi>(
     const isDefault = asDefault !== undefined;
 
     const pinned = pinArgs(abiItem, args);
+    assertNoRunnerMatchers(given);
+    const pins = pinCall(abiItem, given);
     const handler = mocks.register(
       pinned,
-      { namespace, abiItem, selector: toFunctionSelector(abiItem) },
-      { isDefault },
+      { namespace, abiItem, selector: toFunctionSelector(abiItem), pins },
+      // Pins count like args: `transfer([bob, 5n], { from })` beats `transfer([bob, 5n])`.
+      { isDefault, ranked: specificity(pins === undefined ? pinned : [pinned ?? [], pins]) },
     );
     const builder = mocks.createBuilder(handler, (value) => {
       if (namespace === "write") return encodeWriteOutcome(value, false);
@@ -187,7 +200,7 @@ export function createMockContract<const abi extends Abi>(
       const overloads = functionsIn[namespace].filter((abiItem) => abiItem.name === functionName);
       if (overloads.length === 0) throw notInNamespaceError(namespace, functionName);
       for (const abiItem of overloads)
-        register(namespace, functionName, undefined, { abiItem }).returns(resolver);
+        register(namespace, functionName, undefined, undefined, { abiItem }).returns(resolver);
     }
 
   const contract = createContractApi({
@@ -382,9 +395,17 @@ export function createMockContract<const abi extends Abi>(
 
   // The most specific matching handler wins; among equally specific ones,
   // the most recently registered wins, so per-test mocks override defaults.
+  // A handler matches on its args, then on its `from` and `value`.
   function match(decoded: Decoded) {
     const { call } = decoded;
-    return mocks.findAnswering(candidates(decoded), () => call.args, call.functionName);
+    return mocks.findAnswering(
+      candidates(decoded),
+      (handler, options) => {
+        const arg = firstMismatch(handler.pinned, call.args, options);
+        return arg === undefined ? firstPinMismatch(handler.pins, call, options) : arg;
+      },
+      call.functionName,
+    );
   }
 
   /** Answers `call` with `handler`, its answer checked by `encode`. */

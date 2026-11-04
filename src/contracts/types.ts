@@ -145,6 +145,32 @@ export type MockFunction<abi extends Abi, args, result, fault = MockFault> = Wit
   MockFunctionAnswers<abi, args, result, fault>
 >;
 
+/**
+ * What a mock pins beside its args, matched like them (matchers allowed), each
+ * counting toward its specificity: `transfer([bob, 5n], { from: alice })`
+ * beats `transfer([bob, 5n])`, and `transfer(undefined, { from: alice })` is
+ * any args from alice.
+ * - `from`: the sender, compared checksummed. It doesn't match a call without
+ *   one: viem's `readContract` without an `account` sends none. A multicall's
+ *   sub-call is from the Multicall3 address, its `msg.sender` on chain; the
+ *   batch's own sender is its `batch.from`, which no pin matches.
+ * - `value`: the wei sent, typed on payable functions only. A call that sends
+ *   none has `0n`, so `{ value: 0n }` matches it. Pinning it on a nonpayable
+ *   function throws at registration, which is all that refuses it on a
+ *   nonpayable overload of a name with a payable one, or on any function of
+ *   an ABI without literal types (not `as const`).
+ */
+export type MockCallPins<abi extends Abi, functionName extends string> = {
+  // Without `| undefined`, so a `match.where` predicate isn't given one.
+  from?: Address;
+  // By name, not by the args' overload: a `match.where` value would lose its type.
+} & ("payable" extends Extract<
+  abi[number],
+  { type: "function"; name: functionName }
+>["stateMutability"]
+  ? { value?: bigint }
+  : unknown);
+
 /** Mirrors `getContract(...).<namespace>.<functionName>(args)`, but registers a mock. */
 export type MockContractFunction<
   abi extends Abi,
@@ -153,6 +179,7 @@ export type MockContractFunction<
 > = {
   <const args extends ContractFunctionArgs<abi, mutability, functionName>>(
     args?: args,
+    pins?: MockCallPins<abi, functionName>,
   ): MockFunction<
     abi,
     args,
@@ -187,6 +214,7 @@ export type MockEstimateGasFunction<
 > = {
   <const args extends ContractFunctionArgs<abi, WriteMutability, functionName>>(
     args?: args,
+    pins?: MockCallPins<abi, functionName>,
   ): WithLimits<MockContractEstimateAnswers<abi, args>>;
   /**
    * Every estimate of this function the mock has received, in order (the
@@ -239,6 +267,7 @@ export type MockWriteFunction<
 > = {
   <const args extends ContractFunctionArgs<abi, WriteMutability, functionName>>(
     args?: args,
+    pins?: MockCallPins<abi, functionName>,
   ): WithLimits<MockContractWriteAnswers<abi, args>>;
   /**
    * Every send of this function the mock has received, in order (the last

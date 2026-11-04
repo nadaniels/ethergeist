@@ -91,6 +91,7 @@ export function mismatches(
   actual: unknown,
   options: MatchOptions = {},
 ): PinnedKey[] {
+  if (pinned === undefined) return [];
   if (isMatcher(pinned) && pinned.type === "partial")
     return mismatches(pinned.fields, actual, options);
   if (!hasKeys(pinned)) {
@@ -116,15 +117,17 @@ export function mismatches(
 /**
  * The first of `pinned`'s keys (an array of args, or an object of params)
  * whose value doesn't match `actual`'s, or `undefined` when all match: the
- * same verdict as `isMatch(pinned, actual)`, with where it failed. It stops at
- * the first, so predicates run as they would in `isMatch`; one that throws
- * throws here too.
+ * same verdict as `isMatch(pinned, actual)`, with where it failed, except
+ * that nothing pinned (`undefined`) matches any call, as in `mismatches`. It
+ * stops at the first, so predicates run as they would in `isMatch`; one that
+ * throws throws here too.
  */
 export function firstMismatch(
   pinned: unknown,
   actual: unknown,
   options: MatchOptions = {},
 ): PinnedKey | undefined {
+  if (pinned === undefined) return undefined;
   // A matcher pinned in place of the whole params: a `partial` by its fields,
   // as `isMatch` checks it, and any other as a whole.
   if (isMatcher(pinned) && pinned.type === "partial")

@@ -418,6 +418,17 @@ describe("assertAllUsed(): what the function received instead", () => {
     );
   });
 
+  test("an args-less action mock matched a call another mock answered", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance().returns(1n);
+    mock.actions.getBalance({ address: alice }).returns(2n);
+
+    await client.getBalance({ address: alice });
+    expect(unusedMessage(mock)).toContain(
+      `      getBalance({ address: ${alice}, blockNumber: 1n, blockTag: latest })  ← matches; another mock answered it`,
+    );
+  });
+
   test("shows the first 3 calls and counts the rest", async () => {
     const { mock, balanceOf } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });

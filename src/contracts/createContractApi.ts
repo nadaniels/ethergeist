@@ -32,7 +32,12 @@ export function createContractApi<const abi extends Abi>({
     functionsIn: Record<MockNamespace, readonly AbiFunction[]>;
     notInNamespaceError: (namespace: MockNamespace, functionName: string) => Error;
   };
-  register: (namespace: MockNamespace, functionName: string, args?: readonly unknown[]) => unknown;
+  register: (
+    namespace: MockNamespace,
+    functionName: string,
+    args?: readonly unknown[],
+    pins?: unknown,
+  ) => unknown;
   /** The contract's calls in every namespace, tagged, as they arrive. */
   calls: () => readonly MockTaggedCall[];
   /** The calls a namespace's function received, every overload's. */
@@ -48,7 +53,8 @@ export function createContractApi<const abi extends Abi>({
     for (const { name: functionName } of functionsIn[namespace]) {
       if (functionName in entries) continue;
       entries[functionName] = withCalls(
-        (args?: readonly unknown[]) => register(namespace, functionName, args),
+        (args?: readonly unknown[], pins?: unknown) =>
+          register(namespace, functionName, args, pins),
         () => callsTo(namespace, functionName),
       );
     }

@@ -5,6 +5,7 @@ import {
   describeMock,
   formatCall,
   formatMismatch,
+  formatValue,
   formatMissReason,
   formatNoAnswer,
   formatReceived,
@@ -12,12 +13,14 @@ import {
 import { mismatches } from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
+import { type Pins, pinMismatches } from "./functions.js";
 import type { MockCall, MockNamespace } from "./types.js";
 
 /** A contract's mock, as messages describe it. */
 type Mock = {
   abiItem: AbiFunction;
   pinned: unknown;
+  pins: Pins | undefined;
   limit: number | undefined;
   remaining: number | undefined;
   resolver: unknown;
@@ -55,12 +58,16 @@ export function missError(
     estimateGas: `No estimateGas mocks registered for ${name}; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
     write: `No write mocks registered for ${name}; a simulate mock doesn't answer sends.`,
   }[namespace];
+  // The call's `from` and `value`, where a mock pins them, to read its reason against.
+  const pinned = [...own.registered, ...(writes?.registered ?? [])].flatMap((mock) =>
+    Object.keys(mock.pins ?? {}),
+  );
   const metaMessages = lines.length > 0 ? ["Registered:", ...lines] : [];
   if (writeLines.length > 0)
     metaMessages.push("Write mocks, which imply the estimate of a send they match:", ...writeLines);
   if (metaMessages.length === 0) metaMessages.push(none);
   return new MockNotFoundError(
-    `No ${what} for ${formatCall(call.functionName, call.args)} on ${label}.`,
+    `No ${what} for ${formatCall(call.functionName, call.args)}${formatPins(call, pinned)} on ${label}.`,
     { metaMessages },
   );
 }
@@ -85,24 +92,37 @@ export function unusedLine(
   return `${describeMock(name, mock)} on ${label}${after}`;
 }
 
-/** A call `mock`'s function received, and where it first differs from `mock`'s args. */
+/**
+ * A call `mock`'s function received, and where it first differs from
+ * `mock`'s args, or else its `from` and `value`, shown when they differ.
+ */
 function received(mock: Mock, call: MockCall): ReceivedCall {
-  const mismatched = mock.pinned === undefined ? [] : mismatches(mock.pinned, call.args);
-  const index = mismatched[0];
+  const args = mismatches(mock.pinned, call.args);
+  const pins = pinMismatches(mock.pins, call);
+  const key = [...args, ...pins][0];
   return {
-    call: formatMismatch(call.functionName, call.args, mismatched),
-    differs: index === undefined ? undefined : argName(mock, index),
+    call: `${formatMismatch(call.functionName, call.args, [...args, ...pins])}${formatPins(call, pins)}`,
+    differs: key === undefined ? undefined : argName(mock, key),
   };
+}
+
+/** A call's `from` and `value` among `keys`, after its args, e.g. ` { from: 0x… }`; empty for none. */
+function formatPins(call: MockCall, keys: readonly PinnedKey[]): string {
+  const shown = Object.entries({ from: call.from, value: call.value }).filter(([key]) =>
+    keys.includes(key),
+  );
+  return shown.length === 0 ? "" : ` ${formatValue(Object.fromEntries(shown))}`;
 }
 
 /**
  * Arg `index` of `mock`'s function by its ABI name; unnamed inputs (`""`) are
- * numbered from 1, and `null` is all of them.
+ * numbered from 1, and `null` is all of them. `from` and `value` are pins,
+ * named as they're pinned (`{ from }`), apart from inputs with those names.
  */
 function argName(mock: Mock, index: PinnedKey): string {
   if (index === null) return "args";
-  // Args are pinned as an array, so keys are always indexes.
-  if (typeof index === "string") return index;
+  // Args are pinned as an array, so a key that's a string is a pin's.
+  if (typeof index === "string") return `{ ${index} }`;
   const inputName = mock.abiItem.inputs[index]?.name;
   return inputName === undefined || inputName === "" ? `arg ${index + 1}` : inputName;
 }
