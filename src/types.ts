@@ -258,7 +258,12 @@ export type MockRpc = {
    * was registered since.
    */
   assertAllUsed(): void;
-  /** Clears call and request history and usage; registrations and the block number stay. */
+  /**
+   * Clears call and request history and usage (what `assertAllUsed()` reads),
+   * like Vitest's `mockClear()`. Not a per-test reset: registrations and the
+   * chain (blocks, transactions, nonces) stay. For that, `checkpoint()` and
+   * `restore()`.
+   */
   clearCalls(): void;
   /**
    * Saves what's registered now as a baseline to `restore()` to, e.g. after

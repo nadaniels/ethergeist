@@ -19,7 +19,12 @@ features land; tick them off as pages get written.
 - [ ] `createMockRpc({ chain, blockNumber, timestamp })`, then
       `mock.publicClient()`, or `createPublicClient({ transport: mock.transport() })`
       with the defaults the helper sets (`cacheTime: 0`, `pollingInterval: 50`,
-      `retryDelay: 0`).
+      `retryDelay: 0`). Say why `cacheTime: 0` matters: a client made
+      without it (the app's own, or a wagmi config) caches the block number
+      for seconds, so after `restore()` rolls the chain back (say from block
+      13 to 10) it asks for logs from block 13, and the mock refuses the
+      range as beyond the head, as a node would. Give test clients
+      `cacheTime: 0`.
 - [ ] Registering a contract, and
       `defaults: { read: { … }, simulate: { … }, estimateGas: { … } }`.
       This is the first setup code everyone writes, so the docs should lead
@@ -763,6 +768,12 @@ features land; tick them off as pages get written.
       still wipes a nested describe's `beforeAll` setup after its first test.
 - [ ] `checkpoint()` throws on unanswered requests since the last clear, and
       tests that trigger a missing mock on purpose need `clearCalls()`.
+- [ ] `clearCalls()` isn't a per-test reset. It's Vitest's `mockClear()`:
+      history and usage go, registrations and the chain stay. Used in a
+      `beforeEach` instead of a checkpoint, each test's overrides pile up
+      on the last one's (the newest answers), `assertAllUsed()` reports
+      earlier tests' mocks that a later one shadowed, and transactions carry
+      over. Use `checkpoint()` and `restore()` for that.
 - [ ] Nesting:
   - checkpoints form a stack, and `reset()` invalidates all of them;
   - restore at one level only per test, so describes that restore an outer
@@ -780,12 +791,25 @@ features land; tick them off as pages get written.
     afterAll(() => outer.restore());
     ```
 - [ ] What's restored (registrations, baseline builders' answers and limits,
-      `.once()`/`.times(n)` counts, block number, fees, batch ids, fault counts) and what isn't (state that resolvers
-      close over). History is cleared, not rolled back.
+      `.once()`/`.times(n)` counts, block number, fees, the chain's
+      transactions and logs, and so nonces, batch ids, fault counts) and
+      what isn't (state that resolvers close over). History is cleared, not
+      rolled back.
 - [ ] Removed handles throw when used to register. Their `.calls` can still
       be read.
 - [ ] Requests still in flight at `restore()` time land in the next test's
-      history.
+      history. With writes the common case is a receipt wait: the app sends
+      and starts `waitForTransactionReceipt` without the test awaiting it.
+      `restore()` removes the transaction, and viem keeps retrying with its
+      own backoff (about 12 s with its defaults) before it gives up. Those
+      requests go unanswered in the next test, whose `restore({
+      assertNoUnhandled: true })` then fails on a `getTransactionReceipt`
+      for a hash it never sent. Await the wait (or whatever the app exposes
+      to settle), stop the watcher, or pass the wait a `timeout`.
+- [ ] A hash the chain doesn't know isn't an instant failure either: viem's
+      receipt wait retries it the same way, so under Vitest's 5 s default
+      the test times out before viem rejects. `mock.unhandled` (or history
+      printed on failure) shows the repeated `✗ not mocked` lookups.
 
 ## 9. Concurrent tests
 
