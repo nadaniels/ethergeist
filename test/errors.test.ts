@@ -10,7 +10,7 @@ import {
   createMockRpc,
   testAddress,
 } from "../src/index.js";
-import { expectCause, findCause, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = testAddress("alice");
@@ -66,10 +66,12 @@ describe("the mock's errors", () => {
     expect(() => {
       mock.assertNoUnhandled();
     }).toThrow(MockCheckError);
-    expect(() => {
-      mock.assertNoUnhandled();
-    }).toThrow(
+    expectThrows(
+      MockCheckError,
       /^The mock couldn't answer 1 request\(s\):\n.*\n\nRequests so far:\n#1 eth_call[^]*[^\n]$/u,
+      () => {
+        mock.assertNoUnhandled();
+      },
     );
   });
 });

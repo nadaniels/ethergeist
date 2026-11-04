@@ -12,7 +12,7 @@ import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
 import { MockResolverError, MockSetupError, createMockRpc, testAddress } from "../src/index.js";
-import { expectCause, failureOf, findCause, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, failureOf, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -199,7 +199,9 @@ describe("lifecycle", () => {
     expect(() => mock.failRequests("timeout", { times: 0 })).toThrow(
       new MockSetupError("`times` takes a positive integer; got 0."),
     );
-    expect(() => mock.failRequests("timeout", { times: 1.5 })).toThrow("positive integer");
+    expectThrows(MockSetupError, "positive integer", () =>
+      mock.failRequests("timeout", { times: 1.5 }),
+    );
   });
 });
 

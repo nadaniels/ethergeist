@@ -1,5 +1,6 @@
 import {
   HttpRequestError,
+  IntegerOutOfRangeError,
   InvalidAddressError,
   InvalidInputRpcError,
   MethodNotFoundRpcError,
@@ -26,8 +27,10 @@ import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
+  MockCheckError,
   MockNotFoundError,
   MockResolverError,
+  MockSetupError,
   type RpcValue,
   createMockRpc,
   match,
@@ -35,7 +38,7 @@ import {
   testAddress,
   testHash,
 } from "../src/index.js";
-import { expectCause, hintsOf, findCause, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, hintsOf, findCause, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -166,13 +169,13 @@ describe("getBalance", () => {
   test("invalid values and addresses fail at registration", () => {
     const { mock } = setup();
 
-    expect(() => {
+    expectThrows(IntegerOutOfRangeError, "not in safe integer range", () => {
       mock.actions.getBalance().returns(-1n);
-    }).toThrow("not in safe integer range");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "A balance must be a bigint", () => {
       // @ts-expect-error a balance is a bigint
       mock.actions.getBalance().returns(1);
-    }).toThrow("A balance must be a bigint");
+    });
     expect(() => mock.actions.getBalance({ address: "0x1234" })).toThrow(InvalidAddressError);
   });
 
@@ -250,9 +253,13 @@ describe("getBalance", () => {
   test("an answer can't be a matcher", () => {
     const { mock } = setup();
 
-    expect(() => {
-      mock.actions.getBalance().returns(match.any());
-    }).toThrow("match.any() can't go in return values; matchers only go in args and params.");
+    expectThrows(
+      MockSetupError,
+      "match.any() can't go in return values; matchers only go in args and params.",
+      () => {
+        mock.actions.getBalance().returns(match.any());
+      },
+    );
   });
 });
 
@@ -416,7 +423,7 @@ describe("getBlock", () => {
     expect(() => {
       // @ts-expect-error timestamps are bigints
       mock.actions.getBlock().returns({ timestamp: "soon" });
-    }).toThrow();
+    }).toThrow(SyntaxError);
   });
 });
 
@@ -578,21 +585,27 @@ describe("getTransactionReceipt", () => {
       args: { from: alice, to: bob },
     });
 
-    expect(() => {
-      mock.actions.getTransactionReceipt().returns({ blockNumber: 7n, logs: [placed] });
-    }).toThrow(
+    expectThrows(
+      MockSetupError,
       "Receipt log 0 has blockNumber 10n, but the receipt's is 7n.\n\nA receipt places its logs: " +
         "pass only their content, e.g. from contract.events, or contractEvents({ abi, address }) " +
         "for a contract you don't mock.",
+      () => {
+        mock.actions.getTransactionReceipt().returns({ blockNumber: 7n, logs: [placed] });
+      },
     );
     // A pinned hash is known at registration, so a log from another transaction fails there.
     const otherLog = {
       ...usdc.events.Transfer({ from: alice, to: bob }),
       transactionHash: otherHash,
     };
-    expect(() => {
-      mock.actions.getTransactionReceipt({ hash: txHash }).returns({ logs: [otherLog] });
-    }).toThrow(`Receipt log 0 has transactionHash ${otherHash}, but the receipt's is ${txHash}.`);
+    expectThrows(
+      MockSetupError,
+      `Receipt log 0 has transactionHash ${otherHash}, but the receipt's is ${txHash}.`,
+      () => {
+        mock.actions.getTransactionReceipt({ hash: txHash }).returns({ logs: [otherLog] });
+      },
+    );
   });
 
   test("a hash pinned with a matcher is known only once a request arrives", async () => {
@@ -625,11 +638,15 @@ describe("getTransactionReceipt", () => {
     const log = usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
     const { timestamp } = await client.getBlock({ blockNumber: log.blockNumber });
 
-    expect(() => {
-      mock.actions
-        .getTransactionReceipt({ hash: log.transactionHash })
-        .returns({ logs: [{ ...log, blockTimestamp: 1n }] });
-    }).toThrow(`Receipt log 0 has blockTimestamp 1n, but the receipt's is ${timestamp}n.`);
+    expectThrows(
+      MockSetupError,
+      `Receipt log 0 has blockTimestamp 1n, but the receipt's is ${timestamp}n.`,
+      () => {
+        mock.actions
+          .getTransactionReceipt({ hash: log.transactionHash })
+          .returns({ logs: [{ ...log, blockTimestamp: 1n }] });
+      },
+    );
   });
 
   test("a log without blockTimestamp has none, as from a node that doesn't send it", async () => {
@@ -651,7 +668,7 @@ describe("getTransactionReceipt", () => {
     expect(() => {
       // @ts-expect-error gas is a bigint
       mock.actions.getTransactionReceipt().returns({ gasUsed: "lots" });
-    }).toThrow();
+    }).toThrow(SyntaxError);
     expect(() => {
       mock.actions.getTransactionReceipt().returns({ logs: [{ address: "0x1234" }] });
     }).toThrow(InvalidAddressError);
@@ -709,20 +726,28 @@ describe("getTransactionCount", () => {
     mock.actions.getTransactionCount().returns(0);
 
     for (const value of [-1, 1.5])
-      expect(() => {
-        mock.actions.getTransactionCount().returns(value);
-      }).toThrow(`A transaction count must be a whole number, zero or more; got ${value}.`);
-    expect(() => {
-      // @ts-expect-error -- viem's count is a number
-      mock.actions.getTransactionCount().returns(1n);
-    }).toThrow("A transaction count must be a whole number, zero or more; got 1n.");
+      expectThrows(
+        MockSetupError,
+        `A transaction count must be a whole number, zero or more; got ${value}.`,
+        () => {
+          mock.actions.getTransactionCount().returns(value);
+        },
+      );
+    expectThrows(
+      MockSetupError,
+      "A transaction count must be a whole number, zero or more; got 1n.",
+      () => {
+        // @ts-expect-error -- viem's count is a number
+        mock.actions.getTransactionCount().returns(1n);
+      },
+    );
   });
 
   test("it's a typed action, so method() refuses it", () => {
     const { mock } = setup();
 
-    expect(() => mock.method("eth_getTransactionCount")).toThrow(
-      "use mock.actions.getTransactionCount()",
+    expectThrows(MockSetupError, "use mock.actions.getTransactionCount()", () =>
+      mock.method("eth_getTransactionCount"),
     );
   });
 });
@@ -875,9 +900,13 @@ describe("method()", () => {
   test("refuses methods that have a typed or built-in answer", () => {
     const { mock } = setup();
 
-    expect(() => mock.method("eth_getBalance")).toThrow("use mock.actions.getBalance()");
-    expect(() => mock.method("eth_call")).toThrow("register a contract with mock.contract()");
-    expect(() => mock.method("eth_chainId")).toThrow("it's the chain's id");
+    expectThrows(MockSetupError, "use mock.actions.getBalance()", () =>
+      mock.method("eth_getBalance"),
+    );
+    expectThrows(MockSetupError, "register a contract with mock.contract()", () =>
+      mock.method("eth_call"),
+    );
+    expectThrows(MockSetupError, "it's the chain's id", () => mock.method("eth_chainId"));
   });
 
   test("fails() works here too", async () => {
@@ -1010,9 +1039,13 @@ describe("bookkeeping", () => {
     mock.actions.getBalance().returns(0n);
     mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(/getBalance\(\*\)[\s\S]*eth_getBlockTransactionCountByNumber\(\*\)/u);
+    expectThrows(
+      MockCheckError,
+      /getBalance\(\*\)[\s\S]*eth_getBlockTransactionCountByNumber\(\*\)/u,
+      () => {
+        mock.assertAllUsed();
+      },
+    );
   });
 
   test("assertAllUsed() reports pinned action mocks that never answered", async () => {
@@ -1022,12 +1055,12 @@ describe("bookkeeping", () => {
     mock.method("eth_getProof", [USDC]).returns({});
 
     await client.getBalance({ address: alice });
-    expect(() => {
+    expectThrows(MockCheckError, `getBalance({ address: ${getAddress(bob)} })`, () => {
       mock.assertAllUsed();
-    }).toThrow(`getBalance({ address: ${getAddress(bob)} })`);
-    expect(() => {
+    });
+    expectThrows(MockCheckError, `eth_getProof(${USDC})`, () => {
       mock.assertAllUsed();
-    }).toThrow(`eth_getProof(${USDC})`);
+    });
   });
 
   test("clearCalls() clears history; reset() clears mocks", async () => {

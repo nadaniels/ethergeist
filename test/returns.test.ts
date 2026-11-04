@@ -253,6 +253,24 @@ describe("zeroResult", () => {
     await client.simulateContract({ abi: wethAbi, address: STORE, functionName: "deposit" });
   });
 
+  test(".returns() on a single bool or address output answers false or the zero address", async () => {
+    const { mock, client } = setup();
+    const flagsAbi = parseAbi([
+      "function paused() view returns (bool)",
+      "function owner() view returns (address)",
+    ]);
+    const flags = mock.contract({ abi: flagsAbi, address: STORE });
+    flags.read.paused().returns();
+    flags.read.owner().returns();
+
+    expect(
+      await client.readContract({ abi: flagsAbi, address: STORE, functionName: "paused" }),
+    ).toBe(false);
+    expect(
+      await client.readContract({ abi: flagsAbi, address: STORE, functionName: "owner" }),
+    ).toBe(zeroAddress);
+  });
+
   test("works in defaults and from resolvers", async () => {
     const { mock, client } = setup();
     let live = false;

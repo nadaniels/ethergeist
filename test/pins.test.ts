@@ -1,6 +1,7 @@
 import {
   type Abi,
   type Address,
+  InvalidAddressError,
   createPublicClient,
   createWalletClient,
   encodeFunctionData,
@@ -12,13 +13,14 @@ import { mainnet } from "viem/chains";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
+  MockCheckError,
   MockNotFoundError,
   MockSetupError,
   createMockRpc,
   match,
   testAddress,
 } from "../src/index.js";
-import { expectCause, hintsOf, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, hintsOf, lowercase, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
@@ -291,13 +293,17 @@ describe("pinning value", () => {
         '"withdraw" is nonpayable, so it takes no value; only a payable function\'s mock pins one.',
       ),
     );
-    expect(() => vault.read.owner?.(undefined, { value: 0n })).toThrow(/"owner" is view/u);
+    expectThrows(MockSetupError, /"owner" is view/u, () =>
+      vault.read.owner?.(undefined, { value: 0n }),
+    );
     expect(() => vault.write.deposit?.([], { value: 1n })).not.toThrow();
     const mixed = mock.contract({
       abi: parseAbi(["function f(uint256) payable", "function f(uint256, address)"]),
       address: testAddress("mixed"),
     });
-    expect(() => mixed.write.f([1n, alice], { value: 1n })).toThrow(/"f" is nonpayable/u);
+    expectThrows(MockSetupError, /"f" is nonpayable/u, () =>
+      mixed.write.f([1n, alice], { value: 1n }),
+    );
     expect(() => mixed.write.f([1n], { value: 1n })).not.toThrow();
   });
 });
@@ -314,11 +320,19 @@ describe("pins at registration", () => {
         metaMessages: ["Pin the sender as from, e.g. { from: alice }."],
       }),
     );
-    expect(pins({ from: { address: alice } })).toThrow(/^from takes an address or a matcher/u);
-    expect(pins({ from: "0x1234" })).toThrow(/Address "0x1234" is invalid/u);
-    // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
-    expect(pins({ from: expect.any(String) })).toThrow(/mock's own matchers, not Jest's/u);
-    expect(pins(5)).toThrow(/^A mock pins from and value as an object; got 5/u);
+    expectThrows(
+      MockSetupError,
+      /^from takes an address or a matcher/u,
+      pins({ from: { address: alice } }),
+    );
+    expectThrows(InvalidAddressError, /Address "0x1234" is invalid/u, pins({ from: "0x1234" }));
+    expectThrows(
+      MockSetupError,
+      /mock's own matchers, not Jest's/u,
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
+      pins({ from: expect.any(String) }),
+    );
+    expectThrows(MockSetupError, /^A mock pins from and value as an object; got 5/u, pins(5));
     expect(usdc.read.balanceOf.calls).toEqual([]);
   });
 
@@ -377,9 +391,9 @@ describe("pins in assertAllUsed()", () => {
     usdc.read.balanceOf().returns(2n);
 
     expect(await balanceOf(alice)).toBe(2n);
-    expect(() => {
+    expectThrows(MockCheckError, `  - balanceOf(*) on USDC (${USDC})\n`, () => {
       mock.assertAllUsed();
-    }).toThrow(`  - balanceOf(*) on USDC (${USDC})\n`);
+    });
   });
 
   test("an unused mock shows the value, or the missing from, its function's calls had", async () => {
@@ -397,9 +411,8 @@ describe("pins in assertAllUsed()", () => {
     });
     await balanceOf();
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(
+    expectThrows(
+      MockCheckError,
       [
         `  - balanceOf(${bob}) { from: ${alice} } on USDC (${USDC})`,
         "    received 1 call to balanceOf:",
@@ -408,6 +421,9 @@ describe("pins in assertAllUsed()", () => {
         "    received 1 call to deposit:",
         "      deposit() { value: 2n }  ← { value } didn't match",
       ].join("\n"),
+      () => {
+        mock.assertAllUsed();
+      },
     );
   });
 
@@ -421,9 +437,8 @@ describe("pins in assertAllUsed()", () => {
 
     await balanceOf(carol);
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(
+    expectThrows(
+      MockCheckError,
       [
         "3 mock(s) answered no call:",
         `  - balanceOf(${bob}) { from: ${alice} } on USDC (${USDC})`,
@@ -437,6 +452,9 @@ describe("pins in assertAllUsed()", () => {
         "    received 1 call to balanceOf:",
         `      balanceOf(${bob})  ← account didn't match`,
       ].join("\n"),
+      () => {
+        mock.assertAllUsed();
+      },
     );
   });
 });

@@ -1,6 +1,8 @@
 import {
   type Address,
+  BlockNotFoundError,
   type ContractFunctionArgs,
+  ContractFunctionExecutionError,
   InvalidAddressError,
   erc20Abi,
   getAddress,
@@ -11,6 +13,7 @@ import {
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
+  MockCheckError,
   MockSetupError,
   MockNotFoundError,
   MockResolverError,
@@ -18,7 +21,14 @@ import {
   match,
   testAddress,
 } from "../src/index.js";
-import { expectCause, hintsOf, lowercase, rejectionOf } from "./utils.js";
+import {
+  expectCause,
+  expectRejects,
+  expectThrows,
+  hintsOf,
+  lowercase,
+  rejectionOf,
+} from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -109,7 +119,11 @@ describe("match.any()", () => {
 
     expect(await allowance(alice, bob)).toBe(7n);
     expect(await allowance(alice, carol)).toBe(7n);
-    await expect(allowance(bob, alice)).rejects.toThrow("No mock for allowance");
+    await expectRejects(
+      ContractFunctionExecutionError,
+      "No mock for allowance",
+      allowance(bob, alice),
+    );
   });
 
   test("ranks below exact values, and above args-less mocks", async () => {
@@ -136,7 +150,7 @@ describe("match.any()", () => {
 
     expect(await totalOf([alice, bob])).toBe(5n);
     // Arrays still match on length.
-    await expect(totalOf([alice])).rejects.toThrow("No mock for totalOf");
+    await expectRejects(ContractFunctionExecutionError, "No mock for totalOf", totalOf([alice]));
   });
 });
 
@@ -156,7 +170,7 @@ describe("match.where()", () => {
     registry.read.feeOf([match.where((tier) => tier > 2)]).returns(30n);
 
     expect(await balanceOf(alice)).toBe(1n);
-    await expect(balanceOf(bob)).rejects.toThrow("No mock for balanceOf");
+    await expectRejects(ContractFunctionExecutionError, "No mock for balanceOf", balanceOf(bob));
     // Addresses arrive checksummed, and small integers as numbers, as viem decodes them.
     expect(seen).toEqual([getAddress(alice), getAddress(bob)]);
     expect(
@@ -242,7 +256,11 @@ describe("match.partial()", () => {
     book.read.filled([match.partial({ maker: alice })]).returns(true);
 
     expect(await filled(order)).toBe(true);
-    await expect(filled({ ...order, maker: bob })).rejects.toThrow("No mock for filled");
+    await expectRejects(
+      ContractFunctionExecutionError,
+      "No mock for filled",
+      filled({ ...order, maker: bob }),
+    );
   });
 
   test("works at depth, with matchers as field values", async () => {
@@ -257,8 +275,10 @@ describe("match.partial()", () => {
       .returns(true);
 
     expect(await filled(order)).toBe(true);
-    await expect(filled({ ...order, buy: { token: DAI, amount: 1n } })).rejects.toThrow(
+    await expectRejects(
+      ContractFunctionExecutionError,
       "No mock for filled",
+      filled({ ...order, buy: { token: DAI, amount: 1n } }),
     );
   });
 
@@ -297,15 +317,21 @@ describe("match.partial()", () => {
 
     // Pinned args are only visible in messages: `alice` was checksummed.
     book.read.filled([match.partial({ sell: { token: lowercase(alice) } })]).returns(true);
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(`filled({ sell: { token: ${getAddress(alice)} }, … }) on Book`);
+    expectThrows(
+      MockCheckError,
+      `filled({ sell: { token: ${getAddress(alice)} }, … }) on Book`,
+      () => {
+        mock.assertAllUsed();
+      },
+    );
   });
 
   test("takes an object of fields", () => {
-    // @ts-expect-error -- arrays aren't structs
-    expect(() => match.partial<Order>([1n])).toThrow(
+    expectThrows(
+      MockSetupError,
       "match.partial() takes a struct's fields as an object; for arrays, use match.where().",
+      // @ts-expect-error -- arrays aren't structs
+      () => match.partial<Order>([1n]),
     );
   });
 });
@@ -335,9 +361,9 @@ describe("messages", () => {
       ].join("\n"),
     );
     // Matchers are pinned args, so unused ones are reported, `any` included.
-    expect(() => {
+    expectThrows(MockCheckError, `allowance(${getAddress(alice)}, any) on USDC (${USDC})`, () => {
       mock.assertAllUsed();
-    }).toThrow(`allowance(${getAddress(alice)}, any) on USDC (${USDC})`);
+    });
   });
 });
 
@@ -477,11 +503,13 @@ describe("a miss's reasons", () => {
     mock.actions.getBalance().returns(1n);
     await client.getBalance({ address: alice });
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(
+    expectThrows(
+      MockCheckError,
       "  - getBalance(where(never))\n    received 1 call to getBalance:\n" +
         `      getBalance({ address: ${getAddress(alice)}, blockNumber: 1n, blockTag: latest })  ← params didn't match`,
+      () => {
+        mock.assertAllUsed();
+      },
     );
   });
 });
@@ -526,21 +554,25 @@ describe("registration", () => {
 
     usdc.read.allowance([lowercase(alice), match.any()]).returns(1n);
     // The pinned args are only visible in messages: `alice` was checksummed.
-    expect(() => {
+    expectThrows(MockCheckError, `allowance(${getAddress(alice)}, any)`, () => {
       mock.assertAllUsed();
-    }).toThrow(`allowance(${getAddress(alice)}, any)`);
+    });
   });
 
   test("Jest and Vitest matchers are refused in args and params, pointing to match", () => {
     const { mock, usdc } = setup();
 
     // `expect.any()` is typed `any`, so it type-checks, but the mock can't run it.
-    expect(() => usdc.read.allowance([expect.any(String), bob])).toThrow(
+    expectThrows(
+      MockSetupError,
       "Args and params take the mock's own matchers, not Jest's or Vitest's (got Any<String>): " +
         "use match.any() or match.where(…) instead.",
+      () => usdc.read.allowance([expect.any(String), bob]),
     );
-    // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
-    expect(() => mock.actions.getBalance({ address: expect.anything() })).toThrow("(got Anything)");
+    expectThrows(MockSetupError, "(got Anything)", () =>
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
+      mock.actions.getBalance({ address: expect.anything() }),
+    );
     // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
     expect(() => mock.method("eth_custom", [{ nested: expect.any(Number) }])).toThrow(
       MockSetupError,
@@ -553,14 +585,18 @@ describe("registration", () => {
 
   test("matchers can't be return values", async () => {
     const { usdc, balanceOf } = setup();
-    expect(() => {
-      usdc.read.balanceOf([alice]).returns(match.any());
-    }).toThrow("match.any() can't go in return values; matchers only go in args and params.");
+    expectThrows(
+      MockSetupError,
+      "match.any() can't go in return values; matchers only go in args and params.",
+      () => {
+        usdc.read.balanceOf([alice]).returns(match.any());
+      },
+    );
 
-    expect(() => {
+    expectThrows(MockSetupError, "match.partial() can't go in return values", () => {
       // The types allow it: `partial` takes the resolver function's type from `.returns()`.
       usdc.read.balanceOf([alice]).returns(match.partial({}));
-    }).toThrow("match.partial() can't go in return values");
+    });
 
     usdc.read.balanceOf([bob]).returns(() => match.any());
     const error = expectCause(await rejectionOf(balanceOf(bob)), MockResolverError);
@@ -597,7 +633,8 @@ describe("overloads", () => {
 
   test("an overload the exact args can't tell apart throws", () => {
     const { token } = setupOverloads();
-    expect(() => token.read.price([match.any()])).toThrow(
+    expectThrows(
+      MockSetupError,
       [
         "Ambiguous overload for price(any): pin an arg that tells them apart.",
         "",
@@ -605,21 +642,23 @@ describe("overloads", () => {
         "  price(address)",
         "  price(uint256)",
       ].join("\n"),
+      () => token.read.price([match.any()]),
     );
   });
 
   test("partials don't tell overloads apart, even by field names", () => {
     const { book } = setupBook();
     // Only Order has `maker`, but partials are skipped when choosing an overload.
-    // @ts-expect-error -- the types can't pick the overload either
-    expect(() => book.read.place([match.partial({ maker: alice })])).toThrow(
-      `Ambiguous overload for place({ maker: ${alice}, … })`,
+    expectThrows(MockSetupError, `Ambiguous overload for place({ maker: ${alice}, … })`, () =>
+      // @ts-expect-error -- the types can't pick the overload either
+      book.read.place([match.partial({ maker: alice })]),
     );
   });
 
   test("an args-less mock on an overloaded function throws", () => {
     const { token } = setupOverloads();
-    expect(() => token.read.balanceOf()).toThrow(
+    expectThrows(
+      MockSetupError,
       [
         "Ambiguous overload for balanceOf(*): pin args to choose one, e.g. [match.any()].",
         "",
@@ -627,6 +666,7 @@ describe("overloads", () => {
         "  balanceOf(address,uint256)",
         "  balanceOf(address)",
       ].join("\n"),
+      () => token.read.balanceOf(),
     );
   });
 
@@ -651,9 +691,9 @@ describe("overloads", () => {
 
   test("args no overload takes throw", () => {
     const { token } = setupOverloads();
-    // @ts-expect-error -- neither overload of `quote` takes a string second
-    expect(() => token.read.quote([match.any(), "five"])).toThrow(
-      'No overload of "quote" takes quote(any, five).',
+    expectThrows(MockSetupError, 'No overload of "quote" takes quote(any, five).', () =>
+      // @ts-expect-error -- neither overload of `quote` takes a string second
+      token.read.quote([match.any(), "five"]),
     );
   });
 });
@@ -701,7 +741,11 @@ describe("actions and raw methods", () => {
 
     expect(await client.getBalance({ address: alice })).toBe(5n);
     expect(await client.getBalance({ address: bob })).toBe(0n);
-    await expect(client.getBlock({ blockNumber: 2_000n })).rejects.toThrow("could not be found");
+    await expectRejects(
+      BlockNotFoundError,
+      "could not be found",
+      client.getBlock({ blockNumber: 2_000n }),
+    );
   });
 
   test("raw method params take matchers", async () => {

@@ -1,8 +1,14 @@
 import { TransactionNotFoundError, createPublicClient, parseGwei } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockNotFoundError, createMockRpc, testAddress, testHash } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import {
+  MockNotFoundError,
+  MockSetupError,
+  createMockRpc,
+  testAddress,
+  testHash,
+} from "../src/index.js";
+import { expectCause, expectThrows, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
@@ -148,24 +154,26 @@ describe("getTransaction", () => {
   test("a field the type doesn't have throws, at registration", () => {
     const { mock } = setup();
 
-    expect(() => {
-      // @ts-expect-error legacy transactions have no max fee
-      mock.actions.getTransaction().returns({ type: "legacy", maxFeePerGas: 1n });
-    }).toThrow(
+    expectThrows(
+      MockSetupError,
       "An legacy transaction has no maxFeePerGas: set `type` to one that has it (eip1559, eip4844, eip7702).",
+      () => {
+        // @ts-expect-error legacy transactions have no max fee
+        mock.actions.getTransaction().returns({ type: "legacy", maxFeePerGas: 1n });
+      },
     );
-    expect(() => {
+    expectThrows(MockSetupError, "An eip1559 transaction has no authorizationList", () => {
       // @ts-expect-error the default type, eip1559, has no authorization list
       mock.actions.getTransaction().returns({ authorizationList: [] });
-    }).toThrow("An eip1559 transaction has no authorizationList");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, 'A transaction has no field "data".', () => {
       // @ts-expect-error not a transaction field
       mock.actions.getTransaction().returns({ data: "0x" });
-    }).toThrow('A transaction has no field "data".');
-    expect(() => {
+    });
+    expectThrows(MockSetupError, 'Unknown transaction type "eip9999"', () => {
       // @ts-expect-error not a type viem knows
       mock.actions.getTransaction().returns({ type: "eip9999" });
-    }).toThrow('Unknown transaction type "eip9999"');
+    });
   });
 
   test("blockNumber: null makes it pending, priced at its max fee", () => {
@@ -180,18 +188,24 @@ describe("getTransaction", () => {
       gasPrice: parseGwei("11"),
     });
     expect(pending).not.toHaveProperty("blockTimestamp");
-    expect(() =>
-      // @ts-expect-error a pending transaction has no block hash
-      mock.buildTransaction({ blockNumber: null, blockHash: hash }),
-    ).toThrow(
+    expectThrows(
+      MockSetupError,
       "A pending transaction (blockNumber: null) has a null blockHash and transactionIndex.",
+      () =>
+        // @ts-expect-error a pending transaction has no block hash
+        mock.buildTransaction({ blockNumber: null, blockHash: hash }),
     );
-    expect(() =>
-      // @ts-expect-error only a pending transaction has a null block hash
-      mock.buildTransaction({ blockHash: null }),
-    ).toThrow("Only a pending transaction has a null blockHash or transactionIndex");
-    expect(() => mock.buildTransaction({ blockNumber: null, blockTimestamp: 1n })).toThrow(
+    expectThrows(
+      MockSetupError,
+      "Only a pending transaction has a null blockHash or transactionIndex",
+      () =>
+        // @ts-expect-error only a pending transaction has a null block hash
+        mock.buildTransaction({ blockHash: null }),
+    );
+    expectThrows(
+      MockSetupError,
       "A pending transaction (blockNumber: null) has no blockTimestamp.",
+      () => mock.buildTransaction({ blockNumber: null, blockTimestamp: 1n }),
     );
   });
 
@@ -235,8 +249,10 @@ describe("getTransaction", () => {
     expect(mock.formatHistory()).toBe(
       `#1 eth_getTransactionByHash getTransaction({ hash: 0x${hash.slice(2, 6)}…${hash.slice(-4)} }) → eip1559, block 10n`,
     );
-    expect(() => mock.method("eth_getTransactionByHash")).toThrow(
+    expectThrows(
+      MockSetupError,
       '"eth_getTransactionByHash" has a typed mock: use mock.actions.getTransaction().',
+      () => mock.method("eth_getTransactionByHash"),
     );
   });
 });

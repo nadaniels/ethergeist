@@ -12,8 +12,14 @@ import {
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockNotFoundError, createMockRpc, match, testAddress } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import {
+  MockNotFoundError,
+  MockSetupError,
+  createMockRpc,
+  match,
+  testAddress,
+} from "../src/index.js";
+import { expectCause, expectThrows, rejectionOf } from "./utils.js";
 
 const proxy = testAddress("proxy");
 const implementation = testAddress("implementation");
@@ -57,8 +63,8 @@ describe("getStorageAt", () => {
     mock.actions.getStorageAt({ address: proxy, slot: "0xab" }).returns("0x1");
 
     expect(await client.getStorageAt({ address: proxy, slot: "0xAB" })).toBe(one);
-    expect(() => mock.actions.getStorageAt({ slot: "0xzz" })).toThrow(
-      "A storage slot must be hex of up to 32 bytes",
+    expectThrows(MockSetupError, "A storage slot must be hex of up to 32 bytes", () =>
+      mock.actions.getStorageAt({ slot: "0xzz" }),
     );
   });
 
@@ -119,15 +125,21 @@ describe("getStorageAt", () => {
     const { mock, client } = setup();
 
     const tooLong = `0x${"11".repeat(33)}` as const;
-    expect(() => {
-      mock.actions.getStorageAt().returns(tooLong);
-    }).toThrow(`A storage value must be hex of up to 32 bytes; got 33 bytes: ${tooLong}.`);
-    expect(() => {
+    expectThrows(
+      MockSetupError,
+      `A storage value must be hex of up to 32 bytes; got 33 bytes: ${tooLong}.`,
+      () => {
+        mock.actions.getStorageAt().returns(tooLong);
+      },
+    );
+    expectThrows(MockSetupError, "A storage value must be hex of up to 32 bytes; got 1n.", () => {
       // @ts-expect-error storage is hex
       mock.actions.getStorageAt().returns(1n);
-    }).toThrow("A storage value must be hex of up to 32 bytes; got 1n.");
-    expect(() => mock.actions.getStorageAt({ slot: tooLong })).toThrow(
+    });
+    expectThrows(
+      MockSetupError,
       `A storage slot must be hex of up to 32 bytes; got 33 bytes: ${tooLong}.`,
+      () => mock.actions.getStorageAt({ slot: tooLong }),
     );
     // No pins: it answers every address and slot, with zero.
     mock.actions.getStorageAt().returns();
@@ -143,8 +155,10 @@ describe("getStorageAt", () => {
     expect(mock.formatHistory()).toBe(
       "#1 eth_getStorageAt getStorageAt({ address: 0x7D28…F91D, slot: 0x0000…0000, blockNumber: 10n, blockTag: latest }) → 0x0000…0001",
     );
-    expect(() => mock.method("eth_getStorageAt")).toThrow(
+    expectThrows(
+      MockSetupError,
       '"eth_getStorageAt" has a typed mock: use mock.actions.getStorageAt().',
+      () => mock.method("eth_getStorageAt"),
     );
   });
 });

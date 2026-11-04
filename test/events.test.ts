@@ -12,8 +12,16 @@ import {
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
-import { contractEvents, createMockRpc, match, testAddress, testHash } from "../src/index.js";
-import { lowercase } from "./utils.js";
+import {
+  MockNotFoundError,
+  MockSetupError,
+  contractEvents,
+  createMockRpc,
+  match,
+  testAddress,
+  testHash,
+} from "../src/index.js";
+import { expectRejects, expectThrows, lowercase } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = testAddress("alice");
@@ -132,10 +140,10 @@ describe("contract.events", () => {
   test("an indexed arg left out throws, naming it", () => {
     const { usdc } = setup();
 
-    expect(() =>
+    expectThrows(MockSetupError, 'Indexed arg "to" of event "Transfer" is required.', () =>
       // @ts-expect-error `to` is indexed, so required
       usdc.events.Transfer({ from: alice, value: 5n }),
-    ).toThrow('Indexed arg "to" of event "Transfer" is required.');
+    );
   });
 
   test("indexed strings and bytes are hashed, as they decode", () => {
@@ -153,8 +161,10 @@ describe("contract.events", () => {
   test("an indexed struct throws: its topic can't be encoded", () => {
     const { shapes } = setup();
 
-    expect(() => shapes.events.Moved({ to: { x: 1n, y: 2n } })).toThrow(
+    expectThrows(
+      MockSetupError,
       `Indexed arg "to" of event "Moved" is a tuple; indexed structs and arrays aren't supported.`,
+      () => shapes.events.Moved({ to: { x: 1n, y: 2n } }),
     );
   });
 
@@ -164,10 +174,13 @@ describe("contract.events", () => {
 
     const log = contract.events.Unnamed([alice, 5n]);
     expect(decodeEventLog({ abi: unnamedAbi, ...log }).args).toEqual([alice, 5n]);
-    expect(() =>
-      // @ts-expect-error every arg is required
-      contract.events.Unnamed([alice]),
-    ).toThrow('Event "Unnamed" has unnamed args: pass all 2 of them, in order.');
+    expectThrows(
+      MockSetupError,
+      'Event "Unnamed" has unnamed args: pass all 2 of them, in order.',
+      () =>
+        // @ts-expect-error every arg is required
+        contract.events.Unnamed([alice]),
+    );
   });
 
   test("anonymous events have no signature topic", () => {
@@ -182,11 +195,12 @@ describe("contract.events", () => {
   test("an unknown arg throws, listing the event's args", () => {
     const { usdc } = setup();
 
-    expect(() =>
-      // @ts-expect-error not an arg of Transfer
-      usdc.events.Transfer({ from: alice, to: bob, amount: 5n }),
-    ).toThrow(
+    expectThrows(
+      MockSetupError,
       'No arg "amount" on event Transfer(address indexed from, address indexed to, uint256 value).',
+      () =>
+        // @ts-expect-error not an arg of Transfer
+        usdc.events.Transfer({ from: alice, to: bob, amount: 5n }),
     );
   });
 
@@ -207,9 +221,11 @@ describe("contract.events", () => {
   test("args that fit several overloads throw, listing them", () => {
     const { shapes } = setup();
 
-    expect(() => shapes.events.Ping({ a: 1n })).toThrow(
+    expectThrows(
+      MockSetupError,
       "Ambiguous overload for event Ping({ a: 1n }): pass an arg that tells them apart.\n\n" +
         "It fits:\n  event Ping(uint256 a)\n  event Ping(uint256 a, uint256 b)",
+      () => shapes.events.Ping({ a: 1n }),
     );
     expect(() => shapes.events.Ping({ a: 1n, b: 2n })).not.toThrow();
   });
@@ -217,20 +233,23 @@ describe("contract.events", () => {
   test("args that fit no overload throw, listing them all", () => {
     const { shapes } = setup();
 
-    expect(() =>
-      // @ts-expect-error -- no overload has `c`
-      shapes.events.Ping({ c: 1n }),
-    ).toThrow(
+    expectThrows(
+      MockSetupError,
       'No overload of event "Ping" takes Ping({ c: 1n }).\n\nOverloads:\n' +
         "  event Ping(uint256 a)\n  event Ping(uint256 a, uint256 b)",
+      () =>
+        // @ts-expect-error -- no overload has `c`
+        shapes.events.Ping({ c: 1n }),
     );
   });
 
   test("matchers aren't args here", () => {
     const { usdc } = setup();
 
-    expect(() => usdc.events.Transfer({ from: alice, to: bob, value: match.any() })).toThrow(
+    expectThrows(
+      MockSetupError,
       "match.any() can't go in event args; matchers only go in args and params.",
+      () => usdc.events.Transfer({ from: alice, to: bob, value: match.any() }),
     );
   });
 
@@ -260,7 +279,11 @@ describe("contractEvents()", () => {
     const { mock, client } = setup();
     contractEvents({ abi: erc20Abi, address: FACTORY }).Transfer({ from: alice, to: bob });
 
-    await expect(client.getCode({ address: FACTORY })).rejects.toThrow("No mock for getCode");
+    await expectRejects(
+      MockNotFoundError,
+      "No mock for getCode",
+      client.getCode({ address: FACTORY }),
+    );
     expect(() => mock.contract({ abi: erc20Abi, address: FACTORY })).not.toThrow();
   });
 
@@ -291,11 +314,15 @@ describe("contractEvents()", () => {
       args: { from: alice, to: bob },
     });
 
-    expect(() => {
-      mock.actions
-        .getTransactionReceipt({ hash: testHash("transfer") })
-        .returns({ logs: [placed] });
-    }).toThrow("or contractEvents({ abi, address }) for a contract you don't mock");
+    expectThrows(
+      MockSetupError,
+      "or contractEvents({ abi, address }) for a contract you don't mock",
+      () => {
+        mock.actions
+          .getTransactionReceipt({ hash: testHash("transfer") })
+          .returns({ logs: [placed] });
+      },
+    );
   });
 });
 
@@ -343,9 +370,9 @@ describe("mock.buildLog()", () => {
   test("throws for an event the ABI doesn't have", () => {
     const { mock } = setup();
 
-    expect(() =>
+    expectThrows(MockSetupError, 'No event "Swap" on this ABI.', () =>
       // @ts-expect-error not an event of erc20Abi
       mock.buildLog({ abi: erc20Abi, address: USDC, eventName: "Swap", args: {} }),
-    ).toThrow('No event "Swap" on this ABI.');
+    );
   });
 });

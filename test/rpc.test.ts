@@ -5,12 +5,13 @@ import {
   erc20Abi,
   getAddress,
   parseAbi,
+  toHex,
 } from "viem";
 import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
 import { MockNotFoundError, MockSetupError, createMockRpc, testAddress } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -38,11 +39,11 @@ describe("registration", () => {
     const { mock } = setup();
     mock.contract({ abi: erc20Abi, address: USDC });
 
-    expect(() => mock.contract({ abi: ownableAbi, address: usdcLowercase })).toThrow(
-      `A contract is already registered at ${USDC}`,
+    expectThrows(MockSetupError, `A contract is already registered at ${USDC}`, () =>
+      mock.contract({ abi: ownableAbi, address: usdcLowercase }),
     );
-    expect(() => mock.contract({ abi: ownableAbi, address: USDC })).toThrow(
-      "restore a checkpoint after each test, or call reset()",
+    expectThrows(MockSetupError, "restore a checkpoint after each test, or call reset()", () =>
+      mock.contract({ abi: ownableAbi, address: USDC }),
     );
   });
 
@@ -249,12 +250,14 @@ describe("reset()", () => {
     const decimalsMock = stale.read.decimals();
 
     mock.reset();
-    expect(() => stale.read.decimals()).toThrow(
+    expectThrows(
+      MockSetupError,
       `The contract at ${USDC} was removed by restore() or reset()`,
+      () => stale.read.decimals(),
     );
-    expect(() => {
+    expectThrows(MockSetupError, "This mock was removed by restore() or reset()", () => {
       decimalsMock.returns(6);
-    }).toThrow("This mock was removed by restore() or reset()");
+    });
     expectCause(await rejectionOf(decimals(USDC)), MockNotFoundError);
   });
 
@@ -264,12 +267,12 @@ describe("reset()", () => {
     const raw = mock.method("eth_getBlockTransactionCountByNumber");
 
     mock.reset();
-    expect(() => {
+    expectThrows(MockSetupError, "This mock was removed by restore() or reset()", () => {
       balance.returns(1n);
-    }).toThrow("This mock was removed by restore() or reset()");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "This mock was removed by restore() or reset()", () => {
       raw.returns("0x1");
-    }).toThrow("This mock was removed by restore() or reset()");
+    });
   });
 
   test("batch ids start over", async () => {
@@ -446,6 +449,51 @@ describe("malformed params", () => {
       .catch(() => {});
 
     expect(mock.unhandled[0]?.error.shortMessage).toBe("eth_call without `to` is not supported.");
+  });
+
+  test("an eth_call without data isn't supported", async () => {
+    const mock = createMockRpc();
+    mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
+
+    await mock.request({ method: "eth_call", params: [{ to: USDC }] }).catch(() => {});
+
+    expect(mock.unhandled[0]?.error.shortMessage).toBe("eth_call without `data` is not supported.");
+  });
+
+  test("an eth_call without params is refused as invalid params", async () => {
+    const mock = createMockRpc();
+
+    await mock.request({ method: "eth_call" }).catch(() => {});
+
+    expect(mock.history[0]).toMatchObject({
+      type: "call",
+      outcome: { type: "rpcError", code: -32602 },
+    });
+  });
+
+  test("an eth_call's data is read from the spec's input too", async () => {
+    const mock = createMockRpc();
+    mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
+
+    expect(
+      await mock.request({ method: "eth_call", params: [{ to: USDC, input: "0x313ce567" }] }),
+    ).toBe(toHex(6, { size: 32 }));
+  });
+
+  test("an eth_call's addresses are hex in any case: a wrong checksum is read, not refused", async () => {
+    // USDC with one letter's case flipped.
+    const badChecksum = "0xa0B86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
+    const mock = createMockRpc();
+    mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
+
+    expect(
+      await mock.request({
+        method: "eth_call",
+        params: [{ to: badChecksum, from: badChecksum, data: "0x313ce567" }],
+      }),
+    ).toBe(toHex(6, { size: 32 }));
+    expect(mock.history[0]).toMatchObject({ type: "call", to: USDC });
+    expect(mock.calls[0]).toMatchObject({ address: USDC, from: USDC });
   });
 
   test("is refused once, not retried", async () => {

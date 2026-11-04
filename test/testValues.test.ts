@@ -14,8 +14,15 @@ import {
 import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test } from "vite-plus/test";
 
-import { contractEvents, createMockRpc, testAddress, testHash, testLog } from "../src/index.js";
-import { lowercase } from "./utils.js";
+import {
+  MockSetupError,
+  contractEvents,
+  createMockRpc,
+  testAddress,
+  testHash,
+  testLog,
+} from "../src/index.js";
+import { expectThrows, lowercase } from "./utils.js";
 
 describe("testAddress()", () => {
   test("is checksummed, and the same for a label in every run", () => {
@@ -105,6 +112,6 @@ describe("testLog()", () => {
       testHash("Unknown(noise)"),
     ]);
     expect(mock.emit(testLog("noise")).address).toBe(lowercase(testAddress("noise")));
-    expect(() => mock.emit(testLog("empty"))).toThrow("is marked empty()");
+    expectThrows(MockSetupError, "is marked empty()", () => mock.emit(testLog("empty")));
   });
 });

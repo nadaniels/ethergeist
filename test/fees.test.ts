@@ -1,8 +1,8 @@
 import { RpcRequestError, createPublicClient, parseGwei } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
-import { type MockFees, createMockRpc } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import { type MockFees, MockSetupError, createMockRpc } from "../src/index.js";
+import { expectCause, expectThrows, rejectionOf } from "./utils.js";
 
 function setup(fees: MockFees = {}) {
   const mock = createMockRpc({ blockNumber: 10n, fees });
@@ -53,12 +53,12 @@ describe("fees", () => {
     expect(() =>
       createMockRpc({ fees: { baseFeePerGas: 0n, maxPriorityFeePerGas: 0n } }),
     ).not.toThrow();
-    expect(() => createMockRpc({ fees: { baseFeePerGas: -1n } })).toThrow(
-      "fees.baseFeePerGas can't be negative; got -1.",
+    expectThrows(MockSetupError, "fees.baseFeePerGas can't be negative; got -1.", () =>
+      createMockRpc({ fees: { baseFeePerGas: -1n } }),
     );
-    // @ts-expect-error -- not a bigint
-    expect(() => createMockRpc({ fees: { maxPriorityFeePerGas: 1 } })).toThrow(
-      "fees.maxPriorityFeePerGas must be a bigint; got number.",
+    expectThrows(MockSetupError, "fees.maxPriorityFeePerGas must be a bigint; got number.", () =>
+      // @ts-expect-error -- not a bigint
+      createMockRpc({ fees: { maxPriorityFeePerGas: 1 } }),
     );
   });
 
@@ -200,14 +200,14 @@ describe("getFeeHistory", () => {
   test("a mock's fields must have viem's types", () => {
     const { mock } = setup();
 
-    expect(() => {
+    expectThrows(MockSetupError, "A fee history's baseFeePerGas must be bigints.", () => {
       // @ts-expect-error -- base fees are bigints
       mock.actions.getFeeHistory().returns({ baseFeePerGas: ["0x1"] });
-    }).toThrow("A fee history's baseFeePerGas must be bigints.");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, 'A fee history has no field "baseFee".', () => {
       // @ts-expect-error -- not a field
       mock.actions.getFeeHistory().returns({ baseFee: [1n] });
-    }).toThrow('A fee history has no field "baseFee".');
+    });
   });
 
   test("history shows the call and the answer in viem's types", async () => {
@@ -300,9 +300,9 @@ describe("setFees()", () => {
   test("setFees() rejects invalid fees, as in createMockRpc({ fees })", () => {
     const { mock } = setup();
 
-    expect(() => {
+    expectThrows(MockSetupError, "fees.baseFeePerGas can't be negative; got -1.", () => {
       mock.setFees({ baseFeePerGas: -1n });
-    }).toThrow("fees.baseFeePerGas can't be negative; got -1.");
+    });
   });
 });
 
@@ -343,19 +343,23 @@ describe("mocking fee answers", () => {
   test("they're typed actions, so method() refuses them", () => {
     const { mock } = setup();
 
-    expect(() => mock.method("eth_gasPrice")).toThrow("use mock.actions.getGasPrice()");
-    expect(() => mock.method("eth_maxPriorityFeePerGas")).toThrow(
-      "use mock.actions.estimateMaxPriorityFeePerGas()",
+    expectThrows(MockSetupError, "use mock.actions.getGasPrice()", () =>
+      mock.method("eth_gasPrice"),
     );
-    expect(() => mock.method("eth_blobBaseFee")).toThrow("use mock.actions.getBlobBaseFee()");
+    expectThrows(MockSetupError, "use mock.actions.estimateMaxPriorityFeePerGas()", () =>
+      mock.method("eth_maxPriorityFeePerGas"),
+    );
+    expectThrows(MockSetupError, "use mock.actions.getBlobBaseFee()", () =>
+      mock.method("eth_blobBaseFee"),
+    );
   });
 
   test("answers must be bigints", () => {
     const { mock } = setup();
 
-    expect(() => {
+    expectThrows(MockSetupError, "A gas price must be a bigint; got string.", () => {
       // @ts-expect-error -- hex isn't a viem-typed gas price
       mock.actions.getGasPrice().returns("0x1");
-    }).toThrow("A gas price must be a bigint; got string.");
+    });
   });
 });

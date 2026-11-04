@@ -1,8 +1,15 @@
-import { ChainDoesNotSupportContract, defineChain, erc20Abi, multicall3Abi } from "viem";
+import {
+  ChainDoesNotSupportContract,
+  ContractFunctionExecutionError,
+  defineChain,
+  erc20Abi,
+  multicall3Abi,
+} from "viem";
 import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
 import { createMockRpc, testAddress } from "../src/index.js";
+import { expectRejects } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const customMulticall = testAddress("custom-multicall");
@@ -127,12 +134,14 @@ describe("createMockRpc({ chain })", () => {
   test("a chain's own Multicall3 isn't answered at the canonical address", async () => {
     const mock = createMockRpc({ chain: customChain });
 
-    await expect(
+    await expectRejects(
+      ContractFunctionExecutionError,
+      `No mocked contract at ${mainnet.contracts.multicall3.address}`,
       mock.publicClient().readContract({
         abi: multicall3Abi,
         address: mainnet.contracts.multicall3.address,
         functionName: "getCurrentBlockTimestamp",
       }),
-    ).rejects.toThrow(`No mocked contract at ${mainnet.contracts.multicall3.address}`);
+    );
   });
 });

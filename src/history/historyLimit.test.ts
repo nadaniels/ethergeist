@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 
+import { expectThrows } from "../../test/utils.js";
+import { MockSetupError } from "../shared/errors.js";
 import { createRecordLimit } from "./historyLimit.js";
 
 describe("createRecordLimit()", () => {
@@ -29,15 +31,19 @@ describe("createRecordLimit()", () => {
   });
 
   test("0 points to 1 and Infinity", () => {
-    expect(() => createRecordLimit(0)).toThrow(
+    expectThrows(
+      MockSetupError,
       "historyLimit keeps at least 1 entry per record; use 1 for the least memory, " +
         "or Infinity to keep them all.",
+      () => createRecordLimit(0),
     );
   });
 
   test.each([-1, 1.5, Number.NaN, -Infinity])("refuses %s", (historyLimit) => {
-    expect(() => createRecordLimit(historyLimit)).toThrow(
+    expectThrows(
+      MockSetupError,
       `historyLimit takes a positive whole number or Infinity; got ${String(historyLimit)}.`,
+      () => createRecordLimit(historyLimit),
     );
   });
 });

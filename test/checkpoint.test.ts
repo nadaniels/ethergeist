@@ -3,14 +3,16 @@ import { base } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vite-plus/test";
 
 import {
+  MockCheckError,
   type MockCheckpoint,
   MockNotFoundError,
+  MockSetupError,
   createMockRpc,
   testAddress,
   testHash,
   testLog,
 } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -142,13 +144,13 @@ describe("restore()", () => {
     const balance = mock.actions.getBalance();
 
     baseline.restore();
-    expect(() => dai.read.symbol()).toThrow("was removed by restore() or reset()");
-    expect(() => {
+    expectThrows(MockSetupError, "was removed by restore() or reset()", () => dai.read.symbol());
+    expectThrows(MockSetupError, "This mock was removed", () => {
       decimals.returns(18);
-    }).toThrow("This mock was removed");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "This mock was removed", () => {
       balance.returns(1n);
-    }).toThrow("This mock was removed");
+    });
   });
 
   test("builders from since throw for limits too: a baseline contract's, actions', raw methods'", () => {
@@ -160,13 +162,13 @@ describe("restore()", () => {
     const raw = mock.method("eth_getBlockTransactionCountByNumber");
 
     baseline.restore();
-    expect(() => {
+    expectThrows(MockSetupError, "This mock was removed", () => {
       decimals.returns(6);
-    }).toThrow("This mock was removed");
-    expect(() => balance.times(2)).toThrow("This mock was removed");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "This mock was removed", () => balance.times(2));
+    expectThrows(MockSetupError, "This mock was removed", () => {
       raw.returns("0x1");
-    }).toThrow("This mock was removed");
+    });
   });
 
   test("a removed contract's history can still be read", async () => {
@@ -246,9 +248,9 @@ describe("restore()", () => {
     expect(mock.requests).toEqual([]);
     expect(usdc.read.balanceOf.calls).toEqual([]);
     // Used in the last "test", but not in this one.
-    expect(() => {
+    expectThrows(MockCheckError, "balanceOf", () => {
       mock.assertAllUsed();
-    }).toThrow("balanceOf");
+    });
   });
 
   test("can be restored repeatedly", async () => {
@@ -283,9 +285,9 @@ describe("restore() checks", () => {
     mock.contract({ abi: erc20Abi, address: DAI }).read.decimals().returns(18);
     await rejectionOf(read(USDC, "decimals"));
 
-    expect(() => {
+    expectThrows(MockCheckError, "The mock couldn't answer 1 request(s)", () => {
       baseline.restore({ assertNoUnhandled: true });
-    }).toThrow("The mock couldn't answer 1 request(s)");
+    });
     // Restored anyway: the next test doesn't inherit this one's mocks or history.
     expectCause(await rejectionOf(read(DAI, "decimals")), MockNotFoundError);
     mock.clearCalls();
@@ -340,9 +342,9 @@ describe("restore() checks", () => {
 
     usdc.read.balanceOf().fails("network");
     mock.contract({ abi: erc20Abi, address: DAI, defaults: { read: { decimals: 18 } } });
-    expect(() => {
+    expectThrows(MockCheckError, `1 mock(s) answered no call:\n  - balanceOf(*) on ${USDC}`, () => {
       baseline.restore({ assertAllUsed: true });
-    }).toThrow(`1 mock(s) answered no call:\n  - balanceOf(*) on ${USDC}`);
+    });
   });
 
   test("a checkpoint after per-test setup exempts its fallbacks", async () => {
@@ -353,9 +355,9 @@ describe("restore() checks", () => {
       baseline.restore({ assertAllUsed: true });
     }).not.toThrow();
     // Plain assertAllUsed() has no such boundary.
-    expect(() => {
+    expectThrows(MockCheckError, "getBalance(*)", () => {
       mock.assertAllUsed();
-    }).toThrow("getBalance(*)");
+    });
   });
 
   test("both checks fail together, in one error", async () => {
@@ -364,9 +366,13 @@ describe("restore() checks", () => {
     mock.contract({ abi: erc20Abi, address: DAI }).read.balanceOf([alice]).returns(1n);
     await rejectionOf(read(USDC, "decimals"));
 
-    expect(() => {
-      baseline.restore({ assertNoUnhandled: true, assertAllUsed: true });
-    }).toThrow(/couldn't answer 1 request[\s\S]*1 mock\(s\) answered no call/u);
+    expectThrows(
+      MockCheckError,
+      /couldn't answer 1 request[\s\S]*1 mock\(s\) answered no call/u,
+      () => {
+        baseline.restore({ assertNoUnhandled: true, assertAllUsed: true });
+      },
+    );
   });
 
   test("without options, restore() doesn't check", async () => {
@@ -531,18 +537,20 @@ describe("a transaction the last restore() or reset() removed", () => {
     // A receipt wait from the last test, still polling, and this test's own miss.
     await rejectionOf(client.getTransactionReceipt({ hash }));
     await rejectionOf(read(USDC, "decimals"));
-    expect(() => {
-      mock.assertNoUnhandled();
-    }).toThrow(
+    expectThrows(
+      MockCheckError,
       `The mock couldn't answer 2 request(s):\n  - No mock for getTransactionReceipt({ hash: ${hash} }).\n` +
         `  - No mocked contract at ${USDC}.\n${removedFooter}`,
+      () => {
+        mock.assertNoUnhandled();
+      },
     );
     // And a read of a contract it removed, in this test's own restore.
     mock.clearCalls();
     await rejectionOf(read(DAI, "decimals"));
-    expect(() => {
+    expectThrows(MockCheckError, `No mocked contract at ${DAI}.\n${removedFooter}`, () => {
       baseline.restore({ assertNoUnhandled: true });
-    }).toThrow(`No mocked contract at ${DAI}.\n${removedFooter}`);
+    });
   });
 
   test("an estimate or a send to a contract it removed says so too", async () => {
@@ -610,7 +618,7 @@ describe("checkpoint()", () => {
     const { mock, read } = setup();
     await rejectionOf(read(USDC, "decimals"));
 
-    expect(() => mock.checkpoint()).toThrow("Can't checkpoint: 1 request(s)");
+    expectThrows(MockCheckError, "Can't checkpoint: 1 request(s)", () => mock.checkpoint());
     mock.clearCalls();
     expect(() => mock.checkpoint()).not.toThrow();
   });

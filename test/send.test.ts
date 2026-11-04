@@ -2,6 +2,7 @@ import {
   ExecutionRevertedError,
   InsufficientFundsError,
   IntrinsicGasTooLowError,
+  InvalidAddressError,
   InvalidParamsRpcError,
   NonceTooHighError,
   NonceTooLowError,
@@ -22,6 +23,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
+  MockCheckError,
   MockNotFoundError,
   MockResolverError,
   MockSetupError,
@@ -30,7 +32,7 @@ import {
   testHash,
   testLog,
 } from "../src/index.js";
-import { expectCause, hintsOf, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, hintsOf, lowercase, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
@@ -496,58 +498,74 @@ describe("send mocks", () => {
         ],
       }),
     );
-    expect(() => {
+    expectThrows(MockSetupError, "A reverted transaction has no logs.", () => {
       send.returns({ status: "reverted", logs: [testLog("noise")] });
-    }).toThrow("A reverted transaction has no logs.");
-    expect(() => {
-      // @ts-expect-error -- not a status
-      send.returns({ status: "failed" });
-    }).toThrow('A write\'s status is "success" or "reverted"; got failed.');
-    expect(() => {
-      send.returns({ gasUsed: -1n });
-    }).toThrow("A write's gasUsed must be a bigint, zero or more; got -1n.");
-    expect(() => {
-      // @ts-expect-error -- not a bigint
-      send.returns({ effectiveGasPrice: 7 });
-    }).toThrow("A write's effectiveGasPrice must be a bigint, zero or more; got 7.");
-    expect(() => {
+    });
+    expectThrows(
+      MockSetupError,
+      'A write\'s status is "success" or "reverted"; got failed.',
+      () => {
+        // @ts-expect-error -- not a status
+        send.returns({ status: "failed" });
+      },
+    );
+    expectThrows(
+      MockSetupError,
+      "A write's gasUsed must be a bigint, zero or more; got -1n.",
+      () => {
+        send.returns({ gasUsed: -1n });
+      },
+    );
+    expectThrows(
+      MockSetupError,
+      "A write's effectiveGasPrice must be a bigint, zero or more; got 7.",
+      () => {
+        // @ts-expect-error -- not a bigint
+        send.returns({ effectiveGasPrice: 7 });
+      },
+    );
+    expectThrows(MockSetupError, "A write's logs must be a list; got", () => {
       // @ts-expect-error -- not a list
       send.returns({ logs: testLog("noise") });
-    }).toThrow("A write's logs must be a list; got");
+    });
     send.returns({ status: "success", gasUsed: 0n, effectiveGasPrice: 0n });
-    expect(() => {
-      send.emits([
-        mock.buildLog({
-          abi: erc20Abi,
-          address: USDC,
-          eventName: "Approval",
-          args: { owner: alice, spender: bob, value: 1n },
-        }),
-      ]);
-    }).toThrow("A write's logs are placed when it's mined, but one already has a position");
-    expect(() => {
+    expectThrows(
+      MockSetupError,
+      "A write's logs are placed when it's mined, but one already has a position",
+      () => {
+        send.emits([
+          mock.buildLog({
+            abi: erc20Abi,
+            address: USDC,
+            eventName: "Approval",
+            args: { owner: alice, spender: bob, value: 1n },
+          }),
+        ]);
+      },
+    );
+    expectThrows(MockSetupError, "A write's outcome must be an object; got true.", () => {
       // @ts-expect-error -- an outcome, not an ABI value
       send.returns(true);
-    }).toThrow("A write's outcome must be an object; got true.");
-    expect(() => {
+    });
+    expectThrows(InvalidAddressError, /Address "0x123" is invalid/u, () => {
       send.returns({ contractAddress: "0x123" });
-    }).toThrow(/Address "0x123" is invalid/u);
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "A write's contractAddress must be an address; got 5.", () => {
       // @ts-expect-error -- not an address
       send.returns({ contractAddress: 5 });
-    }).toThrow("A write's contractAddress must be an address; got 5.");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "A write's logs must be logs; got [5].", () => {
       // @ts-expect-error -- not a log
       send.emits([5]);
-    }).toThrow("A write's logs must be logs; got [5].");
+    });
   });
 
   test("only a deploy has a contractAddress, refused at registration when to is pinned", () => {
     const { mock } = setup();
 
-    expect(() => {
+    expectThrows(MockSetupError, "Only a deploy (to: null) has a contractAddress.", () => {
       mock.actions.sendTransaction({ to: bob }).returns({ contractAddress: USDC });
-    }).toThrow("Only a deploy (to: null) has a contractAddress.");
+    });
     mock.actions.sendTransaction({ to: null }).returns({ contractAddress: USDC });
     // Without a pinned `to`, it may be a deploy: that's checked at the send.
     mock.actions.sendTransaction({ account: alice }).returns({ contractAddress: USDC });
@@ -724,8 +742,10 @@ describe("sends unmocked", () => {
       "eth_sendRawTransaction",
       "eth_sendRawTransactionSync",
     ])
-      expect(() => mock.method(method)).toThrow(
+      expectThrows(
+        MockSetupError,
         `"${method}" has a typed mock: use mock.actions.sendTransaction().`,
+        () => mock.method(method),
       );
   });
 });
@@ -744,9 +764,9 @@ describe("the estimate a send mock implies", () => {
 
     expect(request.gas).toBe(100_000n);
     expect(resolver).not.toHaveBeenCalled();
-    expect(() => {
+    expectThrows(MockCheckError, /sendTransaction\(\{ to: 0x/u, () => {
       mock.assertAllUsed();
-    }).toThrow(/sendTransaction\(\{ to: 0x/u);
+    });
     // The once() is still there for the send.
     await wallet.sendTransaction(request);
     expect(resolver).toHaveBeenCalledTimes(1);

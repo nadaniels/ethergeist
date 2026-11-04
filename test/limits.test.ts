@@ -1,4 +1,5 @@
 import {
+  ContractFunctionExecutionError,
   type PublicClient,
   TransactionReceiptNotFoundError,
   createPublicClient,
@@ -10,8 +11,14 @@ import {
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockNotFoundError, MockSetupError, createMockRpc, testAddress } from "../src/index.js";
-import { expectCause, hintsOf, rejectionOf } from "./utils.js";
+import {
+  MockCheckError,
+  MockNotFoundError,
+  MockSetupError,
+  createMockRpc,
+  testAddress,
+} from "../src/index.js";
+import { expectCause, expectRejects, expectThrows, hintsOf, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = testAddress("alice");
@@ -42,7 +49,7 @@ describe("once() and times()", () => {
     usdc.read.balanceOf().once().reverts("paused");
     usdc.read.balanceOf().returns(1n);
 
-    await expect(balanceOf()).rejects.toThrow("paused");
+    await expectRejects(ContractFunctionExecutionError, "paused", balanceOf());
     expect(await balanceOf()).toBe(1n);
   });
 
@@ -106,7 +113,7 @@ describe("once() and times()", () => {
     expect(await balanceOf()).toBe(1n);
 
     usdc.read.balanceOf().times(4).fails({ status: 503 });
-    await expect(balanceOf()).rejects.toThrow("HTTP request failed");
+    await expectRejects(ContractFunctionExecutionError, "HTTP request failed", balanceOf());
   });
 
   test("each multicall sub-call uses an answer", async () => {
@@ -147,20 +154,20 @@ describe("once() and times()", () => {
 
   test("takes a positive integer, once", () => {
     const { usdc } = setup();
-    expect(() => usdc.read.balanceOf().times(0)).toThrow(
-      "times() takes a positive integer; got 0.",
+    expectThrows(MockSetupError, "times() takes a positive integer; got 0.", () =>
+      usdc.read.balanceOf().times(0),
     );
     expect(() => usdc.read.balanceOf().times(1.5)).toThrow(MockSetupError);
     const builder = usdc.read.balanceOf();
     builder.once();
-    expect(() => builder.times(2)).toThrow("This mock already has a limit");
+    expectThrows(MockSetupError, "This mock already has a limit", () => builder.times(2));
   });
 
   test("a removed mock can't be limited", () => {
     const { mock, usdc } = setup();
     const builder = usdc.read.balanceOf();
     mock.reset();
-    expect(() => builder.once()).toThrow("removed");
+    expectThrows(MockSetupError, "removed", () => builder.once());
   });
 });
 
@@ -314,9 +321,13 @@ describe("counts and lifecycle", () => {
     await balanceOf();
     mock.clearCalls();
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(`balanceOf(*) 3 times, 2 left on USDC (${getAddress(USDC)})`);
+    expectThrows(
+      MockCheckError,
+      `balanceOf(*) 3 times, 2 left on USDC (${getAddress(USDC)})`,
+      () => {
+        mock.assertAllUsed();
+      },
+    );
   });
 
   test("a partly used action mock shows what's left too", async () => {
@@ -325,8 +336,8 @@ describe("counts and lifecycle", () => {
     await client.getBalance({ address: alice });
     mock.clearCalls();
 
-    expect(() => {
+    expectThrows(MockCheckError, "getBalance(*) 3 times, 2 left", () => {
       mock.assertAllUsed();
-    }).toThrow("getBalance(*) 3 times, 2 left");
+    });
   });
 });

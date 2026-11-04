@@ -23,12 +23,14 @@ import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
+  MockCheckError,
   type MockContractDefaults,
   MockNotFoundError,
+  MockSetupError,
   createMockRpc,
   testAddress,
 } from "../src/index.js";
-import { expectCause, hintsOf, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, hintsOf, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
@@ -147,24 +149,34 @@ describe("estimateGas", () => {
   test("answers are gas: a bigint, zero or more", () => {
     const { mock } = setup();
 
-    expect(() => {
+    expectThrows(MockSetupError, "A gas estimate must be a bigint, zero or more; got -1n.", () => {
       mock.actions.estimateGas().returns(-1n);
-    }).toThrow("A gas estimate must be a bigint, zero or more; got -1n.");
-    expect(() => {
-      // @ts-expect-error viem's estimate is a bigint
-      mock.actions.estimateGas().returns(21_000);
-    }).toThrow("A gas estimate must be a bigint, zero or more; got 21000.");
-    expect(() => {
-      // @ts-expect-error there's no zero estimate
-      mock.actions.estimateGas().returns();
-    }).toThrow("A gas estimate must be a bigint, zero or more; got undefined.");
+    });
+    expectThrows(
+      MockSetupError,
+      "A gas estimate must be a bigint, zero or more; got 21000.",
+      () => {
+        // @ts-expect-error viem's estimate is a bigint
+        mock.actions.estimateGas().returns(21_000);
+      },
+    );
+    expectThrows(
+      MockSetupError,
+      "A gas estimate must be a bigint, zero or more; got undefined.",
+      () => {
+        // @ts-expect-error there's no zero estimate
+        mock.actions.estimateGas().returns();
+      },
+    );
   });
 
   test("method() refuses it, pointing at the typed action", () => {
     const { mock } = setup();
 
-    expect(() => mock.method("eth_estimateGas")).toThrow(
+    expectThrows(
+      MockSetupError,
       '"eth_estimateGas" has a typed mock: use mock.actions.estimateGas().',
+      () => mock.method("eth_estimateGas"),
     );
   });
 });
@@ -588,9 +600,9 @@ describe("contract estimate mocks", () => {
 
     await rejectionOf(transfer());
 
-    expect(() => {
+    expectThrows(MockCheckError, `transfer(${alice}, 1n) on Token`, () => {
       mock.assertAllUsed();
-    }).toThrow(`transfer(${alice}, 1n) on Token`);
+    });
     checkpoint.restore();
     expect(() => {
       mock.assertAllUsed();
@@ -604,9 +616,13 @@ describe("contract estimate mocks", () => {
 
     await rejectionOf(transfer());
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(`received 1 call to transfer:\n      transfer(${bob}, …)  ← to didn't match`);
+    expectThrows(
+      MockCheckError,
+      `received 1 call to transfer:\n      transfer(${bob}, …)  ← to didn't match`,
+      () => {
+        mock.assertAllUsed();
+      },
+    );
   });
 
   test("clearCalls() clears their calls", async () => {
@@ -632,30 +648,36 @@ describe("contract estimate mocks", () => {
   test("answers are gas, and only write functions estimate", () => {
     const { mock, token } = tokenSetup();
 
-    expect(() => {
+    expectThrows(MockSetupError, "A gas estimate must be a bigint, zero or more; got -1n.", () => {
       token.estimateGas.transfer().returns(-1n);
-    }).toThrow("A gas estimate must be a bigint, zero or more; got -1n.");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "A gas estimate must be a bigint, zero or more; got 1.", () => {
       // @ts-expect-error an estimate is a bigint
       token.estimateGas.transfer().returns(1);
-    }).toThrow("A gas estimate must be a bigint, zero or more; got 1.");
-    expect(() => {
-      // @ts-expect-error there's no zero estimate
-      token.estimateGas.transfer().returns();
-    }).toThrow("A gas estimate must be a bigint, zero or more; got undefined.");
-    expect(() => {
-      // @ts-expect-error viem estimates only writes
-      token.estimateGas.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
-    }).toThrow(
-      '"balanceOf" is a view function; viem estimates gas only for nonpayable and payable functions.',
+    });
+    expectThrows(
+      MockSetupError,
+      "A gas estimate must be a bigint, zero or more; got undefined.",
+      () => {
+        // @ts-expect-error there's no zero estimate
+        token.estimateGas.transfer().returns();
+      },
     );
-    expect(() =>
+    expectThrows(
+      MockSetupError,
+      '"balanceOf" is a view function; viem estimates gas only for nonpayable and payable functions.',
+      () => {
+        // @ts-expect-error viem estimates only writes
+        token.estimateGas.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
+      },
+    );
+    expectThrows(MockSetupError, '"balanceOf" is a view function', () =>
       mock.contract({
         abi: tokenAbi,
         address: testAddress("other"),
         // @ts-expect-error viem estimates only writes
         defaults: { estimateGas: { balanceOf: 1n } },
       }),
-    ).toThrow('"balanceOf" is a view function');
+    );
   });
 });

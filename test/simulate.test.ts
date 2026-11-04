@@ -8,8 +8,8 @@ import {
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
-import { expectCause, rejectionOf } from "./utils.js";
+import { MockNotFoundError, MockSetupError, createMockRpc, testAddress } from "../src/index.js";
+import { expectCause, expectThrows, rejectionOf } from "./utils.js";
 
 const TOKEN = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
@@ -142,35 +142,46 @@ describe("simulate", () => {
     const { mock } = setup();
     const weth = mock.contract({ abi: wethAbi, address: WETH });
 
-    expect(() => {
-      // @ts-expect-error payable functions live on simulate
-      weth.read.deposit(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
-    }).toThrow('"deposit" is a payable function; register it under simulate, not read.');
-    expect(() => {
-      // @ts-expect-error view functions live on read
-      weth.simulate.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
-    }).toThrow('"balanceOf" is a view function; register it under read, not simulate.');
+    expectThrows(
+      MockSetupError,
+      '"deposit" is a payable function; register it under simulate, not read.',
+      () => {
+        // @ts-expect-error payable functions live on simulate
+        weth.read.deposit(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
+      },
+    );
+    expectThrows(
+      MockSetupError,
+      '"balanceOf" is a view function; register it under read, not simulate.',
+      () => {
+        // @ts-expect-error view functions live on read
+        weth.simulate.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
+      },
+    );
   });
 
   test("defaults under the wrong namespace, or not on the ABI, say so", () => {
     const { mock } = setup();
 
-    expect(() =>
-      mock.contract({
-        abi: wethAbi,
-        address: WETH,
-        // @ts-expect-error payable functions belong under simulate
-        defaults: { read: { deposit: undefined } },
-      }),
-    ).toThrow('"deposit" is a payable function; register it under simulate, not read.');
-    expect(() =>
+    expectThrows(
+      MockSetupError,
+      '"deposit" is a payable function; register it under simulate, not read.',
+      () =>
+        mock.contract({
+          abi: wethAbi,
+          address: WETH,
+          // @ts-expect-error payable functions belong under simulate
+          defaults: { read: { deposit: undefined } },
+        }),
+    );
+    expectThrows(MockSetupError, 'No function "balanceOff" on this contract\'s ABI.', () =>
       mock.contract({
         abi: wethAbi,
         address: OTHER,
         // @ts-expect-error not on the ABI
         defaults: { read: { balanceOff: 0n } },
       }),
-    ).toThrow('No function "balanceOff" on this contract\'s ABI.');
+    );
   });
 
   test("unmocked nonpayable functions fail loudly", async () => {

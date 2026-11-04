@@ -13,6 +13,43 @@ export async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
   return expect.unreachable("expected the promise to reject");
 }
 
+/**
+ * Calls `fn`, which should throw a `type` whose message contains `text` (or matches it), and
+ * returns the error. Unlike a message-only `toThrow`, it fails when what's thrown isn't one.
+ */
+export function expectThrows<error extends Error>(
+  type: ErrorClass<error>,
+  text: string | RegExp,
+  fn: () => unknown,
+): error {
+  try {
+    fn();
+  } catch (thrown) {
+    return expectError(type, text, thrown);
+  }
+  return expect.unreachable("expected the function to throw");
+}
+
+/** Like `expectThrows`, for a promise that should reject. */
+export async function expectRejects<error extends Error>(
+  type: ErrorClass<error>,
+  text: string | RegExp,
+  promise: Promise<unknown>,
+): Promise<error> {
+  return expectError(type, text, await rejectionOf(promise));
+}
+
+function expectError<error extends Error>(
+  type: ErrorClass<error>,
+  text: string | RegExp,
+  thrown: unknown,
+): error {
+  if (!(thrown instanceof type))
+    return expect.unreachable(`expected a ${type.name}; got ${String(thrown)}`);
+  expect(thrown.message).toMatch(text);
+  return thrown;
+}
+
 /** The first `type` in `error`'s cause chain (including `error` itself), if any. */
 export function findCause<error>(error: unknown, type: ErrorClass<error>): error | undefined {
   const found = error instanceof BaseError ? error.walk((e) => e instanceof type) : error;

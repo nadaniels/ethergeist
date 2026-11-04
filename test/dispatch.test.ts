@@ -8,8 +8,8 @@ import {
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
-import { expectCause, failureOf, rejectionOf } from "./utils.js";
+import { MockNotFoundError, MockSetupError, createMockRpc, testAddress } from "../src/index.js";
+import { expectCause, expectThrows, failureOf, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const NOWHERE = "0x000000000000000000000000000000000000dEaD";
@@ -36,6 +36,13 @@ describe("empty()", () => {
     expect(() => {
       mock.assertNoUnhandled();
     }).not.toThrow();
+  });
+
+  test("a raw call gets no data back, as viem reads a node's empty answer", async () => {
+    const { mock, client } = setup();
+    mock.empty(NOWHERE);
+
+    expect(await client.call({ to: NOWHERE, data: "0x313ce567" })).toEqual({ data: undefined });
   });
 
   test("inside a multicall, only that call fails", async () => {
@@ -67,15 +74,15 @@ describe("empty()", () => {
     mock.empty(NOWHERE);
     mock.contract({ abi: erc20Abi, address: USDC });
 
-    expect(() => mock.contract({ abi: erc20Abi, address: NOWHERE })).toThrow(
-      `${NOWHERE} is already registered as empty`,
+    expectThrows(MockSetupError, `${NOWHERE} is already registered as empty`, () =>
+      mock.contract({ abi: erc20Abi, address: NOWHERE }),
     );
-    expect(() => {
+    expectThrows(MockSetupError, `A contract is already registered at ${USDC}`, () => {
       mock.empty(USDC);
-    }).toThrow(`A contract is already registered at ${USDC}`);
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "already registered as empty", () => {
       mock.empty(NOWHERE);
-    }).toThrow("already registered as empty");
+    });
   });
 
   test("matching ignores case, and malformed addresses are rejected", async () => {

@@ -1,5 +1,6 @@
 import {
   type Address,
+  ContractFunctionExecutionError,
   ContractFunctionRevertedError,
   InsufficientFundsError,
   IntrinsicGasTooLowError,
@@ -18,6 +19,7 @@ import { privateKeyToAccount } from "viem/accounts";
 import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
+  MockCheckError,
   MockNotFoundError,
   MockResolverError,
   MockSetupError,
@@ -26,7 +28,7 @@ import {
   testAddress,
   testLog,
 } from "../src/index.js";
-import { expectCause, hintsOf, rejectionOf } from "./utils.js";
+import { expectCause, expectRejects, expectThrows, hintsOf, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
@@ -242,7 +244,11 @@ describe("a write mock", () => {
 
     // Limited mocks answer oldest first.
     expect(mock.transactions.map(({ receipt }) => receipt.gasUsed)).toEqual([1n, 2n, 2n]);
-    await expect(transfer(4n)).rejects.toThrow(/No estimateGas mock for transfer/u);
+    await expectRejects(
+      ContractFunctionExecutionError,
+      /No estimateGas mock for transfer/u,
+      transfer(4n),
+    );
   });
 
   test("defaults.write answers every send of a function, exempt from assertAllUsed", async () => {
@@ -338,9 +344,13 @@ describe("the estimate a write mock implies", () => {
     expect(usdc.estimateGas.transfer.calls).toMatchObject([{ args: [bob, 5n], from: alice }]);
     expect(usdc.write.transfer.calls).toEqual([]);
     expect(usdc.calls.map(({ namespace }) => namespace)).toEqual(["estimateGas"]);
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(/transfer\(.*\) once on USDC .*\n.*received no calls to transfer/u);
+    expectThrows(
+      MockCheckError,
+      /transfer\(.*\) once on USDC .*\n.*received no calls to transfer/u,
+      () => {
+        mock.assertAllUsed();
+      },
+    );
   });
 
   test("an estimateGas mock, defaults.estimateGas or an estimate action mock answers first", async () => {
@@ -719,24 +729,28 @@ describe("registration refusals", () => {
     const { usdc } = setup();
     const write = usdc.write.transfer();
 
-    expect(() => {
+    expectThrows(MockSetupError, "A write's outcome has no transactionHash.", () => {
       // @ts-expect-error -- the transaction's hash comes from where it's mined
       write.returns({ transactionHash: "0x12" });
-    }).toThrow("A write's outcome has no transactionHash.");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "A reverted transaction has no logs.", () => {
       write.returns({ status: "reverted", logs: [testLog("noise")] });
-    }).toThrow("A reverted transaction has no logs.");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "Only a deploy (to: null) has a contractAddress.", () => {
       write.returns({ contractAddress: USDC });
-    }).toThrow("Only a deploy (to: null) has a contractAddress.");
-    expect(() => {
+    });
+    expectThrows(MockSetupError, "A write's outcome must be an object; got true.", () => {
       // @ts-expect-error -- a write answers with its outcome; the return value goes on simulate
       write.returns(true);
-    }).toThrow("A write's outcome must be an object; got true.");
-    expect(() => {
-      // @ts-expect-error -- a view isn't written
-      usdc.write.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
-    }).toThrow('"balanceOf" is a view function; register it under read, not write.');
+    });
+    expectThrows(
+      MockSetupError,
+      '"balanceOf" is a view function; register it under read, not write.',
+      () => {
+        // @ts-expect-error -- a view isn't written
+        usdc.write.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
+      },
+    );
   });
 
   test("a resolver's outcome is checked at the send, changing nothing", async () => {
@@ -1083,9 +1097,8 @@ describe("writes in history", () => {
 
     await transfer(5n);
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(
+    expectThrows(
+      MockCheckError,
       [
         "1 mock(s) answered no call:",
         `  - transfer(${bob}, 6n) on USDC (${USDC})`,
@@ -1100,6 +1113,9 @@ describe("writes in history", () => {
         "#5 eth_estimateGas estimateGas USDC.transfer(0x4292…207f, 5n) → 100000n",
         "#6 eth_sendRawTransaction write USDC.transfer(0x4292…207f, 5n) → 0xa4a9…c417 (mined in block 11n, 0 logs)",
       ].join("\n"),
+      () => {
+        mock.assertAllUsed();
+      },
     );
   });
 });

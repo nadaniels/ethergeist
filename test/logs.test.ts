@@ -14,6 +14,7 @@ import {
 import { describe, expect, test } from "vite-plus/test";
 
 import {
+  MockCheckError,
   MockNotFoundError,
   MockSetupError,
   createMockRpc,
@@ -21,7 +22,7 @@ import {
   testAddress,
   testHash,
 } from "../src/index.js";
-import { expectCause, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -138,9 +139,11 @@ describe("emit", () => {
     const again = () =>
       mock.emit(usdc.events.Transfer({ from: bob, to: carol }), { transactionHash: upper });
     expect(again).toThrow(MockSetupError);
-    expect(again).toThrow(
+    expectThrows(
+      MockSetupError,
       `Transaction ${upper} is already on the chain.\n\n` +
         "Each emit() is a transaction: emit a transaction's logs together, as mock.emit([a, b]).",
+      again,
     );
     expect(mock.blockNumber).toBe(11n);
     expect(mock.transactions).toHaveLength(1);
@@ -150,9 +153,11 @@ describe("emit", () => {
     const { mock, usdc } = setup();
     usdc.emit.Transfer({ from: alice, to: bob }, { transactionHash: testHash("tx:12:0") });
 
-    expect(() => usdc.emit.Transfer({ from: bob, to: alice })).toThrow(
+    expectThrows(
+      MockSetupError,
       `Transaction ${testHash("tx:12:0")} is already on the chain.\n\n` +
         'Name a hash other than one the mock makes, testHash("tx:<block>:<index>").',
+      () => usdc.emit.Transfer({ from: bob, to: alice }),
     );
     expect(mock.blockNumber).toBe(11n);
   });
@@ -161,14 +166,16 @@ describe("emit", () => {
     const { mock, usdc } = setup();
     const log = usdc.events.Transfer({ from: alice, to: bob });
 
-    // @ts-expect-error -- gone: a plain emit mines
-    expect(() => mock.emit(log, { mine: true })).toThrow(
+    expectThrows(
+      MockSetupError,
       'emit() has no option "mine".\n\n' +
         "Its options are blockNumber and transactionHash; without blockNumber, it mines a new block.",
+      // @ts-expect-error -- gone: a plain emit mines
+      () => mock.emit(log, { mine: true }),
     );
-    // @ts-expect-error -- gone: a block's transactions have no holes
-    expect(() => usdc.emit.Transfer({ from: alice, to: bob }, { transactionIndex: 3 })).toThrow(
-      'emit() has no option "transactionIndex".',
+    expectThrows(MockSetupError, 'emit() has no option "transactionIndex".', () =>
+      // @ts-expect-error -- gone: a block's transactions have no holes
+      usdc.emit.Transfer({ from: alice, to: bob }, { transactionIndex: 3 }),
     );
     expect(mock.blockNumber).toBe(10n);
   });
@@ -187,26 +194,27 @@ describe("emit", () => {
     mock.empty(carol);
     const other = createMockRpc().contract({ abi: erc20Abi, address: carol });
 
-    expect(() => mock.emit([])).toThrow("emit() requires at least one log.");
-    expect(() =>
-      mock.emit(
-        mock.buildLog({
-          abi: erc20Abi,
-          address: USDC,
-          eventName: "Transfer",
-          args: { from: alice, to: bob },
-        }),
-      ),
-    ).toThrow(
+    expectThrows(MockSetupError, "emit() requires at least one log.", () => mock.emit([]));
+    expectThrows(
+      MockSetupError,
       "emit() places logs itself, but this one already has a position (e.g. from mock.buildLog()).\n\n" +
         "Pass a log from contract.events, and set its block or transaction in emit()'s options.",
+      () =>
+        mock.emit(
+          mock.buildLog({
+            abi: erc20Abi,
+            address: USDC,
+            eventName: "Transfer",
+            args: { from: alice, to: bob },
+          }),
+        ),
     );
-    expect(() =>
+    expectThrows(MockSetupError, `${carol} is marked empty(), with no code to emit this log.`, () =>
       mock.emit([
         usdc.events.Transfer({ from: alice, to: bob }),
         other.events.Transfer({ from: alice, to: bob }),
       ]),
-    ).toThrow(`${carol} is marked empty(), with no code to emit this log.`);
+    );
     expect(mock.blockNumber).toBe(10n);
     expect(mock.logs).toEqual([]);
   });
@@ -253,7 +261,11 @@ describe("emit", () => {
 
     const emit = () => mock.emit(log, { blockNumber: 10n });
     expect(emit).toThrow(MockSetupError);
-    expect(emit).toThrow("emit() places logs itself, but this one already has a position");
+    expectThrows(
+      MockSetupError,
+      "emit() places logs itself, but this one already has a position",
+      emit,
+    );
   });
 
   test("returns frozen logs: changing one throws", () => {
@@ -868,15 +880,19 @@ describe("state", () => {
     expect(mock.logs).toEqual([]);
     expect(mock.transactions).toEqual([]);
     expect(mock.blockNumber).toBe(10n);
-    expect(() => usdc.emit.Transfer({ from: alice, to: bob })).toThrow(
+    expectThrows(
+      MockSetupError,
       `The contract at USDC (${USDC}) was removed by restore() or reset(); register it again.`,
+      () => usdc.emit.Transfer({ from: alice, to: bob }),
     );
   });
 
   test("eth_getLogs can't be mocked raw", () => {
     const { mock } = setup();
-    expect(() => mock.method("eth_getLogs")).toThrow(
+    expectThrows(
+      MockSetupError,
       '"eth_getLogs" has a typed mock: use mock.actions.getLogs().',
+      () => mock.method("eth_getLogs"),
     );
   });
 });
@@ -998,19 +1014,21 @@ describe("mock.actions.getLogs", () => {
     mock.actions.getLogs({ address: DAI }).returns([]);
 
     await client.getLogs({ address: USDC });
-    expect(() => {
+    expectThrows(MockCheckError, `getLogs({ address: ${DAI} })`, () => {
       mock.assertAllUsed();
-    }).toThrow(`getLogs({ address: ${DAI} })`);
+    });
   });
 
   test("refuses log content: nothing would place it", () => {
     const { mock, usdc } = setup();
 
-    expect(() => {
-      // @ts-expect-error -- content, not a placed log
-      mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: bob })]);
-    }).toThrow(
+    expectThrows(
+      MockSetupError,
       "getLogs answers placed logs, e.g. from emit() or mock.buildLog(); log 0 has no position.",
+      () => {
+        // @ts-expect-error -- content, not a placed log
+        mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: bob })]);
+      },
     );
   });
 
@@ -1018,10 +1036,14 @@ describe("mock.actions.getLogs", () => {
     const { mock, usdc } = setup();
     const log = usdc.emit.Transfer({ from: alice, to: bob });
 
-    expect(() => {
-      // @ts-expect-error -- viem's logs have a bigint timestamp
-      mock.actions.getLogs().returns([{ ...log, blockTimestamp: "0x5" }]);
-    }).toThrow("getLogs log 0's blockTimestamp must be a bigint, or left out; got string.");
+    expectThrows(
+      MockSetupError,
+      "getLogs log 0's blockTimestamp must be a bigint, or left out; got string.",
+      () => {
+        // @ts-expect-error -- viem's logs have a bigint timestamp
+        mock.actions.getLogs().returns([{ ...log, blockTimestamp: "0x5" }]);
+      },
+    );
   });
 
   test("answers a log without blockTimestamp, as a node that doesn't send it", async () => {

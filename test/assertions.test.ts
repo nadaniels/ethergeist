@@ -3,13 +3,15 @@ import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
+  MockCheckError,
   MockNotFoundError,
   MockResolverError,
+  MockSetupError,
   createMockRpc,
   match,
   testAddress,
 } from "../src/index.js";
-import { expectCause, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -46,9 +48,9 @@ describe("assertNoUnhandled()", () => {
     const balance = await balanceOf(bob).catch(() => 0n);
     expect(balance).toBe(0n);
 
-    expect(() => {
+    expectThrows(MockCheckError, /couldn't answer 1 request.*No mock for balanceOf/su, () => {
       mock.assertNoUnhandled();
-    }).toThrow(/couldn't answer 1 request.*No mock for balanceOf/su);
+    });
   });
 
   test("catches a missing mock inside a multicall that allows failure", async () => {
@@ -63,9 +65,9 @@ describe("assertNoUnhandled()", () => {
     });
     expect(results.every((r) => r.status === "failure")).toBe(true);
 
-    expect(() => {
+    expectThrows(MockCheckError, `No mock for symbol() on ${USDC}`, () => {
       mock.assertNoUnhandled();
-    }).toThrow(`No mock for symbol() on ${USDC}`);
+    });
   });
 
   test("catches a resolver that threw", async () => {
@@ -78,9 +80,9 @@ describe("assertNoUnhandled()", () => {
       });
 
     await balanceOf(alice).catch(() => {});
-    expect(() => {
+    expectThrows(MockCheckError, "fixture bug", () => {
       mock.assertNoUnhandled();
-    }).toThrow("fixture bug");
+    });
   });
 
   test("records the request that failed, even with others in flight", async () => {
@@ -130,9 +132,9 @@ describe("unencodable returns", () => {
     );
     expectCause(error, MockResolverError);
     expect(mock.requests).toHaveLength(1);
-    expect(() => {
+    expectThrows(MockCheckError, "owner", () => {
       mock.assertNoUnhandled();
-    }).toThrow("owner");
+    });
   });
 
   test("a static value is rejected at registration", () => {
@@ -162,11 +164,11 @@ describe("messages", () => {
     expect(error.message).toContain(
       `No mock for balanceOf(${getAddress(alice)}) on USDC (${USDC})`,
     );
-    expect(() => {
+    expectThrows(MockCheckError, `balanceOf(${getAddress(bob)}) on USDC (${USDC})`, () => {
       mock.assertAllUsed();
-    }).toThrow(`balanceOf(${getAddress(bob)}) on USDC (${USDC})`);
-    expect(() => mock.contract({ abi: erc20Abi, address: USDC })).toThrow(
-      `A contract is already registered at USDC (${USDC})`,
+    });
+    expectThrows(MockSetupError, `A contract is already registered at USDC (${USDC})`, () =>
+      mock.contract({ abi: erc20Abi, address: USDC }),
     );
   });
 
@@ -176,9 +178,9 @@ describe("messages", () => {
     usdc.read.balanceOf([bob]).returns(1n);
 
     expect(usdc.name).toBeUndefined();
-    expect(() => {
+    expectThrows(MockCheckError, `balanceOf(${getAddress(bob)}) on ${USDC}`, () => {
       mock.assertAllUsed();
-    }).toThrow(`balanceOf(${getAddress(bob)}) on ${USDC}`);
+    });
   });
 
   test("struct args are spelled out", () => {
@@ -188,9 +190,13 @@ describe("messages", () => {
       .read.filled([{ maker: alice, amount: 5n }])
       .returns(true);
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(`filled({ maker: ${getAddress(alice)}, amount: 5n }) on Book`);
+    expectThrows(
+      MockCheckError,
+      `filled({ maker: ${getAddress(alice)}, amount: 5n }) on Book`,
+      () => {
+        mock.assertAllUsed();
+      },
+    );
   });
 });
 
@@ -210,12 +216,26 @@ describe("address args", () => {
       .read.balancesOf([[lowercase(alice), lowercase(bob)]])
       .returns([]);
 
-    expect(() => {
+    expectThrows(MockCheckError, `allowance(${USDC}, ${getAddress(bob)})`, () => {
       mock.assertAllUsed();
-    }).toThrow(`allowance(${USDC}, ${getAddress(bob)})`);
-    expect(() => {
+    });
+    expectThrows(MockCheckError, `balancesOf([${getAddress(alice)}, ${getAddress(bob)}])`, () => {
       mock.assertAllUsed();
-    }).toThrow(`balancesOf([${getAddress(alice)}, ${getAddress(bob)}])`);
+    });
+  });
+
+  test("are checksummed inside a struct given as a tuple", () => {
+    const { mock } = setup();
+    // Unnamed fields, so the struct is a tuple, as viem types and decodes it.
+    const quoteAbi = parseAbi(["function quote((address, uint256) leg) view returns (uint256)"]);
+    mock
+      .contract({ abi: quoteAbi, address: DAI })
+      .read.quote([[lowercase(alice), 5n]])
+      .returns(1n);
+
+    expectThrows(MockCheckError, `quote([${getAddress(alice)}, 5n])`, () => {
+      mock.assertAllUsed();
+    });
   });
 
   test("a malformed one fails at registration", () => {
@@ -251,9 +271,9 @@ describe("assertAllUsed()", () => {
     usdc.read.balanceOf([bob]).returns(500n);
 
     expect(await balanceOf(alice)).toBe(0n);
-    expect(() => {
+    expectThrows(MockCheckError, `balanceOf(${getAddress(bob)}) on ${USDC}`, () => {
       mock.assertAllUsed();
-    }).toThrow(`balanceOf(${getAddress(bob)}) on ${USDC}`);
+    });
   });
 
   test("checks args-less mocks too: an override that never answered is dead", async () => {
@@ -282,9 +302,9 @@ describe("assertAllUsed()", () => {
     usdc.read.balanceOf([alice]).returns(2n);
 
     await balanceOf(alice);
-    expect(() => {
+    expectThrows(MockCheckError, `balanceOf(*) on ${USDC}`, () => {
       mock.assertAllUsed();
-    }).toThrow(`balanceOf(*) on ${USDC}`);
+    });
   });
 
   test("doesn't check defaults: they're fallbacks", () => {
@@ -344,9 +364,9 @@ describe("assertAllUsed()", () => {
     await balanceOf(alice);
 
     mock.clearCalls();
-    expect(() => {
+    expectThrows(MockCheckError, `balanceOf(${getAddress(alice)})`, () => {
       mock.assertAllUsed();
-    }).toThrow(`balanceOf(${getAddress(alice)})`);
+    });
   });
 
   test("clearCalls() resets action usage too", async () => {
@@ -355,9 +375,9 @@ describe("assertAllUsed()", () => {
     await client.getBalance({ address: alice });
 
     mock.clearCalls();
-    expect(() => {
+    expectThrows(MockCheckError, `getBalance({ address: ${getAddress(alice)} })`, () => {
       mock.assertAllUsed();
-    }).toThrow(`getBalance({ address: ${getAddress(alice)} })`);
+    });
   });
 });
 

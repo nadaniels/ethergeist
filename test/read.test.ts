@@ -1,9 +1,16 @@
-import { BaseError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
+import {
+  BaseError,
+  ContractFunctionExecutionError,
+  createPublicClient,
+  erc20Abi,
+  getAddress,
+  parseAbi,
+} from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
 import { MockNotFoundError, createMockRpc, match, testAddress } from "../src/index.js";
-import { expectCause, hintsOf, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, expectRejects, hintsOf, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = testAddress("alice");
@@ -478,8 +485,10 @@ describe("defaults", () => {
     const { mock, client } = setup();
     mock.contract({ abi: erc20Abi, address: USDC, defaults: { read: { decimals: 6 } } });
 
-    await expect(
+    await expectRejects(
+      ContractFunctionExecutionError,
+      'No mocks registered for "symbol"',
       client.readContract({ abi: erc20Abi, address: USDC, functionName: "symbol" }),
-    ).rejects.toThrow('No mocks registered for "symbol"');
+    );
   });
 });

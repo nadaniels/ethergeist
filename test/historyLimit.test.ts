@@ -1,8 +1,14 @@
 import { createPublicClient, erc20Abi, parseAbi } from "viem";
 import { describe, expect, test, vi } from "vite-plus/test";
 
-import { MockNotFoundError, createMockRpc, testAddress } from "../src/index.js";
-import { expectCause, hintsOf, rejectionOf } from "./utils.js";
+import {
+  MockCheckError,
+  MockNotFoundError,
+  MockSetupError,
+  createMockRpc,
+  testAddress,
+} from "../src/index.js";
+import { expectCause, expectThrows, hintsOf, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = testAddress("alice");
@@ -178,14 +184,18 @@ describe("historyLimit", () => {
     const { mock } = setup(2);
     await poll(3, unanswered(mock));
 
-    expect(() => {
-      mock.assertNoUnhandled();
-    }).toThrow(
+    expectThrows(
+      MockCheckError,
       "The mock couldn't answer 3 request(s) (the last 2 kept, past historyLimit):\n" +
         '  - RPC method "eth_unmocked" is not mocked.',
+      () => {
+        mock.assertNoUnhandled();
+      },
     );
-    expect(() => mock.checkpoint()).toThrow(
+    expectThrows(
+      MockCheckError,
       "Can't checkpoint: 3 request(s) (the last 2 kept, past historyLimit) since the last clear",
+      () => mock.checkpoint(),
     );
   });
 
@@ -193,11 +203,13 @@ describe("historyLimit", () => {
     const { mock } = setup(2);
     await poll(3, unanswered(mock));
 
-    expect(() => {
-      mock.assertNoUnhandled();
-    }).toThrow(
+    expectThrows(
+      MockCheckError,
       "Last 2 requests (1 older request dropped, past historyLimit):\n" +
         "#2 eth_unmocked ✗ not mocked\n#3 eth_unmocked ✗ not mocked",
+      () => {
+        mock.assertNoUnhandled();
+      },
     );
   });
 
@@ -217,12 +229,20 @@ describe("historyLimit", () => {
       }),
     );
 
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(/received 3 calls to balanceOf \(the last 2 kept, past historyLimit\):/u);
-    expect(() => {
-      mock.assertAllUsed();
-    }).toThrow(/received 3 calls to getBalance \(the last 2 kept, past historyLimit\):/u);
+    expectThrows(
+      MockCheckError,
+      /received 3 calls to balanceOf \(the last 2 kept, past historyLimit\):/u,
+      () => {
+        mock.assertAllUsed();
+      },
+    );
+    expectThrows(
+      MockCheckError,
+      /received 3 calls to getBalance \(the last 2 kept, past historyLimit\):/u,
+      () => {
+        mock.assertAllUsed();
+      },
+    );
   });
 
   test("a multicall is one request but several calls", async () => {
@@ -300,11 +320,13 @@ describe("historyLimit", () => {
     const mock = createMockRpc({ historyLimit: 4, historyOnFailure: 2 });
     await poll(6, unanswered(mock));
 
-    expect(() => {
-      mock.assertNoUnhandled();
-    }).toThrow(
+    expectThrows(
+      MockCheckError,
       "Last 2 requests (2 earlier; see mock.formatHistory(); 2 before those dropped, past " +
         "historyLimit):\n#5 eth_unmocked",
+      () => {
+        mock.assertNoUnhandled();
+      },
     );
   });
 
@@ -313,10 +335,12 @@ describe("historyLimit", () => {
     await poll(2, unanswered(mock));
     await mock.request({ method: "eth_blockNumber" });
 
-    expect(() => {
-      mock.assertNoUnhandled();
-    }).toThrow(
+    expectThrows(
+      MockCheckError,
       "Requests so far: only built-ins kept (2 older requests dropped, past historyLimit).",
+      () => {
+        mock.assertNoUnhandled();
+      },
     );
   });
 
@@ -350,11 +374,13 @@ describe("historyLimit", () => {
   });
 
   test("an invalid limit throws", () => {
-    expect(() => createMockRpc({ historyLimit: 0 })).toThrow(
-      "historyLimit keeps at least 1 entry per record",
+    expectThrows(MockSetupError, "historyLimit keeps at least 1 entry per record", () =>
+      createMockRpc({ historyLimit: 0 }),
     );
-    expect(() => createMockRpc({ historyLimit: 2.5 })).toThrow(
+    expectThrows(
+      MockSetupError,
       "historyLimit takes a positive whole number or Infinity; got 2.5.",
+      () => createMockRpc({ historyLimit: 2.5 }),
     );
   });
 });
