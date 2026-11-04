@@ -16,20 +16,51 @@ export type MockFault =
   | "network";
 
 /**
- * A node's refusal of a transaction it was asked to estimate or simulate,
- * named, with reth's code and message. viem tells these apart by the
- * message, as for a real node:
+ * A node's refusal by name, with reth's code and message. viem tells these
+ * apart by the message, as for a real node, so the app sees viem's class.
+ * Each is available where a node can say it:
  * - `"insufficientFunds"`: the sender can't pay the value sent, viem's
  *   `InsufficientFundsError`. The message says the balance is 0.
  * - `"feeCapTooLow"`: `maxFeePerGas` is below the block's base fee, viem's
  *   `FeeCapTooLowError`.
  * - `"tipAboveFeeCap"`: `maxPriorityFeePerGas` is above `maxFeePerGas`,
  *   viem's `TipAboveFeeCapError`.
+ * - `"gasExceedsAllowance"`, on estimates and `simulate`: the call needs
+ *   more gas than the request's `gas` (or, without one, the node's cap of
+ *   50,000,000), viem's `ExecutionRevertedError`. A send with too little gas
+ *   is mined instead, and runs out: `.returns({ status: "reverted",
+ *   gasUsed })` with its gas limit.
+ * - `"intrinsicGasTooLow"`, on sends and `simulate`: the request's `gas` is
+ *   below the transaction's base cost, viem's `IntrinsicGasTooLowError`.
+ *   An estimate reports it as `"gasExceedsAllowance"`.
+ * - On sends only (`write`, `mock.actions.sendTransaction`), as a node's
+ *   transaction pool refuses them; an estimate or a call doesn't check the
+ *   nonce:
+ *   - `"nonceTooLow"`: the nonce is used, viem's `NonceTooLowError`;
+ *   - `"nonceTooHigh"`: the nonce leaves a gap, viem's `NonceTooHighError`;
+ *   - `"alreadyKnown"`: the node has this transaction already, a double
+ *     submit, viem's `NonceTooLowError`.
  */
-export type NodeErrorName = "insufficientFunds" | "feeCapTooLow" | "tipAboveFeeCap";
+export type NodeErrorName = SendErrorName | CallErrorName;
 
-/** A `MockFault`, or a node's refusal by name, where a node can refuse: see `NodeErrorName`. */
-export type MockNodeFault = MockFault | NodeErrorName;
+type TransactionErrorName = "insufficientFunds" | "feeCapTooLow" | "tipAboveFeeCap";
+/** The names a send can be refused with: see `NodeErrorName`. */
+export type SendErrorName =
+  | TransactionErrorName
+  | "intrinsicGasTooLow"
+  | "nonceTooLow"
+  | "nonceTooHigh"
+  | "alreadyKnown";
+/** The names an estimate can be refused with: see `NodeErrorName`. */
+export type EstimateErrorName = TransactionErrorName | "gasExceedsAllowance";
+/** The names an `eth_call` (`simulate`) can be refused with: see `NodeErrorName`. */
+export type CallErrorName = EstimateErrorName | "intrinsicGasTooLow";
+
+/**
+ * A `MockFault`, or a node's refusal by name, where a node can refuse: see
+ * `NodeErrorName`. `name` is the names available there.
+ */
+export type MockNodeFault<name extends NodeErrorName = NodeErrorName> = MockFault | name;
 
 /** A mock's answers, and `.once()`/`.times()` to limit how often it gives them. */
 export type WithLimits<answers> = answers & {
@@ -59,7 +90,7 @@ export type MockEstimateAnswers<context> = {
    * Fail every matching request: a node's refusal by name, e.g.
    * `"insufficientFunds"` (see `NodeErrorName`), or any `MockFault`.
    */
-  fails(fault: MockNodeFault): void;
+  fails(fault: MockNodeFault<EstimateErrorName>): void;
 };
 
 /**

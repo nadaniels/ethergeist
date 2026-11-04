@@ -2,6 +2,7 @@ import { type Hex, decodeErrorResult, isHex, parseTransaction } from "viem";
 
 import type { MockNodeFault, NodeErrorName } from "../mocking/types.js";
 import { builtinErrors } from "../shared/abiValues.js";
+import { isPlainObject } from "../shared/values.js";
 import { optionalQuantity } from "./params.js";
 
 /**
@@ -49,20 +50,33 @@ export function isNodeErrorName(fault: MockNodeFault): fault is NodeErrorName {
  * `eth_call` and `eth_sendTransaction` take it, or decoded from a raw send's
  * bytes. Named errors answer after the params are checked, so they parse.
  */
-function transactionOf(params: unknown): { value: bigint; paysFees: boolean } | undefined {
+function transactionOf(params: unknown) {
   const tx: unknown = Array.isArray(params) ? params[0] : undefined;
-  if (isHex(tx)) return { value: parseTransaction(tx).value ?? 0n, paysFees: true };
-  if (typeof tx !== "object" || tx === null) return undefined;
+  if (isHex(tx)) {
+    const { value, gas } = parseTransaction(tx);
+    return { value: value ?? 0n, gas, paysFees: true };
+  }
+  const fields = isPlainObject(tx) ? tx : {};
   return {
-    value: ("value" in tx ? optionalQuantity(tx.value, "a value") : undefined) ?? 0n,
-    paysFees: "gasPrice" in tx || "maxFeePerGas" in tx,
+    value: optionalQuantity(fields.value, "a value") ?? 0n,
+    gas: optionalQuantity(fields.gas, "a gas limit"),
+    paysFees: "gasPrice" in fields || "maxFeePerGas" in fields,
   };
 }
 
 /**
+ * The gas a node's estimate or call allows when the request sets none: the
+ * block's gas limit, capped by the node (geth's and reth's default RPC gas
+ * cap). Nothing reads the number: viem classifies by the words.
+ */
+const nodeGasCap = 50_000_000n;
+
+/**
  * Reth's errors for each name, from the request's params: its transaction
- * (see `transactionOf`). Captured from reth nodes for Ethereum and Base,
- * 2026-10-29.
+ * (see `transactionOf`). The first three were captured from reth nodes for
+ * Ethereum and Base, 2026-10-29; the rest are geth's messages without the
+ * detail it adds (e.g. `: next nonce 5, tx nonce 3`), which viem's patterns
+ * match either way.
  */
 export const nodeErrors: Record<
   NodeErrorName,
@@ -72,7 +86,7 @@ export const nodeErrors: Record<
   // reports that check; without them, the EVM's.
   insufficientFunds(params) {
     const tx = transactionOf(params);
-    if (tx?.paysFees !== true) return { code: -32003, message: "EVM error: OutOfFunds" };
+    if (!tx.paysFees) return { code: -32003, message: "EVM error: OutOfFunds" };
     return {
       code: -32003,
       message: `insufficient funds for gas * price + value: have 0 want ${tx.value}`,
@@ -83,4 +97,12 @@ export const nodeErrors: Record<
     code: -32003,
     message: "max priority fee per gas higher than max fee per gas",
   }),
+  gasExceedsAllowance: (params) => ({
+    code: -32000,
+    message: `gas required exceeds allowance (${transactionOf(params).gas ?? nodeGasCap})`,
+  }),
+  intrinsicGasTooLow: () => ({ code: -32000, message: "intrinsic gas too low" }),
+  nonceTooLow: () => ({ code: -32000, message: "nonce too low" }),
+  nonceTooHigh: () => ({ code: -32000, message: "nonce too high" }),
+  alreadyKnown: () => ({ code: -32000, message: "already known" }),
 };

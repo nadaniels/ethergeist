@@ -3,7 +3,12 @@ import { type Address, type Hex, numberToHex } from "viem";
 import type { ResolveBlock } from "../chain/params.js";
 import { type TransactionType, sentType } from "../chain/transactions.js";
 import { encodeGas, impliedGas } from "../mocking/gas.js";
-import type { MockEstimateAnswers, MockNodeFault, WithLimits } from "../mocking/types.js";
+import type {
+  EstimateErrorName,
+  MockEstimateAnswers,
+  MockNodeFault,
+  WithLimits,
+} from "../mocking/types.js";
 import { registeredRevert } from "../transactions/writeOutcome.js";
 import {
   blockAt,
@@ -20,7 +25,7 @@ import type { ActionContext, EstimateGasCall, SendTransactionCall } from "./type
  * What an estimate's resolver gets: the call, and `fail`, which also takes a
  * node's refusal by name, e.g. `fail("insufficientFunds")`.
  */
-export type EstimateGasContext = ActionContext<EstimateGasCall, MockNodeFault>;
+export type EstimateGasContext = ActionContext<EstimateGasCall, MockNodeFault<EstimateErrorName>>;
 
 /** Like `MockActionBuilder`, for an estimate. */
 export type MockEstimateBuilder<context> = WithLimits<MockEstimateAnswers<context>>;

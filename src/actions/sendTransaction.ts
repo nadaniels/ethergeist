@@ -4,7 +4,7 @@ import { decodeRawTransaction, sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
 import type { CallContext, RevertFn, RevertSpec } from "../contracts/types.js";
 import { impliedGas } from "../mocking/gas.js";
-import type { MockNodeFault, WithLimits } from "../mocking/types.js";
+import type { MockNodeFault, SendErrorName, WithLimits } from "../mocking/types.js";
 import { invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import {
@@ -30,7 +30,10 @@ import type { ActionContext, SendTransactionCall } from "./types.js";
  * `MockWriteContext`). Without an ABI, `revert` takes a reason, a panic
  * code or raw data.
  */
-export type SendTransactionContext = ActionContext<SendTransactionCall, MockNodeFault> &
+export type SendTransactionContext = ActionContext<
+  SendTransactionCall,
+  MockNodeFault<SendErrorName>
+> &
   MockWriteContext & {
     /** Mine the transaction reverted, e.g. `revert("paused")`: see `MockWriteContext`. */
     revert: RevertFn<readonly []>;

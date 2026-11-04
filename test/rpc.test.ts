@@ -334,6 +334,7 @@ describe("malformed params", () => {
     ["an empty block number", "eth_getBalance", [USDC, "0x"]],
     ["an empty EIP-1898 block number", "eth_getBalance", [USDC, { blockNumber: "0x" }]],
     ["an empty eth_call value", "eth_call", [{ to: USDC, data: "0x313ce567", value: "0x" }]],
+    ["an eth_call gas with a leading zero", "eth_call", [{ to: USDC, data: "0x", gas: "0x01" }]],
     ["a block number with a leading zero", "eth_getBalance", [USDC, "0x0a"]],
     ["a value with a leading zero", "eth_estimateGas", [{ to: USDC, value: "0x01" }]],
     ["a value as a JSON number", "eth_estimateGas", [{ to: USDC, value: 1 }]],

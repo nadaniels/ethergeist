@@ -92,10 +92,13 @@ export {
 export type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
 export { match } from "./mocking/matchers.js";
 export type {
+  CallErrorName,
+  EstimateErrorName,
   MockEstimateAnswers,
   MockFault,
   MockNodeFault,
   NodeErrorName,
+  SendErrorName,
 } from "./mocking/types.js";
 export { zeroResult } from "./mocking/zeroResult.js";
 export { testAddress, testHash } from "./shared/testValues.js";

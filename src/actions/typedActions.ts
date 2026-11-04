@@ -203,7 +203,7 @@ export type MockActions = {
    * reverted status, its gas, a deploy's address; `.emits(logs)` is
    * `.returns({ logs })`. `.reverts(spec)` reverts its estimate and mines it
    * reverted if it's sent anyway. `.fails()` takes a node's refusal by name,
-   * e.g. `"insufficientFunds"`. A resolver also gets `emit` and `revert`
+   * e.g. `"insufficientFunds"` or `"nonceTooLow"`. A resolver also gets `emit` and `revert`
    * (see `MockWriteContext`). A matching mock also answers the
    * transaction's `eth_estimateGas` (when no estimate mock does) with
    * 100,000 gas, without running it or using it up.

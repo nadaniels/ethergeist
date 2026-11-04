@@ -15,9 +15,12 @@ import type {
 import type { MockContractEmit, MockContractEvents } from "../logs/events.js";
 import type { MockOutcome } from "../mocking/outcomes.js";
 import type {
+  CallErrorName,
+  EstimateErrorName,
   MockEstimateAnswers,
   MockFault,
   MockNodeFault,
+  SendErrorName,
   WithLimits,
 } from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";
@@ -31,7 +34,9 @@ import type {
 type ReadMutability = "pure" | "view";
 type WriteMutability = "nonpayable" | "payable";
 /** What a namespace's mocks can fail with: a node refuses only transactions by name. */
-type FaultOf<mutability> = [mutability] extends [ReadMutability] ? MockFault : MockNodeFault;
+type FaultOf<mutability> = [mutability] extends [ReadMutability]
+  ? MockFault
+  : MockNodeFault<CallErrorName>;
 
 /** Where a call came from when it arrived inside a Multicall3 `aggregate3`. */
 export type MockBatch = {
@@ -167,7 +172,7 @@ export type MockContractFunction<
 
 /** How a contract's estimate answers: with gas, `.reverts()`, or `.fails()`. */
 export type MockContractEstimateAnswers<abi extends Abi, args> = MockEstimateAnswers<
-  ResolverContext<abi, args, MockNodeFault>
+  ResolverContext<abi, args, MockNodeFault<EstimateErrorName>>
 > & {
   /** Revert every matching estimate, as `simulate` reverts. See `RevertSpec` for the forms. */
   reverts<errorName extends ContractErrorName<abi> = ContractErrorName<abi>>(
@@ -201,7 +206,7 @@ export type MockEstimateGasFunction<
 export type MockWriteResolverContext<abi extends Abi, args> = ResolverContext<
   abi,
   args,
-  MockNodeFault
+  MockNodeFault<SendErrorName>
 > &
   MockWriteContext & {
     from: Address;
@@ -389,7 +394,7 @@ export type MockContractDefaults<abi extends Abi> = {
           context: ResolverContext<
             abi,
             ContractFunctionArgs<abi, WriteMutability, functionName>,
-            MockNodeFault
+            MockNodeFault<EstimateErrorName>
           >,
         ) => bigint | Promise<bigint>);
   };

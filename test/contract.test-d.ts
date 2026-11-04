@@ -3,6 +3,7 @@ import { describe, expectTypeOf, test } from "vite-plus/test";
 
 import {
   type MockBatch,
+  type MockContractDefaults,
   type MockNamespace,
   type MockRpc,
   createMockRpc,
@@ -13,6 +14,9 @@ const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
 const mock = createMockRpc();
 const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+/** Registers a token with `defaults`, for what defaults take. */
+const defaultsOf = (defaults: MockContractDefaults<typeof erc20Abi>) =>
+  createMockRpc().contract({ abi: erc20Abi, address: USDC, defaults });
 
 describe("async resolvers", () => {
   test("a resolver may return a promise of the right type", () => {
@@ -208,8 +212,14 @@ describe("faults", () => {
     usdc.read.decimals().fails("insufficientFunds");
     // @ts-expect-error nor in a resolver
     usdc.read.decimals().returns(({ fail }) => fail("insufficientFunds"));
-    // @ts-expect-error not a node error
+    usdc.simulate.transfer().fails("gasExceedsAllowance");
+    usdc.simulate.transfer().returns(({ fail }) => fail("intrinsicGasTooLow"));
+    // @ts-expect-error a call doesn't check the nonce
     usdc.simulate.transfer().fails("nonceTooLow");
+    // @ts-expect-error nor in a default
+    defaultsOf({ simulate: { transfer: ({ fail }) => fail("alreadyKnown") } });
+    // @ts-expect-error a read takes no gas from viem
+    usdc.read.decimals().fails("gasExceedsAllowance");
   });
 
   test("fail() in a resolver returns never", () => {
@@ -289,6 +299,15 @@ describe("estimateGas", () => {
     token.estimateGas.transfer(["0x1"]);
     // @ts-expect-error not an error on the ABI
     token.estimateGas.transfer().reverts({ errorName: "Nope" });
+    token.estimateGas.transfer().fails("gasExceedsAllowance");
+    // @ts-expect-error an estimate doesn't check the nonce
+    token.estimateGas.transfer().fails("nonceTooHigh");
+    // @ts-expect-error nor in a resolver
+    token.estimateGas.transfer().returns(({ fail }) => fail("nonceTooLow"));
+    // @ts-expect-error an estimate reports too little gas as exceeding the allowance
+    token.estimateGas.transfer().returns(({ fail }) => fail("intrinsicGasTooLow"));
+    // @ts-expect-error nor in a default
+    defaultsOf({ estimateGas: { transfer: ({ fail }) => fail("alreadyKnown") } });
     // @ts-expect-error viem estimates only writes
     token.estimateGas.balanceOf; // oxlint-disable-line typescript/no-unused-expressions -- a type test
   });
@@ -327,6 +346,16 @@ describe("write", () => {
     token.write.transfer().returns({ blockNumber: 1n });
     // @ts-expect-error not an error on the ABI
     token.write.transfer().reverts({ errorName: "Nope" });
+    token.write.transfer().fails("nonceTooLow");
+    token.write.transfer().fails("alreadyKnown");
+    token.write.transfer().returns(({ fail }) => fail("nonceTooHigh"));
+    token.write.transfer().returns(({ fail }) => fail("intrinsicGasTooLow"));
+    // @ts-expect-error a send with too little gas is mined, and runs out
+    token.write.transfer().fails("gasExceedsAllowance");
+    // @ts-expect-error nor in a resolver
+    token.write.transfer().returns(({ fail }) => fail("gasExceedsAllowance"));
+    // @ts-expect-error nor in a default
+    defaultsOf({ write: { transfer: ({ fail }) => fail("gasExceedsAllowance") } });
     // @ts-expect-error only writes are sent
     token.write.balanceOf; // oxlint-disable-line typescript/no-unused-expressions -- a type test
     createMockRpc().contract({

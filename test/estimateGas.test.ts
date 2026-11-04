@@ -1,9 +1,11 @@
 import {
   ContractFunctionRevertedError,
   EstimateGasExecutionError,
+  ExecutionRevertedError,
   HttpRequestError,
   FeeCapTooLowError,
   InsufficientFundsError,
+  IntrinsicGasTooLowError,
   InvalidAddressError,
   RpcRequestError,
   TipAboveFeeCapError,
@@ -267,6 +269,30 @@ describe("named node errors", () => {
     });
   });
 
+  test("gasExceedsAllowance names the request's gas, or the node's cap; viem takes it for a revert", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas().fails("gasExceedsAllowance");
+
+    // viem never sends `gas` with an estimate: the app's own request does.
+    const capped = await rejectionOf(
+      client.request({
+        method: "eth_estimateGas",
+        params: [{ from: alice, to: bob, gas: "0x7530" }],
+      }),
+    );
+    const uncapped = await refusal(mock, client.estimateGas({ account: alice, to: bob }));
+
+    expect(capped).toMatchObject({
+      code: -32000,
+      details: "gas required exceeds allowance (30000)",
+    });
+    expectCause(uncapped, ExecutionRevertedError);
+    expect(expectCause(uncapped, RpcRequestError)).toMatchObject({
+      code: -32000,
+      details: "gas required exceeds allowance (50000000)",
+    });
+  });
+
   test("history shows the name", async () => {
     const { mock, client } = setup();
     mock.actions.estimateGas().fails("insufficientFunds");
@@ -295,6 +321,32 @@ describe("named node errors", () => {
     );
 
     expectCause(error, InsufficientFundsError);
+    expect(mock.unhandled).toEqual([]);
+  });
+
+  test("simulate mocks take a gas cap's refusals: too little to run, or below the base cost", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
+    usdc.simulate.transfer([bob, 1n]).fails("gasExceedsAllowance");
+    usdc.simulate.transfer([bob, 2n]).returns(({ fail }) => fail("intrinsicGasTooLow"));
+    const simulate = (amount: bigint) =>
+      client.simulateContract({
+        abi: erc20Abi,
+        address: usdc.address,
+        functionName: "transfer",
+        args: [bob, amount],
+        account: alice,
+        gas: 25_000n,
+      });
+
+    const exceeds = await rejectionOf(simulate(1n));
+    const intrinsic = await rejectionOf(simulate(2n));
+
+    expectCause(exceeds, ExecutionRevertedError);
+    expect(expectCause(exceeds, RpcRequestError).details).toBe(
+      "gas required exceeds allowance (25000)",
+    );
+    expectCause(intrinsic, IntrinsicGasTooLowError);
     expect(mock.unhandled).toEqual([]);
   });
 });
@@ -375,10 +427,12 @@ describe("contract estimates", () => {
 
   test("named node errors and faults fail the estimate", async () => {
     const { mock, token, transfer, mint } = tokenSetup();
-    token.estimateGas.mint().fails("insufficientFunds");
+    token.estimateGas.mint([1n]).fails("insufficientFunds");
+    token.estimateGas.mint([2n]).returns(({ fail }) => fail("gasExceedsAllowance"));
     token.estimateGas.transfer().returns(({ fail }) => fail({ status: 503 }));
 
     expectCause(await rejectionOf(mint(1n, 1n)), InsufficientFundsError);
+    expectCause(await rejectionOf(mint(2n)), ExecutionRevertedError);
     expect(expectCause(await rejectionOf(transfer()), HttpRequestError).status).toBe(503);
     expect(mock.unhandled).toEqual([]);
   });

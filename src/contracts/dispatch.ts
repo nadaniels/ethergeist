@@ -26,6 +26,8 @@ function callTransaction(given: unknown) {
     to: given.to === null ? undefined : field("to", isAddressValue, "an address"),
     from: field("from", isAddressValue, "an address"),
     value: optionalQuantity(given.value, "a quantity for `value`"),
+    // Checked only: a named error reads it from the params.
+    gas: optionalQuantity(given.gas, "a quantity for `gas`"),
     data: field("data", isHexValue, "hex data"),
     input: field("input", isHexValue, "hex data"),
   };

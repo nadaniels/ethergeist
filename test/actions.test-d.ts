@@ -217,8 +217,12 @@ describe("getLogs", () => {
     mock.actions.estimateGas().returns(zeroResult);
     // @ts-expect-error nor a default one
     mock.actions.estimateGas().once().returns();
-    // @ts-expect-error not a node error
+    mock.actions.estimateGas().fails("gasExceedsAllowance");
+    mock.actions.estimateGas().returns(({ fail }) => fail("gasExceedsAllowance"));
+    // @ts-expect-error an estimate doesn't check the nonce
     mock.actions.estimateGas().fails("nonceTooLow");
+    // @ts-expect-error an estimate reports too little gas as exceeding the allowance
+    mock.actions.estimateGas().returns(({ fail }) => fail("intrinsicGasTooLow"));
     // @ts-expect-error a node doesn't refuse a balance read by name
     mock.actions.getBalance().fails("insufficientFunds");
   });
@@ -236,8 +240,16 @@ describe("getLogs", () => {
       expectTypeOf(nonce).toEqualTypeOf<number | undefined>();
       expectTypeOf(type).toEqualTypeOf<"legacy" | "eip2930" | "eip1559" | "eip4844" | "eip7702">();
       if (nonce === 1) return fail("tipAboveFeeCap");
+      if (nonce === 2) return fail("nonceTooHigh");
       return { status: "reverted" };
     });
+    mock.actions.sendTransaction().fails("nonceTooLow");
+    mock.actions.sendTransaction().fails("alreadyKnown");
+    mock.actions.sendTransaction().once().fails("intrinsicGasTooLow");
+    // @ts-expect-error a send with too little gas is mined, and runs out
+    mock.actions.sendTransaction().fails("gasExceedsAllowance");
+    // @ts-expect-error nor in a resolver
+    mock.actions.sendTransaction().returns(({ fail }) => fail("gasExceedsAllowance"));
     // A resolver may return nothing, for a success.
     mock.actions.sendTransaction().returns(() => {});
     expectTypeOf(mock.actions.sendTransaction.calls).toEqualTypeOf<SendTransactionCall[]>();

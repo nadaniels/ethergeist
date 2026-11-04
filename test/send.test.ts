@@ -1,7 +1,10 @@
 import {
   ExecutionRevertedError,
   InsufficientFundsError,
+  IntrinsicGasTooLowError,
   InvalidParamsRpcError,
+  NonceTooHighError,
+  NonceTooLowError,
   RpcRequestError,
   createWalletClient,
   encodeFunctionData,
@@ -589,6 +592,36 @@ describe("a send that's refused changes nothing", () => {
     expect(mock.transactions).toEqual([]);
     expect(mock.blockNumber).toBe(10n);
   });
+
+  const poolRefusals = [
+    { name: "nonceTooLow", errorClass: NonceTooLowError, message: "nonce too low" },
+    { name: "nonceTooHigh", errorClass: NonceTooHighError, message: "nonce too high" },
+    { name: "alreadyKnown", errorClass: NonceTooLowError, message: "already known" },
+    {
+      name: "intrinsicGasTooLow",
+      errorClass: IntrinsicGasTooLowError,
+      message: "intrinsic gas too low",
+    },
+  ] as const;
+  test.each(
+    (["local", "node"] as const).flatMap((account) =>
+      poolRefusals.map(({ name, errorClass, message }) => ({ account, name, errorClass, message })),
+    ),
+  )(
+    "$name is geth's message, viem's $errorClass.name ($account account)",
+    async ({ account, name, errorClass, message }) => {
+      const { mock, client, wallet } = account === "local" ? localSetup() : nodeSetup();
+      mock.actions.sendTransaction().fails(name);
+
+      const error = await rejectionOf(wallet.sendTransaction({ to: bob }));
+
+      expectCause(error, errorClass);
+      expect(expectCause(error, RpcRequestError)).toMatchObject({ code: -32000, details: message });
+      expect(mock.transactions).toEqual([]);
+      expect(mock.blockNumber).toBe(10n);
+      expect(await client.getTransactionCount({ address: wallet.account.address })).toBe(0);
+    },
+  );
 
   test("a resolver's fail() or error", async () => {
     const { mock, wallet } = nodeSetup();

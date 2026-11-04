@@ -20,7 +20,6 @@ import {
   type MockContract,
   type MockFault,
   type MockTransaction,
-  type NodeErrorName,
   type RevertSpec,
   createMockRpc,
   testAddress,
@@ -516,7 +515,7 @@ function estimate(transport: Transport, fields: object) {
 }
 
 /** The error a mock answers an estimate with when it `.fails(name)`. */
-function mockedRefusal(name: NodeErrorName, fields: object) {
+function mockedRefusal(name: (typeof namedErrors)[number]["name"], fields: object) {
   const mock = createMockRpc();
   mock.actions.estimateGas().fails(name);
   return rejectionOf(estimate(mock.transport(noRetries), fields));

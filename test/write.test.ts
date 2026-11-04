@@ -2,6 +2,9 @@ import {
   type Address,
   ContractFunctionRevertedError,
   InsufficientFundsError,
+  IntrinsicGasTooLowError,
+  NonceTooHighError,
+  NonceTooLowError,
   createWalletClient,
   decodeFunctionResult,
   encodeFunctionData,
@@ -544,6 +547,33 @@ describe("reverts", () => {
 
       expect(mock.transactions).toEqual([]);
       expect(mock.blockNumber).toBe(10n);
+    },
+  );
+
+  const poolRefusals = [
+    { name: "nonceTooLow", errorClass: NonceTooLowError },
+    { name: "nonceTooHigh", errorClass: NonceTooHighError },
+    { name: "alreadyKnown", errorClass: NonceTooLowError },
+    { name: "intrinsicGasTooLow", errorClass: IntrinsicGasTooLowError },
+  ] as const;
+  test.each(
+    (["local", "node"] as const).flatMap((account) =>
+      poolRefusals.map(({ name, errorClass }) => ({ account, name, errorClass })),
+    ),
+  )(
+    "$name is the transaction pool's refusal, viem's $errorClass.name ($account account)",
+    async ({ account, name, errorClass }) => {
+      const { mock, client, usdc, from, transfer } = setup(account);
+      usdc.write.transfer([bob, 5n]).fails(name);
+      usdc.write.transfer([bob, 6n]).returns(({ fail }) => fail(name));
+
+      expectCause(await rejectionOf(transfer(5n)), errorClass);
+      expectCause(await rejectionOf(transfer(6n)), errorClass);
+
+      expect(mock.transactions).toEqual([]);
+      expect(mock.blockNumber).toBe(10n);
+      expect(await client.getTransactionCount({ address: from })).toBe(0);
+      expect(mock.unhandled).toEqual([]);
     },
   );
 

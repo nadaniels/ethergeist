@@ -138,8 +138,8 @@ features land; tick them off as pages get written.
     estimate and mines it reverted for any client. A resolver's
     `revert()` runs only at the send, so it's always mined reverted: for an
     estimate-time revert, add `estimateGas.fn(args).reverts(spec)`.
-    `.fails("insufficientFunds")` is the node refusing the send: nothing
-    goes on the chain.
+    `.fails("insufficientFunds")` (or `"nonceTooLow"`, and the other names
+    a send takes) is the node refusing the send: nothing goes on the chain.
   - `simulate` is separate: wagmi's simulate-then-write needs both
     registered, and the `eth_call` wagmi replays for a reverted receipt
     answers from `simulate`.
@@ -200,10 +200,31 @@ features land; tick them off as pages get written.
       reth, does.
 - [ ] A node's refusals by name, where a node refuses a transaction:
       `.fails("insufficientFunds" | "feeCapTooLow" | "tipAboveFeeCap")` (and
-      `fail(name)` in resolvers) on `estimateGas` mocks and `simulate` mocks.
-      Each sends reth's code and message, which is what viem names them by
-      (`InsufficientFundsError`, `FeeCapTooLowError`, `TipAboveFeeCapError`);
-      writing the text by hand gets you `UnknownNodeError` if it's off.
+      `fail(name)` in resolvers) on `estimateGas`, `simulate`, `write` and
+      `sendTransaction` mocks. Each sends reth's code and message, which is
+      what viem names them by (`InsufficientFundsError`, `FeeCapTooLowError`,
+      `TipAboveFeeCapError`); writing the text by hand gets you
+      `UnknownNodeError` if it's off. Each name is typed where a node says
+      it:
+  - On sends only (`write`, `mock.actions.sendTransaction`), as a node's
+    transaction pool refuses them: `"nonceTooLow"` and `"alreadyKnown"` (a
+    double submit), both viem's `NonceTooLowError`, which apps handle by
+    resyncing the nonce; `"nonceTooHigh"` (`NonceTooHighError`). An
+    estimate or a call doesn't check the nonce. A refused send changes
+    nothing: no transaction, no block, and its nonce isn't taken.
+  - `"intrinsicGasTooLow"` (`IntrinsicGasTooLowError`): a `gas` below the
+    transaction's base cost, on sends and `simulate`. An estimate reports
+    it as `"gasExceedsAllowance"`.
+  - `"gasExceedsAllowance"` (`ExecutionRevertedError`, viem's revert
+    class): the call needs more gas than the request's `gas` allows, on
+    `estimateGas` and `simulate`, saying `gas required exceeds allowance
+    (<gas>)`; without a `gas` (viem never sends one with an estimate), the
+    node's cap, 50,000,000. Not on sends: a send with too little gas is
+    mined and runs out, `.returns({ status: "reverted", gasUsed })`
+    with its gas limit.
+  - Replacement underpriced, underpriced and exceeds block gas limit stay
+    `.fails({ code: -32000, message })`: viem shows them as a generic
+    `InvalidInputRpcError`, so a name adds nothing.
   - `"insufficientFunds"` words it as reth does: `EVM error: OutOfFunds`
     for a request without fees, and `insufficient funds for gas * price +
     value: have 0 want <value>` for one with them (a local account's
@@ -215,8 +236,10 @@ features land; tick them off as pages get written.
     InsufficientFundsError)`, not the code or text: those are reth's, and
     other clients send other codes and wordings that viem names the same.
     Checked against captures (2026-10-31) from geth, an OP Stack geth fork
-    (Mantle), Arbitrum Nitro, Erigon and Nethermind: all three names give
-    the same viem class. Besu wasn't checked (no public endpoint ran it).
+    (Mantle), Arbitrum Nitro, Erigon and Nethermind: the first three names
+    give the same viem class. Besu wasn't checked (no public endpoint ran
+    it). The rest send geth's messages, which viem's patterns match; they
+    weren't captured.
   - Known difference: zkSync Era sends insufficient funds as code 3 (a
     revert, `data: "0x"`), so viem gives `ExecutionRevertedError` there, not
     `InsufficientFundsError`; and it doesn't check fee caps in estimates,

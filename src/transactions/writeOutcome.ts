@@ -3,7 +3,7 @@ import { type Address, getAddress } from "viem";
 import type { MockEventLog } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import type { Builder } from "../mocking/handlers.js";
-import type { MockNodeFault } from "../mocking/types.js";
+import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockRevertError, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
@@ -72,10 +72,10 @@ export type MockWriteAnswers<context, revertSpec> = {
   reverts(spec?: revertSpec): void;
   /**
    * The node refuses the send: nothing goes on the chain. A node's refusal
-   * by name, e.g. `"insufficientFunds"` (see `NodeErrorName`), or any
-   * `MockFault`.
+   * by name, e.g. `"insufficientFunds"` or `"nonceTooLow"` (see
+   * `NodeErrorName`), or any `MockFault`.
    */
-  fails(fault: MockNodeFault): void;
+  fails(fault: MockNodeFault<SendErrorName>): void;
 };
 
 const outcomeFields = new Set([
