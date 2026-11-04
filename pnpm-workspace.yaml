@@ -1,8 +1,8 @@
 catalog:
-  vite: npm:@voidzero-dev/vite-plus-core@1.4.0
-  vite-plus: 1.4.0
+  vite: npm:@voidzero-dev/vite-plus-core@1.5.0
+  vite-plus: 1.5.0
   # The one vite-plus bundles; Stryker's runner needs it as a direct dependency.
-  vitest: 5.0.5
+  vitest: 5.1.0
 overrides:
   vite@*: "catalog:"
 peerDependencyRules:
