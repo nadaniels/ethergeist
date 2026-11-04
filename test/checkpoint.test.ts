@@ -1,4 +1,4 @@
-import { HttpRequestError, createPublicClient, erc20Abi, getAddress } from "viem";
+import { BaseError, HttpRequestError, createPublicClient, erc20Abi, getAddress } from "viem";
 import { base } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vite-plus/test";
 
@@ -8,6 +8,7 @@ import {
   createMockRpc,
   testAddress,
   testHash,
+  testLog,
 } from "../src/index.js";
 import { expectCause, rejectionOf } from "./utils.js";
 
@@ -15,6 +16,32 @@ const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const NOWHERE = "0x000000000000000000000000000000000000dEaD";
 const alice = testAddress("alice");
+
+const layoutHint =
+  "The usual cause: an afterEach in a parent describe also runs after each test of a nested " +
+  "one, and one that restores or resets per test wipes the nested describe's setup. Keep the " +
+  "two describes siblings.";
+const removedTransaction =
+  "This transaction was on the chain until the last restore() or reset() removed it: " +
+  "a receipt wait from an earlier test may still be polling.";
+const removedFooter =
+  "Some name a contract or transaction the last restore() or reset() removed: a request " +
+  "from an earlier test, like a receipt wait, may still be running.";
+
+/** The `MockNotFoundError` a request rejects with. */
+const notFound = async (request: Promise<unknown>) =>
+  expectCause(await rejectionOf(request), MockNotFoundError);
+
+/** The mock's error `run` throws. */
+function thrownBy(run: () => void): BaseError {
+  try {
+    run();
+  } catch (error) {
+    if (error instanceof BaseError) return error;
+    throw error;
+  }
+  return expect.unreachable("expected it to throw");
+}
 
 function setup() {
   const mock = createMockRpc({ chain: base, blockNumber: 10n });
@@ -292,7 +319,7 @@ describe("restore() checks", () => {
     } catch (caught) {
       error = caught;
     }
-    expect(String(error)).toContain("4 mock(s) never answered a call");
+    expect(String(error)).toContain("4 mock(s) answered no call");
     expect(String(error)).toContain(`balanceOf(${DAI}) on ${USDC}`);
     expect(String(error)).toContain(`balanceOf(${getAddress(alice)}) on ${DAI}`);
     expect(String(error)).toContain(`getBalance({ address: ${getAddress(alice)} })`);
@@ -315,7 +342,7 @@ describe("restore() checks", () => {
     mock.contract({ abi: erc20Abi, address: DAI, defaults: { read: { decimals: 18 } } });
     expect(() => {
       baseline.restore({ assertAllUsed: true });
-    }).toThrow(`1 mock(s) never answered a call:\n  - balanceOf(*) on ${USDC}`);
+    }).toThrow(`1 mock(s) answered no call:\n  - balanceOf(*) on ${USDC}`);
   });
 
   test("a checkpoint after per-test setup exempts its fallbacks", async () => {
@@ -339,7 +366,7 @@ describe("restore() checks", () => {
 
     expect(() => {
       baseline.restore({ assertNoUnhandled: true, assertAllUsed: true });
-    }).toThrow(/couldn't answer 1 request[\s\S]*1 mock\(s\) never answered/u);
+    }).toThrow(/couldn't answer 1 request[\s\S]*1 mock\(s\) answered no call/u);
   });
 
   test("without options, restore() doesn't check", async () => {
@@ -373,12 +400,53 @@ describe("nesting", () => {
     const inner = mock.checkpoint();
 
     outer.restore();
-    expect(() => {
+    const error = thrownBy(() => {
       inner.restore();
-    }).toThrow("This checkpoint is no longer valid");
+    });
+    expect(error.shortMessage).toBe(
+      "This checkpoint is no longer valid: an earlier checkpoint was restored after it was taken.",
+    );
+    expect(error.metaMessages).toEqual([layoutHint]);
     expect(() => {
       outer.restore();
     }).not.toThrow();
+  });
+
+  test("an outer per-test restore around a nested describe's setup says what removed it", async () => {
+    const { mock, read } = setup();
+    // The hooks in the order vitest runs them: the parent's beforeAll, the
+    // nested describe's beforeAll, then after its first test the nested
+    // afterEach and the parent's.
+    const baseline = mock.checkpoint();
+    mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI, defaults: { read: { decimals: 18 } } });
+    const suite = mock.checkpoint();
+    expect(await read(DAI, "decimals")).toBe(18);
+    suite.restore();
+    baseline.restore();
+
+    // The nested describe's second test.
+    const error = await notFound(read(DAI, "decimals"));
+    expect(error.shortMessage).toBe(`No mocked contract at ${DAI}.`);
+    expect(error.metaMessages?.slice(-2)).toEqual([
+      "A contract was registered at this address until the last restore() or reset() removed it.",
+      "If this test is in a nested describe, an afterEach in a parent describe that restores per " +
+        "test wipes its setup; keep the two describes siblings.",
+    ]);
+  });
+
+  test("a contract the last restore didn't remove gets no such line", async () => {
+    const { mock, read } = setup();
+    const baseline = mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI });
+    baseline.restore();
+    baseline.restore();
+
+    const error = await notFound(read(DAI, "decimals"));
+    expect(error.metaMessages).toEqual([
+      "Call data: 0x313ce567",
+      "Register it with contract(), or mark it empty() for an address without code.",
+    ]);
   });
 
   test("reset() invalidates every checkpoint", () => {
@@ -386,9 +454,154 @@ describe("nesting", () => {
     const baseline = mock.checkpoint();
 
     mock.reset();
-    expect(() => {
+    const error = thrownBy(() => {
       baseline.restore();
-    }).toThrow("This checkpoint is no longer valid");
+    });
+    expect(error.shortMessage).toBe(
+      "This checkpoint is no longer valid: reset() was called after it was taken.",
+    );
+    expect(error.metaMessages).toEqual([layoutHint]);
+  });
+});
+
+describe("a transaction the last restore() or reset() removed", () => {
+  test("its receipt and transaction lookups still aren't answered, and say why", async () => {
+    const { mock, client } = setup();
+    const baseline = mock.checkpoint();
+    const { transactionHash: hash } = mock.emit(testLog("sent"));
+    baseline.restore();
+
+    const receipt = await notFound(client.getTransactionReceipt({ hash }));
+    expect(receipt.shortMessage).toBe(`No mock for getTransactionReceipt({ hash: ${hash} }).`);
+    expect(receipt.metaMessages).toEqual([
+      removedTransaction,
+      "Mock it with mock.actions.getTransactionReceipt({ hash }).returns(…).",
+    ]);
+    const transaction = await notFound(client.getTransaction({ hash }));
+    expect(transaction.metaMessages).toEqual([
+      removedTransaction,
+      "Mock it with mock.actions.getTransaction({ hash }).returns(…).",
+    ]);
+  });
+
+  test("after reset() too, in any case, ahead of the registered mocks", async () => {
+    const { mock, client } = setup();
+    const { transactionHash: hash } = mock.emit(testLog("sent"));
+    mock.reset();
+    mock.actions.getTransactionReceipt({ hash: testHash("other") }).returns({});
+
+    const error = await notFound(
+      client.getTransactionReceipt({ hash: `0x${hash.slice(2).toUpperCase()}` }),
+    );
+    expect(error.metaMessages?.slice(0, 2)).toEqual([removedTransaction, "Registered:"]);
+  });
+
+  test("the next restore replaces what the last one removed", async () => {
+    const { mock, client } = setup();
+    const baseline = mock.checkpoint();
+    const { transactionHash: hash } = mock.emit(testLog("sent"));
+    baseline.restore();
+    baseline.restore();
+
+    const error = await notFound(client.getTransactionReceipt({ hash }));
+    expect(error.metaMessages).toEqual([
+      "Mock it with mock.actions.getTransactionReceipt({ hash }).returns(…).",
+    ]);
+  });
+
+  test("a transaction the restore kept isn't one it removed", async () => {
+    const { mock, client } = setup();
+    const { transactionHash: kept } = mock.emit(testLog("kept"));
+    const baseline = mock.checkpoint();
+    mock.emit(testLog("sent"));
+    baseline.restore();
+
+    expect((await client.getTransactionReceipt({ hash: kept })).transactionHash).toBe(kept);
+    const error = await notFound(client.getTransactionReceipt({ hash: testHash("never") }));
+    expect(error.metaMessages).toHaveLength(1);
+  });
+
+  test("assertNoUnhandled, in restore() or on its own, ends saying so", async () => {
+    const { mock, client, read } = setup();
+    const baseline = mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI });
+    const { transactionHash: hash } = mock.emit(testLog("sent"));
+    baseline.restore();
+
+    // A receipt wait from the last test, still polling, and this test's own miss.
+    await rejectionOf(client.getTransactionReceipt({ hash }));
+    await rejectionOf(read(USDC, "decimals"));
+    expect(() => {
+      mock.assertNoUnhandled();
+    }).toThrow(
+      `The mock couldn't answer 2 request(s):\n  - No mock for getTransactionReceipt({ hash: ${hash} }).\n` +
+        `  - No mocked contract at ${USDC}.\n${removedFooter}`,
+    );
+    // And a read of a contract it removed, in this test's own restore.
+    mock.clearCalls();
+    await rejectionOf(read(DAI, "decimals"));
+    expect(() => {
+      baseline.restore({ assertNoUnhandled: true });
+    }).toThrow(`No mocked contract at ${DAI}.\n${removedFooter}`);
+  });
+
+  test("an estimate or a send to a contract it removed says so too", async () => {
+    const { mock, client } = setup();
+    const baseline = mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI });
+    baseline.restore();
+
+    // A write from the last test that lands after its restore.
+    const tx = { from: alice, to: DAI, data: "0x313ce567" } as const;
+    const estimate = await notFound(client.request({ method: "eth_estimateGas", params: [tx] }));
+    const send = await notFound(mock.request({ method: "eth_sendTransaction", params: [tx] }));
+    const removedContract =
+      "A contract was registered at this address until the last restore() or reset() removed it.";
+    expect(estimate.metaMessages?.[0]).toBe(removedContract);
+    expect(send.metaMessages?.[0]).toBe(removedContract);
+    expect(
+      thrownBy(() => {
+        mock.assertNoUnhandled();
+      }).message,
+    ).toContain(removedFooter);
+  });
+
+  test("nor for a contract or transaction that's back since", async () => {
+    const { mock, client, read } = setup();
+    const baseline = mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI });
+    const { transactionHash: hash } = mock.emit(testLog("sent"));
+    baseline.restore();
+
+    // The next test registers and sends the same again, then misses for real.
+    mock.contract({ abi: erc20Abi, address: DAI });
+    mock.emit(testLog("sent"), { transactionHash: hash });
+    expect((await client.getTransactionReceipt({ hash })).transactionHash).toBe(hash);
+    await rejectionOf(read(DAI, "decimals"));
+    await rejectionOf(client.getTransactionReceipt({ hash: testHash("other") }));
+    expect(
+      thrownBy(() => {
+        mock.assertNoUnhandled();
+      }).shortMessage,
+    ).not.toContain("restore()");
+    expect(mock.unhandled).toHaveLength(2);
+  });
+
+  test("assertNoUnhandled doesn't say so for requests that name nothing removed", async () => {
+    const { mock, read } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC });
+    const baseline = mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI });
+    mock.emit(testLog("sent"));
+    baseline.restore();
+
+    // A contract the restore kept.
+    await rejectionOf(read(USDC, "decimals"));
+    expect(
+      thrownBy(() => {
+        mock.assertNoUnhandled();
+      }).shortMessage,
+    ).toBe(`The mock couldn't answer 1 request(s):\n  - No mock for decimals() on ${USDC}.`);
   });
 });
 

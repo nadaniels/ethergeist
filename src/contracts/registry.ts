@@ -19,6 +19,8 @@ const earlierTest =
 export function createRegistry({ multicallAddress }: { multicallAddress: Address | undefined }) {
   const contracts: InternalMockContract<any>[] = [];
   const emptyAddresses = new Set<Address>();
+  /** Contracts the last `restore()` or `reset()` removed, for hints. */
+  let removed = new Set<Address>();
 
   const contractAt = (address: Address) => contracts.find((contract) => contract.matches(address));
 
@@ -61,6 +63,8 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
       for (const contract of contracts) contract.clearCalls();
     },
     unusedMocks: () => contracts.flatMap((contract) => contract.unusedMocks()),
+    /** Whether the last `restore()` or `reset()` removed a contract at `address`, checksummed. */
+    removedByLastRestore: (address: Address) => removed.has(address),
     /**
      * Saves the contracts, their mocks, and the empty addresses. `restore()`
      * removes contracts registered since, which then throw if used.
@@ -71,6 +75,7 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
       const savedEmpty = new Set(emptyAddresses);
       return {
         restore() {
+          removed = new Set(contracts.slice(count).map(({ contract }) => contract.address));
           for (const contract of contracts.slice(count)) contract.detach();
           contracts.length = count;
           for (const each of saved) each.restore();

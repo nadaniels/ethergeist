@@ -4,7 +4,12 @@ import { optionalQuantity } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
 import { formatValue } from "../mocking/format.js";
 import { errorOutcome } from "../mocking/outcomes.js";
-import { MockNotFoundError, invalidParams } from "../shared/errors.js";
+import {
+  MockNotFoundError,
+  invalidParams,
+  removedContractLayoutHint,
+  removedContractNote,
+} from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { resolveMulticall } from "./multicall.js";
 import type { Registry } from "./registry.js";
@@ -86,6 +91,9 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
       metaMessages: [
         `Call data: ${data}`,
         "Register it with contract(), or mark it empty() for an address without code.",
+        ...(registry.removedByLastRestore(target)
+          ? [removedContractNote, removedContractLayoutHint]
+          : []),
       ],
     });
     report.call({ ...unknown, outcome: errorOutcome(error) }, context);

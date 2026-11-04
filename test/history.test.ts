@@ -452,7 +452,7 @@ describe("historyOnFailure", () => {
       }),
     ).toBe(
       [
-        "1 mock(s) never answered a call:",
+        "1 mock(s) answered no call:",
         `  - symbol(*) on USDC (${USDC})`,
         "    received no calls to symbol",
         "",

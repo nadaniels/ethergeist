@@ -425,7 +425,7 @@ describe("pins in assertAllUsed()", () => {
       mock.assertAllUsed();
     }).toThrow(
       [
-        "3 mock(s) never answered a call:",
+        "3 mock(s) answered no call:",
         `  - balanceOf(${bob}) { from: ${alice} } on USDC (${USDC})`,
         "    received 1 call to balanceOf:",
         `      balanceOf(…) { from: ${carol} }  ← { from } didn't match`,

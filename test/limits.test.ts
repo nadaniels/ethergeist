@@ -291,7 +291,7 @@ describe("counts and lifecycle", () => {
     } catch (caught) {
       error = caught;
     }
-    expect(String(error)).toContain("1 mock(s) never answered a call");
+    expect(String(error)).toContain("1 mock(s) answered no call");
     expect(String(error)).toContain(`allowance(*) once on USDC (${USDC})`);
   });
 

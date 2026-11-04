@@ -133,7 +133,12 @@ const paramName = (key: PinnedKey) =>
   key === null ? "params" : typeof key === "number" ? `param ${key + 1}` : key;
 
 /** A table answering `definition`'s action; its calls are kept to `recordLimit`. */
-export function createTable(definition: Definition, recordLimit: RecordLimit) {
+export function createTable(
+  definition: Definition,
+  recordLimit: RecordLimit,
+  /** A first line for the error when nothing answers `call`, where the call says why. */
+  notFoundNote?: (call: object) => string | undefined,
+) {
   const mocks = createHandlers<ActionContext<object>, unknown>();
   const calls = createRecordList<object>(recordLimit);
   const actualOf = (pinned: unknown, call: object) =>
@@ -235,11 +240,14 @@ export function createTable(definition: Definition, recordLimit: RecordLimit) {
         const reason = formatMissReason(key === undefined ? undefined : paramName(key));
         return `  ${describeMock(definition.name, mock)}${reason}`;
       });
+      const note = notFoundNote?.(call);
       throw new MockNotFoundError(`No mock for ${formatCall(definition.name, call)}.`, {
-        metaMessages:
-          registered.length > 0
+        metaMessages: [
+          ...(note === undefined ? [] : [note]),
+          ...(registered.length > 0
             ? ["Registered:", ...registered]
-            : [`Mock it with ${definition.hintFor?.(call) ?? definition.hint}.`],
+            : [`Mock it with ${definition.hintFor?.(call) ?? definition.hint}.`]),
+        ],
       });
     }
 

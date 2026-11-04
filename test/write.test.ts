@@ -1087,7 +1087,7 @@ describe("writes in history", () => {
       mock.assertAllUsed();
     }).toThrow(
       [
-        "1 mock(s) never answered a call:",
+        "1 mock(s) answered no call:",
         `  - transfer(${bob}, 6n) on USDC (${USDC})`,
         "    received 1 call to transfer:",
         "      transfer(…, 5n)  ← amount didn't match",

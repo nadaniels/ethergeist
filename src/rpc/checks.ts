@@ -1,13 +1,34 @@
 import { type FormatContext, formatRecent } from "../history/format.js";
 import type { Recorder } from "../history/recorder.js";
 import type { UnhandledRequest } from "../history/types.js";
-import { MockCheckError, MockSetupError } from "../shared/errors.js";
+import {
+  MockCheckError,
+  MockSetupError,
+  nestedRestoreHint,
+  removedContractNote,
+  removedTransactionNote,
+} from "../shared/errors.js";
 import type { RecordList } from "../shared/records.js";
 import type { Checkpoints } from "./checkpoints.js";
-/** `assertNoUnhandled()`'s message, if any request went unanswered. */
+
+/**
+ * `assertNoUnhandled()`'s message, if any request went unanswered; it ends
+ * with a line when one missed what the last restore removed, which a request
+ * from an earlier test still asks for.
+ */
 function unhandledFailure(unhandled: RecordList<UnhandledRequest>): string[] {
   if (unhandled.total === 0) return [];
-  return [`The mock couldn't answer ${countOf(unhandled)}:\n${unhandledLines(unhandled)}`];
+  const removed = unhandled.kept.some(({ error }) =>
+    (error.metaMessages ?? []).some(
+      (line) => line === removedContractNote || line === removedTransactionNote,
+    ),
+  )
+    ? "\nSome name a contract or transaction the last restore() or reset() removed: a " +
+      "request from an earlier test, like a receipt wait, may still be running."
+    : "";
+  return [
+    `The mock couldn't answer ${countOf(unhandled)}:\n${unhandledLines(unhandled)}${removed}`,
+  ];
 }
 
 /** How many requests went unanswered, and how many of them are listed if not all. */
@@ -20,11 +41,11 @@ function countOf(unhandled: RecordList<UnhandledRequest>): string {
 const unhandledLines = (unhandled: RecordList<UnhandledRequest>) =>
   unhandled.kept.map(({ error }) => `  - ${error.shortMessage}`).join("\n");
 
-/** `assertAllUsed()`'s message, if any mock never answered. */
+/** `assertAllUsed()`'s message, if any mock answered no call since the last clear. */
 function unusedFailure(list: readonly string[]): string[] {
   if (list.length === 0) return [];
   const lines = list.map((mock) => `  - ${mock}`);
-  return [`${list.length} mock(s) never answered a call:\n${lines.join("\n")}`];
+  return [`${list.length} mock(s) answered no call:\n${lines.join("\n")}`];
 }
 
 /**
@@ -89,11 +110,18 @@ export function createChecks({
     const saved = checkpoints.addCheckpoint();
 
     function restore(options: MockRestoreOptions = {}) {
-      if (!saved.valid)
+      if (saved.invalidatedBy) {
+        const cause =
+          saved.invalidatedBy === "reset"
+            ? "reset() was called"
+            : "an earlier checkpoint was restored";
         throw new MockSetupError(
-          "This checkpoint is no longer valid: an earlier checkpoint was restored, " +
-            "or reset() was called, after it was taken.",
+          `This checkpoint is no longer valid: ${cause} after it was taken.`,
+          {
+            metaMessages: [nestedRestoreHint],
+          },
         );
+      }
       // Checked first, because restoring clears what they look at; thrown
       // last, so a failed check can't leave the next test unrestored.
       const failures = [

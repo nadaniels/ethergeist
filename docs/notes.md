@@ -681,7 +681,9 @@ features land; tick them off as pages get written.
       a write mock that matches the send implies its estimate, so the miss
       is usually there. An estimate without `from` is no send's, so it
       lists none.
-- [ ] How to read "never answered a call": under each unused mock, the calls
+- [ ] How to read "answered no call": usage counts from the last clear
+      (`clearCalls()`, `restore()`, `reset()`), so a `.times(n)` mock that
+      answered before it can read "3 times, 2 left". Under each unused mock, the calls
       its function received (up to 3, then a count) and the first arg, field
       or param that didn't match, by its ABI name; "matches; another mock
       answered it" for a shadowed mock; "received no calls" when the app never
@@ -815,6 +817,15 @@ features land; tick them off as pages get written.
       over. Use `checkpoint()` and `restore()` for that.
 - [ ] Nesting:
   - checkpoints form a stack, and `reset()` invalidates all of them;
+  - restoring an invalid checkpoint throws, saying whether an earlier
+    checkpoint's restore or `reset()` invalidated it, with the usual cause:
+    a parent describe's per-test restore;
+  - the mock remembers what the last `restore()` or `reset()` removed
+    (contracts and transactions; the next one replaces it). "No mocked
+    contract at …" for an address it removed says so, with the layout as
+    a condition ("If this test is in a nested describe, …"), since a flat
+    file that forgot to register it gets the same error: in the nested
+    layout, that's the nested describe's second test;
   - restore at one level only per test, so describes that restore an outer
     checkpoint per test are siblings of describes with their own setup, not
     parents of them;
@@ -844,7 +855,13 @@ features land; tick them off as pages get written.
       requests go unanswered in the next test, whose `restore({
       assertNoUnhandled: true })` then fails on a `getTransactionReceipt`
       for a hash it never sent. Await the wait (or whatever the app exposes
-      to settle), stop the watcher, or pass the wait a `timeout`.
+      to settle), stop the watcher, or pass the wait a `timeout`. The
+      not-found errors for a hash the last restore removed say so (as do
+      a call, estimate or send to a contract it removed), and
+      `assertNoUnhandled` (on its own or in `restore()`) ends with a line
+      when a request it lists got one of these hints (this one, or the
+      removed-contract one), so exactly what they cover: a request missing
+      what the last restore removed and that isn't back.
 - [ ] A hash the chain doesn't know isn't an instant failure either: viem's
       receipt wait retries it the same way, so under Vitest's 5 s default
       the test times out before viem rejects. `mock.unhandled` (or history

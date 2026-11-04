@@ -50,6 +50,26 @@ export class MockCheckError extends MockError {
   readonly code = -32096;
 }
 
+/** The usual cause of setup a restore removed under a test: for metaMessages. */
+export const nestedRestoreHint =
+  "The usual cause: an afterEach in a parent describe also runs after each test of a nested " +
+  "one, and one that restores or resets per test wipes the nested describe's setup. Keep the " +
+  "two describes siblings.";
+
+/**
+ * Not-found hints for what the last `restore()` or `reset()` removed; the
+ * unhandled check looks for them, to say a request may be an earlier test's.
+ */
+export const removedContractNote =
+  "A contract was registered at this address until the last restore() or reset() removed it.";
+/** After `removedContractNote` on a call: the layout that often causes it, as a condition. */
+export const removedContractLayoutHint =
+  "If this test is in a nested describe, an afterEach in a parent describe that restores per " +
+  "test wipes its setup; keep the two describes siblings.";
+export const removedTransactionNote =
+  "This transaction was on the chain until the last restore() or reset() removed it: " +
+  "a receipt wait from an earlier test may still be polling.";
+
 /** For a builder whose mock a `restore()` or `reset()` removed. */
 export const removedMockError = () =>
   new MockSetupError("This mock was removed by restore() or reset(); register a new one.");

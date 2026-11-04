@@ -98,6 +98,8 @@ export function createTransactionStore({
 }) {
   /** In chain order: by block, and in a block by index. */
   let records: TransactionRecord[] = [];
+  /** Hashes the last `restore()` or `reset()` took off the chain, lowercase, for hints. */
+  let removed = new Set<string>();
 
   const find = (hash: Hash) =>
     records.find((record) => record.hash.toLowerCase() === hash.toLowerCase());
@@ -361,11 +363,17 @@ export function createTransactionStore({
     get logs(): EmittedLog[] {
       return allLogs();
     },
+    /** Whether the last `restore()` or `reset()` took the transaction with `hash` off the chain. */
+    removedByLastRestore: (hash: string) => removed.has(hash.toLowerCase()),
     /** Saves the records; `restore()` puts them back, removing later ones. */
     snapshot() {
       const saved = [...records];
       return {
         restore() {
+          const kept = new Set(saved);
+          removed = new Set(
+            records.filter((record) => !kept.has(record)).map(({ hash }) => hash.toLowerCase()),
+          );
           records = [...saved];
         },
       };

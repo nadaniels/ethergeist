@@ -270,7 +270,7 @@ describe("assertAllUsed()", () => {
     } catch (caught) {
       error = caught;
     }
-    expect(String(error)).toContain("2 mock(s) never answered a call");
+    expect(String(error)).toContain("2 mock(s) answered no call");
     expect(String(error)).toContain(`allowance(*) on ${USDC}`);
     expect(String(error)).toContain(`decimals(*) on ${USDC}`);
   });
@@ -386,7 +386,7 @@ describe("assertAllUsed(): what the function received instead", () => {
     });
     expect(unusedMessage(mock)).toBe(
       [
-        "1 mock(s) never answered a call:",
+        "1 mock(s) answered no call:",
         `  - allowance(${getAddress(alice)}, ${getAddress(bob)}) on USDC (${USDC})`,
         "    received 1 call to allowance:",
         `      allowance(…, ${DAI})  ← spender didn't match`,
