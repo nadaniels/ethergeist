@@ -22,7 +22,7 @@ export type MockHistoryEntry =
         call: ActionCalls[action] | undefined;
         /**
          * The registered contract's record of the call, when the contract had
-         * a turn at answering it: an estimate whose `to` is one.
+         * a turn at answering it: an estimate or a send whose `to` is one.
          */
         contract?: MockCallRecord;
       };

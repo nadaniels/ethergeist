@@ -338,6 +338,11 @@ export function createTransactionStore({
       const record = find(hash);
       return record === undefined ? undefined : minedAt(record);
     },
+    /** The record for `hash` once its block is mined; `undefined` until then, or for a hash not on the chain. */
+    minedRecord: (hash: Hash) => {
+      const record = find(hash);
+      return record !== undefined && minedAt(record) !== undefined ? record : undefined;
+    },
     /** The transaction for `hash` in its JSON-RPC form, or `undefined` for a hash not on the chain. */
     transactionFor(hash: Hash) {
       const record = find(hash);

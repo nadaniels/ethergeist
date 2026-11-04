@@ -632,7 +632,11 @@ features land; tick them off as pages get written.
       matching found it, including the predicate that said no. A mock used
       up or without an answer says so, and still names an exact arg that
       differs (it wouldn't have matched either); its predicates aren't run
-      for the message.
+      for the message. An estimate of a contract's function that nothing
+      answers also lists the function's write mocks, with why each missed:
+      a write mock that matches the send implies its estimate, so the miss
+      is usually there. An estimate without `from` is no send's, so it
+      lists none.
 - [ ] How to read "never answered a call": under each unused mock, the calls
       its function received (up to 3, then a count) and the first arg, field
       or param that didn't match, by its ABI name; "matches; another mock
@@ -695,6 +699,20 @@ features land; tick them off as pages get written.
 - [ ] What history shows: `(retry)` after a fault, named outputs by name
       (the value stays the tuple viem returns), `(no outputs)`, and
       `namespace` and `abiItem` on each contract call record.
+- [ ] Writes in history: a contract's function is labeled by the namespace
+      it's recorded in (a send of it is `write`, whichever mock answered),
+      so a local account's write reads `estimateGas USDC.transfer(…) → 100000n`, then
+      `write USDC.transfer(…) → 0xa4a9…c417 (mined in block 11n, 1 log)`.
+      A send's outcome is the request's, its hash, even when it was mined
+      reverted: `(mined in block 12n, reverted)`. The mined state is looked
+      up on the chain as the line is formatted, never copied into the entry.
+      A refused send (`.fails()`, not mocked) shows its refusal and placed
+      nothing. An implied estimate is an `estimateGas` call, recorded by what
+      was asked; `assertAllUsed()` counts a write mock used by its send, not
+      by the estimate it implied. Show the whole sequence of a viem local
+      account's write (`eth_fillTransaction` refused, nonce, block, tip,
+      estimate, send) as the example: it explains requests the app didn't
+      write itself.
 - [ ] `historyLimit` (default 1,000 per list, `Infinity` for no limit):
       every record (`history`, `requests`, `calls`, `unhandled`, each
       action's and function's `.calls`) keeps its last N; each function and
@@ -711,8 +729,10 @@ features land; tick them off as pages get written.
       entries, not bytes. Why 1,000 and not more: it keeps multicall demos
       small, while `restore()` after each test clears the records, so a
       single test rarely reaches it; one that does gets the warning, and
-      `Infinity` keeps everything. Not records: registered mocks and
-      `mock.logs`, which grow only as code adds to them.
+      `Infinity` keeps everything. Not records: registered mocks,
+      `mock.logs` and `mock.transactions`, which grow only as code adds to
+      them: `clearCalls()` keeps them, and a send dropped from history is
+      still on the chain.
 
 ## 8. Sharing setup across tests: `checkpoint()` and `restore()`
 

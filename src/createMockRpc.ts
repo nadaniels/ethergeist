@@ -35,13 +35,15 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
   const faults = createFaults();
 
   const actions = createActions({ state, registry, transactions }, recordLimit);
-  // History names a getLogs filter's events with the registered contracts' ABIs.
+  // History names a getLogs filter's events with the registered contracts' ABIs,
+  // and shows where a send's transaction is.
   const formatContext: FormatContext = {
     describeLogs: (call) =>
       describeLogsCall(
         call,
         registry.contracts.map(({ contract }) => contract),
       ),
+    minedTransaction: transactions.minedRecord,
   };
   const recorder = createRecorder({
     multicallAddress: state.multicallAddress,

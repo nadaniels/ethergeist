@@ -22,6 +22,7 @@ import {
   MockResolverError,
   MockSetupError,
   createMockRpc,
+  match,
   testAddress,
   testLog,
 } from "../src/index.js";
@@ -422,12 +423,96 @@ describe("the estimate a write mock implies", () => {
     await transfer();
     const error = await rejectionOf(transfer());
 
-    // The estimate finds no mock, so nothing is sent.
+    // The estimate finds no mock, so nothing is sent; its hint names the used-up write mock.
     const notFound = expectCause(error, MockNotFoundError);
     expect(notFound.shortMessage).toMatch(/^No estimateGas mock for transfer/u);
     expect(hintsOf(notFound)).toBe(
-      `No estimateGas mocks registered for "transfer"; a write mock that matches the send ` +
-        "implies one, and a simulate mock doesn't answer estimates.",
+      "Write mocks, which imply the estimate of a send they match:\n  transfer(*) once, used up",
+    );
+  });
+
+  test("an estimate no mock answers names the write mocks that missed, and why", async () => {
+    const { usdc, transfer } = setup();
+    usdc.write.transfer([bob, 5n]).returns();
+    usdc.write.transfer([bob, 6n]).returns({ status: "reverted" });
+
+    const notFound = expectCause(await rejectionOf(transfer(7n)), MockNotFoundError);
+
+    expect(notFound.shortMessage).toBe(
+      `No estimateGas mock for transfer(${bob}, 7n) on USDC (${USDC}).`,
+    );
+    expect(hintsOf(notFound)).toBe(
+      [
+        "Write mocks, which imply the estimate of a send they match:",
+        `  transfer(${bob}, 5n)  ← amount didn't match`,
+        `  transfer(${bob}, 6n)  ← amount didn't match`,
+      ].join("\n"),
+    );
+  });
+
+  test("a send's miss lists its write mocks once, as Registered", async () => {
+    const { usdc, transfer } = setup("node");
+    usdc.write.transfer([bob, 5n]).returns();
+
+    const notFound = expectCause(await rejectionOf(transfer(7n)), MockNotFoundError);
+
+    expect(notFound.shortMessage).toBe(`No write mock for transfer(${bob}, 7n) on USDC (${USDC}).`);
+    expect(hintsOf(notFound)).toBe(`Registered:\n  transfer(${bob}, 5n)  ← amount didn't match`);
+  });
+
+  test("an estimate's miss lists its estimateGas mocks, then its write mocks", async () => {
+    const { usdc, transfer } = setup();
+    usdc.estimateGas.transfer([alice, 7n]).returns(50_000n);
+    usdc.write.transfer([bob, 5n]).returns();
+
+    const notFound = expectCause(await rejectionOf(transfer(7n)), MockNotFoundError);
+
+    expect(hintsOf(notFound)).toBe(
+      [
+        "Registered:",
+        `  transfer(${alice}, 7n)  ← recipient didn't match`,
+        "Write mocks, which imply the estimate of a send they match:",
+        `  transfer(${bob}, 5n)  ← amount didn't match`,
+      ].join("\n"),
+    );
+  });
+
+  test("an estimate without from is no send's: its miss runs no write mock's predicates", async () => {
+    const { mock, usdc } = setup();
+    const small = vi.fn((amount: bigint) => {
+      if (amount > 100n) throw new Error("too large");
+      return true;
+    });
+    usdc.write.transfer([bob, match.where(small)]).returns();
+    const data = encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [bob, 500n] });
+
+    const error = await rejectionOf(
+      mock.request({ method: "eth_estimateGas", params: [{ to: USDC, data }] }),
+    );
+
+    // The write mocks were never in contention, so they aren't matched for the message.
+    expect(small).not.toHaveBeenCalled();
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
+      'No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn\'t answer estimates.',
+    );
+  });
+
+  test("an estimate's miss lists only its own overload's write mocks", async () => {
+    const { mock, wallet } = setup();
+    const vault = mock.contract({ abi: vaultAbi, address: VAULT, name: "Vault" });
+    vault.write.withdraw([5n]).returns();
+
+    const error = await rejectionOf(
+      wallet.writeContract({
+        address: VAULT,
+        abi: vaultAbi,
+        functionName: "withdraw",
+        args: [5n, bob],
+      }),
+    );
+
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
+      'No estimateGas mocks registered for "withdraw"; a write mock that matches the send implies one, and a simulate mock doesn\'t answer estimates.',
     );
   });
 });
@@ -909,5 +994,112 @@ describe("state the test owns (controlled mocks)", () => {
     expect(await client.getBalance({ address: sender })).toBe(7n);
     expect(await client.getBalance({ address: VAULT })).toBe(3n);
     expect(await client.getBalance({ address: bob })).toBe(0n);
+  });
+});
+
+describe("writes in history", () => {
+  test("a local account's whole write: fill refused, nonce, block, tip, estimate, send", async () => {
+    const { mock, usdc, transfer } = setup();
+    usdc.write
+      .transfer([bob, 5n])
+      .emits([usdc.events.Transfer({ from: signer.address, to: bob, value: 5n })]);
+
+    await transfer();
+
+    expect(mock.formatHistory()).toBe(
+      [
+        "#1 eth_fillTransaction({ data: 0xa905…0005, from: 0x6E12…6bd2, to: 0x99d9…bfC7 }) ✗ rpc error -32601: the method eth_fillTransaction does not exist/is not available",
+        "#2 eth_getTransactionCount getTransactionCount({ address: 0x6E12…6bd2, blockNumber: 10n, blockTag: pending }) → 0",
+        "#3 eth_getBlockByNumber getBlock({ blockNumber: 10n, blockTag: latest, includeTransactions: false }) → block 10n, timestamp 1700000000n",
+        "#4 eth_maxPriorityFeePerGas estimateMaxPriorityFeePerGas() → 1000000000n",
+        "#5 eth_estimateGas estimateGas USDC.transfer(0x4292…207f, 5n) → 100000n",
+        "#6 eth_sendRawTransaction write USDC.transfer(0x4292…207f, 5n) → 0xa4a9…c417 (mined in block 11n, 1 log)",
+      ].join("\n"),
+    );
+  });
+
+  test("a mined revert is a hash, mined reverted; a refused send is its refusal", async () => {
+    const { mock, usdc, transfer } = setup("node");
+    usdc.write.transfer([bob, 5n]).returns({ status: "reverted" });
+    usdc.write.transfer([bob, 6n]).reverts();
+    usdc.write.transfer([bob, 7n]).fails("nonceTooLow");
+    usdc.write.transfer([bob, 8n]).returns();
+
+    await transfer(5n);
+    await transfer(6n);
+    await rejectionOf(transfer(7n));
+    await transfer(8n);
+    await rejectionOf(transfer(9n));
+
+    expect(mock.formatHistory({ builtIns: false })).toBe(
+      [
+        "#2 eth_sendTransaction write USDC.transfer(0x4292…207f, 5n) → 0x0878…d725 (mined in block 11n, reverted)",
+        "#4 eth_sendTransaction write USDC.transfer(0x4292…207f, 6n) → 0xd6c0…f47e (mined in block 12n, reverted)",
+        "#6 eth_sendTransaction write USDC.transfer(0x4292…207f, 7n) ✗ fault: nonceTooLow",
+        // viem tries the wallet's method after a node's refusal.
+        "#7 wallet_sendTransaction({ data: 0xa905…0007, from: 0xa41f…2D9e, to: 0x99d9…bfC7 }) ✗ rpc error -32601: the method wallet_sendTransaction does not exist/is not available",
+        "#9 eth_sendTransaction write USDC.transfer(0x4292…207f, 8n) → 0x025c…b8e9 (mined in block 13n, 0 logs)",
+        "#11 eth_sendTransaction write USDC.transfer(0x4292…207f, 9n) ✗ not mocked",
+      ].join("\n"),
+    );
+  });
+
+  test("a send to no contract is its call, with where it was mined", async () => {
+    const { mock, wallet } = setup("node");
+
+    await wallet.sendTransaction({ to: bob, value: 1n });
+
+    expect(mock.formatHistory({ builtIns: false })).toBe(
+      "#2 eth_sendTransaction sendTransaction({ account: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, type: eip1559 }) → 0x0878…d725 (mined in block 11n, 0 logs)",
+    );
+  });
+
+  test("mock.transactions is state: past historyLimit and after clearCalls(), every send is kept", async () => {
+    const mock = createMockRpc({ blockNumber: 10n, historyLimit: 2 });
+    const wallet = createWalletClient({
+      account: alice,
+      chain: mock.chain,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+
+    await wallet.sendTransaction({ to: bob, value: 1n });
+    await wallet.sendTransaction({ to: bob, value: 2n });
+
+    expect(mock.formatHistory({ builtIns: false })).toBe(
+      [
+        "(2 older requests dropped, past historyLimit)",
+        "#4 eth_sendTransaction sendTransaction({ account: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, type: eip1559 }) → 0xd6c0…f47e (mined in block 12n, 0 logs)",
+      ].join("\n"),
+    );
+    mock.clearCalls();
+    expect(mock.history).toEqual([]);
+    expect(mock.transactions.map(({ fields }) => fields.value)).toEqual([1n, 2n]);
+  });
+
+  test("a failed check on a write test ends with the write's lines", async () => {
+    const { mock, usdc, transfer } = setup();
+    usdc.write.transfer([bob, 5n]).returns();
+    usdc.write.transfer([bob, 6n]).returns();
+
+    await transfer(5n);
+
+    expect(() => {
+      mock.assertAllUsed();
+    }).toThrow(
+      [
+        "1 mock(s) never answered a call:",
+        `  - transfer(${bob}, 6n) on USDC (${USDC})`,
+        "    received 1 call to transfer:",
+        "      transfer(…, 5n)  ← amount didn't match",
+        "",
+        "Requests so far:",
+        "#1 eth_fillTransaction({ data: 0xa905…0005, from: 0x6E12…6bd2, to: 0x99d9…bfC7 }) ✗ rpc error -32601: the method eth_fillTransaction does not exist/is not available",
+        "#2 eth_getTransactionCount getTransactionCount({ address: 0x6E12…6bd2, blockNumber: 10n, blockTag: pending }) → 0",
+        "#3 eth_getBlockByNumber getBlock({ blockNumber: 10n, blockTag: latest, includeTransactions: false }) → block 10n, timestamp 1700000000n",
+        "#4 eth_maxPriorityFeePerGas estimateMaxPriorityFeePerGas() → 1000000000n",
+        "#5 eth_estimateGas estimateGas USDC.transfer(0x4292…207f, 5n) → 100000n",
+        "#6 eth_sendRawTransaction write USDC.transfer(0x4292…207f, 5n) → 0xa4a9…c417 (mined in block 11n, 0 logs)",
+      ].join("\n"),
+    );
   });
 });

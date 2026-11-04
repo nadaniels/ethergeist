@@ -1,4 +1,4 @@
-import { type AbiFunction } from "viem";
+import { type AbiFunction, type Hash, isHex } from "viem";
 
 import type { MockCallRecord } from "../contracts/types.js";
 import type { LogsCall } from "../logs/filter.js";
@@ -12,6 +12,7 @@ import {
   summaryOf,
 } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
+import type { TransactionRecord } from "../transactions/store.js";
 import type { MockHistoryEntry } from "./types.js";
 
 export type FormatHistoryOptions = {
@@ -22,6 +23,8 @@ export type FormatHistoryOptions = {
 /** Internal: what formatting needs from the rpc, e.g. ABIs to name a filter's events. */
 export type FormatContext = {
   describeLogs?: (call: LogsCall) => string;
+  /** The transaction with `hash` once it's mined, to show where a send's went. */
+  minedTransaction?: (hash: Hash) => TransactionRecord | undefined;
 };
 
 /**
@@ -141,15 +144,34 @@ export function formatEntry(
   }
   if (entry.type === "action" && entry.action === "getLogs" && entry.call !== undefined)
     return `${head}${context.describeLogs?.(entry.call) ?? formatCall("getLogs", entry.call, { short: true })} ${formatOutcome(entry.outcome, entry.action)}`;
-  if (entry.type === "action" && entry.contract?.call)
-    return `${head}${entry.action} ${formatLabel(entry.contract)} ${formatOutcome(entry.outcome)}`;
-  if (entry.type === "action")
-    return `${head}${formatCall(entry.action, entry.call, { short: true })} ${formatOutcome(
-      entry.outcome,
-      entry.action,
-    )}`;
+  if (entry.type === "action") {
+    // A contract's function by the namespace it's answered in: `write USDC.transfer(…)`.
+    const what = entry.contract?.call
+      ? `${entry.contract.namespace ?? entry.action} ${formatLabel(entry.contract)}`
+      : formatCall(entry.action, entry.call, { short: true });
+    const mined = entry.action === "sendTransaction" ? minedNote(entry.outcome, context) : "";
+    return `${head}${what} ${formatOutcome(entry.outcome, entry.action)}${mined}`;
+  }
   // "method" and "builtIn": the raw method and params.
   return `${head.trimEnd()}${formatParams(entry.params)} ${formatOutcome(entry.outcome)}`;
+}
+
+/**
+ * After a send's hash, where its transaction was mined: ` (mined in block
+ * 11n, 1 log)` or ` (mined in block 11n, reverted)`. A send's transaction
+ * is mined as it's answered, and `restore()` and `reset()` clear history as
+ * they remove it, so every send in history has one.
+ */
+function minedNote(outcome: MockOutcome, { minedTransaction }: FormatContext): string {
+  const record =
+    outcome.type === "result" && isHex(outcome.value)
+      ? minedTransaction?.(outcome.value)
+      : undefined;
+  if (record === undefined) return "";
+  const block = `mined in block ${formatValue(record.position?.blockNumber)}`;
+  if (record.receipt.status === "reverted") return ` (${block}, reverted)`;
+  const logs = record.logs.length;
+  return ` (${block}, ${logs} ${logs === 1 ? "log" : "logs"})`;
 }
 
 /** A contract call as `USDC.transfer(…)`, or the contract alone when it didn't decode. */

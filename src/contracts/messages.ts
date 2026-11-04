@@ -23,23 +23,30 @@ type Mock = {
   resolver: unknown;
 };
 
+/** A namespace's mocks for a call's function, and the arg each one `missed` on. */
+type Candidates = { registered: readonly Mock[]; missed: ReadonlyMap<Mock, PinnedKey> };
+
 /**
- * The error for a call no mock answers, on the contract `label`: the mocks
- * `registered` for its function, each with the arg it `missed` on, or that
- * there are none.
+ * The error for a call no mock answers, on the contract `label`: its `own`
+ * namespace's mocks for its function, each with the arg it missed on, or that
+ * there are none. An estimate's also lists its function's `writes`, which
+ * imply the estimate of a send they match (only for an estimate with `from`).
  */
 export function missError(
   call: MockCall,
   namespace: MockNamespace,
   label: string,
-  registered: readonly Mock[],
-  missed: ReadonlyMap<Mock, PinnedKey>,
+  own: Candidates,
+  writes?: Candidates,
 ): MockNotFoundError {
-  const lines = registered.map((mock) => {
-    const key = missed.get(mock);
-    const reason = formatMissReason(key === undefined ? undefined : argName(mock, key));
-    return `  ${describeMock(call.functionName, mock)}${reason}`;
-  });
+  const describe = ({ registered, missed }: Candidates) =>
+    registered.map((mock) => {
+      const key = missed.get(mock);
+      const reason = formatMissReason(key === undefined ? undefined : argName(mock, key));
+      return `  ${describeMock(call.functionName, mock)}${reason}`;
+    });
+  const lines = describe(own);
+  const writeLines = writes === undefined ? [] : describe(writes);
   const name = `"${call.functionName}"`;
   const what = namespace === "read" || namespace === "simulate" ? "mock" : `${namespace} mock`;
   const none = {
@@ -48,9 +55,13 @@ export function missError(
     estimateGas: `No estimateGas mocks registered for ${name}; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
     write: `No write mocks registered for ${name}; a simulate mock doesn't answer sends.`,
   }[namespace];
+  const metaMessages = lines.length > 0 ? ["Registered:", ...lines] : [];
+  if (writeLines.length > 0)
+    metaMessages.push("Write mocks, which imply the estimate of a send they match:", ...writeLines);
+  if (metaMessages.length === 0) metaMessages.push(none);
   return new MockNotFoundError(
     `No ${what} for ${formatCall(call.functionName, call.args)} on ${label}.`,
-    { metaMessages: lines.length > 0 ? ["Registered:", ...lines] : [none] },
+    { metaMessages },
   );
 }
 

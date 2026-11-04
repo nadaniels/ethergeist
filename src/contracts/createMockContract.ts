@@ -223,7 +223,8 @@ export function createMockContract<const abi extends Abi>(
       decoded = { namespace, selector, abiItem, call };
       receive(decoded);
       const { handler, missed } = match(decoded);
-      if (!handler) throw missError(call, namespace, label, candidates(decoded), missed);
+      if (!handler)
+        throw missError(call, namespace, label, { registered: candidates(decoded), missed });
       const hex = await run(handler, call, encodeAnswer);
       const value = decodeFunctionResult({ abi: [abiItem], functionName: abiItem.name, data: hex });
       report(record({ type: "result", value }));
@@ -277,7 +278,20 @@ export function createMockContract<const abi extends Abi>(
           },
         );
       },
-      miss: () => missError(call, namespace, label, candidates(decoded), missed),
+      miss() {
+        const registered = { registered: candidates(decoded), missed };
+        // An estimate without `from` is no send's, so write mocks never had a turn at it.
+        if (namespace !== "estimateGas" || call.from === undefined)
+          return missError(call, namespace, label, registered);
+        // The write mocks that would have implied the estimate, had one matched:
+        // matched again for their reasons, so their predicates run a second time.
+        const writes = { ...decoded, namespace: "write" as const };
+        const { missed: writesMissed } = match(writes);
+        return missError(call, namespace, label, registered, {
+          registered: candidates(writes),
+          missed: writesMissed,
+        });
+      },
       record,
     };
   }

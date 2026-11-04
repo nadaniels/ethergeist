@@ -178,6 +178,8 @@ describe("simulate", () => {
     token.simulate.approve().returns(true);
 
     const error = expectCause(await rejectionOf(transfer(bob, 1n)), MockNotFoundError);
+    // A simulate's miss is "No mock", as a read's is.
+    expect(error.shortMessage).toBe(`No mock for transfer(${bob}, 1n) on ${TOKEN}.`);
     expect(error.message).toContain('No mocks registered for "transfer"');
   });
 
