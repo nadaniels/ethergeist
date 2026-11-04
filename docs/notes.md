@@ -108,8 +108,7 @@ features land; tick them off as pages get written.
       behave inside a batch.
 - [ ] Writes: `usdc.write.transfer([bob, 5n]).emits([log])` answers the
       app's `writeContract`, then `waitForTransactionReceipt`, with nothing
-      for gas or fees (and, until 072, the nonce mocked for a local
-      account). Show:
+      for gas, fees or the nonce. Show:
   - A write mock answers a send of its function (`eth_sendTransaction`,
     `eth_sendRawTransaction`) to the contract, before
     `mock.actions.sendTransaction`, which answers what it doesn't. The
@@ -453,16 +452,33 @@ features land; tick them off as pages get written.
     so only `createMockRpc({ blockNumber: 0n })` or `fromBlock: 1n` hit it;
     use `fromBlock: 0n` to backfill from the start. Remove once viem fixes
     it (reported upstream; link the issue).
-- [ ] Strict by default for data the test owns (balances, receipts, nonces), and how
+- [ ] Strict by default for data the test owns (balances, receipts), and how
       to opt into real-node defaults with args-less mocks.
 - [ ] Block tags: calls at a block keep the tag they asked for (`getBalance`,
       `getCode`, `getStorageAt`, `getTransactionCount`, `getBlock`, `getFeeHistory`,
       `estimateGas`): `"latest"` when none was given, and none for a block
       number. A pin without a tag matches any block.
-- [ ] Nonces: pin `getTransactionCount`'s `{ address, blockTag: "pending" }`
-      apart from `"latest"` (a node counts transactions waiting to be mined
-      in `"pending"`), e.g. for a stuck transaction. viem asks for `"pending"` when preparing a transaction
-      for a local account. Nonces don't follow sends yet: mock them.
+- [ ] Nonces follow sends: unmocked, `getTransactionCount` answers one past
+      the highest nonce the address has sent (0 if none), so a local
+      account's writes take 0, 1, … with no mock. Show:
+  - At a block (number or hash), it counts the sends mined at or before
+    it; `"pending"` counts every send (the same until pending mode, 077).
+    viem asks for `"pending"` when preparing a transaction for a local
+    account. Emits aren't sends: they count for no one.
+  - Nonces are taken as sent, unchecked: a raw transaction with nonce 5
+    makes the next count 6. A node's refusal is `.fails("nonceTooLow")`.
+  - An `eth_sendTransaction` without a nonce takes the chain's count, as
+    a wallet fills it, whatever `getTransactionCount` mocks answer; to
+    send a specific one, pass `nonce`.
+  - A mock answers first: `.returns(7)` is the answer and doesn't count
+    up, so a local account's two identical writes sign the same bytes and
+    are one transaction. For a starting nonce that does count up, a
+    resolver reads `count`, the chain's answer:
+    `.returns(({ count }) => Math.max(7, count))` (the count already
+    includes the sends from 7 on). It starts only the sends that ask for
+    the nonce: an `eth_sendTransaction` without one still takes the
+    chain's count. Pin `blockTag: "pending"`
+    apart from `"latest"`, e.g. for a stuck transaction.
 - [ ] Gas estimates: `mock.actions.estimateGas({ account, to, value, data })`
       answers `estimateGas` and the gas viem prepares a transaction with.
       Unmocked, a plain transfer (no data) to an address without code is
@@ -484,7 +500,7 @@ features land; tick them off as pages get written.
     fail an estimate of a function the contract mocks, fail it there:
     `token.estimateGas.transfer().fails("insufficientFunds")`.
   - Estimating with a local account first prepares the transaction, which
-    asks for the nonce: mock `getTransactionCount` too.
+    asks for the nonce: the chain's count answers it.
   - A write or send mock that would answer the transaction implies its
     estimate (below, and section 3, "Writes"), when no estimate mock
     answers: 100,000 gas (21000 for a plain transfer to an address without
@@ -523,8 +539,8 @@ features land; tick them off as pages get written.
   - A raw send's hash is `keccak256` of its bytes (ethers checks it), and
     its sender is recovered from its signature. The same bytes sent again
     answer the same hash, without a second transaction.
-  - An `eth_sendTransaction` without a nonce is sent with nonce 0 for now,
-    and without gas with 100,000. Nonces don't follow sends yet (072).
+  - An `eth_sendTransaction` without a nonce takes the sender's next one
+    on the chain (above, "Nonces follow sends"), and without gas 100,000.
 - [ ] Storage: `mock.actions.getStorageAt({ address, slot }).returns(value)`.
       Slots in pins and requests are compared as 32 bytes (`"0x0"` matches
       slot zero written in full); values are up to 32 bytes, padded to 32 as

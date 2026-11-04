@@ -42,8 +42,6 @@ function setup() {
 /** A local account: viem signs, and sends the bytes with eth_sendRawTransaction. */
 function localSetup() {
   const { mock, client } = setup();
-  // Nonces don't follow sends yet (072).
-  mock.actions.getTransactionCount({ address: signer.address }).returns(0);
   const wallet = createWalletClient({
     account: signer,
     chain: mock.chain,
@@ -290,7 +288,6 @@ describe("eth_sendTransaction (node account)", () => {
     expect(mock.actions.sendTransaction.calls).toEqual([
       { account: alice, to: bob, value: 5n, type: "eip1559" },
     ]);
-    // A nonce left out is 0 until nonces follow sends (072).
     expect(await client.getTransaction({ hash })).toMatchObject({
       from: alice.toLowerCase(),
       nonce: 0,
@@ -848,6 +845,137 @@ describe("the estimate a send mock implies", () => {
     const error = await rejectionOf(client.estimateGas({ account: alice, to: USDC, data: "0x12" }));
 
     expectCause(error, MockNotFoundError);
+  });
+});
+
+describe("nonces follow sends", () => {
+  test("a local account's sends take nonces 0, 1, … with no nonce mocks", async () => {
+    const { mock, client, wallet } = localSetup();
+
+    await wallet.sendTransaction({ to: bob });
+    await wallet.sendTransaction({ to: bob });
+
+    expect(mock.transactions.map(({ fields }) => fields.nonce)).toEqual([0, 1]);
+    expect(await client.getTransactionCount({ address: signer.address })).toBe(2);
+    expect(await client.getTransactionCount({ address: signer.address, blockTag: "pending" })).toBe(
+      2,
+    );
+  });
+
+  test("an eth_sendTransaction without a nonce takes the chain's count, not a getTransactionCount mock's", async () => {
+    const { mock, client, wallet } = nodeSetup();
+    mock.actions.getTransactionCount({ address: alice }).returns(7);
+
+    await wallet.sendTransaction({ to: bob });
+    const second = await wallet.sendTransaction({ to: bob });
+
+    expect(mock.transactions.map(({ fields }) => fields.nonce)).toEqual([0, 1]);
+    expect((await client.getTransaction({ hash: second })).nonce).toBe(1);
+    expect(mock.actions.getTransactionCount.calls).toEqual([]);
+  });
+
+  test("a deploy's address is from the nonce it took", async () => {
+    const { mock, client, wallet } = nodeSetup();
+    mock.actions.sendTransaction({ to: null }).returns();
+
+    await wallet.sendTransaction({ to: bob });
+    const hash = await wallet.deployContract({ abi: [], bytecode: "0x6000" });
+
+    expect((await client.getTransactionReceipt({ hash })).contractAddress).toBe(
+      lowercase(getContractAddress({ from: alice, nonce: 1n })),
+    );
+  });
+
+  test("a sent nonce is taken as sent, and the count follows the highest", async () => {
+    const { mock, client } = setup();
+    const send = (nonce: number) =>
+      mock.request({
+        method: "eth_sendTransaction",
+        params: [{ from: alice.toLowerCase(), to: bob, nonce: toHex(nonce) }],
+      });
+
+    await send(5);
+    await send(2);
+
+    expect(mock.transactions.map(({ fields }) => fields.nonce)).toEqual([5, 2]);
+    expect(await client.getTransactionCount({ address: alice })).toBe(6);
+  });
+
+  test("each sender counts its own; emits count for no one", async () => {
+    const { mock, client, wallet } = nodeSetup();
+    mock.emit(testLog("noise"));
+
+    await wallet.sendTransaction({ to: bob });
+    await wallet.sendTransaction({ account: bob, to: alice });
+    await wallet.sendTransaction({ to: bob });
+
+    expect(mock.transactions.map(({ fields }) => [fields.from, fields.nonce])).toEqual([
+      [undefined, undefined],
+      [alice, 0],
+      [bob, 0],
+      [alice, 1],
+    ]);
+    expect(await client.getTransactionCount({ address: alice })).toBe(2);
+    expect(await client.getTransactionCount({ address: bob })).toBe(1);
+    expect(await client.getTransactionCount({ address: zeroAddress })).toBe(0);
+  });
+
+  test("at a block, the sends mined at or before it", async () => {
+    const { mock, client, wallet } = nodeSetup();
+
+    await wallet.sendTransaction({ to: bob });
+    await wallet.sendTransaction({ to: bob });
+
+    const at = async (blockNumber: bigint) => {
+      const { hash } = await client.getBlock({ blockNumber });
+      return await Promise.all([
+        client.getTransactionCount({ address: alice, blockNumber }),
+        mock.request({ method: "eth_getTransactionCount", params: [alice, hash] }),
+        mock.request({ method: "eth_getTransactionCount", params: [alice, { blockHash: hash }] }),
+      ]);
+    };
+    expect(await at(10n)).toEqual([0, "0x0", "0x0"]);
+    expect(await at(11n)).toEqual([1, "0x1", "0x1"]);
+    expect(await at(12n)).toEqual([2, "0x2", "0x2"]);
+    expect(await client.getTransactionCount({ address: alice, blockTag: "earliest" })).toBe(0);
+  });
+
+  test("a resolver's count starts an account's nonce; a static answer stays fixed", async () => {
+    const { mock, client, wallet } = localSetup();
+    // The count is the next nonce, so it already includes the sends from 7 on.
+    mock.actions
+      .getTransactionCount({ address: signer.address })
+      .returns(({ count }) => Math.max(7, count));
+
+    await wallet.sendTransaction({ to: bob });
+    await wallet.sendTransaction({ to: bob });
+    mock.actions.getTransactionCount({ address: signer.address }).returns(3);
+    await wallet.sendTransaction({ to: bob });
+
+    expect(mock.transactions.map(({ fields }) => fields.nonce)).toEqual([7, 8, 3]);
+    expect(await client.getTransactionCount({ address: signer.address })).toBe(3);
+  });
+
+  test("a refused send takes no nonce", async () => {
+    const { mock, wallet } = nodeSetup();
+    mock.actions.sendTransaction({ to: bob }).once().fails("insufficientFunds");
+
+    await rejectionOf(wallet.sendTransaction({ to: bob }));
+    await wallet.sendTransaction({ to: bob });
+
+    expect(mock.transactions.map(({ fields }) => fields.nonce)).toEqual([0]);
+  });
+
+  test("reset() and restore() roll nonces back with the chain", async () => {
+    const { mock, client, wallet } = nodeSetup();
+    await wallet.sendTransaction({ to: bob });
+    const checkpoint = mock.checkpoint();
+
+    await wallet.sendTransaction({ to: bob });
+    checkpoint.restore();
+    expect(await client.getTransactionCount({ address: alice })).toBe(1);
+    mock.reset();
+    expect(await client.getTransactionCount({ address: alice })).toBe(0);
   });
 });
 

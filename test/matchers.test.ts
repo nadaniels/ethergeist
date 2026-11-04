@@ -5,6 +5,7 @@ import {
   erc20Abi,
   getAddress,
   isAddressEqual,
+  pad,
   parseAbi,
 } from "viem";
 import { describe, expect, test, vi } from "vite-plus/test";
@@ -655,13 +656,13 @@ describe("actions and raw methods", () => {
     mock.actions.getBalance(match.partial({ address: alice })).returns(1n);
     mock.actions.getCode(match.any()).returns("0x60");
     mock.actions
-      .getTransactionCount(
+      .getStorageAt(
         match.where(
           (call) => call?.address !== undefined && isAddressEqual(call.address, bob),
           "isBob",
         ),
       )
-      .returns(3);
+      .returns(pad("0x3"));
     mock
       .method(
         "eth_custom",
@@ -671,17 +672,15 @@ describe("actions and raw methods", () => {
 
     expect(await client.getBalance({ address: alice })).toBe(1n);
     expect(await client.getCode({ address: bob })).toBe("0x60");
-    expect(await client.getTransactionCount({ address: bob })).toBe(3);
+    expect(await client.getStorageAt({ address: bob, slot: "0x0" })).toBe(pad("0x3"));
     expect(await mock.request({ method: "eth_custom", params: ["0x1", "0x2"] })).toBe("0x1");
 
     // When one doesn't match, it's all of the params that didn't.
     const error = expectCause(
-      await rejectionOf(client.getTransactionCount({ address: alice })),
+      await rejectionOf(client.getStorageAt({ address: alice, slot: "0x0" })),
       MockNotFoundError,
     );
-    expect(hintsOf(error)).toBe(
-      "Registered:\n  getTransactionCount(where(isBob))  ← params didn't match",
-    );
+    expect(hintsOf(error)).toBe("Registered:\n  getStorageAt(where(isBob))  ← params didn't match");
   });
 
   test("action params take matchers", async () => {

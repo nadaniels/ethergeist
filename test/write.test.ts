@@ -41,8 +41,6 @@ const vaultAbi = parseAbi([
 /** The app's clients: a local account, which signs and sends raw bytes, or a node's (JSON-RPC) account. */
 function setup(account: "local" | "node" = "local") {
   const mock = createMockRpc({ blockNumber: 10n });
-  // A local account reads its nonce; nonces don't follow sends yet (072).
-  if (account === "local") mock.actions.getTransactionCount().returns(0);
   const client = mock.publicClient({}, { retryCount: 0 });
   const wallet = createWalletClient({
     account: account === "local" ? signer : alice,

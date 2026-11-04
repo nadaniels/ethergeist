@@ -192,10 +192,11 @@ describe("getLogs", () => {
 
   test("transaction counts pin an address and tag, and answer numbers", () => {
     mock.actions.getTransactionCount({ address: alice, blockTag: "pending" }).returns(1);
-    mock.actions.getTransactionCount().returns(({ address, blockTag }) => {
+    mock.actions.getTransactionCount().returns(({ address, blockTag, count }) => {
       expectTypeOf(address).toEqualTypeOf<Address>();
       expectTypeOf(blockTag).toEqualTypeOf<BlockTag | undefined>();
-      return 0;
+      expectTypeOf(count).toEqualTypeOf<number>();
+      return count;
     });
     // @ts-expect-error viem's count is a number
     mock.actions.getTransactionCount().returns(1n);

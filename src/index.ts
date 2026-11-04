@@ -32,6 +32,7 @@ export type {
   MockSendTransactionBuilder,
   SendTransactionContext,
 } from "./actions/sendTransaction.js";
+export type { TransactionCountContext } from "./actions/getTransactionCount.js";
 export type { MockActions } from "./actions/typedActions.js";
 export { createMockRpc } from "./createMockRpc.js";
 export type { CreateMockRpcParameters, MockRpc } from "./types.js";

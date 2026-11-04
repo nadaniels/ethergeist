@@ -161,13 +161,21 @@ export function sendTransaction({
      * Places the send's transaction on the chain, mined in a new block, and
      * answers its hash. The same bytes sent twice at once are one
      * transaction too: the second is answered with its hash. A nonce left
-     * out is 0 for now (072), and gas left out is `impliedGas`.
+     * out is the sender's next on the chain (`nonceOf`), as a wallet fills
+     * it, not a `getTransactionCount` mock's; gas left out is `impliedGas`.
      */
     commit(outcome, call) {
       const repeated = sentBefore(call);
       if (repeated !== undefined) return repeated;
       const hash = rawHashes.get(call);
-      const { account, to, data, nonce = 0, gas = impliedGas, ...fees } = call;
+      const {
+        account,
+        to,
+        data,
+        nonce = transactions.nonceOf(account, "pending"),
+        gas = impliedGas,
+        ...fees
+      } = call;
       const { logs = [], ...receipt } = outcome;
       return transactions.add({
         origin: "write",

@@ -50,7 +50,6 @@ function setup() {
 /** A wallet client with a local account: its estimates carry a nonce and fees. */
 function walletSetup() {
   const { mock, client } = setup();
-  mock.actions.getTransactionCount().returns(0);
   const account = privateKeyToAccount(keccak256(toHex("alice")));
   const wallet = createWalletClient({
     account,

@@ -59,7 +59,6 @@ function setup() {
  */
 function walletSetup() {
   const { mock } = setup();
-  mock.actions.getTransactionCount().returns(0);
   const wallet = createWalletClient({
     account: privateKeyToAccount(keccak256(toHex("alice"))),
     chain: mock.chain,
@@ -665,17 +664,16 @@ describe("getTransactionCount", () => {
     mock.actions.getTransactionCount({ address: alice }).returns(7);
 
     expect(await client.getTransactionCount({ address: alice })).toBe(7);
+    expect(mock.history[0]?.outcome).toEqual({ type: "result", value: 7 });
   });
 
-  test("unmocked addresses aren't answered", async () => {
+  test("unmocked, an address that never sent is at 0, at any block", async () => {
     const { mock, client } = setup();
 
-    const error = expectCause(
-      await rejectionOf(client.getTransactionCount({ address: alice })),
-      MockNotFoundError,
-    );
-    expect(error.message).toContain("No mock for getTransactionCount(");
-    expect(mock.unhandled).toHaveLength(1);
+    expect(await client.getTransactionCount({ address: alice })).toBe(0);
+    expect(await client.getTransactionCount({ address: alice, blockTag: "pending" })).toBe(0);
+    expect(await client.getTransactionCount({ address: alice, blockNumber: 5n })).toBe(0);
+    expect(mock.unhandled).toEqual([]);
   });
 
   test('"pending" can be pinned apart from "latest": it counts transactions not mined yet', async () => {
@@ -708,6 +706,7 @@ describe("getTransactionCount", () => {
 
   test("a count is a whole number, zero or more", () => {
     const { mock } = setup();
+    mock.actions.getTransactionCount().returns(0);
 
     for (const value of [-1, 1.5])
       expect(() => {

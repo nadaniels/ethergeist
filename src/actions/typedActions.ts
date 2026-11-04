@@ -17,7 +17,7 @@ import { getGasPrice } from "./getGasPrice.js";
 import { getLogs, type LogsContext } from "./getLogs.js";
 import { getStorageAt } from "./getStorageAt.js";
 import { getTransaction } from "./getTransaction.js";
-import { getTransactionCount } from "./getTransactionCount.js";
+import { getTransactionCount, type TransactionCountContext } from "./getTransactionCount.js";
 import { getTransactionReceipt } from "./getTransactionReceipt.js";
 import { type MockSendTransactionAction, sendTransaction } from "./sendTransaction.js";
 import type { ActionsContext, Definition } from "./table.js";
@@ -158,11 +158,17 @@ export type MockActions = {
    */
   getFeeHistory: MockAction<FeeHistoryCall, MockFeeHistory>;
   /**
-   * `eth_getTransactionCount`, an account's nonce: the transactions it has
-   * sent. Unmocked addresses aren't answered. viem asks for `"pending"`
-   * when preparing a transaction, and `"latest"` by default.
+   * `eth_getTransactionCount`, an account's nonce: unmocked, the chain's
+   * count, one past the highest nonce the address has sent (0 if none),
+   * over its sends mined at or before the block (all of them at
+   * `"pending"`); emits aren't sends. viem asks for `"pending"` when
+   * preparing a transaction, and `"latest"` by default. A static
+   * `.returns(7)` is the answer, so it doesn't count up; for a starting
+   * nonce that does, a resolver reads `count`:
+   * `.returns(({ count }) => Math.max(7, count))`. An `eth_sendTransaction`
+   * without a nonce takes the chain's count, not these mocks' answer.
    */
-  getTransactionCount: MockAction<TransactionCountCall, number>;
+  getTransactionCount: MockAction<TransactionCountCall, number, TransactionCountContext>;
   /**
    * `eth_getStorageAt`, one storage slot of an address. Slots in pins and
    * requests are compared as 32 bytes, so `"0x0"` matches a request for slot
@@ -205,7 +211,8 @@ export type MockActions = {
    * A raw send's sender is recovered from its signature, and its hash is
    * its bytes' (`keccak256`); sending the same bytes again answers the same
    * hash, without a second transaction. An `eth_sendTransaction` without a
-   * nonce or gas is sent with nonce 0 and 100,000 gas. Unmocked, a send
+   * nonce takes the sender's next one on the chain (see
+   * `getTransactionCount`), and without gas is sent with 100,000. Unmocked, a send
    * without data to an address without code succeeds, as on a node;
    * anything else isn't answered.
    */

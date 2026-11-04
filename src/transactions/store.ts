@@ -279,12 +279,30 @@ export function createTransactionStore({
 
   const allLogs = () => records.flatMap((record) => record.logs);
 
+  /**
+   * The nonce `address`'s next transaction would take: one past the highest
+   * it has sent, or 0. At `"pending"`, over every send; at a block, over
+   * those mined at or before it. Emits aren't sends: they count for no one.
+   */
+  function nonceOf(address: Address, block: bigint | "pending") {
+    const from = getAddress(address);
+    const sent = records.filter((record) => {
+      const mined = minedAt(record);
+      return (
+        record.fields.from === from &&
+        (block === "pending" || (mined !== undefined && mined.blockNumber <= block))
+      );
+    });
+    return Math.max(0, ...sent.map(({ fields }) => (fields.nonce ?? 0) + 1));
+  }
+
   return {
     add,
     emit,
     whileWriting,
     mine,
     logsFor,
+    nonceOf,
     /**
      * The receipt for `hash` in its JSON-RPC form: `null` while its block
      * isn't mined, and `undefined` for a hash not on the chain.
