@@ -106,7 +106,6 @@ describe("getStorageAt", () => {
     );
     for (const address of [token.address, testAddress("unknown")])
       expectCause(
-        // oxlint-disable-next-line eslint/no-await-in-loop -- two cases, in order
         await rejectionOf(client.getStorageAt({ address, slot: "0x0" })),
         MockNotFoundError,
       );

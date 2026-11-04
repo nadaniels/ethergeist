@@ -161,7 +161,6 @@ describe("getFeeHistory", () => {
 
     for (const rewardPercentiles of [[75, 25], [101], [-1]])
       expect(
-        // oxlint-disable-next-line eslint/no-await-in-loop -- one case at a time
         await refusal(mock, client.getFeeHistory({ blockCount: 1, rewardPercentiles })),
       ).toEqual({ code: -32602, message: "invalid reward percentiles" });
     await expect(

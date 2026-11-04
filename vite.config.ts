@@ -40,6 +40,7 @@ export default defineConfig({
       {
         files: ["**/*.test.ts", "**/*.test-d.ts"],
         plugins: ["eslint", "typescript", "unicorn", "oxc", "import", "node", "promise", "vitest"],
+        rules: { "eslint/no-await-in-loop": "off" },
       },
       {
         files: [

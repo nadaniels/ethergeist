@@ -37,9 +37,7 @@ const unanswered = (mock: ReturnType<typeof createMockRpc>) => () =>
 
 /** Sends `count` requests, one at a time. */
 async function poll(count: number, request: () => Promise<unknown>) {
-  for (let i = 0; i < count; i += 1)
-    // oxlint-disable-next-line eslint/no-await-in-loop -- one request at a time, as a poller sends them
-    await request();
+  for (let i = 0; i < count; i += 1) await request();
 }
 
 describe("historyLimit", () => {
