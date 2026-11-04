@@ -160,19 +160,36 @@ export function formatEntry(
  * After a send's hash, where its transaction was mined: ` (mined in block
  * 11n, 1 log)` or ` (mined in block 11n, reverted)`. A send's transaction
  * is mined as it's answered, and `restore()` and `reset()` clear history as
- * they remove it, so every send in history has one.
+ * they remove it, so every send in history has one. The Sync method's
+ * answer is its receipt, which says the same.
  */
 function minedNote(outcome: MockOutcome, { minedTransaction }: FormatContext): string {
-  const record =
-    outcome.type === "result" && isHex(outcome.value)
-      ? minedTransaction?.(outcome.value)
-      : undefined;
-  if (record === undefined) return "";
-  const block = `mined in block ${formatValue(record.position?.blockNumber)}`;
-  if (record.receipt.status === "reverted") return ` (${block}, reverted)`;
-  const logs = record.logs.length;
+  const mined = outcome.type === "result" ? minedAs(outcome.value, minedTransaction) : undefined;
+  if (mined === undefined) return "";
+  const block = `mined in block ${formatValue(mined.blockNumber)}`;
+  if (mined.status === "reverted") return ` (${block}, reverted)`;
+  const logs = mined.logs.length;
   return ` (${block}, ${logs} ${logs === 1 ? "log" : "logs"})`;
 }
+
+/** How a send's transaction was mined: the receipt the Sync method answered, or its record. */
+function minedAs(value: unknown, minedTransaction: FormatContext["minedTransaction"]) {
+  if (isReceipt(value)) return value;
+  const record = isHex(value) ? minedTransaction?.(value) : undefined;
+  return (
+    record && {
+      blockNumber: record.position?.blockNumber,
+      status: record.receipt.status,
+      logs: record.logs,
+    }
+  );
+}
+
+/** A receipt in viem's form, as the Sync send answers one. */
+const isReceipt = (
+  value: unknown,
+): value is { transactionHash: unknown; blockNumber: unknown; status: unknown; logs: unknown[] } =>
+  isPlainObject(value) && "transactionHash" in value && Array.isArray(value.logs);
 
 /** A contract call as `USDC.transfer(…)`, or the contract alone when it didn't decode. */
 function formatLabel({ address, name, call }: MockCallRecord): string {
@@ -246,6 +263,9 @@ function summarize(value: unknown, action: string | undefined): string {
       value.blockNumber === null ? "pending" : `block ${formatValue(value.blockNumber)}`;
     return `${String(value.type)}, ${where}`;
   }
+  // The Sync method's receipt, by its hash: `minedNote` says how it was mined.
+  if (action === "sendTransaction" && isReceipt(value))
+    return formatValue(value.transactionHash, { short: true });
   if (action === "getLogs" && Array.isArray(value))
     return `${value.length} ${value.length === 1 ? "log" : "logs"}`;
   return formatValue(value, { short: true });

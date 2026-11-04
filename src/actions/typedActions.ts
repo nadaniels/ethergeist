@@ -61,7 +61,7 @@ export const typedActions = {
   estimateGas: { define: estimateGas, methods: ["eth_estimateGas"] },
   sendTransaction: {
     define: sendTransaction,
-    methods: ["eth_sendTransaction", "eth_sendRawTransaction"],
+    methods: ["eth_sendTransaction", "eth_sendRawTransaction", "eth_sendRawTransactionSync"],
   },
 } satisfies {
   // Each action decodes to its call type in `ActionCalls`, and every action has one.
@@ -191,8 +191,11 @@ export type MockActions = {
   estimateGas: MockEstimateGasAction;
   /**
    * `eth_sendTransaction` and `eth_sendRawTransaction`, for `sendTransaction`,
-   * `writeContract` and `deployContract`. A registered contract's `write`
-   * mocks and defaults answer sends of its functions first; these answer
+   * `writeContract` and `deployContract`, and `eth_sendRawTransactionSync`
+   * (EIP-7966), for a local account's `sendTransactionSync` and
+   * `writeContractSync`, answered with its receipt from the chain (a
+   * `getTransactionReceipt` mock answers only the app's own requests). A
+   * registered contract's `write` mocks and defaults answer sends of its functions first; these answer
    * the rest. A send always goes on the chain:
    * answered, it's a transaction mined in a new block, which its receipt,
    * its transaction, its block and `getLogs` answer from (see
@@ -210,7 +213,8 @@ export type MockActions = {
    *
    * A raw send's sender is recovered from its signature, and its hash is
    * its bytes' (`keccak256`); sending the same bytes again answers the same
-   * hash, without a second transaction. An `eth_sendTransaction` without a
+   * hash (or receipt), without a second transaction. A Sync send is mined as
+   * it's answered, so its timeout never passes. An `eth_sendTransaction` without a
    * nonce takes the sender's next one on the chain (see
    * `getTransactionCount`), and without gas is sent with 100,000. Unmocked, a send
    * without data to an address without code succeeds, as on a node;

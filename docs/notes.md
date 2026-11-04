@@ -565,6 +565,18 @@ features land; tick them off as pages get written.
       answers `eth_sendTransaction` (a node's account, unsigned, with
       `from`) and `eth_sendRawTransaction` (a local account's signed bytes),
       for `sendTransaction`, `writeContract` and `deployContract`.
+  - A local account's `sendTransactionSync` and `writeContractSync` send
+    `eth_sendRawTransactionSync` (EIP-7966): the same send, by the same
+    mocks, answered with its receipt from the chain instead of its hash.
+    A `getTransactionReceipt` mock doesn't answer it (the app asked for no
+    receipt, and can't know the hash before sending); it still answers the
+    app's own requests for that hash. A node's account sends
+    `eth_sendTransaction` and polls the receipt instead, which a receipt
+    mock does answer. A send is mined as it's answered, so it never times
+    out, and its timeout param is ignored, as a node ignores an invalid
+    one. A reverted receipt comes back as a receipt: viem throws
+    `TransactionReceiptRevertedError` only with `throwOnReceiptRevert:
+    true`.
   - Sends always go on the chain: a successful send is a transaction
     mined in a new block, and its receipt, transaction, block and logs
     answer from it, so `waitForTransactionReceipt` resolves on its first
@@ -593,7 +605,7 @@ features land; tick them off as pages get written.
     `contractAddress` is `getContractAddress({ from, nonce })`.
   - A raw send's hash is `keccak256` of its bytes (ethers checks it), and
     its sender is recovered from its signature. The same bytes sent again
-    answer the same hash, without a second transaction.
+    answer the same hash (or receipt), without a second transaction.
   - An `eth_sendTransaction` without a nonce takes the sender's next one
     on the chain (above, "Nonces follow sends"), and without gas 100,000.
 - [ ] Storage: `mock.actions.getStorageAt({ address, slot }).returns(value)`.

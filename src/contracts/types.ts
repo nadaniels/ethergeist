@@ -344,8 +344,8 @@ export type MockContract<abi extends Abi> = {
   };
   /**
    * Nonpayable and payable functions, sent as transactions
-   * (`eth_sendTransaction`, `eth_sendRawTransaction`), as `writeContract`
-   * sends them: a mock answers with what the chain did, and the
+   * (`eth_sendTransaction`, `eth_sendRawTransaction` or its Sync form), as
+   * `writeContract` and `writeContractSync` send them: a mock answers with what the chain did, and the
    * transaction is mined in a new block. These answer before
    * `mock.actions.sendTransaction`, which answers what they don't.
    *

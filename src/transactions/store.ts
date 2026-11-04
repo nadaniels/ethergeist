@@ -16,7 +16,7 @@ import { testHash } from "../shared/testValues.js";
  */
 export type TransactionRecord = {
   readonly hash: Hash;
-  /** What put it on the chain: `emit()`, or a send (`eth_sendTransaction`, `eth_sendRawTransaction`). */
+  /** What put it on the chain: `emit()`, or a send (`eth_sendTransaction`, `eth_sendRawTransaction`, or its Sync form). */
   readonly origin: "emit" | "write";
   /**
    * The transaction's own fields, as its request or signed bytes had them;

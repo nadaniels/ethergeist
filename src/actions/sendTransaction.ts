@@ -1,5 +1,6 @@
-import { type Hash, getContractAddress } from "viem";
+import { type Hash, formatTransactionReceipt, getContractAddress } from "viem";
 
+import type { toRpcReceipt } from "../chain/receipts.js";
 import { decodeRawTransaction, sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
 import type { CallContext, RevertFn, RevertSpec } from "../contracts/types.js";
@@ -76,16 +77,23 @@ function decodeSendTransaction([tx]: readonly unknown[]): SendTransactionCall {
 }
 
 /**
- * `eth_sendTransaction` and `eth_sendRawTransaction`: a send, answered with
- * its hash once its transaction is on the chain, mined in a new block (see
- * `commit`). Unmocked, a plain transfer to an address without code succeeds,
- * as on a node.
+ * `eth_sendTransaction`, `eth_sendRawTransaction` and
+ * `eth_sendRawTransactionSync`: a send, answered with its hash once its
+ * transaction is on the chain, mined in a new block (see `commit`), or with
+ * its receipt for the Sync method, the chain's, as `eth_getTransactionReceipt`
+ * answers it unmocked. Every send is mined as it's answered, so the Sync method never
+ * times out. Unmocked, a plain transfer to an address without code
+ * succeeds, as on a node.
  */
 export function sendTransaction({
   state,
   registry,
   transactions,
-}: ActionsContext): Definition<SendTransactionCall, Hash, MockWriteOutcome> {
+}: ActionsContext): Definition<
+  SendTransactionCall,
+  Hash | ReturnType<typeof toRpcReceipt>,
+  MockWriteOutcome
+> {
   /**
    * The contract a send calls one of the functions of, if `to` is a
    * registered contract and it has data, with the call's context: its
@@ -103,15 +111,26 @@ export function sendTransaction({
     return contract && { contract, data, context };
   };
   // A raw send's hash is its bytes'; an `eth_sendTransaction`'s is made where it's mined.
-  const rawHashes = new WeakMap<SendTransactionCall, Hash>();
+  const rawSends = new WeakMap<SendTransactionCall, { hash: Hash; sync: boolean }>();
   /**
-   * A raw send's hash, if its transaction is already on the chain. The same
-   * bytes sent twice at once both reach the mocks; only one is placed.
+   * A raw send's hash, if its transaction is already mined. The same bytes
+   * sent twice at once both reach the mocks; only one is placed. A record
+   * with its hash that isn't mined (an `emit()` into a future block) isn't
+   * the send: `add` refuses the hash as taken.
    */
   const sentBefore = (call: SendTransactionCall) => {
-    const hash = rawHashes.get(call);
-    return hash !== undefined && transactions.transactionFor(hash) !== undefined ? hash : undefined;
+    const hash = rawSends.get(call)?.hash;
+    return hash !== undefined && transactions.minedAt(hash) !== undefined ? hash : undefined;
   };
+  /**
+   * A send's answer: its hash, or the Sync method's receipt, the chain's
+   * for its record (not a receipt mock's: the app asked for none). A send
+   * is mined as it's answered, so it has one; pending mode (077) adds the
+   * wait and EIP-7966's timeout.
+   */
+  const answerFor = (call: SendTransactionCall, hash: Hash) =>
+    // The hash is a mined record's: `sentBefore`'s, or one `add` just mined.
+    rawSends.get(call)?.sync === true ? transactions.receiptFor(hash)! : hash;
   return {
     name: "sendTransaction",
     hint: "mock.actions.sendTransaction({ to }).returns(…)",
@@ -125,10 +144,13 @@ export function sendTransaction({
       return undefined;
     },
     async decode(params, method) {
-      if (method !== "eth_sendRawTransaction") return decodeSendTransaction(params);
+      if (method === "eth_sendTransaction") return decodeSendTransaction(params);
+      // The Sync method's timeout is ignored: a send is mined as it's
+      // answered, and a node waits its default for an invalid one (EIP-7966).
+      const sync = method === "eth_sendRawTransactionSync";
       const { hash, from, fields } = await decodeRawTransaction(params[0]);
       const call: SendTransactionCall = { account: from, ...fields };
-      rawHashes.set(call, hash);
+      rawSends.set(call, { hash, sync });
       return call;
     },
     pin: pinTransaction,
@@ -141,8 +163,11 @@ export function sendTransaction({
     zero: {},
     encode: (value, call) => encodeWriteOutcome(value, call && call.to === null),
     // Sending the same bytes again is the same transaction: answered with its
-    // hash, without asking the mocks again.
-    known: sentBefore,
+    // hash (or receipt), without asking the mocks again.
+    known(call) {
+      const hash = sentBefore(call);
+      return hash === undefined ? undefined : answerFor(call, hash);
+    },
     extendBuilder(builder) {
       extendWriteBuilder(builder, {
         revertError: (spec?: RevertSpec) => createRevertError([], spec),
@@ -162,15 +187,15 @@ export function sendTransaction({
     fallback: (call) => (isPlainTransfer(registry, call) ? {} : undefined),
     /**
      * Places the send's transaction on the chain, mined in a new block, and
-     * answers its hash. The same bytes sent twice at once are one
-     * transaction too: the second is answered with its hash. A nonce left
+     * answers its hash (`answerFor`). The same bytes sent twice at once are
+     * one transaction too: the second is answered as the first. A nonce left
      * out is the sender's next on the chain (`nonceOf`), as a wallet fills
      * it, not a `getTransactionCount` mock's; gas left out is `impliedGas`.
      */
     commit(outcome, call) {
       const repeated = sentBefore(call);
-      if (repeated !== undefined) return repeated;
-      const hash = rawHashes.get(call);
+      if (repeated !== undefined) return answerFor(call, repeated);
+      const hash = rawSends.get(call)?.hash;
       const {
         account,
         to,
@@ -180,7 +205,7 @@ export function sendTransaction({
         ...fees
       } = call;
       const { logs = [], ...receipt } = outcome;
-      return transactions.add({
+      const placed = transactions.add({
         origin: "write",
         hash,
         fields: { from: account, to, ...(data && { input: data }), nonce, gas, ...fees },
@@ -192,7 +217,10 @@ export function sendTransaction({
               }
             : receipt,
         logs,
-      }).hash;
+      });
+      return answerFor(call, placed.hash);
     },
+    // The Sync method's receipt as viem returns it.
+    view: (rpc) => (typeof rpc === "string" ? rpc : formatTransactionReceipt(rpc)),
   };
 }

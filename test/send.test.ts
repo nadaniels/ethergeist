@@ -6,6 +6,7 @@ import {
   NonceTooHighError,
   NonceTooLowError,
   RpcRequestError,
+  TransactionExecutionError,
   createWalletClient,
   encodeFunctionData,
   isHex,
@@ -715,10 +716,14 @@ describe("sends unmocked", () => {
     expect(mock.blockNumber).toBe(10n);
   });
 
-  test("mock.method() refuses both methods, pointing at the typed action", () => {
+  test("mock.method() refuses every send method, pointing at the typed action", () => {
     const { mock } = setup();
 
-    for (const method of ["eth_sendTransaction", "eth_sendRawTransaction"])
+    for (const method of [
+      "eth_sendTransaction",
+      "eth_sendRawTransaction",
+      "eth_sendRawTransactionSync",
+    ])
       expect(() => mock.method(method)).toThrow(
         `"${method}" has a typed mock: use mock.actions.sendTransaction().`,
       );
@@ -1033,3 +1038,177 @@ describe("receipts' gas", () => {
     });
   });
 });
+
+describe("eth_sendRawTransactionSync (EIP-7966, a local account's *Sync sends)", () => {
+  test("writeContractSync answers the receipt, with the write mock's logs, as getTransactionReceipt would", async () => {
+    const { mock, client, wallet } = localSetup();
+    const usdc = mock.contract({ address: USDC, abi: erc20Abi, name: "USDC" });
+    const transfer = usdc.events.Transfer({ from: signer.address, to: bob, value: 5n });
+    usdc.write.transfer([bob, 5n]).emits([transfer]);
+
+    const receipt = await wallet.writeContractSync({
+      address: USDC,
+      abi: erc20Abi,
+      functionName: "transfer",
+      args: [bob, 5n],
+    });
+
+    expect(mock.formatHistory().split("\n").at(-1)).toBe(
+      "#6 eth_sendRawTransactionSync write USDC.transfer(0x4292…207f, 5n) → 0xa4a9…c417 (mined in block 11n, 1 log)",
+    );
+    expect(mock.requests.at(-1)?.method).toBe("eth_sendRawTransactionSync");
+    expect(receipt).toMatchObject({ status: "success", blockNumber: 11n, gasUsed: 100_000n });
+    expect(receipt.logs).toMatchObject([{ address: lowercase(USDC), topics: transfer.topics }]);
+    expect(receipt).toEqual(await client.getTransactionReceipt({ hash: receipt.transactionHash }));
+    expect(mock.transactions).toHaveLength(1);
+  });
+
+  test("sendTransactionSync answers a plain transfer's receipt; history keeps it in viem's form", async () => {
+    const { mock, wallet } = localSetup();
+
+    const receipt = await wallet.sendTransactionSync({ to: bob, value: 5n });
+
+    expect(receipt).toMatchObject({ status: "success", to: lowercase(bob), gasUsed: 21_000n });
+    expect(receipt.transactionHash).toBe(keccak256(lastSyncSend(mock)));
+    expect(mock.history.at(-1)).toMatchObject({
+      action: "sendTransaction",
+      call: { account: signer.address, to: bob, value: 5n },
+      outcome: { type: "result", value: receipt },
+    });
+  });
+
+  test("a mined revert answers a reverted receipt, which viem throws on with throwOnReceiptRevert", async () => {
+    const { mock, wallet } = localSetup();
+    mock.actions.sendTransaction({ to: bob }).returns({ status: "reverted" });
+
+    const receipt = await wallet.sendTransactionSync({ to: bob, value: 5n });
+    const error = await rejectionOf(
+      wallet.sendTransactionSync({ to: bob, value: 6n, throwOnReceiptRevert: true }),
+    );
+
+    expect(receipt).toMatchObject({ status: "reverted", logs: [] });
+    // viem doesn't export the class; its error is the send's cause.
+    expect(expectCause(error, TransactionExecutionError).cause).toMatchObject({
+      name: "TransactionReceiptRevertedError",
+      receipt: { status: "reverted" },
+    });
+    expect(mock.transactions).toHaveLength(2);
+    expect(mock.formatHistory().split("\n").at(-1)).toMatch(
+      /→ 0x.+ \(mined in block 12n, reverted\)$/u,
+    );
+  });
+
+  test("a refusal fails the send and changes nothing", async () => {
+    const { mock, client, wallet } = localSetup();
+    mock.actions.sendTransaction().fails("nonceTooLow");
+
+    const error = await rejectionOf(wallet.sendTransactionSync({ to: bob, value: 5n }));
+
+    expectCause(error, NonceTooLowError);
+    expect(mock.transactions).toEqual([]);
+    expect(mock.blockNumber).toBe(10n);
+    expect(await client.getTransactionCount({ address: signer.address })).toBe(0);
+  });
+
+  test("a receipt mock doesn't answer it and records no call; it answers the app's own request after", async () => {
+    const { mock, client, wallet } = localSetup();
+    mock.actions
+      .getTransactionReceipt()
+      .once()
+      .returns(() => ({ gasUsed: 7n }));
+
+    const receipt = await wallet.sendTransactionSync({ to: bob, value: 5n });
+
+    expect(receipt.gasUsed).toBe(21_000n);
+    expect(mock.actions.getTransactionReceipt.calls).toEqual([]);
+    const asked = await client.getTransactionReceipt({ hash: receipt.transactionHash });
+    expect(asked.gasUsed).toBe(7n);
+    expect(mock.actions.getTransactionReceipt.calls).toEqual([{ hash: receipt.transactionHash }]);
+  });
+
+  test("raw and Sync sends of the same bytes at once are one transaction, each answered in its form", async () => {
+    const { mock, wallet } = localSetup();
+    const raw = await signedTransfer(wallet);
+
+    const [hash, receipt] = await Promise.all([
+      mock.request({ method: "eth_sendRawTransaction", params: [raw] }),
+      mock.request({ method: "eth_sendRawTransactionSync", params: [raw] }),
+    ]);
+
+    expect(hash).toBe(keccak256(raw));
+    expect(receipt).toMatchObject({ transactionHash: hash });
+    expect(mock.transactions).toHaveLength(1);
+  });
+
+  test.each(["eth_sendRawTransaction", "eth_sendRawTransactionSync"])(
+    "%s of bytes whose hash an unmined emit() already claimed is refused as a setup error",
+    async (method) => {
+      const { mock, wallet } = localSetup();
+      const raw = await signedTransfer(wallet);
+      mock.emit(testLog("noise"), { transactionHash: keccak256(raw), blockNumber: 15n });
+
+      const error = await rejectionOf(mock.request({ method, params: [raw] }));
+
+      expect(expectCause(error, MockSetupError).shortMessage).toBe(
+        `Transaction ${keccak256(raw)} is already on the chain.`,
+      );
+      expect(mock.transactions).toHaveLength(1);
+      expect(mock.blockNumber).toBe(10n);
+    },
+  );
+
+  test("the same bytes sent again answer the same receipt, without a second transaction", async () => {
+    const { mock, wallet } = localSetup();
+    const resolver = vi.fn(() => ({}));
+    mock.actions.sendTransaction({ to: bob }).once().returns(resolver);
+    const raw = await signedTransfer(wallet);
+
+    const hash = await mock.request({ method: "eth_sendRawTransaction", params: [raw] });
+    const first = await mock.request({ method: "eth_sendRawTransactionSync", params: [raw] });
+    const again = await mock.request({ method: "eth_sendRawTransactionSync", params: [raw] });
+
+    expect(first).toMatchObject({ transactionHash: hash, blockNumber: "0xb" });
+    expect(again).toEqual(first);
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(mock.transactions).toHaveLength(1);
+  });
+
+  test("the timeout is ignored: a send is mined as it's answered, and a node waits its default for an invalid one", async () => {
+    const { mock, wallet } = localSetup();
+    const raw = await signedTransfer(wallet);
+
+    for (const timeout of [5000, 0, -1, 1.5, "0x1388", null])
+      expect(
+        await mock.request({ method: "eth_sendRawTransactionSync", params: [raw, timeout] }),
+      ).toMatchObject({ transactionHash: keccak256(raw) });
+    expect(mock.transactions).toHaveLength(1);
+  });
+
+  test("restore() takes a Sync send back off the chain", async () => {
+    const { mock, wallet } = localSetup();
+    const checkpoint = mock.checkpoint();
+
+    await wallet.sendTransactionSync({ to: bob });
+    checkpoint.restore();
+
+    expect(mock.transactions).toEqual([]);
+    expect(mock.blockNumber).toBe(10n);
+    expect((await wallet.sendTransactionSync({ to: bob })).blockNumber).toBe(11n);
+  });
+});
+
+/** Signed bytes for a plain transfer to bob. */
+async function signedTransfer(wallet: ReturnType<typeof localSetup>["wallet"]) {
+  return await wallet.signTransaction(
+    await wallet.prepareTransactionRequest({ to: bob, value: 1n }),
+  );
+}
+
+/** The signed bytes of the last Sync send `mock` received. */
+function lastSyncSend(mock: ReturnType<typeof createMockRpc>) {
+  const params = mock.requests.findLast(
+    ({ method }) => method === "eth_sendRawTransactionSync",
+  )?.params;
+  const raw: unknown = Array.isArray(params) ? params[0] : undefined;
+  return isHex(raw) ? raw : expect.unreachable("expected a Sync send");
+}
