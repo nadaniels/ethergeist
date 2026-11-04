@@ -55,6 +55,17 @@ describe("once() and times()", () => {
     expect([await balanceOf(), await balanceOf(), await balanceOf()]).toEqual([1n, 2n, 3n]);
   });
 
+  test("however many limited mocks there are, oldest first", async () => {
+    const { usdc, balanceOf } = setup();
+    for (const value of [1n, 2n, 3n, 4n, 5n]) usdc.read.balanceOf().once().returns(value);
+
+    const answers = [];
+    // oxlint-disable-next-line eslint/no-await-in-loop -- each call uses up the next mock
+    for (let i = 0; i < 5; i++) answers.push(await balanceOf());
+
+    expect(answers).toEqual([1n, 2n, 3n, 4n, 5n]);
+  });
+
   test("specificity still comes first", async () => {
     const { usdc, balanceOf } = setup();
     usdc.read.balanceOf([alice]).returns(1n);

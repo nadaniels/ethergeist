@@ -254,6 +254,26 @@ describe("balanceOf", () => {
     );
   });
 
+  test("the miss numbers an unnamed arg from 1", async () => {
+    const { mock, client } = setup();
+    const pairAbi = parseAbi(["function rate(address, address) view returns (uint256)"]);
+    const pair = mock.contract({ abi: pairAbi, address: USDC });
+    pair.read.rate([alice, bob]).returns(1n);
+
+    const error = await rejectionOf(
+      client.readContract({
+        abi: pairAbi,
+        address: USDC,
+        functionName: "rate",
+        args: [alice, alice],
+      }),
+    );
+
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
+      `Registered:\n  rate(${alice}, ${bob})  ← arg 2 didn't match`,
+    );
+  });
+
   test("a mock without an answer doesn't answer", async () => {
     const { mock, client } = setup();
     mock.contract({ abi: erc20Abi, address: USDC }).read.balanceOf([alice]);

@@ -180,6 +180,14 @@ describe("match.where()", () => {
     expect(await allowance(bob, alice)).toBe(2n);
   });
 
+  test("a predicate outranks any, whichever is registered first", async () => {
+    const { usdc, balanceOf } = setup();
+    usdc.read.balanceOf([match.where(() => true)]).returns(1n);
+    usdc.read.balanceOf([match.any()]).returns(2n);
+
+    expect(await balanceOf(alice)).toBe(1n);
+  });
+
   test("among equally specific mocks, the most recent wins", async () => {
     const { usdc, allowance } = setup();
     usdc.read.allowance([alice, match.any()]).returns(1n);
