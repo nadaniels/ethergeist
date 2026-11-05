@@ -16,6 +16,7 @@ import {
   addressParam,
   isBlockTag,
   numberParam,
+  optionalData,
   optionalQuantity,
 } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
@@ -68,16 +69,19 @@ const optionalAddress = (address: unknown) =>
  * A transaction request's fields, as `eth_estimateGas` and
  * `eth_sendTransaction` take it: `from` as `account`, the spec's `input` or
  * the `data` clients send, and `value` as `0n` when it has none. Fields it
- * leaves out (or sends as `null`) are `undefined`.
+ * leaves out are `undefined`, and so are a `from` or `to` sent as `null`;
+ * any other field that's malformed, `null` included, is refused.
  */
 export function decodeTransactionRequest(tx: unknown) {
   const { from, to, value, data, input, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } =
     isPlainObject(tx) ? tx : {};
+  // Both are checked, though `data` wins: a malformed field is refused, never skipped.
+  const [given, spec] = [optionalData(data, "`data`"), optionalData(input, "`input`")];
   return {
     account: optionalAddress(from),
     to: optionalAddress(to),
     value: optionalQuantity(value, "a value") ?? 0n,
-    data: isHex(data) ? data : isHex(input) ? input : undefined,
+    data: given ?? spec,
     gas: optionalQuantity(gas, "a gas limit"),
     gasPrice: optionalQuantity(gasPrice, "a gas price"),
     maxFeePerGas: optionalQuantity(maxFeePerGas, "a max fee per gas"),

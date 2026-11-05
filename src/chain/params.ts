@@ -1,4 +1,13 @@
-import { type Address, type BlockTag, type Hash, getAddress, isAddress, isHash } from "viem";
+import {
+  type Address,
+  type BlockTag,
+  type Hash,
+  type Hex,
+  getAddress,
+  isAddress,
+  isHash,
+  isHex,
+} from "viem";
 
 import { formatValue } from "../mocking/format.js";
 import { invalidParams } from "../shared/errors.js";
@@ -36,6 +45,14 @@ export function quantityParam(value: unknown, what: string): bigint {
 /** Like `quantityParam`, for a field that may be left out. */
 export const optionalQuantity = (value: unknown, what: string) =>
   value === undefined ? undefined : quantityParam(value, what);
+
+/** A field of hex data that may be left out; refused as invalid params if it isn't hex. */
+export function optionalData(value: unknown, what: string): Hex | undefined {
+  if (value === undefined) return undefined;
+  if (!isHex(value))
+    throw invalidParams(`expected hex data for ${what}; got ${formatValue(value)}`);
+  return value;
+}
 
 /**
  * The block params the spec takes, by method: a number or tag

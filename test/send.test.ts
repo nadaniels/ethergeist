@@ -616,6 +616,20 @@ describe("a send that's refused changes nothing", () => {
     expect(mock.blockNumber).toBe(10n);
   });
 
+  test("malformed data is refused as invalid params: no transaction, the nonce unchanged", async () => {
+    const { mock } = nodeSetup();
+
+    await mock
+      .request({ method: "eth_sendTransaction", params: [{ from: alice, to: bob, data: "zz" }] })
+      .catch(() => {});
+
+    expect(mock.history[0]?.outcome).toMatchObject({ type: "rpcError", code: -32602 });
+    expect(mock.transactions).toEqual([]);
+    expect(
+      await mock.request({ method: "eth_getTransactionCount", params: [alice, "pending"] }),
+    ).toBe("0x0");
+  });
+
   const poolRefusals = [
     { name: "nonceTooLow", errorClass: NonceTooLowError, message: "nonce too low" },
     { name: "nonceTooHigh", errorClass: NonceTooHighError, message: "nonce too high" },

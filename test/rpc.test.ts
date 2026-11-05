@@ -350,6 +350,18 @@ describe("malformed params", () => {
     ["a block count as a JSON number", "eth_feeHistory", [1, "latest", []]],
     ["an estimate's value that isn't a quantity", "eth_estimateGas", [{ to: USDC, value: "abc" }]],
     ["a nonce that isn't a quantity", "eth_estimateGas", [{ to: USDC, nonce: "abc" }]],
+    // An estimate or a send with data that isn't hex isn't a plain transfer.
+    ["an estimate's data that isn't hex", "eth_estimateGas", [{ to: USDC, data: "zz" }]],
+    ["an estimate's input that isn't hex", "eth_estimateGas", [{ to: USDC, input: "zz" }]],
+    ["a send's data that isn't hex", "eth_sendTransaction", [{ from: USDC, to: USDC, data: "zz" }]],
+    ["a send's input that isn't hex", "eth_sendTransaction", [{ from: USDC, to: USDC, input: 5 }]],
+    // The spec's input is bytes, never null; only `to` may be null (a deploy).
+    ["an estimate's data that's null", "eth_estimateGas", [{ to: USDC, data: null }]],
+    [
+      "an estimate's input that isn't hex, beside data that is",
+      "eth_estimateGas",
+      [{ to: USDC, data: "0x", input: "zz" }],
+    ],
     // A block is a number or a tag, and where the method takes them, a hash or an EIP-1898 object.
     ["a block as a JSON number", "eth_getBalance", [USDC, 10]],
     // A null at the end is a param left out (JSON writes one so); anywhere else it's refused.
