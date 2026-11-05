@@ -178,7 +178,7 @@ function minedAs(value: unknown, minedTransaction: FormatContext["minedTransacti
   const record = isHex(value) ? minedTransaction?.(value) : undefined;
   return (
     record && {
-      blockNumber: record.position?.blockNumber,
+      blockNumber: record.position.blockNumber,
       status: record.receipt.status,
       logs: record.logs,
     }

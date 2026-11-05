@@ -189,7 +189,7 @@ export function sendTransaction({
       } = call;
       const { logs = [], ...receipt } = outcome;
       const placed = transactions.add({
-        origin: "write",
+        origin: "sent",
         hash,
         fields: { from, to, ...(data && { input: data }), nonce, gas, ...fees },
         receipt:

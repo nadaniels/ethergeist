@@ -643,7 +643,6 @@ describe("the transaction an emit makes", () => {
       [second.transactionHash, 1],
       [sent.transactionHash, 2],
     ]);
-    expect(mock.transactions.map((record) => record.seq)).toEqual([0, 1, 2]);
   });
 
   test("one emit of several contracts' logs is one transaction, with all of them", async () => {
@@ -796,21 +795,19 @@ describe("the transaction an emit makes", () => {
     expect(mock.transactions).toEqual([
       {
         hash: earlier.transactionHash,
-        origin: "emit",
+        origin: "added",
         fields: {},
         receipt: {},
         logs: [earlier],
         position: { blockNumber: 5n, index: 0 },
-        seq: 1,
       },
       {
         hash: later.transactionHash,
-        origin: "emit",
+        origin: "added",
         fields: {},
         receipt: {},
         logs: [later],
         position: { blockNumber: 11n, index: 0 },
-        seq: 0,
       },
     ]);
     expect(Object.isFrozen(mock.transactions[0])).toBe(true);

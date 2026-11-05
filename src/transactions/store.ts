@@ -12,12 +12,17 @@ import { testHash } from "../shared/testValues.js";
 /**
  * A transaction on the mock's chain, as `mock.transactions` lists it: the
  * facts it was put there with, which its receipt, its transaction and its
- * block answer from. Frozen: mining replaces a record, never changes one.
+ * block answer from. Frozen: once added, a record never changes; mining only
+ * moves the head past it.
  */
 export type TransactionRecord = {
   readonly hash: Hash;
-  /** What put it on the chain: `emit()`, or a send (`eth_sendTransaction`, `eth_sendRawTransaction`, or its Sync form). */
-  readonly origin: "emit" | "write";
+  /**
+   * How it got on the chain: `"added"` by the mock's API (`emit()`), or
+   * `"sent"` over JSON-RPC (`eth_sendTransaction`, `eth_sendRawTransaction`
+   * or its Sync form), whoever sent it.
+   */
+  readonly origin: "added" | "sent";
   /**
    * The transaction's own fields, as its request or signed bytes had them;
    * any left out answer a node's defaults: zero or empty, an `"eip1559"`
@@ -49,9 +54,7 @@ export type TransactionRecord = {
   /** Its logs, placed in its block, with indexes counted across the block. */
   readonly logs: readonly EmittedLog[];
   /** Its block and index in it; a record is on the chain once its block is mined. */
-  readonly position?: Readonly<{ blockNumber: bigint; index: number }>;
-  /** The order records were added in, from 0. */
-  readonly seq: number;
+  readonly position: Readonly<{ blockNumber: bigint; index: number }>;
 };
 
 /** What `add` takes: a record's facts, which it places. */
@@ -104,10 +107,10 @@ export function createTransactionStore({
   const find = (hash: Hash) =>
     records.find((record) => record.hash.toLowerCase() === hash.toLowerCase());
   const inBlock = (number: bigint) =>
-    records.filter((record) => record.position?.blockNumber === number);
+    records.filter((record) => record.position.blockNumber === number);
   /** The record's position once it's on the chain; `undefined` while it waits. */
   const minedAt = ({ position }: TransactionRecord) =>
-    position !== undefined && position.blockNumber <= state.blockNumber ? position : undefined;
+    position.blockNumber <= state.blockNumber ? position : undefined;
 
   /**
    * Puts a transaction on the chain: in `blockNumber`, after what's placed
@@ -156,12 +159,8 @@ export function createTransactionStore({
       receipt: Object.freeze({ ...record.receipt }),
       logs: Object.freeze(logs),
       position: Object.freeze({ blockNumber: number, index }),
-      // Records are only ever added, or restored to an earlier list.
-      seq: records.length,
     });
-    const later = records.findIndex(
-      ({ position }) => position !== undefined && position.blockNumber > number,
-    );
+    const later = records.findIndex(({ position }) => position.blockNumber > number);
     records.splice(later === -1 ? records.length : later, 0, added);
     if (blockNumber === undefined) mine();
     return added;
@@ -226,7 +225,7 @@ export function createTransactionStore({
         ],
       });
     const { logs } = add(
-      { origin: "emit", hash: options.transactionHash, fields: {}, receipt: {}, logs: values },
+      { origin: "added", hash: options.transactionHash, fields: {}, receipt: {}, logs: values },
       { blockNumber: options.blockNumber },
     );
     return isLogList(given) ? [...logs] : logs[0]!;

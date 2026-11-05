@@ -109,7 +109,7 @@ describe("a write mock", () => {
       );
       expect(mock.calls.at(-1)).toMatchObject({ namespace: "write", functionName: "transfer" });
       expect(mock.actions.sendTransaction.calls).toMatchObject([{ from, to: USDC }]);
-      expect(mock.transactions).toMatchObject([{ hash, origin: "write" }]);
+      expect(mock.transactions).toMatchObject([{ hash, origin: "sent" }]);
       expect(mock.history.at(-2)).toMatchObject({
         type: "action",
         action: "sendTransaction",
@@ -880,7 +880,7 @@ describe("emit() while a write's resolver waits", () => {
     release();
     await sent;
 
-    expect(mock.transactions.map(({ origin }) => origin)).toEqual(["emit", "write"]);
+    expect(mock.transactions.map(({ origin }) => origin)).toEqual(["added", "sent"]);
   });
 });
 
@@ -973,7 +973,7 @@ describe("state the test owns (controlled mocks)", () => {
       logs: [],
     });
     expect([await balanceOf(sender), await balanceOf(bob)]).toEqual([10n, 0n]);
-    expect(mock.transactions).toMatchObject([{ hash, origin: "write" }]);
+    expect(mock.transactions).toMatchObject([{ hash, origin: "sent" }]);
   });
 
   test("an estimate that reads the closure makes an overdraft throw before it's sent", async () => {

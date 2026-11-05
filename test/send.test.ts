@@ -133,7 +133,7 @@ describe("a raw send (local account)", () => {
     });
     expect((await client.getBlock({ blockNumber: 11n })).transactions).toEqual([hash]);
     expect(mock.transactions).toMatchObject([
-      { hash, origin: "write", fields: { from: signer.address, to: bob, value: 5n } },
+      { hash, origin: "sent", fields: { from: signer.address, to: bob, value: 5n } },
     ]);
   });
 
