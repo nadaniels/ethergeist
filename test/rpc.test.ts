@@ -192,9 +192,9 @@ describe("rpc.calls", () => {
     await decimals(USDC);
 
     mock.calls.length = 0;
-    mock.requests.length = 0;
+    mock.history.length = 0;
     expect(mock.calls).toHaveLength(1);
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
   });
 });
 
@@ -208,7 +208,7 @@ describe("clearCalls()", () => {
 
     mock.clearCalls();
     expect(mock.calls).toEqual([]);
-    expect(mock.requests).toEqual([]);
+    expect(mock.history).toEqual([]);
     expect(usdc.calls).toEqual([]);
     expect(usdc.read.decimals.calls).toEqual([]);
     expect(mock.blockNumber).toBe(105n);
@@ -227,7 +227,7 @@ describe("reset()", () => {
 
     mock.reset();
     expect(mock.calls).toEqual([]);
-    expect(mock.requests).toEqual([]);
+    expect(mock.history).toEqual([]);
     expect(mock.blockNumber).toBe(100n);
     expect(await client.getBlockNumber()).toBe(100n);
 
@@ -295,12 +295,12 @@ describe("reset()", () => {
   });
 });
 
-describe("chainId", () => {
+describe("chain.id", () => {
   test("matches what eth_chainId answers", async () => {
     const mock = createMockRpc({ chain: base });
     const client = createPublicClient({ transport: mock.transport() });
 
-    expect(mock.chainId).toBe(8453);
+    expect(mock.chain.id).toBe(8453);
     expect(await client.getChainId()).toBe(8453);
   });
 });

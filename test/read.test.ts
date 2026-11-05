@@ -215,7 +215,7 @@ describe("balanceOf", () => {
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       `Registered:\n  balanceOf(${getAddress(bob)})  ← account didn't match`,
     );
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
   });
 
   test("a function not on the contract's ABI isn't answered, and isn't a call", async () => {

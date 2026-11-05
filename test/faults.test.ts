@@ -40,7 +40,7 @@ describe("HTTP status faults", () => {
     const error = expectCause(await rejectionOf(decimals()), HttpRequestError);
     expect(error.status).toBe(503);
     // One attempt plus viem's 3 retries, without waiting between them.
-    expect(mock.requests).toHaveLength(4);
+    expect(mock.history).toHaveLength(4);
     expect(outage.count).toBe(4);
   });
 
@@ -49,7 +49,7 @@ describe("HTTP status faults", () => {
     mock.failRequests({ status: 429 }, { times: 2 });
 
     expect(await decimals()).toBe(6);
-    expect(mock.requests).toHaveLength(3);
+    expect(mock.history).toHaveLength(3);
   });
 
   test("statuses viem doesn't retry fail on the first attempt", async () => {
@@ -57,7 +57,7 @@ describe("HTTP status faults", () => {
     mock.failRequests({ status: 400 });
 
     expect(expectCause(await rejectionOf(decimals()), HttpRequestError).status).toBe(400);
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
   });
 
   test("retryAfter sets the Retry-After header", async () => {
@@ -76,7 +76,7 @@ describe("JSON-RPC error faults", () => {
 
     const error = expectCause(await rejectionOf(decimals()), LimitExceededRpcError);
     expect(error.code).toBe(LimitExceededRpcError.code);
-    expect(mock.requests).toHaveLength(4);
+    expect(mock.history).toHaveLength(4);
   });
 
   test("a known code viem doesn't retry fails on the first attempt", async () => {
@@ -84,7 +84,7 @@ describe("JSON-RPC error faults", () => {
     mock.failRequests({ code: InvalidInputRpcError.code, message: "header not found" });
 
     expectCause(await rejectionOf(decimals()), InvalidInputRpcError);
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
   });
 
   test("a code viem doesn't map surfaces as RpcRequestError with the message", async () => {
@@ -95,7 +95,7 @@ describe("JSON-RPC error faults", () => {
     expect(error.code).toBe(-32010);
     expect(error.details).toBe("provider-specific failure");
     expect(findCause(error, InvalidInputRpcError)).toBeUndefined();
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
   });
 });
 
@@ -105,7 +105,7 @@ describe("timeouts and network failures", () => {
     mock.failRequests("timeout");
 
     expectCause(await rejectionOf(decimals()), TimeoutError);
-    expect(mock.requests).toHaveLength(4);
+    expect(mock.history).toHaveLength(4);
   });
 
   test('"network" throws HttpRequestError without a status', async () => {
@@ -155,7 +155,7 @@ describe("targeting", () => {
       ],
     });
     for (const result of results) expectCause(failureOf(result), HttpRequestError);
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
   });
 });
 
@@ -175,7 +175,7 @@ describe("lifecycle", () => {
     mock.failRequests({ status: 503 });
 
     await rejectionOf(decimals());
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
     expect(mock.calls).toEqual([]);
     expect(() => {
       mock.assertNoUnhandled();
@@ -252,7 +252,7 @@ describe(".fails()", () => {
     usdc.read.decimals().fails({ status: 503 });
 
     await rejectionOf(read(USDC, "decimals"));
-    expect(mock.requests).toHaveLength(attempts);
+    expect(mock.history).toHaveLength(attempts);
   });
 
   test("a JSON-RPC code maps to viem's error class", async () => {
@@ -290,7 +290,7 @@ describe(".fails()", () => {
       ],
     });
     for (const result of results) expectCause(failureOf(result), HttpRequestError);
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
   });
 
   test("a later returns() replaces it", async () => {
@@ -332,7 +332,7 @@ describe(".fails()", () => {
 
     // The first attempt fails; viem's retry gets the answer.
     expect(await read(USDC, "decimals")).toBe(6);
-    expect(mock.requests).toHaveLength(2);
+    expect(mock.history).toHaveLength(2);
   });
 });
 

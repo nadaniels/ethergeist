@@ -65,7 +65,7 @@ describe("empty()", () => {
     mock.empty(NOWHERE);
 
     await decimals(NOWHERE).catch(() => {});
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
     expect(mock.calls).toEqual([]);
   });
 

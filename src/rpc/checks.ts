@@ -174,7 +174,7 @@ export function createChecks({
  *   restore per test, needs a `clearCalls()` before a later checkpoint.
  * - Only registrations and the mock's own state are restored, not state a
  *   resolver closes over (counters, prices, external fixtures).
- * - History is cleared, not rolled back: `calls`, `requests`, `unhandled`,
+ * - History is cleared, not rolled back: `history`, `calls`, `unhandled`,
  *   per-function and per-action `.calls`, and usage counts. A checkpoint
  *   taken mid-test therefore also drops that test's earlier history.
  * - Concurrency: one mock shared by concurrent tests is unsafe with or

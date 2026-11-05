@@ -168,7 +168,7 @@ async function compare(
   const realError = await rejectionOf(real.readContract(read));
   const mockError = await rejectionOf(mocked.readContract(read));
   expect(layers(mockError, { portable })).toEqual(layers(realError, { portable }));
-  expect(mock.requests).toHaveLength(attempts);
+  expect(mock.history).toHaveLength(attempts);
 }
 
 describe("reverts match reth's exactly", () => {

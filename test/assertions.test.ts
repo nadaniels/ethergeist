@@ -131,7 +131,7 @@ describe("unencodable returns", () => {
       client.readContract({ abi: ownableAbi, address: USDC, functionName: "owner" }),
     );
     expectCause(error, MockResolverError);
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
     expectThrows(MockCheckError, "owner", () => {
       mock.assertNoUnhandled();
     });

@@ -71,9 +71,9 @@ export type CreateMockRpcParameters = {
    */
   historyOnFailure?: number | false;
   /**
-   * How many entries each record of requests keeps: `history`, `requests`,
-   * `calls`, `unhandled`, each action's `.calls`, and each contract's and
-   * function's `.calls`. The limit is per list, not in all. Past it, the
+   * How many entries each record of requests keeps: `history`, `calls`,
+   * `unhandled`, each action's `.calls`, and each contract's and function's
+   * `.calls`. The limit is per list, not in all. Past it, the
    * oldest are dropped; history keeps its numbering and says how many were
    * dropped, and checks count every request. Defaults to 1000, warning
    * once the first time one's dropped, so a test that counted on every
@@ -208,7 +208,6 @@ export type MockRpc = {
   empty(address: Address): void;
   /** The chain clients should use: the one given to `createMockRpc()`, or `mainnet`. */
   readonly chain: Chain;
-  readonly chainId: number;
   readonly blockNumber: bigint;
   mine(blocks?: bigint): void;
   /**
@@ -239,11 +238,6 @@ export type MockRpc = {
    * `eth_chainId` and `eth_blockNumber`.
    */
   formatHistory(options?: FormatHistoryOptions): string;
-  /**
-   * Every raw JSON-RPC request the mock has received, in order (the last
-   * `historyLimit`).
-   */
-  readonly requests: RpcRequest[];
   /**
    * Requests the mock couldn't answer, even if the code under test swallowed
    * the error (the last `historyLimit`).

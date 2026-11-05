@@ -113,9 +113,6 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     get chain() {
       return state.chain;
     },
-    get chainId() {
-      return state.chainId;
-    },
     get blockNumber() {
       return state.blockNumber;
     },
@@ -133,9 +130,6 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     },
     formatHistory(options?: FormatHistoryOptions) {
       return formatHistory(recorder.view, options, formatContext);
-    },
-    get requests() {
-      return [...recorder.requests.kept];
     },
     get unhandled() {
       return [...recorder.unhandled.kept];

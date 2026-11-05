@@ -45,7 +45,7 @@ describe("watchContractEvent", () => {
 
     // The first polls only note the current block; let them happen first.
     await vi.waitFor(() => {
-      expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
+      expect(mock.history.map((r) => r.method)).toContain("eth_blockNumber");
     });
     usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
     await vi.waitFor(() => {
@@ -65,7 +65,7 @@ describe("watchContractEvent", () => {
     });
 
     await vi.waitFor(() => {
-      expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
+      expect(mock.history.map((r) => r.method)).toContain("eth_blockNumber");
     });
     usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
     await vi.waitFor(() => {
@@ -90,7 +90,7 @@ describe("watchContractEvent", () => {
     });
 
     await vi.waitFor(() => {
-      expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
+      expect(mock.history.map((r) => r.method)).toContain("eth_blockNumber");
     });
     usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
     await vi.waitFor(() => {
@@ -123,7 +123,7 @@ describe("watchContractEvent", () => {
     });
 
     await vi.waitFor(() => {
-      expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
+      expect(mock.history.map((r) => r.method)).toContain("eth_blockNumber");
     });
     usdc.emit.Transfer({ from: alice, to: bob, value: 2n });
     await vi.waitFor(() => {
@@ -151,7 +151,7 @@ describe("watchContractEvent", () => {
     });
 
     await vi.waitFor(() => {
-      expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
+      expect(mock.history.map((r) => r.method)).toContain("eth_blockNumber");
     });
     usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
     usdc.emit.Transfer({ from: alice, to: bob, value: 2n });
@@ -178,7 +178,7 @@ describe("watchEvent", () => {
     });
 
     await vi.waitFor(() => {
-      expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
+      expect(mock.history.map((r) => r.method)).toContain("eth_blockNumber");
     });
     mock.addTransaction({
       logs: [

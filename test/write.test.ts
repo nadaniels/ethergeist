@@ -68,7 +68,7 @@ function setup(account: "local" | "node" = "local") {
 }
 
 const sentMethods = (mock: ReturnType<typeof createMockRpc>) =>
-  mock.requests
+  mock.history
     .map(({ method }) => method)
     .filter((method) => method === "eth_estimateGas" || method.startsWith("eth_send"));
 

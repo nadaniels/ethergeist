@@ -38,7 +38,7 @@ function setup({ batch = false }: { batch?: boolean } = {}) {
   usdc.read.balanceOf([alice]).returns(500n);
   feed.read.decimals().returns(8);
   feed.read.latestRoundData().returns({ roundId: 1n, answer: 2000_00000000n });
-  const ethCalls = () => mock.requests.filter((r) => r.method === "eth_call");
+  const ethCalls = () => mock.history.filter((r) => r.method === "eth_call");
   return { mock, client, usdc, feed, ethCalls };
 }
 

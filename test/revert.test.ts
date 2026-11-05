@@ -126,7 +126,7 @@ describe("reverts()", () => {
     nft.read.ownerOf().reverts("nope");
 
     await revertOf(ownerOf(1n));
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
   });
 });
 
@@ -160,6 +160,6 @@ describe("resolvers that throw", () => {
     expect(resolverError).toBeInstanceOf(MockResolverError);
     expect(resolverError.message).toContain('Mock resolver for "ownerOf" threw: fixture bug');
     expect(resolverError.cause).toMatchObject({ message: "fixture bug" });
-    expect(mock.requests).toHaveLength(1);
+    expect(mock.history).toHaveLength(1);
   });
 });

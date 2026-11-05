@@ -42,7 +42,7 @@ export function createRequestHandler({
    */
   async function handle(given: RpcRequest, retryCount?: number): Promise<unknown> {
     const { method, params } = given;
-    // As recorded: without `params` when the request had none.
+    // For `unhandled`: only `method` and `params`, without `params` when the request had none.
     const request: RpcRequest = params === undefined ? { method } : { method, params };
     const historyEntry = recorder.start(request);
 

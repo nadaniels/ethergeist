@@ -853,10 +853,10 @@ features land; tick them off as pages get written.
       estimate, send) as the example: it explains requests the app didn't
       write itself.
 - [ ] `historyLimit` (default 1,000 per list, `Infinity` for no limit):
-      every record (`history`, `requests`, `calls`, `unhandled`, each
-      action's and function's `.calls`) keeps its last N; each function and
-      each overload has its own list, so a busy poller can't push out a quiet
-      function's calls. History keeps its numbering (`#68001`) and says how
+      every record (`history`, `calls`, `unhandled`, each action's and
+      function's `.calls`) keeps its last N; each function and each overload
+      has its own list, so a busy poller can't push out a quiet function's
+      calls. History keeps its numbering (`#68001`) and says how
       many it dropped; checks count every request ("3 request(s) (the last 2
       kept)"). The default warns once, on the first drop, so a test that
       relied on every request hears about it; a chosen number never warns.

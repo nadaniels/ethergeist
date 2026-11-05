@@ -102,7 +102,7 @@ describe("once() and times()", () => {
     usdc.read.balanceOf().once().fails({ status: 503 });
 
     expect(await balanceOf()).toBe(1n);
-    expect(mock.requests.filter((r) => r.method === "eth_call")).toHaveLength(2);
+    expect(mock.history.filter((r) => r.method === "eth_call")).toHaveLength(2);
   });
 
   test("a fault for more attempts than viem retries fails the call", async () => {

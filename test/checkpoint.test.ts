@@ -245,7 +245,7 @@ describe("restore()", () => {
     await balanceOf();
     baseline.restore();
     expect(mock.calls).toEqual([]);
-    expect(mock.requests).toEqual([]);
+    expect(mock.history).toEqual([]);
     expect(usdc.read.balanceOf.calls).toEqual([]);
     // Used in the last "test", but not in this one.
     expectThrows(MockCheckError, "balanceOf", () => {

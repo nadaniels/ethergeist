@@ -70,9 +70,7 @@ function nodeSetup() {
 
 /** The signed bytes of the last raw send `mock` received. */
 function lastRawSend(mock: ReturnType<typeof createMockRpc>) {
-  const params = mock.requests.findLast(
-    ({ method }) => method === "eth_sendRawTransaction",
-  )?.params;
+  const params = mock.history.findLast(({ method }) => method === "eth_sendRawTransaction")?.params;
   const raw: unknown = Array.isArray(params) ? params[0] : undefined;
   return isHex(raw) ? raw : expect.unreachable("expected a raw send");
 }
@@ -83,7 +81,7 @@ describe("a raw send (local account)", () => {
 
     const hash = await wallet.sendTransaction({ to: bob, value: 5n });
 
-    expect(mock.requests.map(({ method }) => method)).toEqual([
+    expect(mock.history.map(({ method }) => method)).toEqual([
       "eth_fillTransaction",
       "eth_getTransactionCount",
       "eth_getBlockByNumber",
@@ -145,7 +143,7 @@ describe("a raw send (local account)", () => {
     const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 10 });
 
     expect(receipt.status).toBe("success");
-    expect(mock.requests.filter((r) => r.method === "eth_getTransactionReceipt")).toHaveLength(1);
+    expect(mock.history.filter((r) => r.method === "eth_getTransactionReceipt")).toHaveLength(1);
   });
 
   test("legacy, eip2930 and eip1559 transactions keep their type, fees and signer", async () => {
@@ -203,7 +201,7 @@ describe("a raw send (local account)", () => {
     const { mock, client, wallet } = localSetup();
     const authorization = await signer.signAuthorization({
       contractAddress: USDC,
-      chainId: mock.chainId,
+      chainId: mock.chain.id,
       nonce: 1,
     });
     mock.actions.sendTransaction({ to: bob }).returns();
@@ -287,7 +285,7 @@ describe("eth_sendTransaction (node account)", () => {
 
     const hash = await wallet.sendTransaction({ to: bob, value: 5n });
 
-    expect(mock.requests.map(({ method }) => method)).toEqual([
+    expect(mock.history.map(({ method }) => method)).toEqual([
       "eth_chainId",
       "eth_sendTransaction",
     ]);
@@ -869,7 +867,7 @@ describe("the estimate a send mock implies", () => {
       if (type === "eip7702") {
         const authorization = await signer.signAuthorization({
           contractAddress: USDC,
-          chainId: mock.chainId,
+          chainId: mock.chain.id,
           nonce: 1,
         });
         await wallet.sendTransaction({ ...send, authorizationList: [authorization] });
@@ -1106,7 +1104,7 @@ describe("eth_sendRawTransactionSync (EIP-7966, a local account's *Sync sends)",
     expect(mock.formatHistory().split("\n").at(-1)).toBe(
       "#6 eth_sendRawTransactionSync write USDC.transfer(0x4292…207f, 5n) → 0xa4a9…c417 (mined in block 11n, 1 log)",
     );
-    expect(mock.requests.at(-1)?.method).toBe("eth_sendRawTransactionSync");
+    expect(mock.history.at(-1)?.method).toBe("eth_sendRawTransactionSync");
     expect(receipt).toMatchObject({ status: "success", blockNumber: 11n, gasUsed: 100_000n });
     expect(receipt.logs).toMatchObject([{ address: lowercase(USDC), topics: transfer.topics }]);
     expect(receipt).toEqual(await client.getTransactionReceipt({ hash: receipt.transactionHash }));
@@ -1258,7 +1256,7 @@ async function signedTransfer(wallet: ReturnType<typeof localSetup>["wallet"]) {
 
 /** The signed bytes of the last Sync send `mock` received. */
 function lastSyncSend(mock: ReturnType<typeof createMockRpc>) {
-  const params = mock.requests.findLast(
+  const params = mock.history.findLast(
     ({ method }) => method === "eth_sendRawTransactionSync",
   )?.params;
   const raw: unknown = Array.isArray(params) ? params[0] : undefined;

@@ -38,7 +38,7 @@ describe("publicClient()", () => {
 
     expect(await client.readContract(decimalsCall)).toBe(6);
     expect(await client.multicall({ contracts: [decimalsCall], allowFailure: false })).toEqual([6]);
-    expect(await client.getChainId()).toBe(mock.chainId);
+    expect(await client.getChainId()).toBe(mock.chain.id);
   });
 
   test("mined blocks show up immediately", async () => {
@@ -55,13 +55,13 @@ describe("publicClient()", () => {
     const client = mock.publicClient({ batch: { multicall: true } });
 
     await Promise.all([client.readContract(decimalsCall), client.readContract(decimalsCall)]);
-    expect(mock.requests.filter((r) => r.method === "eth_call")).toHaveLength(1);
+    expect(mock.history.filter((r) => r.method === "eth_call")).toHaveLength(1);
   });
 
   test("transport options are a second argument, e.g. no retries", async () => {
     const mock = createMockRpc();
     mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().fails({ status: 503 });
-    const ethCalls = () => mock.requests.filter((r) => r.method === "eth_call");
+    const ethCalls = () => mock.history.filter((r) => r.method === "eth_call");
 
     await mock
       .publicClient(undefined, { retryCount: 0 })
@@ -98,7 +98,7 @@ describe("createMockRpc({ chain })", () => {
     const mock = withUsdc(createMockRpc({ chain: base }));
     const client = mock.publicClient();
 
-    expect(mock.chainId).toBe(8453);
+    expect(mock.chain.id).toBe(8453);
     expect(client.chain.id).toBe(8453);
     expect(await client.getChainId()).toBe(8453);
     expect(await client.multicall({ contracts: [decimalsCall], allowFailure: false })).toEqual([6]);
@@ -111,7 +111,7 @@ describe("createMockRpc({ chain })", () => {
       .publicClient()
       .multicall({ contracts: [decimalsCall], allowFailure: false });
     expect(results).toEqual([6]);
-    expect(mock.requests.at(-1)?.params).toMatchObject([{ to: customMulticall }, "latest"]);
+    expect(mock.history.at(-1)?.params).toMatchObject([{ to: customMulticall }, "latest"]);
   });
 
   test("a chain without Multicall3 can't multicall, as in viem", async () => {

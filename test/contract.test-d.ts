@@ -470,10 +470,6 @@ describe("rpc", () => {
     expectTypeOf(call.args).toEqualTypeOf<readonly unknown[]>();
     expectTypeOf(usdc.calls[0]!.address).toEqualTypeOf<Address>();
   });
-
-  test("chainId is a number", () => {
-    expectTypeOf(mock.chainId).toEqualTypeOf<number>();
-  });
 });
 
 describe("zeroResult", () => {

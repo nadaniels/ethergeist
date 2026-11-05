@@ -67,9 +67,9 @@ export function valueOf(entry: MockHistoryEntry, rpc: unknown): unknown {
 export type Recorder = ReturnType<typeof createRecorder>;
 
 /**
- * What the mock records about requests: each one as received (`requests`),
- * how it was answered (`history`), every decoded contract call (`calls`),
- * and those it couldn't answer (`unhandled`), each kept to `recordLimit`.
+ * What the mock records about requests: each one as received and how it
+ * was answered (`history`), every decoded contract call (`calls`), and
+ * those it couldn't answer (`unhandled`), each kept to `recordLimit`.
  * As a part, `clearCalls()` clears them; they're never saved.
  */
 export function createRecorder({
@@ -87,7 +87,6 @@ export function createRecorder({
   formatContext: FormatContext;
   recordLimit: RecordLimit;
 }) {
-  const requests = createRecordList<RpcRequest>(recordLimit);
   const history = createRecordList<MockHistoryEntry>(recordLimit);
   const calls = createRecordList<MockTaggedCall>(recordLimit);
   const unhandled = createRecordList<UnhandledRequest>(recordLimit);
@@ -139,7 +138,6 @@ export function createRecorder({
   }
 
   return {
-    requests,
     history,
     calls,
     /** Requests the mock couldn't answer; added to with `markUnhandled()`. */
@@ -148,7 +146,6 @@ export function createRecorder({
     view,
     /** Records a request as received, and returns its history entry. */
     start(request: RpcRequest): MockHistoryEntry {
-      requests.add(request);
       const entry = entryFor(request.method, request.params);
       // viem retries only once the attempt before has failed, so its outcome is known by now.
       const fault = last === undefined ? undefined : retriedFault(last, entry);
@@ -188,7 +185,6 @@ export function createRecorder({
       calls.add(call);
     },
     clearCalls() {
-      requests.clear();
       history.clear();
       calls.clear();
       unhandled.clear();

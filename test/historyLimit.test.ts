@@ -67,7 +67,6 @@ describe("historyLimit", () => {
     await poll(3, unanswered(mock));
 
     expect(mock.history).toHaveLength(2);
-    expect(mock.requests).toHaveLength(2);
     expect(mock.unhandled).toHaveLength(2);
     // Every namespace's calls share the list: the last 2 are the estimates.
     expect(mock.calls.map((call) => call.namespace)).toEqual(["estimateGas", "estimateGas"]);

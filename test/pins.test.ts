@@ -74,7 +74,7 @@ describe("pinning from", () => {
 
     const error = await rejectionOf(balanceOf());
 
-    expect(mock.requests[0]?.params).toEqual([
+    expect(mock.history[0]?.params).toEqual([
       {
         to: USDC,
         data: encodeFunctionData({ abi: erc20Abi, functionName: "balanceOf", args: [bob] }),
