@@ -270,9 +270,11 @@ export type MockContractWriteAnswers<abi extends Abi, args> = Omit<
   "reverts"
 > & {
   /**
-   * The transaction reverts: its estimate reverts with `spec`, so a client
-   * that estimates first throws before it sends; a send that reaches the
-   * chain anyway is mined reverted. See `RevertSpec` for the forms.
+   * The transaction reverts: its estimate reverts with `spec`, before any
+   * estimate mock (this contract's own included), so a client that
+   * estimates first throws before it sends (that's this mock's answer,
+   * which uses it, spending a `.once()`); a send that reaches the chain
+   * anyway is mined reverted. See `RevertSpec` for the forms.
    */
   reverts<errorName extends ContractErrorName<abi> = ContractErrorName<abi>>(
     spec?: RevertSpec<abi, errorName>,
@@ -353,7 +355,8 @@ export type MockContract<abi extends Abi> = {
    * as `estimateContractGas` sends them, and as viem prepares a write. A
    * `simulate` mock doesn't answer estimates. These answer before
    * `mock.actions.estimateGas`, which answers what they don't; a `write`
-   * mock implies the rest.
+   * mock implies the rest. A `.reverts()` `write` mock reverts the estimate
+   * of a send it would answer before any of them.
    */
   estimateGas: {
     [functionName in ContractFunctionName<abi, WriteMutability>]: MockEstimateGasFunction<
@@ -371,10 +374,11 @@ export type MockContract<abi extends Abi> = {
    * `.returns()` takes the outcome (`MockWriteOutcome`): its logs, a
    * reverted status, its gas; `.emits(log)` or `.emits([a, b])` is
    * `.returns({ logs: [a, b] })`. The return value isn't on the chain: it
-   * goes on `simulate`. `.reverts(spec)` reverts its estimate and mines it
-   * reverted if it's sent anyway.
-   * `.fails()` takes a node's refusal by name, e.g. `"insufficientFunds"`. A
-   * matching mock also answers the transaction's `eth_estimateGas` (when no
+   * goes on `simulate`. `.reverts(spec)` reverts its estimate, before any
+   * estimate mock (an answer, which uses the mock), and mines it reverted if
+   * it's sent anyway.
+   * `.fails()` takes a node's refusal by name, e.g. `"insufficientFunds"`. Any
+   * other matching mock also answers the transaction's `eth_estimateGas` (when no
    * `estimateGas` mock does) with 100,000 gas, without running it or using
    * it up. Nothing here answers an `eth_call`: `simulate` does.
    */

@@ -686,6 +686,170 @@ describe("reverts", () => {
   });
 });
 
+describe("a write's .reverts() reverts its estimate before any estimate mock", () => {
+  test("a shared estimate action mock sets the number of a write that goes through, not one that reverts", async () => {
+    const { mock, usdc, transfer } = setup();
+    mock.actions.estimateGas().returns(80_000n);
+    usdc.write.transfer([bob, 5n]).returns();
+    usdc.write.transfer([bob, 6n]).reverts("paused");
+
+    await transfer(5n);
+    const error = await rejectionOf(transfer(6n));
+
+    expect(expectCause(error, ContractFunctionRevertedError).reason).toBe("paused");
+    expect(mock.transactions).toMatchObject([{ fields: { gas: 80_000n } }]);
+    expect(mock.formatHistory({ builtIns: false }).split("\n").slice(-1)).toEqual([
+      `#10 eth_estimateGas estimateGas USDC.transfer(0x4292…207f, 6n) ✗ reverted: "paused"`,
+    ]);
+  });
+
+  test("the contract's own estimate mocks and defaults lose to its write's revert", async () => {
+    const { mock, wallet } = setup();
+    const usdc = mock.contract({
+      abi: erc20Abi,
+      address: testAddress("token"),
+      defaults: { estimateGas: { transfer: 60_000n, approve: 46_000n } },
+    });
+    usdc.estimateGas.transferFrom().returns(65_000n);
+    usdc.estimateGas.approve([alice, 1n]).fails("insufficientFunds");
+    usdc.write.transfer().reverts("paused");
+    usdc.write.transferFrom().reverts("paused");
+    usdc.write.approve().reverts("paused");
+    const writes = [
+      () =>
+        wallet.writeContract({
+          address: usdc.address,
+          abi: erc20Abi,
+          functionName: "transfer",
+          args: [bob, 1n],
+        }),
+      () =>
+        wallet.writeContract({
+          address: usdc.address,
+          abi: erc20Abi,
+          functionName: "transferFrom",
+          args: [alice, bob, 1n],
+        }),
+      () =>
+        wallet.writeContract({
+          address: usdc.address,
+          abi: erc20Abi,
+          functionName: "approve",
+          args: [alice, 1n],
+        }),
+    ];
+
+    for (const write of writes)
+      expect(expectCause(await rejectionOf(write()), ContractFunctionRevertedError).reason).toBe(
+        "paused",
+      );
+    expect(mock.transactions).toEqual([]);
+  });
+
+  test("the contract's estimate mocks aren't matched, so their predicates don't run", async () => {
+    const { usdc, transfer } = setup();
+    const counted = vi.fn(() => true);
+    usdc.estimateGas.transfer([match.where(counted), 5n]).returns(1n);
+    usdc.estimateGas
+      .transfer([
+        bob,
+        match.where(() => {
+          throw new Error("boom");
+        }),
+      ])
+      .returns(1n);
+    usdc.write.transfer().reverts("paused");
+
+    const error = await rejectionOf(transfer());
+
+    expect(expectCause(error, ContractFunctionRevertedError).reason).toBe("paused");
+    expect(counted).not.toHaveBeenCalled();
+  });
+
+  test("history decodes the revert against the contract's ABI", async () => {
+    const { mock, wallet } = setup();
+    const vault = mock.contract({
+      abi: vaultAbi,
+      address: VAULT,
+      name: "Vault",
+      defaults: { estimateGas: { withdraw: 50_000n } },
+    });
+    vault.write.withdraw([1n]).reverts({ errorName: "Paused", args: [7n] });
+
+    await rejectionOf(
+      wallet.writeContract({ address: VAULT, abi: vaultAbi, functionName: "withdraw", args: [1n] }),
+    );
+
+    expect(mock.formatHistory().split("\n").at(-1)).toBe(
+      "#5 eth_estimateGas estimateGas Vault.withdraw(1n) ✗ reverted: Paused(7n)",
+    );
+  });
+
+  test('for an estimate that passes and a send mined reverted, .returns({ status: "reverted" }) and an estimate mock', async () => {
+    const { mock, client, usdc, transfer } = setup();
+    usdc.estimateGas.transfer().returns(65_000n);
+    usdc.write.transfer().returns({ status: "reverted" });
+
+    const hash = await transfer();
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      status: "reverted",
+      gasUsed: 65_000n,
+    });
+    expect(mock.transactions).toHaveLength(1);
+  });
+
+  test("a revert that answers an estimate counts as used, and spends a .once()", async () => {
+    const { mock, usdc, transfer } = setup();
+    usdc.write.transfer().returns();
+    usdc.write.transfer().once().reverts("paused");
+
+    expectCause(await rejectionOf(transfer()), ContractFunctionRevertedError);
+    // The .once() was the estimate's answer, so the next write goes through.
+    await transfer();
+    expect(mock.transactions).toHaveLength(1);
+    mock.assertAllUsed();
+  });
+
+  test.each([
+    { answer: "implies 100,000", estimateMock: undefined, reverts: false },
+    { answer: "reverts", estimateMock: undefined, reverts: true },
+    {
+      answer: "leaves the number to an action's estimate mock",
+      estimateMock: "action",
+      reverts: false,
+    },
+    {
+      answer: "leaves the number to the contract's estimate mock",
+      estimateMock: "contract",
+      reverts: false,
+    },
+  ] as const)(
+    "a write mock's predicate runs once per estimate, as it could revert it: one that $answer",
+    async ({ estimateMock, reverts }) => {
+      const { mock, client, usdc } = setup();
+      const small = vi.fn((amount: bigint) => amount < 10n);
+      const builder = usdc.write.transfer([bob, match.where(small)]);
+      if (reverts) builder.reverts("paused");
+      else builder.returns();
+      if (estimateMock === "action") mock.actions.estimateGas().returns(80_000n);
+      if (estimateMock === "contract") usdc.estimateGas.transfer().returns(80_000n);
+
+      const estimated = client.estimateContractGas({
+        account: alice,
+        address: USDC,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [bob, 5n],
+      });
+
+      if (reverts) expectCause(await rejectionOf(estimated), ContractFunctionRevertedError);
+      else expect(await estimated).toBe(estimateMock ? 80_000n : 100_000n);
+      expect(small).toHaveBeenCalledTimes(1);
+    },
+  );
+});
+
 describe("wagmi's flow: simulate, then write, then wait", () => {
   test("with simulate registered on its own, and a reverted receipt's eth_call replay answered from simulate", async () => {
     const { client, wallet, usdc, from } = setup();

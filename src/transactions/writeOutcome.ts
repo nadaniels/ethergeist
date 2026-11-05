@@ -67,9 +67,11 @@ export type MockWriteAnswers<context, revertSpec> = {
   /** Mined with this log, or these logs: `.returns({ logs: [log] })`. */
   emits(logs: MockEventLog | readonly MockEventLog[]): void;
   /**
-   * The transaction reverts: its estimate reverts with `spec`, so a client
-   * that estimates first throws before it sends; a send that reaches the
-   * chain anyway is mined reverted. See `RevertSpec` for the forms.
+   * The transaction reverts: its estimate reverts with `spec`, before any
+   * estimate mock, so a client that estimates first throws before it sends
+   * (that's this mock's answer, which uses it, spending a `.once()`); a
+   * send that reaches the chain anyway is mined reverted. See `RevertSpec`
+   * for the forms.
    */
   reverts(spec?: revertSpec): void;
   /**
@@ -158,8 +160,9 @@ export function refuseRevertedLogs(
 
 /**
  * A write mock's `.reverts()` answer: mined reverted, as a send that reaches
- * the chain is. The resolver carries `error`, so an estimate the mock
- * implies reverts with it without running anything (see `registeredRevert`).
+ * the chain is. The resolver carries `error`, so the estimate of a send the
+ * mock would answer reverts with it without running anything (see
+ * `registeredRevert`).
  */
 const revertedWith = (error: MockRevertError) =>
   Object.assign((): MockWriteOutcome => ({ status: "reverted" }), { revert: error });

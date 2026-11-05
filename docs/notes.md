@@ -124,9 +124,9 @@ features land; tick them off as pages get written.
     nonpayable one throws at registration (an ABI without `as const` types
     it everywhere). A request without a value has `0n`, so `{ value: 0n }`
     matches it.
-  - A write mock's pins narrow the estimate it implies too: a send's
-    estimate from someone else isn't implied, and the miss says the write
-    mock's `from` didn't match.
+  - A write mock's pins narrow the estimate it implies or reverts too: a
+    send's estimate from someone else isn't implied, and the miss says the
+    write mock's `from` didn't match.
   - Messages show pins after the call: `transfer(*) { from: 0x… }`, `← {
     from } didn't match` (braced, so it can't be read as an input named
     `from`, as in `transferFrom`), and the call's own `from` or `value`
@@ -163,12 +163,18 @@ features land; tick them off as pages get written.
     (`estimateGas.fn()`, `defaults.estimateGas`,
     `mock.actions.estimateGas`), without running it or using up a
     `.once()`; it's recorded as an `estimateGas` call, and doesn't count
-    as used for `assertAllUsed`.
-  - Reverts, by client path: `.reverts(spec)` reverts the estimate, so a
-    local account's `writeContract` throws the decoded error before
-    sending; with `gas` set, or from a node's account, nothing estimates and
-    it's mined reverted. `.returns({ status: "reverted" })` passes the
-    estimate and mines it reverted for any client. A resolver's
+    as used for `assertAllUsed`. A `.reverts()` one reverts it instead,
+    before any estimate mock (below).
+  - Reverts, by client path: `.reverts(spec)` reverts the estimate, before
+    any estimate mock (the contract's own `estimateGas` mocks and defaults
+    included), so a local account's `writeContract` throws the decoded
+    error before sending. That revert is the mock's answer: it counts as
+    used for `assertAllUsed`, and spends a `.once()`, so an app's own
+    estimate before the write (a fee preview) spends it too, and the
+    write's estimate gets the next answer. With `gas` set, or
+    from a node's account, nothing estimates and it's mined reverted.
+    `.returns({ status: "reverted" })` passes the estimate (an `estimateGas`
+    mock then sets its number) and mines it reverted for any client. A resolver's
     `revert()` runs only at the send, so it's always mined reverted: for an
     estimate-time revert, add `estimateGas.fn(args).reverts(spec)`.
     `.fails("insufficientFunds")` (or `"nonceTooLow"`, and the other names
@@ -651,11 +657,17 @@ features land; tick them off as pages get written.
     `.returns(({ value, revert }) => value > cap ? revert("too much") :
     50_000n)`; a spec viem can't encode fails that request, as a
     resolver's error does.
-  - A registered contract owns its functions: its `estimateGas` mocks and
+  - Which answers: a `.reverts()` write or send mock reverts the estimate
+    of every send it would answer, before any estimate mock, the
+    contract's or an action's. Otherwise estimate mocks answer: a
+    registered contract owns its functions, so its `estimateGas` mocks and
     defaults answer estimates of them first, and action mocks answer the
-    rest, by the usual rules. So an args-less
-    `mock.actions.estimateGas().returns(100_000n)` in shared setup is a
-    fallback for every write, and a test's contract mock overrides it. To
+    rest, by the usual rules. Without one, the send's mock implies 100,000,
+    and a plain transfer to an address without code is 21000 (below). So an
+    args-less `mock.actions.estimateGas().returns(100_000n)` in shared
+    setup is a fallback number for every write, a test's contract mock
+    overrides it, and a write's or send's `.reverts()` still reverts the
+    estimate. To
     fail an estimate of a function the contract mocks, fail it there:
     `token.estimateGas.transfer().fails("insufficientFunds")`.
   - Estimating with a local account first prepares the transaction, which
@@ -663,8 +675,13 @@ features land; tick them off as pages get written.
   - A write or send mock that would answer the transaction implies its
     estimate (below, and section 3, "Writes"), when no estimate mock
     answers: 100,000 gas (21000 for a plain transfer to an address without
-    code), and a `.reverts()` mock reverts it. Nothing runs and no
-    `.once()` is used up.
+    code). Nothing runs and no `.once()` is used up. A `.reverts()` one
+    reverts it instead, before any estimate mock (above): that's its
+    answer, so it counts as used and spends a `.once()`. The send's mock is
+    found by the send's own order (a contract's write mock, else a send
+    mock), with its pins, once per estimate, so its predicates run once;
+    they run on every estimate of a send it could answer, even one an
+    estimate mock then answers, since it could revert it.
 - [ ] Sends: `mock.actions.sendTransaction({ from, to, value, data })`
       answers `eth_sendTransaction` (a node's account, unsigned, with
       `from`) and `eth_sendRawTransaction` (a local account's signed bytes),
@@ -697,7 +714,8 @@ features land; tick them off as pages get written.
     `.emits(log)` or `.emits([a, b])` is `.returns({ logs: [a, b] })`, and a
     resolver's `emit()` takes either too; `.returns({ status:
     "reverted" })` mines it reverted (no logs). `.reverts(spec)` reverts the
-    estimate, so a local account throws before sending, and mines it
+    estimate, before any estimate mock, so a local account throws before
+    sending, and mines it
     reverted if it's sent anyway (`gas` set, or a node's account). A
     resolver returns the same, or nothing for a success.
   - A registered contract's `write` mocks answer sends of its functions
@@ -862,7 +880,8 @@ features land; tick them off as pages get written.
       A refused send (`.fails()`, not mocked) shows its refusal and placed
       nothing. An implied estimate is an `estimateGas` call, recorded by what
       was asked; `assertAllUsed()` counts a write mock used by its send, not
-      by the estimate it implied. Show the whole sequence of a viem local
+      by the estimate it implied (a `.reverts()` one's revert of the
+      estimate is its answer, so that counts). Show the whole sequence of a viem local
       account's write (`eth_fillTransaction` refused, nonce, block, tip,
       estimate, send) as the example: it explains requests the app didn't
       write itself.

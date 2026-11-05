@@ -12,7 +12,12 @@ import {
   formatMismatch,
   formatReceived,
 } from "../mocking/format.js";
-import { type Builder, type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
+import {
+  type Builder,
+  type FoundMock,
+  type Handler as MockHandler,
+  createHandlers,
+} from "../mocking/handlers.js";
 import { assertNoMatchers, firstMismatch, mismatches } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import type { PinnedKey } from "../mocking/types.js";
@@ -35,7 +40,7 @@ export type ActionsContext = {
   mockFor: <name extends keyof ActionCalls>(
     name: name,
     call: ActionCalls[name],
-  ) => { resolver: unknown } | undefined;
+  ) => FoundMock | undefined;
 };
 
 /**
@@ -85,6 +90,13 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
   /** The answer when no mock matches, or `undefined` to report the call as unhandled. */
   fallback?(call: call): answer | undefined;
   /**
+   * Refuses the call before any mock answers it, a registered contract's
+   * included, by throwing: an estimate reverts as the `.reverts()` mock
+   * that would answer its send does. It runs once the contract's turn is
+   * prepared, so the call is still recorded as the contract's.
+   */
+  refuse?(call: call): void;
+  /**
    * Turns the answer to a call into its JSON-RPC answer, once it's chosen
    * (a contract's, a mock's or the fallback's): a send places its
    * transaction on the chain and answers its hash. It runs only to answer,
@@ -113,7 +125,7 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
    * The contract's mock that would answer the call in its turn, if any,
    * found without preparing the turn: nothing is recorded, and nothing runs.
    */
-  contractMock?(call: call): { resolver: unknown } | undefined;
+  contractMock?(call: call): FoundMock | undefined;
 };
 
 /**
@@ -229,6 +241,12 @@ export function createTable(
   }
 
   async function answerCall(call: object, turn: ContractTurn | undefined): Promise<unknown> {
+    try {
+      definition.refuse?.(call);
+    } catch (error) {
+      turn?.refused(error);
+      throw error;
+    }
     const answered = turn?.answer();
     if (answered) return await answered;
     const { handler, missed } = match(call);

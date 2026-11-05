@@ -12,7 +12,11 @@ import {
 } from "viem";
 
 import { fail } from "../mocking/faults.js";
-import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
+import {
+  type FoundMock,
+  type Handler as MockHandler,
+  createHandlers,
+} from "../mocking/handlers.js";
 import { assertNoRunnerMatchers, firstMismatch, specificity } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
@@ -69,6 +73,11 @@ export type ContractTurn<answer = unknown> = {
   answer(): Promise<answer> | undefined;
   /** The error for the call when nothing else answers it either; built only then. */
   miss(): MockNotFoundError;
+  /**
+   * Records `error` as the contract's outcome, a revert decoded by its ABI,
+   * when the call is refused before its turn (see `Definition.refuse`).
+   */
+  refused(error: unknown): void;
   /** The call, in its namespace, for history; its outcome is the contract's, once it answers. */
   record: MockCallRecord;
 };
@@ -90,7 +99,7 @@ export type InternalMockContract<abi extends Abi = Abi> = {
    * The write mock that would answer a send of `data` now, if any, found
    * without answering or recording it: nothing runs, and no use is counted.
    */
-  writeMock(data: Hex, context: CallContext): { resolver: unknown } | undefined;
+  writeMock(data: Hex, context: CallContext): FoundMock | undefined;
   clearCalls(): void;
   /** Mocks other than defaults that haven't answered a call, formatted for messages. */
   unusedMocks(): string[];
@@ -270,14 +279,18 @@ export function createMockContract<const abi extends Abi>(
     };
     const decoded = decodeIn(namespace, data, context);
     if (decoded instanceof MockNotFoundError)
-      return { answer: () => undefined, miss: () => decoded, record };
+      return { answer: () => undefined, miss: () => decoded, refused() {}, record };
     receive(decoded);
     const { abiItem, call } = decoded;
     record.abiItem = abiItem;
     record.call = call;
-    const { handler, missed } = match(decoded);
+    // Matched when the turn comes, once: an estimate refused first (see
+    // `Definition.refuse`) runs none of these mocks' predicates.
+    let matched: ReturnType<typeof match> | undefined;
+    const matchOnce = () => (matched ??= match(decoded));
     return {
       answer() {
+        const { handler } = matchOnce();
         if (!handler) return undefined;
         return run(handler, call, encode).then(
           (answered) => {
@@ -290,8 +303,11 @@ export function createMockContract<const abi extends Abi>(
           },
         );
       },
+      refused(error) {
+        record.outcome = failureOutcome(error, abi);
+      },
       miss() {
-        const registered = { registered: candidates(decoded), missed };
+        const registered = { registered: candidates(decoded), missed: matchOnce().missed };
         // An estimate without `from` is no send's, so write mocks never had a turn at it.
         if (namespace !== "estimateGas" || call.from === undefined)
           return missError(call, namespace, label, registered);

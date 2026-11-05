@@ -183,8 +183,10 @@ export type MockActions = {
   getStorageAt: MockAction<StorageCall, Hex>;
   /**
    * `eth_estimateGas`, for `estimateGas` and the gas a transaction is
-   * prepared with. A registered contract's `estimateGas` mocks and defaults
-   * answer estimates of its functions first; these answer the rest. Unmocked,
+   * prepared with. A `.reverts()` `write` or `sendTransaction` mock that
+   * would answer the transaction reverts it first, before any estimate mock.
+   * Then a registered contract's `estimateGas` mocks and defaults answer
+   * estimates of its functions; these answer the rest. Unmocked,
    * a plain transfer, with no data, to an address without code is 21000
    * gas, as a node estimates it, and a `write` or `sendTransaction` mock
    * that would answer the transaction implies 100,000 gas; anything else
@@ -208,9 +210,10 @@ export type MockActions = {
    * `.returns()` takes what the chain did (`MockWriteOutcome`): its logs, a
    * reverted status, its gas, a deploy's address; `.emits(log)` or
    * `.emits([a, b])` is `.returns({ logs: [a, b] })`. `.reverts(spec)`
-   * reverts its estimate and mines it reverted if it's sent anyway. `.fails()` takes a node's refusal by name,
-   * e.g. `"insufficientFunds"` or `"nonceTooLow"`. A resolver also gets `emit` and `revert`
-   * (see `WriteContext`). A matching mock also answers the
+   * reverts its estimate, before any estimate mock (an answer, which uses
+   * the mock), and mines it reverted if it's sent anyway. `.fails()` takes
+   * a node's refusal by name, e.g. `"insufficientFunds"` or `"nonceTooLow"`. A resolver also gets `emit` and `revert`
+   * (see `WriteContext`). Any other matching mock also answers the
    * transaction's `eth_estimateGas` (when no estimate mock does) with
    * 100,000 gas, without running it or using it up.
    *

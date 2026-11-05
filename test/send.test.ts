@@ -245,6 +245,25 @@ describe("a raw send (local account)", () => {
     expect(mock.transactions).toHaveLength(1);
   });
 
+  test("a repeat of a contract's write isn't its call again", async () => {
+    const { mock, wallet } = localSetup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.write.transfer().once().returns();
+    const raw = await wallet.signTransaction(
+      await wallet.prepareTransactionRequest({
+        to: USDC,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [bob, 1n] }),
+        gas: 50_000n,
+      }),
+    );
+
+    const first = await mock.request({ method: "eth_sendRawTransaction", params: [raw] });
+    const again = await mock.request({ method: "eth_sendRawTransaction", params: [raw] });
+
+    expect(again).toBe(first);
+    expect(usdc.calls).toHaveLength(1);
+  });
+
   test("the same bytes sent twice at once are one transaction", async () => {
     const { mock, wallet } = localSetup();
     const raw = await wallet.signTransaction(
@@ -823,6 +842,24 @@ describe("the estimate a send mock implies", () => {
 
     await wallet.sendTransaction({ to: bob, data: "0x12", gas: 50_000n });
     expect(mock.transactions).toMatchObject([{ receipt: { status: "reverted" }, logs: [] }]);
+  });
+
+  test("a .reverts() mock reverts it before any estimate mock, and counts as used, spending a .once()", async () => {
+    const { mock, wallet } = localSetup();
+    const router = testAddress("router");
+    mock.actions.estimateGas().returns(80_000n);
+    mock.actions.sendTransaction().returns();
+    mock.actions.sendTransaction({ to: router }).once().reverts("slippage");
+
+    const error = await rejectionOf(wallet.sendTransaction({ to: router, data: "0x12" }));
+    expect(expectCause(error, ExecutionRevertedError).details).toBe("execution reverted: slippage");
+    expect(mock.transactions).toEqual([]);
+
+    // The .once() was the estimate's answer: the next send is the unpinned mock's, at the estimate's number.
+    await wallet.sendTransaction({ to: router, data: "0x12" });
+    expect(mock.transactions).toMatchObject([{ fields: { gas: 80_000n } }]);
+    expect(mock.transactions[0]!.receipt).toEqual({});
+    mock.assertAllUsed();
   });
 
   test("a .reverts() mock reverts a plain transfer's estimate too", async () => {

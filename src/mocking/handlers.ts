@@ -40,6 +40,18 @@ export type Handler<context = never, extra = unknown> = extra & {
   removed: boolean;
 };
 
+/**
+ * A mock found without answering (see `findAnswering`): its answer, and its
+ * use, counted if what it would answer is given after all (see `countUse`).
+ */
+export type FoundMock = Pick<Handler, "resolver" | "usedCount" | "remaining">;
+
+/** Counts an answer `handler` gave: it's used, and spends one of a limit's answers. */
+export function countUse(handler: FoundMock): void {
+  handler.usedCount += 1;
+  if (handler.remaining !== undefined) handler.remaining -= 1;
+}
+
 /** What every builder has: its answers, and limits on how often it gives them. */
 export type Builder = {
   returns(value?: unknown): void;
@@ -183,8 +195,7 @@ export function createHandlers<context, extra>() {
     encode: (value: unknown) => answer,
     name: string,
   ): Promise<answer> {
-    handler.usedCount += 1;
-    if (handler.remaining !== undefined) handler.remaining -= 1;
+    countUse(handler);
     try {
       return encode(await handler.resolver!(context));
     } catch (error) {
