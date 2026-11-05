@@ -20,7 +20,12 @@ import { placeLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { formatCall } from "../mocking/format.js";
 import { assertNoMatchers } from "../mocking/matching.js";
-import { type AllNamed, type PartialStructs, fillZeros } from "../shared/abiValues.js";
+import {
+  type AllNamed,
+  type PartialStructs,
+  fillZeros,
+  withoutRepeats,
+} from "../shared/abiValues.js";
 import { MockSetupError, refuseUnencodable } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 
@@ -206,8 +211,8 @@ export function encodeEventLog(
   args: unknown,
 ): MockEventLog {
   assertNoMatchers(args, "event args");
-  const overloads = abi.filter(
-    (item): item is AbiEvent => item.type === "event" && item.name === eventName,
+  const overloads = withoutRepeats(
+    abi.filter((item): item is AbiEvent => item.type === "event" && item.name === eventName),
   );
   const [only] = overloads;
   if (only === undefined) throw new MockSetupError(`No event "${eventName}" on this ABI.`);

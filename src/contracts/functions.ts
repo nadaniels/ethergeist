@@ -13,7 +13,7 @@ import { formatCall, formatValue } from "../mocking/format.js";
 import { isMatcher, partialMatcher } from "../mocking/matchers.js";
 import { type MatchOptions, findMatcher, firstMismatch, mismatches } from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
-import { arrayElement } from "../shared/abiValues.js";
+import { arrayElement, withoutRepeats } from "../shared/abiValues.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { MockCall, MockNamespace } from "./types.js";
@@ -25,9 +25,11 @@ import type { MockCall, MockNamespace } from "./types.js";
  */
 export function createFunctions(abi: Abi) {
   const functionsOf = (mutabilities: readonly string[]) =>
-    abi.filter(
-      (item): item is AbiFunction =>
-        item.type === "function" && mutabilities.includes(item.stateMutability),
+    withoutRepeats(
+      abi.filter(
+        (item): item is AbiFunction =>
+          item.type === "function" && mutabilities.includes(item.stateMutability),
+      ),
     );
   const writes = functionsOf(["nonpayable", "payable"]);
   const functionsIn = {

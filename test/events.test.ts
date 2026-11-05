@@ -168,6 +168,19 @@ describe("contract.events", () => {
     );
   });
 
+  test("events with other arg names stay overloads, each chosen by its args", () => {
+    // WETH names Transfer's args src, dst and wad.
+    const abi = [
+      ...erc20Abi,
+      ...parseAbi(["event Transfer(address indexed src, address indexed dst, uint256 wad)"]),
+    ];
+    const weth = contractEvents({ abi, address: USDC });
+
+    expect(weth.Transfer({ src: alice, dst: bob, wad: 1n })).toEqual(
+      weth.Transfer({ from: alice, to: bob, value: 1n }),
+    );
+  });
+
   test("indexed strings and bytes are hashed, as they decode", () => {
     const { shapes } = setup();
 

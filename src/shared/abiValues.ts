@@ -1,4 +1,4 @@
-import { type AbiParameter, parseAbi, zeroAddress } from "viem";
+import { type AbiEvent, type AbiFunction, type AbiParameter, parseAbi, zeroAddress } from "viem";
 
 import { isPlainObject } from "./values.js";
 
@@ -76,3 +76,43 @@ export function arrayElement(parameter: AbiParameter): AbiParameter | undefined 
 
 /** Solidity's built-in errors, which any contract can revert with. */
 export const builtinErrors = parseAbi(["error Error(string)", "error Panic(uint256)"]);
+
+/**
+ * `items` without repeats: a function or event that's the same to the mock
+ * as an earlier one, as when two standards' ABIs are spread together
+ * (`[...erc4626Abi, ...erc20Abi]`). The same means the same types,
+ * mutability and names, except a function's param names, since its args are
+ * positional (`erc20Abi` names `transfer`'s `recipient` where others say
+ * `to`). The first is kept; anything else stays an overload.
+ */
+export function withoutRepeats<item extends AbiFunction | AbiEvent>(
+  items: readonly item[],
+): item[] {
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = JSON.stringify(
+      item.type === "function"
+        ? [
+            item.name,
+            item.inputs.map((input) => ({ ...shapeOf(input), name: "" })),
+            item.outputs.map(shapeOf),
+            item.stateMutability,
+          ]
+        : [item.name, item.inputs.map(shapeOf), item.anonymous === true],
+    );
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+/** What the mock reads of a param: its type, name, whether it's indexed, and its fields'. */
+function shapeOf(parameter: AbiParameter | AbiEvent["inputs"][number]): object {
+  return {
+    type: parameter.type,
+    name: parameter.name ?? "",
+    indexed: "indexed" in parameter && parameter.indexed === true,
+    ...("components" in parameter &&
+      parameter.components !== undefined && { components: parameter.components.map(shapeOf) }),
+  };
+}

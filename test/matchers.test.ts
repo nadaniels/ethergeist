@@ -5,6 +5,7 @@ import {
   ContractFunctionExecutionError,
   InvalidAddressError,
   erc20Abi,
+  erc4626Abi,
   getAddress,
   isAddressEqual,
   pad,
@@ -17,6 +18,7 @@ import {
   MockSetupError,
   MockNotFoundError,
   MockResolverError,
+  contractEvents,
   createMockRpc,
   match,
   testAddress,
@@ -668,6 +670,48 @@ describe("overloads", () => {
       ].join("\n"),
       () => token.read.balanceOf(),
     );
+  });
+
+  test("an ABI that repeats a function, as two standards spread together, isn't an overload", async () => {
+    const { mock, client } = setup();
+    // erc4626Abi already has ERC-20's items; erc20Abi names transfer's params differently.
+    const abi = [...erc4626Abi, ...erc20Abi];
+    const vault = mock.contract({ abi, address: DAI });
+    vault.read.balanceOf().returns(7n);
+    vault.simulate.transfer().returns(true);
+
+    expect(
+      await client.readContract({ abi, address: DAI, functionName: "balanceOf", args: [alice] }),
+    ).toBe(7n);
+    const { result } = await client.simulateContract({
+      abi,
+      address: DAI,
+      functionName: "transfer",
+      args: [alice, 1n],
+      account: alice,
+    });
+    expect(result).toBe(true);
+    expect(vault.events.Transfer({ from: alice, to: alice, value: 1n })).toEqual(
+      contractEvents({ abi, address: DAI }).Transfer({ from: alice, to: alice, value: 1n }),
+    );
+  });
+
+  test("only true repeats are merged: other output names or mutability stay overloads", () => {
+    const { mock } = setup();
+    const outputs = mock.contract({
+      abi: parseAbi([
+        "function h() view returns (uint256 x, uint256 y)",
+        "function h() view returns (uint256 p, uint256 q)",
+      ]),
+      address: DAI,
+    });
+    const mutability = mock.contract({
+      abi: parseAbi(["function pay(uint256 a)", "function pay(uint256 b) payable"]),
+      address: testAddress("pay"),
+    });
+
+    expectThrows(MockSetupError, "Ambiguous overload for h(*)", () => outputs.read.h());
+    expectThrows(MockSetupError, "Ambiguous overload for pay(*)", () => mutability.simulate.pay());
   });
 
   test("defaults for an overloaded function answer every overload", async () => {
