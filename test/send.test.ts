@@ -554,9 +554,13 @@ describe("send mocks", () => {
       // @ts-expect-error -- not an address
       send.returns({ contractAddress: 5 });
     });
-    expectThrows(MockSetupError, "A write's logs must be logs; got [5].", () => {
+    expectThrows(MockSetupError, "A write's log 0 isn't a log; got 5.", () => {
       // @ts-expect-error -- not a log
       send.emits([5]);
+    });
+    expectThrows(MockSetupError, "A write's log 0 isn't a log; got { x: 1 }.", () => {
+      // @ts-expect-error -- not a log
+      send.emits([{ x: 1 }]);
     });
   });
 

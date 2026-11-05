@@ -124,10 +124,19 @@ export function encodeWriteOutcome(
       throw new MockSetupError(
         `A write's ${name} must be a bigint, zero or more; got ${formatValue(gas)}.`,
       );
-  if (!logs.every((log: unknown) => isPlainObject(log)))
-    throw new MockSetupError(`A write's logs must be logs; got ${formatValue(logs)}.`, {
-      metaMessages: ["Pass logs from contract.events, or testLog()."],
-    });
+  // A log that isn't one would fail at the send, as the mock's bug, so it's refused here.
+  logs.forEach((log: unknown, index: number) => {
+    if (
+      !isPlainObject(log) ||
+      typeof log.address !== "string" ||
+      (log.topics !== undefined && !Array.isArray(log.topics))
+    )
+      throw new MockSetupError(`A write's log ${index} isn't a log; got ${formatValue(log)}.`, {
+        metaMessages: ["Pass logs from contract.events, contractEvents() or testLog()."],
+      });
+    // getAddress validates it; the store checksums it at the send.
+    getAddress(log.address);
+  });
   if (contractAddress !== undefined && typeof contractAddress !== "string")
     throw new MockSetupError(
       `A write's contractAddress must be an address; got ${formatValue(contractAddress)}.`,

@@ -4,6 +4,7 @@ import {
   ContractFunctionRevertedError,
   InsufficientFundsError,
   IntrinsicGasTooLowError,
+  InvalidAddressError,
   NonceTooHighError,
   NonceTooLowError,
   createWalletClient,
@@ -739,6 +740,18 @@ describe("registration refusals", () => {
     expectThrows(MockSetupError, "Only a deploy (to: null) has a contractAddress.", () => {
       write.returns({ contractAddress: USDC });
     });
+    // A log is an emitter's address and its topics and data, not the event's args.
+    expectThrows(
+      MockSetupError,
+      /^A write's log 0 isn't a log; got \{ eventName: Transfer/u,
+      () => {
+        // @ts-expect-error -- not a log
+        write.returns({ logs: [{ eventName: "Transfer", args: { to: alice, value: 1n } }] });
+      },
+    );
+    expectThrows(InvalidAddressError, /Address "0x12" is invalid/u, () => {
+      write.emits([{ address: "0x12", topics: [], data: "0x" }]);
+    });
     expectThrows(MockSetupError, "A write's outcome must be an object; got true.", () => {
       // @ts-expect-error -- a write answers with its outcome; the return value goes on simulate
       write.returns(true);
@@ -751,6 +764,17 @@ describe("registration refusals", () => {
         usdc.write.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
       },
     );
+  });
+
+  test("a resolver's log with an invalid address is refused at the send, as viem's error", async () => {
+    const { mock, usdc, transfer } = setup();
+    usdc.write.transfer().returns(() => ({ logs: [{ address: "0x12", topics: [], data: "0x" }] }));
+
+    const error = await rejectionOf(transfer());
+
+    expectCause(error, MockResolverError);
+    expect(expectCause(error, InvalidAddressError).shortMessage).toBe('Address "0x12" is invalid.');
+    expect(mock.transactions).toEqual([]);
   });
 
   test("a resolver's outcome is checked at the send, changing nothing", async () => {
@@ -773,6 +797,16 @@ describe("registration refusals", () => {
       name: "a contractAddress",
       outcome: { contractAddress: USDC },
       message: "Only a deploy (to: null) has a contractAddress.",
+    },
+    {
+      name: "a log without an address",
+      outcome: { logs: [{ topics: [], data: "0x" }] },
+      message: "A write's log 1 isn't a log; got { topics: [], data: 0x }.",
+    },
+    {
+      name: "a log whose topics aren't a list",
+      outcome: { logs: [{ address: USDC, topics: 5, data: "0x" }] },
+      message: `A write's log 1 isn't a log; got { address: ${USDC}, topics: 5, data: 0x }.`,
     },
     {
       name: "a value that isn't an outcome, after emit()",
