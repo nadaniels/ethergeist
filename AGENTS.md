@@ -48,6 +48,7 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 - Don't compare addresses with `.toLowerCase()`.
 - The exception is matching arbitrary hex values, like `isMatch` in `src/mocking/matching.ts`. Those may be `bytes` or `bytes32` rather than addresses, so they compare case-insensitively.
 - Addresses in answers (receipts, logs, blocks) go out lowercase, as nodes send them: validate with `getAddress`, then lowercase with `nodeAddress` in `src/shared/values.ts`. Compare them after `getAddress`, never as sent.
+- Hashes (transaction, block, log and root hashes) have no checksum, so lowercase is their only form: addresses are checksummed to compare, hashes lowercase; both go out lowercase. Validate and lowercase a hash where it comes in (`nodeHash` in `src/chain/hashes.ts` for the mock's API and a mock's answers, `hashParam` for a request's), so records and lookups hold only lowercase and compare with `===`. Not calldata, `bytes` or topics: they aren't identifiers, and keep their case.
 
 ## Errors
 

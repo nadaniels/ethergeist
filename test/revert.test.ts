@@ -1,7 +1,9 @@
 import {
   type Address,
   ContractFunctionRevertedError,
+  IntegerOutOfRangeError,
   createPublicClient,
+  createWalletClient,
   encodeErrorResult,
   getAddress,
   parseAbi,
@@ -9,8 +11,15 @@ import {
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockResolverError, createMockRpc, testAddress } from "../src/index.js";
-import { expectCause, findCause, rejectionOf } from "./utils.js";
+import {
+  MockCheckError,
+  MockResolverError,
+  type MockRpc,
+  MockSetupError,
+  createMockRpc,
+  testAddress,
+} from "../src/index.js";
+import { expectCause, expectThrows, findCause, rejectionOf } from "./utils.js";
 
 const NFT = testAddress("nft");
 const alice = testAddress("alice");
@@ -161,5 +170,102 @@ describe("resolvers that throw", () => {
     expect(resolverError.message).toContain('Mock resolver for "ownerOf" threw: fixture bug');
     expect(resolverError.cause).toMatchObject({ message: "fixture bug" });
     expect(mock.history).toHaveLength(1);
+  });
+});
+
+// A bad spec fails at .reverts(), where it's given, and the mock is left without an answer.
+describe("a revert spec is checked at .reverts(), on every builder", () => {
+  const tokenAbi = parseAbi([
+    "function transfer(address to, uint256 value) returns (bool)",
+    "function ownerOf(uint256 tokenId) view returns (address)",
+    "error Failed(uint256 code)",
+  ]);
+  const builders = {
+    read: (mock: MockRpc) => mock.contract({ abi: tokenAbi, address: NFT }).read.ownerOf(),
+    simulate: (mock: MockRpc) => mock.contract({ abi: tokenAbi, address: NFT }).simulate.transfer(),
+    estimateGas: (mock: MockRpc) =>
+      mock.contract({ abi: tokenAbi, address: NFT }).estimateGas.transfer(),
+    write: (mock: MockRpc) => mock.contract({ abi: tokenAbi, address: NFT }).write.transfer(),
+    "actions.sendTransaction": (mock: MockRpc) => mock.actions.sendTransaction(),
+    "actions.estimateGas": (mock: MockRpc) => mock.actions.estimateGas(),
+  };
+  const refused = "A revert spec has no reason, errorName, panic or data";
+  const unencodable = "A revert was given a value it can't encode";
+
+  for (const [name, register] of Object.entries(builders))
+    test.each([
+      ["null", null, MockSetupError, `${refused}; got null.`],
+      ["an empty object", {}, MockSetupError, `${refused}; got {  }.`],
+      ["a number", 5, MockSetupError, `${refused}; got 5.`],
+      [
+        "a panic code that isn't an integer",
+        { panic: 1.5 },
+        MockSetupError,
+        `${unencodable}: The number 1.5 cannot be converted to a BigInt`,
+      ],
+      [
+        "a panic code that's a string",
+        { panic: "" },
+        MockSetupError,
+        "A revert's panic must be a number or bigint; got .",
+      ],
+      [
+        "a panic code that's a boolean",
+        { panic: true },
+        MockSetupError,
+        "A revert's panic must be a number or bigint; got true.",
+      ],
+      [
+        "data that isn't hex",
+        { data: "0xzz" },
+        MockSetupError,
+        "A revert's data must be hex; got 0xzz.",
+      ],
+      [
+        "a negative panic code, as viem refuses it",
+        { panic: -1 },
+        IntegerOutOfRangeError,
+        'Number "-1"',
+      ],
+    ] as const)(`${name}: refuses %s, leaving it without an answer`, (_, spec, type, message) => {
+      const mock = createMockRpc();
+      const builder = register(mock);
+
+      expectThrows(type, message, () => {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+        builder.reverts(spec as never);
+      });
+      expectThrows(MockCheckError, "without an answer", () => {
+        mock.assertAllUsed();
+      });
+    });
+
+  test.each(["read", "simulate", "estimateGas", "write"] as const)(
+    "%s: refuses an error's args that don't encode, as the mock's error",
+    (namespace) => {
+      const mock = createMockRpc();
+      const builder = builders[namespace](mock);
+
+      expectThrows(MockSetupError, `${unencodable}: Cannot convert x to a BigInt`, () => {
+        // @ts-expect-error -- code is a uint256
+        builder.reverts({ errorName: "Failed", args: ["x"] });
+      });
+    },
+  );
+
+  test("a resolver's revert() with a spec the types rule out throws the mock's error, sends too", async () => {
+    const { mock, nft, ownerOf } = setup();
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+    nft.read.ownerOf().returns(({ revert }) => revert(null as never));
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+    mock.actions.sendTransaction().returns(({ revert }) => revert({} as never));
+    const wallet = createWalletClient({
+      account: alice,
+      chain: mainnet,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+
+    expectCause(await rejectionOf(ownerOf(1n)), MockSetupError);
+    expectCause(await rejectionOf(wallet.sendTransaction({ to: alice })), MockSetupError);
   });
 });

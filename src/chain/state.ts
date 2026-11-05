@@ -99,7 +99,12 @@ export function createChainState(parameters: {
     get blockNumber() {
       return blockNumber;
     },
+    /** Mines `blocks` blocks: a bigint, 1n or more, so the head only moves forward. */
     mine(blocks = 1n) {
+      if (typeof blocks !== "bigint" || blocks < 1n)
+        throw new MockSetupError(
+          `mock.mine() takes a count of blocks, a bigint of 1n or more; got ${formatValue(blocks)}.`,
+        );
       blockNumber += blocks;
     },
     /** Block `number`'s fees. */

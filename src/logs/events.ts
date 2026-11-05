@@ -13,10 +13,12 @@ import {
   encodeEventTopics,
   getAddress,
   isHash,
+  isHex,
   zeroHash,
 } from "viem";
 
 import { blockHash } from "../chain/blocks.js";
+import { nodeHash } from "../chain/hashes.js";
 import { placeLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { formatCall, formatValue } from "../mocking/format.js";
@@ -80,20 +82,39 @@ export const isPlaced = (log: object) => positionFields.some((field) => field in
 
 const logsHint = "Logs come from contract.events, contractEvents() or testLog().";
 
+/** A log's content fields: a log from `events`, `contractEvents()` or `testLog()` has no others. */
+const contentFields = new Set(["address", "topics", "data"]);
+
 /**
- * Refuses `log` unless it's a log's content, saying `notALog` ("A send's log
- * 0 isn't a log"): a log that isn't one would fail where it's placed, as
- * the mock's bug.
+ * Refuses `log` unless it's a log's content, naming it `name` ("A send's
+ * log 0"): an address, hex data, and at most four 32-byte topics, with no
+ * other fields (the old `{ abi, eventName, args }` shape has some). A log
+ * that isn't one would fail where it's placed, as the mock's bug, or place
+ * an empty log. A log that's already placed is left to the caller, which
+ * says who places it.
  */
-function refuseNonLog(log: unknown, notALog: string): asserts log is MockEventLog {
+function refuseNonLog(log: unknown, name: string): asserts log is MockEventLog {
+  const refuse = (problem: string) =>
+    new MockSetupError(`${name} ${problem}.`, { metaMessages: [logsHint] });
   if (
     !isPlainObject(log) ||
     typeof log.address !== "string" ||
     (log.topics !== undefined && !Array.isArray(log.topics))
   )
-    throw new MockSetupError(`${notALog}; got ${formatValue(log)}.`, { metaMessages: [logsHint] });
+    throw refuse(`isn't a log; got ${formatValue(log)}`);
   // getAddress validates it; it's checksummed or lowercased where it's placed.
   getAddress(log.address);
+  if (isPlaced(log)) return;
+  const field = Object.keys(log).find((key) => !contentFields.has(key));
+  if (field !== undefined)
+    throw refuse(`has no field ${field}; a log's content is its address, topics and data`);
+  if (log.data !== undefined && (typeof log.data !== "string" || !isHex(log.data)))
+    throw refuse(`has data that isn't hex; got ${formatValue(log.data)}`);
+  const topics: readonly unknown[] = log.topics ?? [];
+  const index = topics.findIndex((topic) => typeof topic !== "string" || !isHash(topic));
+  if (index !== -1)
+    throw refuse(`has a topic that isn't a 32-byte hash; got ${formatValue(topics[index])}`);
+  if (topics.length > 4) throw refuse(`has ${topics.length} topics; a log has at most 4`);
 }
 
 /** Refuses `logs` unless it's a list of logs, for `subject` ("A send's"). */
@@ -104,7 +125,7 @@ export function refuseNonLogs(
   if (!Array.isArray(logs))
     throw new MockSetupError(`${subject} logs must be a list; got ${formatValue(logs)}.`);
   logs.forEach((log: unknown, index: number) => {
-    refuseNonLog(log, `${subject} log ${index} isn't a log`);
+    refuseNonLog(log, `${subject} log ${index}`);
   });
 }
 
@@ -165,9 +186,6 @@ export type MockContractEvents<abi extends Abi> = {
  */
 export type EmittedLog = Readonly<Log<bigint, number, false>>;
 
-/** A log's content fields: a log from `events`, `contractEvents()` or `testLog()` has no others. */
-const contentFields = new Set(["address", "topics", "data"]);
-
 /**
  * `log`'s content as a complete viem log, placed at `placement`: the same
  * placement as a transaction's logs, without the chain counting it. The
@@ -180,7 +198,7 @@ export function buildLog(
   placement: LogPlacement,
   chain: Pick<ChainState, "blockNumber" | "timestampAt">,
 ): Log<bigint, number, false> {
-  refuseNonLog(log, "mock.buildLog() takes a log");
+  refuseNonLog(log, "mock.buildLog()'s content");
   if (isPlaced(log))
     throw new MockSetupError(
       "mock.buildLog() places a log's content, but this log already has a position.",
@@ -188,17 +206,6 @@ export function buildLog(
         metaMessages: [
           "Pass a log from contract.events, contractEvents() or testLog(), and its position " +
             "as buildLog()'s placement.",
-        ],
-      },
-    );
-  const field = Object.keys(log).find((key) => !contentFields.has(key));
-  if (field !== undefined)
-    throw new MockSetupError(
-      `mock.buildLog() takes a log's content, which has no field ${field}.`,
-      {
-        metaMessages: [
-          "Build it with contract.events, contractEvents() or testLog(), then place it: " +
-            "mock.buildLog(contract.events.Transfer(args), { blockNumber }).",
         ],
       },
     );
@@ -226,13 +233,8 @@ export function buildLog(
     throw new MockSetupError(
       `A block number must be a bigint, zero or more; got ${formatValue(blockNumber)}.`,
     );
-  if (
-    transactionHash !== undefined &&
-    (typeof transactionHash !== "string" || !isHash(transactionHash))
-  )
-    throw new MockSetupError(
-      `A transaction hash must be 32 bytes; got ${formatValue(transactionHash)}.`,
-    );
+  const hash =
+    transactionHash === undefined ? zeroHash : nodeHash(transactionHash, "A transaction hash");
   for (const [name, index] of Object.entries({
     "transaction index": transactionIndex,
     "log index": logIndex,
@@ -245,7 +247,7 @@ export function buildLog(
     blockHash: blockHash(blockNumber),
     blockNumber,
     blockTimestamp: chain.timestampAt(blockNumber),
-    transactionHash: transactionHash ?? zeroHash,
+    transactionHash: hash,
     transactionIndex: transactionIndex ?? 0,
     logIndex: logIndex ?? 0,
   });

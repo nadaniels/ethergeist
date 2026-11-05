@@ -25,6 +25,7 @@ import { MockSetupError, invalidParams } from "../shared/errors.js";
 import { isPlainObject, nodeAddress } from "../shared/values.js";
 import { blockHash } from "./blocks.js";
 import { type Fees, blobBaseFee } from "./fees.js";
+import { nodeHash } from "./hashes.js";
 import type { ChainState } from "./state.js";
 
 /**
@@ -201,8 +202,8 @@ const quantityOf = (value: Hex | undefined) =>
  * fields over defaults from `context`. A mined one is in the current block
  * unless given, at index 0, and paid the suggested fees: the tip, and a max
  * fee of the base fee plus the tip, so its effective `gasPrice` is the same.
- * The signature is zero, and the rest is zero or empty. Addresses are
- * validated, and lowercase as nodes send them.
+ * The signature is zero, and the rest is zero or empty. Addresses and
+ * hashes are validated, and lowercase as nodes send them.
  */
 function toRpcTransaction(
   transaction: TransactionFields,
@@ -247,7 +248,9 @@ function toRpcTransaction(
       storageKeys: entry.storageKeys,
     }));
   if (type === "eip4844") {
-    rpc.blobVersionedHashes = transaction.blobVersionedHashes ?? [];
+    rpc.blobVersionedHashes = (transaction.blobVersionedHashes ?? []).map((hash) =>
+      nodeHash(hash, "A transaction's blob versioned hash"),
+    );
     rpc.maxFeePerBlobGas = numberToHex(transaction.maxFeePerBlobGas ?? blobBaseFee);
   }
   if (type === "eip7702")
@@ -264,8 +267,10 @@ function toRpcTransaction(
   rpc.s = quantityOf(transaction.s);
   if (type !== "legacy") rpc.yParity = numberToHex(yParity);
   rpc.v = numberToHex(v);
-  rpc.hash = transaction.hash ?? context.hash;
-  rpc.blockHash = pending ? null : (transaction.blockHash ?? blockHash(number));
+  rpc.hash = nodeHash(transaction.hash ?? context.hash, "A transaction's hash");
+  rpc.blockHash = pending
+    ? null
+    : nodeHash(transaction.blockHash ?? blockHash(number), "A transaction's blockHash");
   rpc.blockNumber = pending ? null : numberToHex(number);
   rpc.transactionIndex = pending ? null : numberToHex(transaction.transactionIndex ?? 0);
   rpc.from = nodeAddress(transaction.from ?? zeroAddress);

@@ -5,13 +5,15 @@ import {
   type Hex,
   encodeFunctionResult,
   encodeErrorResult,
+  isHex,
 } from "viem";
 
+import { formatValue } from "../mocking/format.js";
 import { encodeGas } from "../mocking/gas.js";
 import { assertNoMatchers } from "../mocking/matching.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { builtinErrors, fillZeros } from "../shared/abiValues.js";
-import { MockRevertError } from "../shared/errors.js";
+import { MockRevertError, MockSetupError, refuseUnencodable } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { MockNamespace, RevertSpec } from "./types.js";
 
@@ -50,19 +52,49 @@ function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
   });
 }
 
+/**
+ * The revert `spec` gives, its custom errors from `abi`. A spec the types
+ * rule out (an untyped caller's `null`, `{}`, data that isn't hex, args or
+ * a panic code that don't encode) is the mock's setup error; viem's own
+ * refusals, an error not on the ABI or a panic code out of range, pass
+ * through.
+ */
 export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError {
-  if (spec === undefined) return new MockRevertError("0x");
-  if (typeof spec === "string")
+  const given: unknown = spec;
+  if (given === undefined) return new MockRevertError("0x");
+  if (typeof given === "string")
     return new MockRevertError(
-      encodeErrorResult({ abi: builtinErrors, errorName: "Error", args: [spec] }),
-      spec,
+      encodeErrorResult({ abi: builtinErrors, errorName: "Error", args: [given] }),
+      given,
     );
-  if ("data" in spec) return new MockRevertError(spec.data);
-  if ("panic" in spec)
-    return new MockRevertError(
-      encodeErrorResult({ abi: builtinErrors, errorName: "Panic", args: [BigInt(spec.panic)] }),
+  if (!isPlainObject(given)) throw notARevert(given);
+  if ("data" in given) {
+    const { data } = given;
+    if (typeof data !== "string" || !isHex(data))
+      throw new MockSetupError(`A revert's data must be hex; got ${formatValue(data)}.`);
+    return new MockRevertError(data);
+  }
+  const { panic } = given;
+  if ("panic" in given && typeof panic !== "number" && typeof panic !== "bigint")
+    throw new MockSetupError(
+      `A revert's panic must be a number or bigint; got ${formatValue(panic)}.`,
     );
-  return new MockRevertError(
-    encodeErrorResult({ abi, errorName: spec.errorName, args: spec.args }),
-  );
+  const encode = () => {
+    if (typeof panic === "number" || typeof panic === "bigint")
+      return encodeErrorResult({ abi: builtinErrors, errorName: "Panic", args: [BigInt(panic)] });
+    const { errorName, args } = given;
+    if (typeof errorName !== "string") throw notARevert(given);
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem checks the args against the error
+    return encodeErrorResult({ abi, errorName, args: args as readonly unknown[] });
+  };
+  // BigInt() and viem's encoder throw native errors for values they can't take (1.5, bad args).
+  return new MockRevertError(refuseUnencodable("A revert", encode));
 }
+
+const notARevert = (spec: unknown) =>
+  new MockSetupError(
+    `A revert spec has no reason, errorName, panic or data; got ${formatValue(spec)}.`,
+    {
+      metaMessages: ["A revert is a reason, { errorName, args }, { panic } or { data }."],
+    },
+  );

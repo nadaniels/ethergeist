@@ -480,6 +480,23 @@ describe("mock.addTransaction", () => {
     expect(mock.transactions).toEqual([]);
   });
 
+  test("takes zero for its amounts, nonce and block, and an explicit success", () => {
+    const { mock } = setup();
+    const record = mock.addTransaction({
+      value: 0n,
+      gasUsed: 0n,
+      nonce: 0,
+      blockNumber: 0n,
+      status: "success",
+    });
+
+    expect(record).toMatchObject({
+      fields: { value: 0n, nonce: 0 },
+      receipt: { gasUsed: 0n, status: "success" },
+      position: { blockNumber: 0n },
+    });
+  });
+
   test("places its own copy of a log's topics, so the caller's stay theirs", () => {
     const { mock } = setup();
     const log = testLog("noise");
@@ -569,6 +586,20 @@ describe("receipt and transaction mocks over the chain", () => {
       blockNumber: null,
       blockHash: null,
       transactionIndex: null,
+    });
+  });
+
+  test("a block number over a mined transaction moves it, still mined", async () => {
+    const { mock, client } = setup();
+    mock.addTransaction({ blockNumber: 11n });
+    mock.addTransaction({ hash, from: alice, blockNumber: 11n });
+    mock.mine();
+    mock.actions.getTransaction({ hash }).returns({ blockNumber: 5n });
+
+    expect(await client.getTransaction({ hash })).toMatchObject({
+      from: lowercase(alice),
+      blockNumber: 5n,
+      transactionIndex: 1,
     });
   });
 

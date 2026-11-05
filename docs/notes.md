@@ -837,6 +837,10 @@ features land; tick them off as pages get written.
       production: compare with `isAddressEqual`. Builders' logs and receipts
       are lowercase too, so they still equal what the app got. Decoded
       values (event args, call results) are checksummed by viem.
+- [ ] Hashes (a transaction's, a block's, a log's) are lowercase in answers
+      and records, as nodes send them, however they were given:
+      `addTransaction({ hash })`, a mock's `transactionHash` or `blockHash`.
+      A request's hash finds its transaction in any case.
 - [ ] `contract({ …, name: "USDC" })`: names show in every message (and in
       history), next to the address.
 

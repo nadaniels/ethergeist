@@ -197,7 +197,11 @@ export function createMockContract<const abi extends Abi>(
     }
     return Object.assign(builder, {
       reverts(spec?: RevertSpec) {
-        builder.returns(() => revert(spec));
+        // Built now, so a bad spec fails here, changing nothing, as a write's does.
+        const error = createRevertError(abi, spec);
+        builder.returns(() => {
+          throw error;
+        });
       },
     });
   }

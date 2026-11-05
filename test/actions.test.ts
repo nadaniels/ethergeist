@@ -1,4 +1,5 @@
 import {
+  type Hash,
   HttpRequestError,
   IntegerOutOfRangeError,
   InvalidAddressError,
@@ -827,6 +828,125 @@ describe("addresses in answers are lowercase, as nodes send them", () => {
     );
     expect(log.address).toBe(lowercase(USDC));
     expect(mock.buildReceipt({ from: alice }).from).toBe(lowercase(alice));
+  });
+});
+
+/** `hash` with its hex digits uppercased from `from` on: a different case of the same hash. */
+const recased = (hash: Hash, from = 2) =>
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the same hash, recased
+  (hash.slice(0, from) + hash.slice(from).toUpperCase()) as Hash;
+
+// Hashes have no checksum, so lowercase is their only form: a node sends them lowercase.
+describe("hashes are lowercase, in and out", () => {
+  const hash = testHash("tx");
+  const mixed = recased(hash);
+
+  test("an added transaction's hash goes on the chain lowercase, and requests in any case find it", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const record = mock.addTransaction({
+      hash: mixed,
+      logs: [usdc.events.Transfer({ from: alice, to: bob })],
+    });
+
+    expect(record.hash).toBe(hash);
+    expect(mock.transactions[0]?.hash).toBe(hash);
+    expect(mock.logs[0]?.transactionHash).toBe(hash);
+    for (const asked of [hash, mixed, recased(hash, 40)]) {
+      expect((await client.getTransaction({ hash: asked })).hash).toBe(hash);
+      const receipt = await client.getTransactionReceipt({ hash: asked });
+      expect([receipt.transactionHash, receipt.logs[0]?.transactionHash]).toEqual([hash, hash]);
+    }
+  });
+
+  test("contract.emit's hash and buildLog()'s transactionHash are lowercase", () => {
+    const { mock } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+
+    expect(usdc.emit.Transfer({ from: alice, to: bob }, { hash: mixed }).transactionHash).toBe(
+      hash,
+    );
+    const content = usdc.events.Transfer({ from: alice, to: bob });
+    expect(mock.buildLog(content, { transactionHash: mixed }).transactionHash).toBe(hash);
+  });
+
+  test("a mock's hash fields answer lowercase", async () => {
+    const { mock, client } = setup();
+    const block = recased(testHash("block"));
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    mock.actions.getTransactionReceipt({ hash }).returns({
+      transactionHash: mixed,
+      blockHash: block,
+      logs: [usdc.events.Transfer({ from: alice, to: bob })],
+    });
+    mock.actions.getTransaction({ hash }).returns({ hash: mixed, blockHash: block });
+    mock.actions.getBlock().returns({
+      hash: block,
+      parentHash: mixed,
+      uncles: [mixed],
+      transactions: [mixed],
+    });
+
+    const receipt = await client.getTransactionReceipt({ hash });
+    expect([receipt.transactionHash, receipt.blockHash]).toEqual([hash, lowercase(block)]);
+    expect([receipt.logs[0]?.transactionHash, receipt.logs[0]?.blockHash]).toEqual([
+      hash,
+      lowercase(block),
+    ]);
+    const transaction = await client.getTransaction({ hash });
+    expect([transaction.hash, transaction.blockHash]).toEqual([hash, lowercase(block)]);
+    const answered = await client.getBlock();
+    expect([answered.hash, answered.parentHash, answered.uncles, answered.transactions]).toEqual([
+      lowercase(block),
+      hash,
+      [hash],
+      [hash],
+    ]);
+    expect(mock.buildReceipt({ transactionHash: mixed }).transactionHash).toBe(hash);
+    const built = mock.buildLog(usdc.events.Transfer({ from: alice, to: bob }));
+    mock.actions.getLogs().returns([{ ...built, transactionHash: mixed, blockHash: block }]);
+    const [log] = await client.getLogs();
+    expect([log?.transactionHash, log?.blockHash]).toEqual([hash, lowercase(block)]);
+  });
+
+  test("a mock pinned on a hash in another case answers over its transaction on the chain", async () => {
+    const { mock, client } = setup();
+    mock.addTransaction({ hash, from: alice });
+    mock.actions.getTransactionReceipt({ hash: mixed }).returns({ gasUsed: 5n });
+    mock.actions.getTransaction({ hash: mixed }).returns({ value: 2n });
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      from: lowercase(alice),
+      gasUsed: 5n,
+    });
+    expect(await client.getTransaction({ hash: recased(hash, 30) })).toMatchObject({
+      from: lowercase(alice),
+      value: 2n,
+    });
+  });
+
+  test("a restore's note finds a removed hash asked for in another case", async () => {
+    const { mock, client } = setup();
+    const checkpoint = mock.checkpoint();
+    mock.addTransaction({ hash: mixed });
+    checkpoint.restore();
+
+    const error = await rejectionOf(client.getTransaction({ hash: recased(hash, 20) }));
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toContain("restore()");
+  });
+
+  test("a hash in a mock's answer that isn't 32 bytes is refused", () => {
+    const { mock } = setup();
+
+    expectThrows(MockSetupError, "A receipt's transactionHash must be 32 bytes; got 0x12.", () => {
+      mock.actions.getTransactionReceipt().returns({ transactionHash: "0x12" });
+    });
+    expectThrows(MockSetupError, "A transaction's blockHash must be 32 bytes; got 0x12.", () => {
+      mock.actions.getTransaction().returns({ blockHash: "0x12" });
+    });
+    expectThrows(MockSetupError, "A block's parentHash must be 32 bytes; got 0x12.", () => {
+      mock.actions.getBlock().returns({ parentHash: "0x12" });
+    });
   });
 });
 

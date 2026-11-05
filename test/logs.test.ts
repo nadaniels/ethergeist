@@ -144,7 +144,8 @@ describe("emit", () => {
     expect(again).toThrow(MockSetupError);
     expectThrows(
       MockSetupError,
-      `Transaction ${upper} is already on the chain.\n\n` +
+      // The hash as the chain holds it: lowercase.
+      `Transaction ${hash} is already on the chain.\n\n` +
         "Give each added transaction its own hash; one transaction's logs go in one call, as " +
         "mock.addTransaction({ logs: [a, b] }).",
       again,

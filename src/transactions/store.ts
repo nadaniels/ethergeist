@@ -17,6 +17,7 @@ import { type AddTransactionParameters, checkAddTransaction } from "./addTransac
  * moves the head past it.
  */
 export type TransactionRecord = {
+  /** Lowercase, as a node sends it, however it was given. */
   readonly hash: Hash;
   /**
    * How it got on the chain: `"added"` by the mock's API
@@ -62,7 +63,7 @@ export type TransactionRecord = {
 
 /** What `add` takes: a record's facts, which it places. */
 type NewRecord = Pick<TransactionRecord, "origin" | "fields" | "receipt"> & {
-  /** Left out, one the mock makes from its position. */
+  /** Lowercase; left out, one the mock makes from its position. */
   hash?: Hash | undefined;
   logs: readonly MockEventLog[];
 };
@@ -92,11 +93,11 @@ export function createTransactionStore({
 }) {
   /** In chain order: by block, and in a block by index. */
   let records: TransactionRecord[] = [];
-  /** Hashes the last `restore()` or `reset()` took off the chain, lowercase, for hints. */
+  /** Hashes the last `restore()` or `reset()` took off the chain, for hints. */
   let removed = new Set<string>();
 
-  const find = (hash: Hash) =>
-    records.find((record) => record.hash.toLowerCase() === hash.toLowerCase());
+  // Hashes are lowercase wherever they come in (requests, `add`), so they compare as they are.
+  const find = (hash: Hash) => records.find((record) => record.hash === hash);
   const inBlock = (number: bigint) =>
     records.filter((record) => record.position.blockNumber === number);
   /** How many logs the transactions before `index` in block `number` have: a log's index counts across its block. */
@@ -374,16 +375,14 @@ export function createTransactionStore({
       return allLogs();
     },
     /** Whether the last `restore()` or `reset()` took the transaction with `hash` off the chain. */
-    removedByLastRestore: (hash: string) => removed.has(hash.toLowerCase()),
+    removedByLastRestore: (hash: string) => removed.has(hash),
     /** Saves the records; `restore()` puts them back, removing later ones. */
     snapshot() {
       const saved = [...records];
       return {
         restore() {
           const kept = new Set(saved);
-          removed = new Set(
-            records.filter((record) => !kept.has(record)).map(({ hash }) => hash.toLowerCase()),
-          );
+          removed = new Set(records.filter((record) => !kept.has(record)).map(({ hash }) => hash));
           records = [...saved];
         },
       };

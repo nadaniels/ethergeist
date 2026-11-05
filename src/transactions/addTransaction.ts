@@ -1,5 +1,6 @@
-import { type Address, type Hash, type Hex, getAddress, isHash, isHex } from "viem";
+import { type Address, type Hash, type Hex, getAddress, isHex } from "viem";
 
+import { nodeHash } from "../chain/hashes.js";
 import { type MockEventLog, isPlaced, refuseNonLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import { MockSetupError } from "../shared/errors.js";
@@ -40,8 +41,9 @@ export type AddTransactionParameters = {
    */
   blockNumber?: bigint;
   /**
-   * Its hash, e.g. one the app reads from a URL. Left out, one made from
-   * its position. Refused if it's already on the chain.
+   * Its hash, e.g. one the app reads from a URL, in any case: it goes on
+   * the chain lowercase, as a node sends it. Left out, one made from its
+   * position. Refused if it's already on the chain.
    */
   hash?: Hash;
 };
@@ -125,11 +127,9 @@ export function checkAddTransaction(fields: AddTransactionParameters) {
     throw new MockSetupError(
       `A block number must be a bigint, zero or more; got ${formatValue(blockNumber)}.`,
     );
-  if (hash !== undefined && (typeof hash !== "string" || !isHash(hash)))
-    throw new MockSetupError(`A transaction hash must be 32 bytes; got ${formatValue(hash)}.`);
   return {
     origin: "added" as const,
-    hash,
+    hash: hash === undefined ? undefined : nodeHash(hash, "A transaction hash"),
     fields: {
       ...(from !== undefined && { from }),
       ...(to !== undefined && { to }),

@@ -198,6 +198,36 @@ describe("rpc.calls", () => {
   });
 });
 
+describe("mine()", () => {
+  test("mines one block, or the count given", async () => {
+    const { mock, client } = setup();
+
+    mock.mine();
+    expect(mock.blockNumber).toBe(101n);
+    mock.mine(3n);
+    expect(mock.blockNumber).toBe(104n);
+    expect(await client.getBlockNumber()).toBe(104n);
+  });
+
+  test.each([
+    ["a number", 2, "got 2."],
+    ["zero, which would mine nothing", 0n, "got 0n."],
+    ["a negative count, which would move the head back", -1n, "got -1n."],
+  ])("refuses %s, changing nothing", (_, blocks, got) => {
+    const { mock } = setup();
+
+    expectThrows(
+      MockSetupError,
+      `mock.mine() takes a count of blocks, a bigint of 1n or more; ${got}`,
+      () => {
+        // @ts-expect-error -- some aren't bigints
+        mock.mine(blocks);
+      },
+    );
+    expect(mock.blockNumber).toBe(100n);
+  });
+});
+
 describe("clearCalls()", () => {
   test("clears history but keeps mocks and the block number", async () => {
     const { mock, decimals } = setup();

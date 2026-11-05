@@ -56,7 +56,7 @@ export function decodeLogsCall([filter]: readonly unknown[], resolveBlock: Resol
         -32602,
         "invalid argument 0: cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other",
       );
-    call.blockHash = lowercase(hashParam(fields.blockHash));
+    call.blockHash = hashParam(fields.blockHash);
   }
   return call;
 }
@@ -64,9 +64,7 @@ export function decodeLogsCall([filter]: readonly unknown[], resolveBlock: Resol
 /** A filter's topic: one hash, any of several, or `null` for any; each hash is 32 bytes. */
 function decodeTopic(topic: unknown): LogsTopic {
   if (topic === null) return null;
-  return Array.isArray(topic)
-    ? topic.map((each: unknown) => lowercase(hashParam(each)))
-    : lowercase(hashParam(topic));
+  return Array.isArray(topic) ? topic.map((each: unknown) => hashParam(each)) : hashParam(topic);
 }
 
 /**

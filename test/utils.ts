@@ -1,4 +1,4 @@
-import { type Address, BaseError } from "viem";
+import { BaseError, type Hex } from "viem";
 import { expect } from "vite-plus/test";
 
 type ErrorClass<error> = new (...args: never[]) => error;
@@ -77,8 +77,8 @@ export function failureOf(
   return result.error;
 }
 
-/** `address` in lowercase, for tests that check the mock normalizes addresses. */
-export function lowercase(address: Address): Address {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- lowercase hex is still an address
-  return address.toLowerCase() as Address;
+/** `value` in lowercase, for tests that check the mock normalizes addresses and hashes. */
+export function lowercase<hex extends Hex>(value: hex): hex {
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- lowercase hex is still the same kind of hex
+  return value.toLowerCase() as hex;
 }

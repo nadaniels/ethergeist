@@ -1,6 +1,7 @@
 import {
   InvalidAddressError,
   createPublicClient,
+  createWalletClient,
   decodeEventLog,
   erc20Abi,
   keccak256,
@@ -13,6 +14,7 @@ import {
 import { describe, expect, test } from "vite-plus/test";
 
 import {
+  type MockEventLog,
   MockNotFoundError,
   MockSetupError,
   contractEvents,
@@ -22,7 +24,7 @@ import {
   testHash,
   testLog,
 } from "../src/index.js";
-import { expectRejects, expectThrows, lowercase } from "./utils.js";
+import { expectCause, expectRejects, expectThrows, lowercase, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = testAddress("alice");
@@ -404,6 +406,10 @@ describe("mock.buildLog()", () => {
       removed: false,
     });
     expect(mock.buildLog(shapes.events.Paused(), {})).toEqual(log);
+    // Zero is a block and an index like any other.
+    expect(
+      mock.buildLog(shapes.events.Paused(), { blockNumber: 0n, transactionIndex: 0, logIndex: 0 }),
+    ).toMatchObject({ blockNumber: 0n, transactionIndex: 0, logIndex: 0 });
   });
 
   test("refuses placement values a log can't have, as addTransaction refuses them", () => {
@@ -447,21 +453,24 @@ describe("mock.buildLog()", () => {
   test("refuses what isn't a log's content", () => {
     const { mock } = setup();
 
-    const error = expectThrows(MockSetupError, "mock.buildLog() takes a log; got 5.", () =>
-      // @ts-expect-error -- not a log
-      mock.buildLog(5),
+    const error = expectThrows(
+      MockSetupError,
+      "mock.buildLog()'s content isn't a log; got 5.",
+      () =>
+        // @ts-expect-error -- not a log
+        mock.buildLog(5),
     );
     expect(error.metaMessages).toEqual([
       "Logs come from contract.events, contractEvents() or testLog().",
     ]);
-    expectThrows(MockSetupError, "mock.buildLog() takes a log; got undefined.", () =>
+    expectThrows(MockSetupError, "mock.buildLog()'s content isn't a log; got undefined.", () =>
       // @ts-expect-error -- not a log
       mock.buildLog(),
     );
     // Its parameters before it took content: a log's content has no abi.
     expectThrows(
       MockSetupError,
-      "mock.buildLog() takes a log's content, which has no field abi.",
+      "mock.buildLog()'s content has no field abi; a log's content is its address, topics and data.",
       () =>
         mock.buildLog({
           // @ts-expect-error -- not a log's content
@@ -505,5 +514,133 @@ describe("mock.buildLog()", () => {
       "Its fields are blockNumber, transactionHash, transactionIndex and logIndex; left out, " +
         "the current block and zeros.",
     ]);
+  });
+});
+
+/** A log the types rule out, as an untyped caller passes it. */
+// oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+const untyped = (log: object) => log as MockEventLog;
+
+// Every site that places a log refuses what isn't a log's content, in the same words.
+describe("a log's content is checked wherever it's placed", () => {
+  const content = testLog("noise");
+  const bad = [
+    {
+      name: "the old { abi, eventName, args } shape",
+      log: untyped({ abi: erc20Abi, address: USDC, eventName: "Transfer", args: {} }),
+      says: "has no field abi; a log's content is its address, topics and data.",
+    },
+    {
+      name: "data that isn't hex",
+      log: untyped({ ...content, data: "0xzz" }),
+      says: "has data that isn't hex; got 0xzz.",
+    },
+    {
+      name: "a topic that isn't a 32-byte hash",
+      log: untyped({ ...content, topics: ["0x12"] }),
+      says: "has a topic that isn't a 32-byte hash; got 0x12.",
+    },
+    {
+      name: "more than four topics",
+      log: untyped({ ...content, topics: Array.from({ length: 5 }, () => testHash("topic")) }),
+      says: "has 5 topics; a log has at most 4.",
+    },
+  ];
+  type Setup = ReturnType<typeof setup>;
+  // Each site, and how it names the log it refuses.
+  const sites: { site: string; name: string; place: (setup: Setup, log: MockEventLog) => void }[] =
+    [
+      {
+        site: "mock.addTransaction({ logs })",
+        name: "A transaction's log 0",
+        place: ({ mock }, log) => {
+          mock.addTransaction({ logs: [log] });
+        },
+      },
+      {
+        site: "a write's .emits()",
+        name: "A send's log 0",
+        place: ({ usdc }, log) => {
+          usdc.write.transfer().emits(log);
+        },
+      },
+      {
+        site: "a receipt mock's logs",
+        name: "A receipt's log 0",
+        place: ({ mock }, log) => {
+          mock.actions.getTransactionReceipt().returns({ logs: [log] });
+        },
+      },
+      {
+        site: "mock.buildLog()",
+        name: "mock.buildLog()'s content",
+        place: ({ mock }, log) => {
+          mock.buildLog(log);
+        },
+      },
+    ];
+
+  for (const { site, name, place } of sites)
+    test.each(bad)(`${site} refuses $name, changing nothing`, ({ log, says }) => {
+      const placed = setup();
+
+      const error = expectThrows(MockSetupError, `${name} ${says}`, () => {
+        place(placed, log);
+      });
+      expect(error.metaMessages).toEqual([
+        "Logs come from contract.events, contractEvents() or testLog().",
+      ]);
+      expect(placed.mock.transactions).toEqual([]);
+      expect(placed.mock.blockNumber).toBe(10n);
+    });
+
+  test.each(bad)("a resolver's emit() of $name is refused at the send", async ({ log, says }) => {
+    const { mock, usdc } = setup();
+    usdc.write.transfer().returns(({ emit }) => {
+      emit(log);
+    });
+
+    const wallet = createWalletClient({
+      account: alice,
+      chain: mock.chain,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+    const error = await rejectionOf(
+      wallet.writeContract({
+        abi: erc20Abi,
+        address: USDC,
+        functionName: "transfer",
+        args: [bob, 1n],
+      }),
+    );
+    expect(expectCause(error, MockSetupError).shortMessage).toBe(`A send's log 0 ${says}`);
+    expect(mock.transactions).toEqual([]);
+  });
+
+  test("logs from contract.events, contractEvents(), testLog() and four topics are placed everywhere", () => {
+    const { mock, usdc, shapes } = setup();
+    const logs: MockEventLog[] = [
+      usdc.events.Transfer({ from: alice, to: bob, value: 1n }),
+      contractEvents({ abi: erc20Abi, address: USDC }).Approval({ owner: alice, spender: bob }),
+      shapes.events.Registered({ name: "a", key: "0x01", owner: alice }),
+      testLog("noise"),
+      { address: USDC, topics: [], data: "0x" },
+    ];
+
+    expect(mock.addTransaction({ logs }).logs).toHaveLength(5);
+    usdc.write.transfer().emits(logs);
+    mock.actions.getTransactionReceipt().returns({ logs });
+    for (const log of logs) mock.buildLog(log);
+    // A log's data may be left out: it's empty.
+    expect(mock.buildLog(untyped({ address: USDC, topics: [] })).data).toBe("0x");
+  });
+
+  test("a placed log is refused as placed, whatever else is wrong with it", () => {
+    const { mock } = setup();
+    const placed = untyped({ address: USDC, topics: ["0x12"], data: "zz", blockNumber: 1n });
+
+    expectThrows(MockSetupError, "mock.addTransaction() places logs itself, but one already", () =>
+      mock.addTransaction({ logs: [placed] }),
+    );
   });
 });

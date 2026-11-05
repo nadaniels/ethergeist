@@ -11,7 +11,7 @@ import {
 
 import { formatValue } from "../mocking/format.js";
 import { invalidParams } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isPlainObject, lowercase } from "../shared/values.js";
 
 // A request's params, read to the Ethereum JSON-RPC spec (ethereum/execution-apis):
 // what it rules out is refused as invalid params, never thrown as is (viem
@@ -25,11 +25,14 @@ export function addressParam(value: unknown): Address {
   return getAddress(value);
 }
 
-/** A 32-byte hash param; refused as invalid params if it isn't one. */
+/**
+ * A 32-byte hash param, lowercase: the form the mock holds hashes in, so a
+ * request in any case finds them. Refused as invalid params if it isn't one.
+ */
 export function hashParam(value: unknown): Hash {
   if (typeof value !== "string" || !isHash(value))
     throw invalidParams(`expected a 32-byte hash; got ${formatValue(value)}`);
-  return value;
+  return lowercase(value);
 }
 
 /**

@@ -13,6 +13,7 @@ import {
 
 import { nodeAddress } from "../shared/values.js";
 import type { Fees } from "./fees.js";
+import { nodeHash } from "./hashes.js";
 
 /** A block as `getBlock` returns it, with transaction hashes rather than objects. */
 export type MockBlock = Block<bigint, false, "latest">;
@@ -82,11 +83,23 @@ export function generateBlock(number: bigint, clock: BlockClock, fees: Fees): Mo
 /**
  * A block in its JSON-RPC form. ox's `Block.toRpc` uses `undefined` where viem
  * uses `null`, and viem leaves withdrawals in their JSON-RPC form already.
+ * Its miner and the hashes that name blocks and transactions (its own, its
+ * parent's, its uncles', its transactions' when they're hashes) are
+ * validated, and lowercase as nodes send them; its roots aren't
+ * identifiers, so they go as given.
  */
 export function toRpcBlock({ withdrawals, ...block }: MockBlock) {
   return {
     ...OxBlock.toRpc({
       ...block,
+      // A pending block (only through a cast) has none.
+      ...(block.hash !== null && { hash: nodeHash(block.hash, "A block's hash") }),
+      parentHash: nodeHash(block.parentHash, "A block's parentHash"),
+      uncles: block.uncles.map((hash) => nodeHash(hash, "A block's uncle")),
+      // Full transactions are objects, which keep theirs.
+      transactions: block.transactions.map((each) =>
+        typeof each === "string" ? nodeHash(each, "A block's transaction") : each,
+      ),
       miner: nodeAddress(block.miner),
       baseFeePerGas: block.baseFeePerGas ?? undefined,
       totalDifficulty: block.totalDifficulty ?? undefined,

@@ -208,7 +208,19 @@ export type MockRpc = {
   empty(address: Address): void;
   /** The chain clients should use: the one given to `createMockRpc()`, or `mainnet`. */
   readonly chain: Chain;
+  /**
+   * The current block, the chain's head: `createMockRpc()`'s `blockNumber`
+   * until `mine()`, a send or `addTransaction()` (without a `blockNumber`)
+   * mines a block, and `restore()` and `reset()` move it back. `eth_blockNumber` answers it, and a transaction
+   * placed in a later block is waiting until it's mined.
+   */
   readonly blockNumber: bigint;
+  /**
+   * Mines `blocks` blocks (one if left out), moving the head and the clock
+   * on: transactions placed in them are mined, and watchers and
+   * `waitForTransactionReceipt` see them. A count is a bigint, `1n` or
+   * more: the head never moves back.
+   */
   mine(blocks?: bigint): void;
   /**
    * Changes the fees from the current block on, e.g. for a fee spike:

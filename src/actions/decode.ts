@@ -21,7 +21,7 @@ import type { ChainState } from "../chain/state.js";
 import type { MockTransactionType } from "../chain/transactions.js";
 import type { Registry } from "../contracts/registry.js";
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isPlainObject, lowercase } from "../shared/values.js";
 import type { AddressAtBlockCall, SendTransactionCall } from "./types.js";
 
 /** Encodes a bigint answer as a JSON-RPC quantity; `what` names it in the error. */
@@ -133,10 +133,13 @@ export function decodeAddressAtBlock(
   };
 }
 
-/** The hash a receipt or transaction mock pins exactly, as its call; `undefined` for a matcher. */
+/**
+ * The hash a receipt or transaction mock pins exactly, as its call, lowercase
+ * as a request's is decoded; `undefined` for a matcher.
+ */
 export const pinnedHash = (pinned: unknown): { hash: Hash } | undefined =>
   isPlainObject(pinned) && typeof pinned.hash === "string" && isHash(pinned.hash)
-    ? { hash: pinned.hash }
+    ? { hash: lowercase(pinned.hash) }
     : undefined;
 
 /** A static answer with the head when it was registered: see `registeredAt`. */

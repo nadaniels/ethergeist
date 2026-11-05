@@ -11,6 +11,7 @@ import {
 
 import { nodeAddress } from "../shared/values.js";
 import { blockHash } from "./blocks.js";
+import { nodeHash } from "./hashes.js";
 
 /**
  * A log a receipt places: its content. `topics` takes any list of hashes,
@@ -31,9 +32,9 @@ const zeroBloom = `0x${"00".repeat(256)}` as const;
  * unless given, and each of `logs` is placed by the receipt: its block (with
  * its timestamp, as reth sends it), transaction and index, its index in the
  * block counted after the logs of the block's earlier transactions
- * (`logsBefore`), as a node counts them. Everything else is zero. Addresses are validated, and lowercase
- * as nodes send them. `hash` is `undefined` while it isn't known yet, e.g.
- * at registration.
+ * (`logsBefore`), as a node counts them. Everything else is zero. Addresses
+ * and hashes are validated, and lowercase as nodes send them. `hash` is
+ * `undefined` while it isn't known yet, e.g. at registration.
  */
 export function completeReceipt(
   receipt: ReceiptFields,
@@ -69,6 +70,8 @@ export function completeReceipt(
     type: "eip1559",
     ...receipt,
   };
+  complete.blockHash = nodeHash(complete.blockHash, "A receipt's blockHash");
+  complete.transactionHash = nodeHash(complete.transactionHash, "A receipt's transactionHash");
   complete.from = nodeAddress(complete.from);
   if (complete.to) complete.to = nodeAddress(complete.to);
   if (complete.contractAddress) complete.contractAddress = nodeAddress(complete.contractAddress);
@@ -128,14 +131,20 @@ export function toRpcReceipt(receipt: TransactionReceipt) {
 
 /**
  * A log in its JSON-RPC form, with its block's timestamp when it has one, as
- * reth sends it (ox's encoder drops it). The address is lowercase, as nodes send it.
+ * reth sends it (ox's encoder drops it). The address and hashes are
+ * validated, and lowercase as nodes send them.
  */
 export function toRpcLog(log: Log<bigint, number, false>): Log<Hex, Hex, false> {
   const { blockTimestamp } = log;
+  const position = {
+    address: nodeAddress(log.address),
+    blockHash: nodeHash(log.blockHash, "A log's blockHash"),
+    transactionHash: nodeHash(log.transactionHash, "A log's transactionHash"),
+  };
   return {
     // ox types a log's topics as non-empty, but a LOG0 log has none; it passes them through.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- ox's type is narrower than its runtime
-    ...OxLog.toRpc({ ...log, address: nodeAddress(log.address) } as OxLog.Log),
+    ...OxLog.toRpc({ ...log, ...position } as OxLog.Log),
     ...(typeof blockTimestamp === "bigint" ? { blockTimestamp: numberToHex(blockTimestamp) } : {}),
   };
 }

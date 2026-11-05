@@ -22,6 +22,7 @@ export type CodeCall = AddressAtBlockCall;
  */
 export type BlockCall = {
   blockNumber: bigint;
+  /** Lowercase, however the request wrote it. */
   blockHash?: Hash;
   blockTag?: BlockTag;
   includeTransactions: boolean;
@@ -99,9 +100,9 @@ export type EmptyCall = Record<string, never>;
  * is 32 bytes, lowercase, however the request wrote it (e.g. `"0x0"`).
  */
 export type StorageCall = AddressAtBlockCall & { slot: Hex };
-/** What a call to `getTransactionReceipt` asked for. */
+/** What a call to `getTransactionReceipt` asked for: its hash, lowercase, however the request wrote it. */
 export type ReceiptCall = { hash: Hash };
-/** What a call to `getTransaction` asked for: a transaction by its hash. */
+/** What a call to `getTransaction` asked for: a transaction by its hash, lowercase, however the request wrote it. */
 export type TransactionCall = { hash: Hash };
 /** A raw JSON-RPC request answered by `mock.method()`. */
 export type MethodCall = { method: string; params: readonly RpcValue[] };
