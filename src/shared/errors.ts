@@ -39,7 +39,10 @@ export abstract class MockError extends BaseError {
   }
 }
 
-/** The mock's API was called wrong: a bad value or option, or a mock that's been removed. */
+/**
+ * The mock's API was called wrong: a bad value or option, a mock that's been
+ * removed, or a static answer that doesn't fit the request it answers.
+ */
 export class MockSetupError extends MockError {
   override name = "MockSetupError";
   readonly code = -32097;

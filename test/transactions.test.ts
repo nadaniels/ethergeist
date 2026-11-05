@@ -192,7 +192,7 @@ describe("getTransaction", () => {
 
     expectThrows(
       MockSetupError,
-      "An legacy transaction has no maxFeePerGas: set `type` to one that has it (eip1559, eip4844, eip7702).",
+      "A legacy transaction has no maxFeePerGas: set `type` to one that has it (eip1559, eip4844, eip7702).",
       () => {
         // @ts-expect-error legacy transactions have no max fee
         mock.actions.getTransaction().returns({ type: "legacy", maxFeePerGas: 1n });
@@ -877,6 +877,6 @@ describe("receipt and transaction mocks over the chain", () => {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a send answers its hash
     const error = await rejectionOf(client.getTransaction({ hash: sent as Hash }));
     expectCause(error, MockSetupError);
-    expect(String(error)).toContain("An legacy transaction has no maxFeePerGas");
+    expect(String(error)).toContain("A legacy transaction has no maxFeePerGas");
   });
 });

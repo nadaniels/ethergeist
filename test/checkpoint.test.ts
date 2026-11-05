@@ -96,9 +96,13 @@ describe("restore()", () => {
     const baseline = mock.checkpoint();
 
     balance.returns(1n);
+    usdc.read.decimals().returns(18);
     expect(await balanceOf()).toBe(1n);
     baseline.restore();
     expect(await balanceOf()).toBe(5n);
+    // Only the mocks registered since are removed: the baseline's builder still answers.
+    balance.returns(2n);
+    expect(await balanceOf()).toBe(2n);
   });
 
   test("puts back a baseline action mock's answer and its uses left", async () => {

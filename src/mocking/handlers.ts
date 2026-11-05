@@ -1,6 +1,7 @@
 import {
   MockNotFoundError,
   MockResolverError,
+  MockSetupError,
   refuseUnencodable,
   removedMockError,
 } from "../shared/errors.js";
@@ -67,6 +68,15 @@ export type Builder = {
  */
 const isDeliberate = (error: unknown) => isAnswer(error) || error instanceof MockNotFoundError;
 
+/**
+ * Whether `resolver` is one `.returns(value)` made for a static value,
+ * marked `isStatic` as a write's `.reverts()` marks its resolver `revert`.
+ * It's the mock's, not the user's, so a setup error encoding its value
+ * throws at a request (a check that needs the call or the chain) isn't a
+ * resolver error.
+ */
+const isStatic = (resolver: object) => "isStatic" in resolver && resolver.isStatic === true;
+
 /** `fn` with a `calls` getter, as `mock.actions.x` and a contract's functions have. */
 export function withCalls<fn extends (...args: never[]) => unknown>(
   fn: fn,
@@ -131,7 +141,7 @@ export function createHandlers<context, extra>() {
           return;
         }
         const answer = refuseUnencodable(`.returns() for "${name}"`, () => prepare(value));
-        handler.resolver = () => answer;
+        handler.resolver = Object.assign(() => answer, { isStatic: true });
       },
       // Named node errors are typed only where a node can refuse with them.
       fails(fault: MockNodeFault) {
@@ -187,7 +197,8 @@ export function createHandlers<context, extra>() {
   /**
    * Answers with `handler`, counting the use: its resolver's value, encoded.
    * What it throws becomes a resolver error named `name`, unless it's an
-   * answer itself, like a revert or a fault: see `isDeliberate`.
+   * answer itself, like a revert or a fault (see `isDeliberate`), or a static
+   * value's setup error, thrown as it is.
    */
   async function answerWith<answer>(
     handler: Handler<context, extra>,
@@ -196,10 +207,13 @@ export function createHandlers<context, extra>() {
     name: string,
   ): Promise<answer> {
     countUse(handler);
+    const resolver = handler.resolver!;
     try {
-      return encode(await handler.resolver!(context));
+      return encode(await resolver(context));
     } catch (error) {
       if (isDeliberate(error)) throw error;
+      // Anything else a static value throws, like one changed since, is still a resolver error.
+      if (error instanceof MockSetupError && isStatic(resolver)) throw error;
       throw new MockResolverError(name, error);
     }
   }

@@ -32,7 +32,7 @@ import {
   testHash,
   testLog,
 } from "../src/index.js";
-import { expectCause, expectThrows, hintsOf, lowercase, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, findCause, hintsOf, lowercase, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
@@ -610,6 +610,8 @@ describe("send mocks", () => {
 
     const error = await rejectionOf(wallet.sendTransaction({ to: bob }));
 
+    // The static outcome's own error, not a resolver's.
+    expect(findCause(error, MockResolverError)).toBeUndefined();
     expect(expectCause(error, MockSetupError).shortMessage).toBe(
       "Only a deploy (to: null) has a contractAddress.",
     );

@@ -173,7 +173,7 @@ function assertTransaction(transaction: TransactionFields): MockTransactionType 
     throw new MockSetupError(
       types.length === 0
         ? `A transaction has no field "${field}".`
-        : `An ${type} transaction has no ${field}: set \`type\` to one that has it (${types.join(", ")}).`,
+        : `${type === "legacy" ? "A" : "An"} ${type} transaction has no ${field}: set \`type\` to one that has it (${types.join(", ")}).`,
     );
   }
   const { blockNumber, blockHash: hash, transactionIndex, blockTimestamp } = transaction;

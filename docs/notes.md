@@ -816,7 +816,9 @@ features land; tick them off as pages get written.
       (the whole call when everything matched). Show an example.
 - [ ] The mock's own errors, all `MockError`s (viem's `BaseError`), each
       with a stable `code` viem doesn't retry: `MockSetupError` (the mock's
-      API called wrong: a bad value or option, a removed mock),
+      API called wrong: a bad value or option, a removed mock, or a static
+      answer that doesn't fit a request, as a reverted receipt for a hash
+      mined with logs after it's registered),
       `MockCheckError` (a failed check), `MockNotFoundError` (not mocked),
       `MockResolverError` (a resolver or predicate threw; its cause is what
       it threw) and `MockInternalError` (a bug in the mock: report it).

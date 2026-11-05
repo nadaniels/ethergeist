@@ -34,7 +34,8 @@ export type RpcRequest = { method: string; params?: unknown };
 
 /**
  * A request the mock couldn't answer: nothing was mocked for it
- * (`MockNotFoundError`), a resolver threw (`MockResolverError`), or the mock
- * itself failed (`MockInternalError`).
+ * (`MockNotFoundError`), a resolver threw (`MockResolverError`), a static
+ * answer doesn't fit it (`MockSetupError`), or the mock itself failed
+ * (`MockInternalError`).
  */
 export type UnhandledRequest = RpcRequest & { error: MockError };

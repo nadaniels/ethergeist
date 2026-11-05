@@ -1,4 +1,4 @@
-import { NonceTooLowError, erc20Abi } from "viem";
+import { NonceTooLowError, createWalletClient, erc20Abi, parseAbi } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
@@ -9,6 +9,8 @@ import {
   MockSetupError,
   createMockRpc,
   testAddress,
+  testHash,
+  testLog,
 } from "../src/index.js";
 import { expectCause, expectThrows, findCause, rejectionOf } from "./utils.js";
 
@@ -47,6 +49,78 @@ describe("the mock's errors", () => {
     expect(error.cause).toBeInstanceOf(MockSetupError);
     expect(mock.history).toHaveLength(1);
     expect(mock.unhandled).toHaveLength(1);
+  });
+
+  describe("a static answer that only fails at the request", () => {
+    const hash = testHash("late");
+
+    test("a reverted receipt for a hash mined with logs after .returns()", async () => {
+      const { mock, client } = setup();
+      mock.actions.getTransactionReceipt({ hash }).returns({ status: "reverted" });
+      mock.addTransaction({ hash, logs: [testLog("noise")] });
+
+      const error = await rejectionOf(client.getTransactionReceipt({ hash }));
+
+      expect(findCause(error, MockResolverError)).toBeUndefined();
+      expect(expectCause(error, MockSetupError).shortMessage).toBe(
+        "A reverted transaction has no logs.",
+      );
+      expect(mock.unhandled.map((request) => request.error)).toEqual([expect.any(MockSetupError)]);
+      expect(mock.formatHistory()).toContain("✗ A reverted transaction has no logs.");
+      expectThrows(MockCheckError, /A reverted transaction has no logs\./u, () => {
+        mock.assertNoUnhandled();
+      });
+    });
+
+    test("a transaction's type over a sent transaction with fields it doesn't have", async () => {
+      const { mock, client } = setup();
+      mock.actions.getTransaction().returns({ type: "legacy" });
+      const wallet = createWalletClient({
+        account: alice,
+        chain: mock.chain,
+        transport: mock.transport({ retryCount: 0 }),
+      });
+      const sent = await wallet.sendTransaction({ to: testAddress("bob"), maxFeePerGas: 1n });
+
+      const error = await rejectionOf(client.getTransaction({ hash: sent }));
+
+      expect(findCause(error, MockResolverError)).toBeUndefined();
+      expect(expectCause(error, MockSetupError).shortMessage).toMatch(
+        /^A legacy transaction has no max/u,
+      );
+    });
+
+    test("a resolver's value refused the same way is still a resolver error", async () => {
+      const { mock, client } = setup();
+      mock.actions.getTransactionReceipt({ hash }).returns(() => ({ status: "reverted" }));
+      mock.addTransaction({ hash, logs: [testLog("noise")] });
+
+      const error = expectCause(
+        await rejectionOf(client.getTransactionReceipt({ hash })),
+        MockResolverError,
+      );
+
+      expect(error.cause).toBeInstanceOf(MockSetupError);
+      expect(mock.unhandled.map((request) => request.error)).toEqual([error]);
+    });
+
+    test("a static value changed after .returns() so it can't encode is a resolver error, not the mock's bug", async () => {
+      const mock = createMockRpc();
+      const client = mock.publicClient({}, { retryCount: 0 });
+      const abi = parseAbi(["function reserves() view returns ((uint256 a, uint256 b))"]);
+      const pool = mock.contract({ abi, address: USDC });
+      const reserves = { a: 1n, b: 2n };
+      pool.read.reserves().returns(reserves);
+      Object.assign(reserves, { a: "soon" });
+
+      const error = expectCause(
+        await rejectionOf(client.readContract({ abi, address: USDC, functionName: "reserves" })),
+        MockResolverError,
+      );
+
+      expect(error.cause).toBeInstanceOf(SyntaxError);
+      expect(mock.unhandled.map((request) => request.error)).toEqual([error]);
+    });
   });
 
   test("using a removed mock is a MockSetupError", () => {

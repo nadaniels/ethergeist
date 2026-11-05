@@ -22,7 +22,8 @@ export type MockOutcome =
   | { type: "rpcError"; code: number; message: string }
   /**
    * Not answered: nothing was mocked (`MockNotFoundError`), a resolver threw
-   * (`MockResolverError`), or the mock itself failed (`MockInternalError`).
+   * (`MockResolverError`), a static answer doesn't fit the request
+   * (`MockSetupError`), or the mock itself failed (`MockInternalError`).
    */
   | { type: "unhandled"; error: MockError };
 
