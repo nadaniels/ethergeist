@@ -8,6 +8,7 @@ import {
   type MockTransaction,
 } from "./chain/transactions.js";
 import { type BuildLogParameters, buildLog } from "./logs/events.js";
+import { refuseUnencodable } from "./shared/errors.js";
 
 /**
  * Builders of what the mock answers, in viem's types, with the same defaults
@@ -23,18 +24,22 @@ export function createBuilders(state: ChainState) {
     ): BuiltTransaction<transaction> =>
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- formatTransaction of the transaction's own type
       formatTransaction(
-        encodeTransaction(state, transaction ?? {}, transaction?.hash ?? zeroHash),
+        refuseUnencodable("buildTransaction()", () =>
+          encodeTransaction(state, transaction ?? {}, transaction?.hash ?? zeroHash),
+        ),
       ) as BuiltTransaction<transaction>,
     /** The receipt `getTransactionReceipt` answers for `.returns(receipt)`; its hash is zero unless given. */
     buildReceipt: (receipt: MockReceipt = {}) =>
-      completeReceipt(receipt, {
-        hash: receipt.transactionHash ?? zeroHash,
-        blockNumber: state.blockNumber,
-        timestampAt: state.timestampAt,
-      }),
+      refuseUnencodable("buildReceipt()", () =>
+        completeReceipt(receipt, {
+          hash: receipt.transactionHash ?? zeroHash,
+          blockNumber: state.blockNumber,
+          timestampAt: state.timestampAt,
+        }),
+      ),
     /** A finished log, in the current block unless given; see `buildLog`. */
     buildLog: <const abi extends Abi, eventName extends ContractEventName<abi>>(
       parameters: BuildLogParameters<abi, eventName>,
-    ) => buildLog(parameters, state),
+    ) => refuseUnencodable("buildLog()", () => buildLog(parameters, state)),
   };
 }

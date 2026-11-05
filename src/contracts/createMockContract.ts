@@ -175,7 +175,7 @@ export function createMockContract<const abi extends Abi>(
       // Pins count like args: `transfer([bob, 5n], { from })` beats `transfer([bob, 5n])`.
       { isDefault, ranked: specificity(pins === undefined ? pinned : [pinned ?? [], pins]) },
     );
-    const builder = mocks.createBuilder(handler, (value) => {
+    const builder = mocks.createBuilder(handler, abiItem.name, (value) => {
       if (namespace === "write") return encodeWriteOutcome(value, false);
       encodeAnswer(handler, value);
       return value;

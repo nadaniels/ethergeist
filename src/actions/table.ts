@@ -147,7 +147,7 @@ export function createTable(
   function register(params: unknown) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
     const handler = mocks.register(pinned, undefined);
-    const builder = mocks.createBuilder(handler, (value) => {
+    const builder = mocks.createBuilder(handler, definition.name, (value) => {
       const given = value === zeroResult ? definition.zero : value;
       const call = definition.pinnedCall?.(pinned);
       const fixed = definition.fixAtRegistration?.(given, call) ?? given;

@@ -146,6 +146,28 @@ describe("contract.events", () => {
     );
   });
 
+  test("an arg its encoder can't convert throws the mock's error", () => {
+    const { mock, usdc } = setup();
+
+    const error = expectThrows(
+      MockSetupError,
+      `Event "Transfer" was given a value it can't encode: Cannot convert soon to a BigInt`,
+      () =>
+        // @ts-expect-error value is a bigint
+        usdc.events.Transfer({ from: alice, to: bob, value: "soon" }),
+    );
+    expect(error.cause).toBeInstanceOf(SyntaxError);
+    expectThrows(MockSetupError, `Event "Transfer" was given a value it can't encode`, () =>
+      mock.buildLog({
+        abi: erc20Abi,
+        address: USDC,
+        eventName: "Transfer",
+        // @ts-expect-error value is a bigint
+        args: { from: alice, to: bob, value: "soon" },
+      }),
+    );
+  });
+
   test("indexed strings and bytes are hashed, as they decode", () => {
     const { shapes } = setup();
 
@@ -327,6 +349,24 @@ describe("contractEvents()", () => {
 });
 
 describe("mock.buildLog()", () => {
+  test("a block its encoder can't convert throws the mock's error", () => {
+    const { mock } = setup();
+
+    expectThrows(
+      MockSetupError,
+      "buildLog() was given a value it can't encode: Cannot convert x to a BigInt",
+      () =>
+        mock.buildLog({
+          abi: erc20Abi,
+          address: USDC,
+          eventName: "Transfer",
+          args: { from: alice, to: bob, value: 5n },
+          // @ts-expect-error a block number is a bigint
+          blockNumber: "x",
+        }),
+    );
+  });
+
   test("equals the log a mocked receipt answers, placed the same", async () => {
     const { mock, client, usdc } = setup();
     const hash = testHash("transfer");

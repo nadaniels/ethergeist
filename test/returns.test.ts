@@ -2,7 +2,8 @@ import { InvalidArrayError, createPublicClient, parseAbi, zeroAddress } from "vi
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { createMockRpc, zeroResult, testAddress } from "../src/index.js";
+import { MockSetupError, createMockRpc, zeroResult, testAddress } from "../src/index.js";
+import { expectThrows } from "./utils.js";
 
 const FEED = "0x5f4eC3Df9cbd43714FE2740f5E3616155c5b8419";
 const STORE = testAddress("store");
@@ -140,6 +141,48 @@ describe("named outputs", () => {
       // @ts-expect-error several outputs
       feed.read.latestRoundData().returns(7n);
     }).toThrow(InvalidArrayError);
+  });
+
+  test("a value the encoder can't convert fails at registration as the mock's error", () => {
+    const { mock } = setup();
+    const feed = mock.contract({
+      abi: parseAbi(["function total() view returns (uint256)"]),
+      address: FEED,
+    });
+
+    const error = expectThrows(
+      MockSetupError,
+      `.returns() for "total" was given a value it can't encode: Cannot convert soon to a BigInt`,
+      () => {
+        // @ts-expect-error a uint256 is a bigint
+        feed.read.total().returns("soon");
+      },
+    );
+    expect(error.cause).toBeInstanceOf(SyntaxError);
+    expectThrows(
+      MockSetupError,
+      /^\.returns\(\) for "total" was given a value it can't encode: The number 1\.5 cannot be converted/u,
+      () => {
+        // @ts-expect-error a uint256 is a bigint
+        feed.read.total().returns(1.5);
+      },
+    );
+    // What's thrown is kept as the cause, as an Error even when it isn't one.
+    const throwsOnConversion = {
+      get [Symbol.toPrimitive]() {
+        // oxlint-disable-next-line eslint/no-throw-literal, typescript/only-throw-error -- a thrown non-Error, on purpose
+        throw "nope";
+      },
+    };
+    const thrown = expectThrows(
+      MockSetupError,
+      `"total" was given a value it can't encode: nope`,
+      () => {
+        // @ts-expect-error a uint256 is a bigint
+        feed.read.total().returns(throwsOnConversion);
+      },
+    );
+    expect(thrown.cause).toEqual(new Error("nope"));
   });
 });
 

@@ -115,6 +115,19 @@ describe("getTransaction", () => {
     expect(mock.buildTransaction({ type: "legacy", gasPrice: 7n }).gasPrice).toBe(7n);
   });
 
+  test("a value its encoder can't convert throws the mock's error", () => {
+    const { mock } = setup();
+
+    const error = expectThrows(
+      MockSetupError,
+      "buildTransaction() was given a value it can't encode: Cannot convert lots to a BigInt",
+      () =>
+        // @ts-expect-error value is a bigint
+        mock.buildTransaction({ value: "lots" }),
+    );
+    expect(error.cause).toBeInstanceOf(SyntaxError);
+  });
+
   test("a deploy's to is null", async () => {
     const { mock, client } = setup();
     mock.actions.getTransaction({ hash }).returns({ to: null, input: "0x6080" });

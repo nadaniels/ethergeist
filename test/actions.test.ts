@@ -420,10 +420,15 @@ describe("getBlock", () => {
   test("an invalid static value fails at registration", () => {
     const { mock } = setup();
 
-    expect(() => {
-      // @ts-expect-error timestamps are bigints
-      mock.actions.getBlock().returns({ timestamp: "soon" });
-    }).toThrow(SyntaxError);
+    const error = expectThrows(
+      MockSetupError,
+      '.returns() for "getBlock" was given a value it can\'t encode: Cannot convert soon to a BigInt',
+      () => {
+        // @ts-expect-error timestamps are bigints
+        mock.actions.getBlock().returns({ timestamp: "soon" });
+      },
+    );
+    expect(error.cause).toBeInstanceOf(SyntaxError);
   });
 });
 
@@ -665,10 +670,14 @@ describe("getTransactionReceipt", () => {
   test("an invalid static value fails at registration", () => {
     const { mock } = setup();
 
-    expect(() => {
-      // @ts-expect-error gas is a bigint
-      mock.actions.getTransactionReceipt().returns({ gasUsed: "lots" });
-    }).toThrow(SyntaxError);
+    expectThrows(
+      MockSetupError,
+      '.returns() for "getTransactionReceipt" was given a value it can\'t encode: Cannot convert lots to a BigInt',
+      () => {
+        // @ts-expect-error gas is a bigint
+        mock.actions.getTransactionReceipt().returns({ gasUsed: "lots" });
+      },
+    );
     expect(() => {
       mock.actions.getTransactionReceipt().returns({ logs: [{ address: "0x1234" }] });
     }).toThrow(InvalidAddressError);
@@ -753,6 +762,18 @@ describe("getTransactionCount", () => {
 });
 
 describe("mock.buildReceipt()", () => {
+  test("a block its encoder can't convert throws the mock's error", () => {
+    const { mock } = setup();
+
+    expectThrows(
+      MockSetupError,
+      "buildReceipt() was given a value it can't encode: Cannot convert x to a BigInt",
+      () =>
+        // @ts-expect-error a block number is a bigint
+        mock.buildReceipt({ blockNumber: "x" }),
+    );
+  });
+
   test("equals the receipt a mock answers for the same fields", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });

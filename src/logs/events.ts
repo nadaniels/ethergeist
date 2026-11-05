@@ -21,7 +21,7 @@ import type { ChainState } from "../chain/state.js";
 import { formatCall } from "../mocking/format.js";
 import { assertNoMatchers } from "../mocking/matching.js";
 import { type AllNamed, type PartialStructs, fillZeros } from "../shared/abiValues.js";
-import { MockSetupError } from "../shared/errors.js";
+import { MockSetupError, refuseUnencodable } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 
 /**
@@ -213,7 +213,8 @@ export function encodeEventLog(
   if (only === undefined) throw new MockSetupError(`No event "${eventName}" on this ABI.`);
   // Checksummed, which also validates it.
   const emitter = getAddress(address);
-  if (overloads.length === 1) return encodeWith(only, emitter, args);
+  if (overloads.length === 1)
+    return refuseUnencodable(`Event "${eventName}"`, () => encodeWith(only, emitter, args));
 
   const fits = overloads.flatMap((event) => {
     try {

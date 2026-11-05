@@ -55,7 +55,7 @@ describe("architecture", () => {
     const allowed = new Map([
       [
         "shared/errors.ts",
-        ["extends BaseError", "new Error(", "new Error(", "extends BaseError", "extends BaseError"],
+        ["extends BaseError", "new Error(", "extends BaseError", "extends BaseError"],
       ],
       ["mocking/faults.ts", ["extends Error"]],
       ["mocking/matching.ts", ["extends Error"]],

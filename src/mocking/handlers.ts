@@ -1,4 +1,9 @@
-import { MockNotFoundError, MockResolverError, removedMockError } from "../shared/errors.js";
+import {
+  MockNotFoundError,
+  MockResolverError,
+  refuseUnencodable,
+  removedMockError,
+} from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { checkFault, fail } from "./faults.js";
 import {
@@ -95,12 +100,13 @@ export function createHandlers<context, extra>() {
   }
 
   /**
-   * `handler`'s builder. `prepare` checks a static answer at registration, so
-   * one that can't be encoded fails there, not inside a request, and returns
-   * what the mock answers with.
+   * `handler`'s builder, for the function or action `name`. `prepare` checks
+   * a static answer at registration, so one that can't be encoded fails
+   * there, not inside a request, and returns what the mock answers with.
    */
   function createBuilder(
     handler: Handler<context, extra>,
+    name: string,
     prepare: (value: unknown) => unknown,
   ): Builder {
     const builder: Builder = {
@@ -112,7 +118,7 @@ export function createHandlers<context, extra>() {
           handler.resolver = value as Handler<context>["resolver"];
           return;
         }
-        const answer = prepare(value);
+        const answer = refuseUnencodable(`.returns() for "${name}"`, () => prepare(value));
         handler.resolver = () => answer;
       },
       // Named node errors are typed only where a node can refuse with them.

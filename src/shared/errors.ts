@@ -1,3 +1,4 @@
+import { Errors } from "ox";
 import { BaseError, type Hex } from "viem";
 
 /** What the mock's errors take besides their short message. */
@@ -80,6 +81,27 @@ export class MockNotFoundError extends MockError {
   readonly code = -32099;
 }
 
+/**
+ * `encode()`, where what it throws that isn't ours, viem's or ox's (the
+ * engine's own `SyntaxError` from `BigInt("soon")` inside an encoder) is
+ * refused as a setup error: `given` was given a value it can't encode. The
+ * original is kept as the cause.
+ */
+export function refuseUnencodable<value>(given: string, encode: () => value): value {
+  try {
+    return encode();
+  } catch (error) {
+    if (error instanceof BaseError || error instanceof Errors.BaseError) throw error;
+    const cause = asError(error);
+    throw new MockSetupError(`${given} was given a value it can't encode: ${summaryOf(cause)}`, {
+      cause,
+    });
+  }
+}
+
+/** What was thrown, as an `Error` for a cause: a thrown non-Error becomes one with its text. */
+const asError = (thrown: unknown) => (thrown instanceof Error ? thrown : new Error(String(thrown)));
+
 /** An error's one-line summary: a viem or ox error's short message, or its message. */
 export const summaryOf = (error: unknown) =>
   error instanceof Error
@@ -106,7 +128,7 @@ export class MockResolverError extends MockError {
   matcher: string | undefined;
 
   constructor(functionName: string, cause: unknown, { matcher }: { matcher?: string } = {}) {
-    const error = cause instanceof Error ? cause : new Error(String(cause));
+    const error = asError(cause);
     const thrower = matcher === undefined ? "Mock resolver" : `Matcher ${matcher}`;
     super(`${thrower} for "${functionName}" threw: ${summaryOf(error)}`, {
       cause: error,
@@ -125,7 +147,7 @@ export class MockInternalError extends MockError {
   readonly code = -32095;
 
   constructor(cause: unknown) {
-    const error = cause instanceof Error ? cause : new Error(String(cause));
+    const error = asError(cause);
     super(`The mock failed unexpectedly: ${summaryOf(error)}`, {
       cause: error,
       metaMessages: ["This is a bug in viem-transport-mock; please report it, with the request."],
