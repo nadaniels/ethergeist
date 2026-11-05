@@ -1,47 +1,16 @@
-import { type Address, type Hex, getAddress, isAddress, isHex } from "viem";
+import type { Address, Hex } from "viem";
 
-import { optionalQuantity } from "../chain/params.js";
+import { transactionParam } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
-import { formatValue } from "../mocking/format.js";
 import { errorOutcome } from "../mocking/outcomes.js";
 import {
   MockNotFoundError,
-  invalidParams,
   removedContractLayoutHint,
   removedContractNote,
 } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
 import { resolveMulticall } from "./multicall.js";
 import type { Registry } from "./registry.js";
 import type { Reporter, CallContext } from "./types.js";
-
-/** An `eth_call`'s transaction, its fields checked; refused as invalid params if malformed. */
-function callTransaction(given: unknown) {
-  if (!isPlainObject(given))
-    throw invalidParams(`expected a transaction object; got ${formatValue(given)}`);
-  const field = <type>(name: string, is: (value: unknown) => value is type, expected: string) => {
-    const value = given[name];
-    if (value === undefined) return undefined;
-    if (!is(value))
-      throw invalidParams(`expected ${expected} for \`${name}\`; got ${formatValue(value)}`);
-    return value;
-  };
-  return {
-    // `null` is a contract creation, as the spec allows: unsupported, not malformed.
-    to: given.to === null ? undefined : field("to", isAddressValue, "an address"),
-    from: field("from", isAddressValue, "an address"),
-    value: optionalQuantity(given.value, "a quantity for `value`"),
-    // Checked only: a named error reads it from the params.
-    gas: optionalQuantity(given.gas, "a quantity for `gas`"),
-    data: field("data", isHexValue, "hex data"),
-    input: field("input", isHexValue, "hex data"),
-  };
-}
-
-const isHexValue = (value: unknown): value is Hex => isHex(value);
-
-const isAddressValue = (value: unknown): value is Address =>
-  typeof value === "string" && isAddress(value, { strict: false });
 
 /** `eth_call` routing: see `createDispatch`. */
 export type Dispatcher = ReturnType<typeof createDispatch>;
@@ -55,9 +24,16 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
   /** Multicall batch ids, which count up across requests. */
   let batchCount = 0;
 
-  function dispatch(to: Address, data: Hex, context: CallContext, report: Reporter): Promise<Hex> {
-    // Checksummed once here; lookups below compare checksummed addresses.
-    const target = getAddress(to);
+  /**
+   * Answers a call to `target`, which is checksummed, as the lookups compare
+   * it: a request's by `transactionParam`, a sub-call's by viem's decoding.
+   */
+  function dispatch(
+    target: Address,
+    data: Hex,
+    context: CallContext,
+    report: Reporter,
+  ): Promise<Hex> {
     if (target === state.multicallAddress) {
       const batchId = ++batchCount;
       report.batch(batchId);
@@ -87,7 +63,7 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
       report.call({ ...unknown, outcome: { type: "result", value: "0x" } }, context);
       return Promise.resolve("0x");
     }
-    const error = new MockNotFoundError(`No mocked contract at ${to}.`, {
+    const error = new MockNotFoundError(`No mocked contract at ${target}.`, {
       metaMessages: [
         `Call data: ${data}`,
         "Register it with contract(), or mark it empty() for an address without code.",
@@ -105,10 +81,10 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
     call(params: unknown, report: Reporter): Promise<Hex> {
       const list: readonly unknown[] = Array.isArray(params) ? params : [];
       const [given, block] = list;
-      const tx = callTransaction(given);
-      const data = tx.data ?? tx.input;
+      const { to, from, value, data } = transactionParam(given);
       if (!data) throw new MockNotFoundError("eth_call without `data` is not supported.");
-      if (!tx.to)
+      // A `to` of `null` is a creation, as the spec allows: unsupported, not malformed.
+      if (!to)
         throw new MockNotFoundError("eth_call without `to` is not supported.", {
           metaMessages: [
             "Deployless calls (including deployless multicall) need bytecode execution. " +
@@ -117,12 +93,11 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
         });
 
       return dispatch(
-        tx.to,
+        to,
         data,
         {
-          // Checksummed, as a send's is, for `from` pins and predicates.
-          from: tx.from && getAddress(tx.from),
-          value: tx.value ?? 0n,
+          from,
+          value,
           blockNumber: state.resolveBlock(block),
           batch: undefined,
         },

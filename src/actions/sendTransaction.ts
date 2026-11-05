@@ -1,5 +1,6 @@
 import { type Hash, formatTransactionReceipt, getContractAddress } from "viem";
 
+import { transactionParam } from "../chain/params.js";
 import type { toRpcReceipt } from "../chain/receipts.js";
 import { decodeRawTransaction, sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
@@ -15,12 +16,7 @@ import {
   encodeWriteOutcome,
   extendWriteBuilder,
 } from "../transactions/writeOutcome.js";
-import {
-  decodeTransactionRequest,
-  isPlainTransfer,
-  pinTransaction,
-  withoutUndefined,
-} from "./decode.js";
+import { isPlainTransfer, pinTransaction, sendCall } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext, SendTransactionCall } from "./types.js";
 
@@ -58,22 +54,9 @@ export type MockSendTransactionAction = {
 
 /** `eth_sendTransaction` takes a transaction, with its sender. */
 function decodeSendTransaction([tx]: readonly unknown[]): SendTransactionCall {
-  const fields = decodeTransactionRequest(tx);
-  const { account, to, data, nonce, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas } = fields;
-  if (account === undefined) throw invalidParams("expected a transaction with a sender (from)");
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
-  return withoutUndefined({
-    account,
-    to: to ?? null,
-    value: fields.value,
-    data: data === "0x" ? undefined : data,
-    nonce,
-    gas,
-    gasPrice,
-    maxFeePerGas,
-    maxPriorityFeePerGas,
-    type: sentType(tx, fields),
-  }) as SendTransactionCall;
+  const fields = transactionParam(tx);
+  if (fields.from === undefined) throw invalidParams("expected a transaction with a sender (from)");
+  return sendCall(fields, fields.from, sentType(tx, fields));
 }
 
 /**
@@ -99,11 +82,11 @@ export function sendTransaction({
    * registered contract and it has data, with the call's context: its
    * `write` mocks answer it first.
    */
-  const contractCall = ({ account, to, data, value }: SendTransactionCall) => {
+  const contractCall = ({ from, to, data, value }: SendTransactionCall) => {
     if (to === null || data === undefined) return undefined;
     const contract = registry.contractAt(to);
     const context: CallContext = {
-      from: account,
+      from,
       value,
       blockNumber: state.blockNumber,
       batch: undefined,
@@ -149,7 +132,7 @@ export function sendTransaction({
       // answered, and a node waits its default for an invalid one (EIP-7966).
       const sync = method === "eth_sendRawTransactionSync";
       const { hash, from, fields } = await decodeRawTransaction(params[0]);
-      const call: SendTransactionCall = { account: from, ...fields };
+      const call: SendTransactionCall = { from, ...fields };
       rawSends.set(call, { hash, sync });
       return call;
     },
@@ -197,10 +180,10 @@ export function sendTransaction({
       if (repeated !== undefined) return answerFor(call, repeated);
       const hash = rawSends.get(call)?.hash;
       const {
-        account,
+        from,
         to,
         data,
-        nonce = transactions.nonceOf(account, "pending"),
+        nonce = transactions.nonceOf(from, "pending"),
         gas = impliedGas,
         ...fees
       } = call;
@@ -208,11 +191,11 @@ export function sendTransaction({
       const placed = transactions.add({
         origin: "write",
         hash,
-        fields: { from: account, to, ...(data && { input: data }), nonce, gas, ...fees },
+        fields: { from, to, ...(data && { input: data }), nonce, gas, ...fees },
         receipt:
           to === null
             ? {
-                contractAddress: getContractAddress({ from: account, nonce: BigInt(nonce) }),
+                contractAddress: getContractAddress({ from, nonce: BigInt(nonce) }),
                 ...receipt,
               }
             : receipt,

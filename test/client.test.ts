@@ -3,6 +3,7 @@ import {
   ContractFunctionExecutionError,
   defineChain,
   erc20Abi,
+  getAddress,
   multicall3Abi,
 } from "viem";
 import { base, mainnet } from "viem/chains";
@@ -136,7 +137,7 @@ describe("createMockRpc({ chain })", () => {
 
     await expectRejects(
       ContractFunctionExecutionError,
-      `No mocked contract at ${mainnet.contracts.multicall3.address}`,
+      `No mocked contract at ${getAddress(mainnet.contracts.multicall3.address)}`,
       mock.publicClient().readContract({
         abi: multicall3Abi,
         address: mainnet.contracts.multicall3.address,

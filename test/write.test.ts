@@ -108,7 +108,7 @@ describe("a write mock", () => {
         account === "local" ? ["estimateGas", "write"] : ["write"],
       );
       expect(mock.calls.at(-1)).toMatchObject({ namespace: "write", functionName: "transfer" });
-      expect(mock.actions.sendTransaction.calls).toMatchObject([{ account: from, to: USDC }]);
+      expect(mock.actions.sendTransaction.calls).toMatchObject([{ from, to: USDC }]);
       expect(mock.transactions).toMatchObject([{ hash, origin: "write" }]);
       expect(mock.history.at(-2)).toMatchObject({
         type: "action",
@@ -1098,7 +1098,7 @@ describe("writes in history", () => {
     await wallet.sendTransaction({ to: bob, value: 1n });
 
     expect(mock.formatHistory({ builtIns: false })).toBe(
-      "#2 eth_sendTransaction sendTransaction({ account: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, type: eip1559 }) → 0x0878…d725 (mined in block 11n, 0 logs)",
+      "#2 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, type: eip1559 }) → 0x0878…d725 (mined in block 11n, 0 logs)",
     );
   });
 
@@ -1116,7 +1116,7 @@ describe("writes in history", () => {
     expect(mock.formatHistory({ builtIns: false })).toBe(
       [
         "(2 older requests dropped, past historyLimit)",
-        "#4 eth_sendTransaction sendTransaction({ account: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, type: eip1559 }) → 0xd6c0…f47e (mined in block 12n, 0 logs)",
+        "#4 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, type: eip1559 }) → 0xd6c0…f47e (mined in block 12n, 0 logs)",
       ].join("\n"),
     );
     mock.clearCalls();

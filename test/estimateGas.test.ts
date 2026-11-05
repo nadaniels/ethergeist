@@ -74,11 +74,11 @@ async function refusal(mock: ReturnType<typeof setup>["mock"], promise: Promise<
 describe("estimateGas", () => {
   test("answers a pinned transaction in viem's types", async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas({ account: alice, to: bob }).returns(30_000n);
+    mock.actions.estimateGas({ from: alice, to: bob }).returns(30_000n);
 
     expect(await client.estimateGas({ account: alice, to: bob, value: 1n })).toBe(30_000n);
     expect(mock.actions.estimateGas.calls).toEqual([
-      { account: alice, to: bob, value: 1n, blockNumber: 10n, blockTag: "latest" },
+      { from: alice, to: bob, value: 1n, blockNumber: 10n, blockTag: "latest" },
     ]);
   });
 
@@ -98,7 +98,7 @@ describe("estimateGas", () => {
 
     expect(await client.estimateGas({ account: alice, to: bob })).toBe(25_000n);
     // At registration, viem's own error: invalid params are for requests.
-    expect(() => mock.actions.estimateGas({ account: "0x1234" })).toThrow(InvalidAddressError);
+    expect(() => mock.actions.estimateGas({ from: "0x1234" })).toThrow(InvalidAddressError);
     expect(() => mock.actions.estimateGas({ to: "0x1234" })).toThrow(InvalidAddressError);
   });
 
@@ -111,7 +111,7 @@ describe("estimateGas", () => {
     expect(request.gas).toBe(21_005n);
     expect(mock.actions.estimateGas.calls).toEqual([
       {
-        account: account.address,
+        from: account.address,
         to: bob,
         value: 5n,
         maxFeePerGas: parseGwei("13"),
@@ -139,7 +139,7 @@ describe("estimateGas", () => {
 
   test("a pinned mock answers before one without pins", async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas({ account: alice }).returns(50_000n);
+    mock.actions.estimateGas({ from: alice }).returns(50_000n);
     mock.actions.estimateGas().returns(100_000n);
 
     expect(await client.estimateGas({ account: alice, to: bob })).toBe(50_000n);
@@ -237,7 +237,7 @@ describe("estimateGas unmocked", () => {
 describe("named node errors", () => {
   test('"insufficientFunds" without fees is the EVM\'s error, which viem names', async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas({ account: alice }).fails("insufficientFunds");
+    mock.actions.estimateGas({ from: alice }).fails("insufficientFunds");
 
     const error = await refusal(mock, client.estimateGas({ account: alice, to: bob, value: 1n }));
 
@@ -312,7 +312,7 @@ describe("named node errors", () => {
     await rejectionOf(client.estimateGas({ account: alice, to: bob }));
 
     expect(mock.formatHistory()).toBe(
-      "#1 eth_estimateGas estimateGas({ account: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, " +
+      "#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, " +
         "blockNumber: 10n, blockTag: latest }) ✗ fault: insufficientFunds",
     );
   });
@@ -500,7 +500,7 @@ describe("estimate precedence", () => {
   test("a contract's mocks answer estimates of its functions before action mocks", async () => {
     const { mock, token, transfer } = tokenSetup();
     token.estimateGas.transfer().returns(65_000n);
-    mock.actions.estimateGas({ account: alice }).fails("insufficientFunds");
+    mock.actions.estimateGas({ from: alice }).fails("insufficientFunds");
     mock.actions.estimateGas({ to: token.address }).returns(1n);
 
     expect(await transfer()).toBe(65_000n);
@@ -559,7 +559,7 @@ describe("estimate precedence", () => {
       },
     });
     expect(mock.formatHistory().split("\n")[1]).toBe(
-      "#2 eth_estimateGas estimateGas({ account: 0xa41f…2D9e, to: 0x0dc7…41c6, value: 0n, " +
+      "#2 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x0dc7…41c6, value: 0n, " +
         "data: 0x095e…0001, blockNumber: 10n, blockTag: latest }) → 60000n",
     );
     // An estimate that didn't decode isn't a call of any function.

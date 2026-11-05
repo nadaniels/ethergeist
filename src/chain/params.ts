@@ -11,6 +11,7 @@ import {
 
 import { formatValue } from "../mocking/format.js";
 import { invalidParams } from "../shared/errors.js";
+import { isPlainObject } from "../shared/values.js";
 
 // A request's params, read to the Ethereum JSON-RPC spec (ethereum/execution-apis):
 // what it rules out is refused as invalid params, never thrown as is (viem
@@ -47,11 +48,41 @@ export const optionalQuantity = (value: unknown, what: string) =>
   value === undefined ? undefined : quantityParam(value, what);
 
 /** A field of hex data that may be left out; refused as invalid params if it isn't hex. */
-export function optionalData(value: unknown, what: string): Hex | undefined {
+function optionalData(value: unknown, what: string): Hex | undefined {
   if (value === undefined) return undefined;
   if (!isHex(value))
     throw invalidParams(`expected hex data for ${what}; got ${formatValue(value)}`);
   return value;
+}
+
+const optionalAddress = (value: unknown) => (value === undefined ? undefined : addressParam(value));
+
+/**
+ * A transaction request's fields, as `eth_call`, `eth_estimateGas` and
+ * `eth_sendTransaction` take it (the spec's `GenericTransaction`): addresses
+ * checksummed, `to: null` (a creation) as left out, the spec's `input` or the
+ * `data` clients send, and `value` as `0n` when it has none. Fields it leaves
+ * out are `undefined`. A field that's malformed, `null` included (but for
+ * `to`), is refused as invalid params, and so is a request that isn't an object.
+ */
+export function transactionParam(tx: unknown) {
+  if (!isPlainObject(tx))
+    throw invalidParams(`expected a transaction object; got ${formatValue(tx)}`);
+  const { from, to, value, data, input, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } =
+    tx;
+  // Both are checked, though `data` wins: a malformed field is refused, never skipped.
+  const [given, spec] = [optionalData(data, "`data`"), optionalData(input, "`input`")];
+  return {
+    from: optionalAddress(from),
+    to: to === null ? undefined : optionalAddress(to),
+    value: optionalQuantity(value, "a value") ?? 0n,
+    data: given ?? spec,
+    gas: optionalQuantity(gas, "a gas limit"),
+    gasPrice: optionalQuantity(gasPrice, "a gas price"),
+    maxFeePerGas: optionalQuantity(maxFeePerGas, "a max fee per gas"),
+    maxPriorityFeePerGas: optionalQuantity(maxPriorityFeePerGas, "a max priority fee per gas"),
+    nonce: nonce === undefined ? undefined : numberParam(nonce, "a nonce"),
+  };
 }
 
 /**

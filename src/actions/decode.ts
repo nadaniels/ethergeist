@@ -13,18 +13,17 @@ import {
 import {
   type BlockForm,
   type ResolveBlock,
+  type transactionParam,
   addressParam,
   isBlockTag,
-  numberParam,
-  optionalData,
-  optionalQuantity,
 } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
+import type { TransactionType } from "../chain/transactions.js";
 import type { Registry } from "../contracts/registry.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import type { TransactionStore } from "../transactions/store.js";
-import type { AddressAtBlockCall } from "./types.js";
+import type { AddressAtBlockCall, SendTransactionCall } from "./types.js";
 
 /** Encodes a bigint answer as a JSON-RPC quantity; `what` names it in the error. */
 export function encodeQuantity(what: string) {
@@ -51,43 +50,42 @@ export function pinAddress(pinned: unknown) {
   return pinned;
 }
 
-/** Checksums a pinned `account` and `to`, which also validates them at registration. */
+/** Checksums a pinned `from` and `to`, which also validates them at registration. */
 export function pinTransaction(pinned: unknown) {
   if (!isPlainObject(pinned)) return pinned;
-  const { account, to } = pinned;
+  const { from, to } = pinned;
   return {
     ...pinned,
-    ...(typeof account === "string" && { account: getAddress(account) }),
+    ...(typeof from === "string" && { from: getAddress(from) }),
     ...(typeof to === "string" && { to: getAddress(to) }),
   };
 }
 
-const optionalAddress = (address: unknown) =>
-  address === undefined || address === null ? undefined : addressParam(address);
-
 /**
- * A transaction request's fields, as `eth_estimateGas` and
- * `eth_sendTransaction` take it: `from` as `account`, the spec's `input` or
- * the `data` clients send, and `value` as `0n` when it has none. Fields it
- * leaves out are `undefined`, and so are a `from` or `to` sent as `null`;
- * any other field that's malformed, `null` included, is refused.
+ * An `eth_sendTransaction`'s call from its request's fields
+ * (`transactionParam`), its sender and its type: `to` is `null` for a deploy,
+ * and empty `data` is left out. An estimate's send is one too, as send mocks
+ * are matched against it.
  */
-export function decodeTransactionRequest(tx: unknown) {
-  const { from, to, value, data, input, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } =
-    isPlainObject(tx) ? tx : {};
-  // Both are checked, though `data` wins: a malformed field is refused, never skipped.
-  const [given, spec] = [optionalData(data, "`data`"), optionalData(input, "`input`")];
-  return {
-    account: optionalAddress(from),
-    to: optionalAddress(to),
-    value: optionalQuantity(value, "a value") ?? 0n,
-    data: given ?? spec,
-    gas: optionalQuantity(gas, "a gas limit"),
-    gasPrice: optionalQuantity(gasPrice, "a gas price"),
-    maxFeePerGas: optionalQuantity(maxFeePerGas, "a max fee per gas"),
-    maxPriorityFeePerGas: optionalQuantity(maxPriorityFeePerGas, "a max priority fee per gas"),
-    nonce: nonce === undefined ? undefined : numberParam(nonce, "a nonce"),
-  };
+export function sendCall(
+  fields: ReturnType<typeof transactionParam>,
+  from: Address,
+  type: TransactionType,
+): SendTransactionCall {
+  const { to, value, data, nonce, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas } = fields;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
+  return withoutUndefined({
+    from,
+    to: to ?? null,
+    value,
+    data: data === "0x" ? undefined : data,
+    nonce,
+    gas,
+    gasPrice,
+    maxFeePerGas,
+    maxPriorityFeePerGas,
+    type,
+  }) as SendTransactionCall;
 }
 
 /** `fields` without the ones left out (`undefined`), as a call has them. */

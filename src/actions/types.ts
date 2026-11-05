@@ -53,12 +53,12 @@ export type FeeHistoryCall = {
 export type TransactionCountCall = AddressAtBlockCall;
 /**
  * What a call to `estimateGas` asked for: the transaction, and the block it's
- * estimated at. `account` is the sender, sent as `from`; `value` is `0n` when
- * the request has none. Other fields are left out when the request has none.
+ * estimated at. `from` is the sender; `value` is `0n` when the request has
+ * none. Other fields are left out when the request has none.
  * A tag resolves to the mock's block number and is kept; no block is `"latest"`.
  */
 export type EstimateGasCall = {
-  account?: Address;
+  from?: Address;
   to?: Address;
   value: bigint;
   data?: Hex;
@@ -72,8 +72,8 @@ export type EstimateGasCall = {
 };
 /**
  * What a send asked for (`eth_sendTransaction`, or `eth_sendRawTransaction`'s
- * signed bytes): the transaction. `account` is the sender: the request's
- * `from`, or the signer, recovered from a raw send's signature. `to` is
+ * signed bytes): the transaction. `from` is the sender: the request's, or
+ * the signer, recovered from a raw send's signature. `to` is
  * `null` for a deploy; `value` is `0n` when it has none, and `data` is left
  * out when it's empty. A raw send has its nonce and gas; other fields are
  * left out when the request has none. `type` is the request's, or else
@@ -81,7 +81,7 @@ export type EstimateGasCall = {
  * `gasPrice`, `"eip2930"` with an `accessList` too, `"eip1559"` without.
  */
 export type SendTransactionCall = {
-  account: Address;
+  from: Address;
   to: Address | null;
   value: bigint;
   data?: Hex;

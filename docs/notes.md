@@ -534,7 +534,7 @@ features land; tick them off as pages get written.
     the nonce: an `eth_sendTransaction` without one still takes the
     chain's count. Pin `blockTag: "pending"`
     apart from `"latest"`, e.g. for a stuck transaction.
-- [ ] Gas estimates: `mock.actions.estimateGas({ account, to, value, data })`
+- [ ] Gas estimates: `mock.actions.estimateGas({ from, to, value, data })`
       answers `estimateGas` and the gas viem prepares a transaction with.
       Unmocked, a plain transfer (no data) to an address without code is
       21000 gas, as a node estimates it, so sending ETH needs no mock;
@@ -542,9 +542,10 @@ features land; tick them off as pages get written.
   - 21000 is what reth, geth, Erigon, Nethermind and Arbitrum estimate. On
     zkSync Era a plain transfer estimates far higher (146780 when
     captured): mock the estimate if a test there depends on the number.
-  - The call has the request's fees and nonce when it sent them, e.g. for
-    a resolver; `value` is `0n` when it sent none, so pinning `value: 0n`
-    matches those.
+  - The sender is `from`, as the request and a write mock's pins say it
+    (viem's `account` option is what sets it). The call has the request's
+    fees and nonce when it sent them, e.g. for a resolver; `value` is `0n`
+    when it sent none, so pinning `value: 0n` matches those.
   - Answers are gas, a bigint: there's no `.returns()` without a value,
     since a node never estimates zero.
   - A registered contract owns its functions: its `estimateGas` mocks and
@@ -561,10 +562,12 @@ features land; tick them off as pages get written.
     answers: 100,000 gas (21000 for a plain transfer to an address without
     code), and a `.reverts()` mock reverts it. Nothing runs and no
     `.once()` is used up.
-- [ ] Sends: `mock.actions.sendTransaction({ account, to, value, data })`
+- [ ] Sends: `mock.actions.sendTransaction({ from, to, value, data })`
       answers `eth_sendTransaction` (a node's account, unsigned, with
       `from`) and `eth_sendRawTransaction` (a local account's signed bytes),
-      for `sendTransaction`, `writeContract` and `deployContract`.
+      for `sendTransaction`, `writeContract` and `deployContract`. The
+      call's `from` is the sender: the request's, or a raw send's signer,
+      recovered from its signature.
   - A local account's `sendTransactionSync` and `writeContractSync` send
     `eth_sendRawTransactionSync` (EIP-7966): the same send, by the same
     mocks, answered with its receipt from the chain instead of its hash.

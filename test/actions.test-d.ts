@@ -203,7 +203,9 @@ describe("getLogs", () => {
   });
 
   test("estimates pin a transaction, answer gas, and fail with node errors by name", () => {
-    mock.actions.estimateGas({ account: alice, to: alice, value: 1n, data: "0x" }).returns(21_000n);
+    mock.actions.estimateGas({ from: alice, to: alice, value: 1n, data: "0x" }).returns(21_000n);
+    // @ts-expect-error the sender is `from`, as the request has it
+    mock.actions.estimateGas({ account: alice });
     mock.actions.estimateGas().once().fails("insufficientFunds");
     mock.actions.estimateGas().returns(({ maxFeePerGas, nonce, fail }) => {
       expectTypeOf(maxFeePerGas).toEqualTypeOf<bigint | undefined>();
@@ -228,14 +230,16 @@ describe("getLogs", () => {
   });
 
   test("sends pin a transaction and answer with what the chain did", () => {
-    mock.actions.sendTransaction({ account: alice, to: null }).returns({ contractAddress: alice });
+    mock.actions.sendTransaction({ from: alice, to: null }).returns({ contractAddress: alice });
+    // @ts-expect-error the sender is `from`, as the request has it
+    mock.actions.sendTransaction({ account: alice });
     mock.actions.sendTransaction({ to: alice, value: 1n }).once().emits([]);
     mock.actions.sendTransaction().returns();
     mock.actions.sendTransaction().reverts("paused");
     mock.actions.sendTransaction().reverts({ panic: 0x11 });
     mock.actions.sendTransaction().fails("insufficientFunds");
-    mock.actions.sendTransaction().returns(({ account, to, nonce, type, fail }) => {
-      expectTypeOf(account).toEqualTypeOf<Address>();
+    mock.actions.sendTransaction().returns(({ from, to, nonce, type, fail }) => {
+      expectTypeOf(from).toEqualTypeOf<Address>();
       expectTypeOf(to).toEqualTypeOf<Address | null>();
       expectTypeOf(nonce).toEqualTypeOf<number | undefined>();
       expectTypeOf(type).toEqualTypeOf<"legacy" | "eip2930" | "eip1559" | "eip4844" | "eip7702">();

@@ -93,7 +93,7 @@ describe("a raw send (local account)", () => {
     expect(hash).toBe(keccak256(lastRawSend(mock)));
     expect(mock.actions.sendTransaction.calls).toEqual([
       {
-        account: signer.address,
+        from: signer.address,
         to: bob,
         value: 5n,
         nonce: 0,
@@ -188,7 +188,7 @@ describe("a raw send (local account)", () => {
     await wallet.sendTransaction({ to: bob, type: "legacy", gasPrice: 7n });
 
     expect(mock.actions.sendTransaction.calls[0]).toEqual({
-      account: signer.address,
+      from: signer.address,
       to: bob,
       value: 0n,
       nonce: 0,
@@ -292,7 +292,7 @@ describe("eth_sendTransaction (node account)", () => {
     ]);
     expect(hash).toBe(testHash("tx:11:0"));
     expect(mock.actions.sendTransaction.calls).toEqual([
-      { account: alice, to: bob, value: 5n, type: "eip1559" },
+      { from: alice, to: bob, value: 5n, type: "eip1559" },
     ]);
     expect(await client.getTransaction({ hash })).toMatchObject({
       from: alice.toLowerCase(),
@@ -327,7 +327,7 @@ describe("eth_sendTransaction (node account)", () => {
 
     expect(mock.actions.sendTransaction.calls).toEqual([
       {
-        account: alice,
+        from: alice,
         to: bob,
         value: 0n,
         data: "0x1234",
@@ -362,6 +362,7 @@ describe("eth_sendTransaction (node account)", () => {
 
   test.each([
     { tx: { to: bob }, details: "expected a transaction with a sender (from)" },
+    { tx: "0x12", details: "expected a transaction object; got 0x12" },
     { tx: { from: alice, type: "0x9" }, details: "expected a transaction type; got 0x9" },
     {
       tx: { from: alice, type: "0x2", gasPrice: "0x1" },
@@ -439,7 +440,7 @@ describe("send mocks", () => {
 
     expect(resolver).toHaveBeenCalledTimes(2);
     expect(resolver.mock.calls[0]![0]).toMatchObject({
-      account: signer.address,
+      from: signer.address,
       to: bob,
       value: 1n,
       nonce: 0,
@@ -572,7 +573,7 @@ describe("send mocks", () => {
     });
     mock.actions.sendTransaction({ to: null }).returns({ contractAddress: USDC });
     // Without a pinned `to`, it may be a deploy: that's checked at the send.
-    mock.actions.sendTransaction({ account: alice }).returns({ contractAddress: USDC });
+    mock.actions.sendTransaction({ from: alice }).returns({ contractAddress: USDC });
   });
 
   test("only a deploy has a contractAddress", async () => {
@@ -595,7 +596,7 @@ describe("send mocks", () => {
     expect(mock.history.at(-1)).toMatchObject({
       type: "action",
       action: "sendTransaction",
-      call: { account: alice, to: bob, value: 1n },
+      call: { from: alice, to: bob, value: 1n },
       outcome: { type: "result", value: hash },
     });
   });
@@ -916,7 +917,7 @@ describe("the estimate a send mock implies", () => {
 
   test("a mock that doesn't match the estimate doesn't imply it", async () => {
     const { mock, client } = setup();
-    mock.actions.sendTransaction({ account: bob }).returns();
+    mock.actions.sendTransaction({ from: bob }).returns();
 
     const error = await rejectionOf(client.estimateGas({ account: alice, to: USDC, data: "0x12" }));
 
@@ -1110,7 +1111,7 @@ describe("eth_sendRawTransactionSync (EIP-7966, a local account's *Sync sends)",
     expect(receipt.transactionHash).toBe(keccak256(lastSyncSend(mock)));
     expect(mock.history.at(-1)).toMatchObject({
       action: "sendTransaction",
-      call: { account: signer.address, to: bob, value: 5n },
+      call: { from: signer.address, to: bob, value: 5n },
       outcome: { type: "result", value: receipt },
     });
   });

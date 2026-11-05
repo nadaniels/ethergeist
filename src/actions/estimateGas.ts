@@ -1,7 +1,7 @@
-import { type Address, type Hex, numberToHex } from "viem";
+import { type Hex, numberToHex } from "viem";
 
-import type { ResolveBlock } from "../chain/params.js";
-import { type TransactionType, sentType } from "../chain/transactions.js";
+import { type ResolveBlock, transactionParam } from "../chain/params.js";
+import { sentType } from "../chain/transactions.js";
 import { encodeGas, impliedGas } from "../mocking/gas.js";
 import type {
   EstimateErrorName,
@@ -12,9 +12,9 @@ import type {
 import { registeredRevert } from "../transactions/writeOutcome.js";
 import {
   blockAt,
-  decodeTransactionRequest,
   isPlainTransfer,
   pinTransaction,
+  sendCall,
   viewQuantity,
   withoutUndefined,
 } from "./decode.js";
@@ -37,8 +37,13 @@ export type MockEstimateGasAction = {
   readonly calls: EstimateGasCall[];
 };
 
-/** Each estimate's send's type, which the call leaves out. */
-const sendTypes = new WeakMap<EstimateGasCall, TransactionType>();
+/**
+ * The send each estimate is for, if it has a sender, as send mocks are
+ * matched against it. Its type is its request's, as a send's is. viem's
+ * estimate carries no `type`, so an `eip2930` send without an `accessList`
+ * looks legacy.
+ */
+const sends = new WeakMap<EstimateGasCall, SendTransactionCall>();
 
 /**
  * `eth_estimateGas` takes a transaction and maybe a block. Its send's type is
@@ -49,34 +54,12 @@ function decodeEstimateGas(
   [tx, block]: readonly unknown[],
   resolveBlock: ResolveBlock,
 ): EstimateGasCall {
-  const fields = decodeTransactionRequest(tx);
+  const fields = transactionParam(tx);
   const type = sentType(tx, fields);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
   const call = withoutUndefined({ ...fields, ...blockAt(block, resolveBlock) }) as EstimateGasCall;
-  sendTypes.set(call, type);
+  if (fields.from !== undefined) sends.set(call, sendCall(fields, fields.from, type));
   return call;
-}
-
-/**
- * The send an estimate is for, as send mocks are matched against it. Its
- * type is its request's, as a send's is. viem's estimate carries no `type`,
- * so an `eip2930` send without an `accessList` looks legacy.
- */
-function sendOf(call: EstimateGasCall, account: Address): SendTransactionCall {
-  const { to, value, data, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } = call;
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
-  return withoutUndefined({
-    account,
-    to: to ?? null,
-    value,
-    data: data === "0x" ? undefined : data,
-    nonce,
-    gas,
-    gasPrice,
-    maxFeePerGas,
-    maxPriorityFeePerGas,
-    type: sendTypes.get(call),
-  }) as SendTransactionCall;
 }
 
 /**
@@ -100,18 +83,17 @@ export const estimateGas = ({
   view: viewQuantity,
   // A registered contract's turn at an estimate of one of its functions.
   contractTurn(call) {
-    const { to, data, account, value, blockNumber } = call;
+    const { to, data, from, value, blockNumber } = call;
     if (to === undefined || data === undefined || data === "0x") return undefined;
-    return registry
-      .contractAt(to)
-      ?.estimate(data, { from: account, value, blockNumber, batch: undefined });
+    return registry.contractAt(to)?.estimate(data, { from, value, blockNumber, batch: undefined });
   },
   // The mock that would answer the send (a contract's write mock, or else a
   // send mock) implies its estimate, without running: a `.reverts()` one
   // reverts it. A plain transfer to an address without code is the base
   // 21000 gas, mocked or not.
   fallback(call) {
-    const send = call.account && mockFor("sendTransaction", sendOf(call, call.account));
+    const sent = sends.get(call);
+    const send = sent && mockFor("sendTransaction", sent);
     const revert = send && registeredRevert(send.resolver);
     if (revert) throw revert;
     if (isPlainTransfer(registry, call)) return numberToHex(21_000n);
