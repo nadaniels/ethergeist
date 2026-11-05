@@ -3,7 +3,7 @@ import { type Address, type Hash, type Hex, formatTransaction, getAddress } from
 import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
 import { type ReceiptFields, completeReceipt, placeLog, toRpcReceipt } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
-import { type TransactionType, encodeTransaction } from "../chain/transactions.js";
+import { type MockTransactionType, encodeTransaction } from "../chain/transactions.js";
 import type { EmittedLog, MockEventLog } from "../logs/events.js";
 import { type LogsCall, topicsMatch } from "../logs/filter.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
@@ -38,7 +38,7 @@ export type TransactionRecord = {
     value?: bigint;
     input?: Hex;
     gas?: bigint;
-    type?: TransactionType;
+    type?: MockTransactionType;
     gasPrice?: bigint;
     maxFeePerGas?: bigint;
     maxPriorityFeePerGas?: bigint;

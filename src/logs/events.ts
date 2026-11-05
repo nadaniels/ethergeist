@@ -137,7 +137,7 @@ type EventInputsArgs<inputs extends readonly AbiParameter[]> =
  * as in `.returns()`. Events with unnamed inputs take every arg, in order.
  * For an overloaded event, the args of any of its overloads.
  */
-export type MockEventArgs<
+export type EventArgs<
   abi extends Abi,
   eventName extends ContractEventName<abi>,
   event = Extract<abi[number], { type: "event"; name: eventName }>,
@@ -147,15 +147,15 @@ export type MockEventArgs<
 type AllOptional<value> = Partial<value> extends value ? true : false;
 
 /** `args` as a parameter: optional when the event's args may all be left out. */
-export type MockEventArgsParameter<abi extends Abi, eventName extends ContractEventName<abi>> =
-  AllOptional<MockEventArgs<abi, eventName>> extends true
-    ? [args?: MockEventArgs<abi, eventName>]
-    : [args: MockEventArgs<abi, eventName>];
+export type EventArgsParameter<abi extends Abi, eventName extends ContractEventName<abi>> =
+  AllOptional<EventArgs<abi, eventName>> extends true
+    ? [args?: EventArgs<abi, eventName>]
+    : [args: EventArgs<abi, eventName>];
 
 /** A contract's events by name, each building the log its args would emit. */
 export type MockContractEvents<abi extends Abi> = {
   [eventName in ContractEventName<abi>]: (
-    ...args: MockEventArgsParameter<abi, eventName>
+    ...args: EventArgsParameter<abi, eventName>
   ) => MockEventLog;
 };
 

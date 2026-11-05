@@ -106,6 +106,40 @@ The mock's errors:
    `run`), or that read like a built-in (`push`). Callback parameters are named
    for what they hold (`handler`, not `h`), except `(a, b)` in a sort
    comparator and `i` for an index.
+5. **An exported type gets `Mock` when it's one of the mock's own things**:
+   its objects and their registrars, builders and answers (`MockRpc`,
+   `MockContract`, `MockReadFunction`, `MockAction`, `MockFunctionBuilder`,
+   `MockActionAnswers`, `MockCheckpoint`, `MockFaultHandle`), the values its
+   mocks answer with (`MockReceipt`, `MockBlock`, `MockFees`, `MockFault`,
+   `MockWriteOutcome`), what it records of the requests it gets
+   (`MockHistoryEntry`, `MockCallRecord`, `MockOutcome`, `MockBatch`), what
+   it builds for you (`MockEventLog`), and types made from these
+   (`MockNodeFault`, `MockTaggedCall`). It keeps `Mock` when it's also a
+   parameter (`buildReceipt(MockReceipt)`, `failRequests(MockFault)`).
+   **None on what you hand the mock**: parameter, option and context types
+   (`RestoreOptions`, `ContractDefaults`, `EventArgs`, `RevertSpec`,
+   `CallPins`, `LogsContext`, `WriteResolverContext`), and a request's
+   decoded call (`BalanceCall`, `LogsCall`). **None where a qualifier
+   already places it**: what's on the chain (`TransactionRecord`,
+   `EmittedLog`, `BuiltTransaction`), raw JSON-RPC shapes (`RpcValue`,
+   `RpcRequest`), and named sets (`SendErrorName`, `UnhandledRequest`).
+   **None on plain callbacks and type helpers** (`RevertFn`, `WithLimits`,
+   `PartialStructs`). **Always `Mock` where the bare name is viem's**
+   (`MockTransactionType`, `MockTransaction`). A function's parameters type
+   is named for the function, as viem names them, so a `Mock` in it is the
+   function's, not a prefix: `CreateMockRpcParameters` for
+   `createMockRpc()`, `AddTransactionParameters` for
+   `mock.addTransaction()`, and `MockPublicClientParameters` for
+   `mock.publicClient()`.
+6. **`index.ts` exports every type a consumer's inferred declarations can
+   end up naming**, used or not, since they can't import from `src/` once
+   the package has an `exports` map: a type a public signature names, and
+   one a file-local alias inside a public type uses (TypeScript writes the
+   local alias out, naming what's in it). The check is a declaration-emit
+   probe: a consumer compiled with `declaration: true`, whose output has
+   no `import("…/src/…")`. To keep a helper internal, spell it out in the
+   file-local alias that uses it, as `NamedOutputs` in
+   `contracts/types.ts` spells out "all named".
 
 ## Tests
 

@@ -29,12 +29,14 @@ export type MockWriteOutcome = {
 };
 
 /**
- * What a write's resolver gets beyond its call and its `fail` and `revert`,
- * to answer the transaction as it's mined. A write's `revert(spec)` mines
+ * The `emit` part of every write resolver's context: a contract write's
+ * (`WriteResolverContext`) and a send's (`SendTransactionContext`) both
+ * include it, beside their call, `fail` and `revert`. It's not a whole
+ * context: type a resolver with one of those. A write's `revert(spec)` mines
  * it reverted, dropping what it emitted: a resolver runs only at the send,
  * so its estimate doesn't revert (see `.reverts()`).
  */
-export type MockWriteContext = {
+export type WriteContext = {
   /**
    * Adds a log, or logs, to the transaction, placed when it's mined, as
    * `.emits()` does. Use it rather than `mock.addTransaction()` or `contract.emit`,
@@ -172,7 +174,7 @@ type WriteEngine = {
 
 /**
  * Gives a write mock's builder `.emits()` and `.reverts()`, and its
- * resolvers `emit` and `revert` (see `MockWriteContext`).
+ * resolvers `emit` and `revert` (see `WriteContext`).
  */
 export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void {
   const returns = builder.returns.bind(builder);
@@ -181,7 +183,7 @@ export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void 
     (resolver: (context: object) => unknown) =>
     async (context: object): Promise<unknown> => {
       const emitted: MockEventLog[] = [];
-      const writeContext: MockWriteContext & { revert: (spec?: unknown) => never } = {
+      const writeContext: WriteContext & { revert: (spec?: unknown) => never } = {
         emit(logs) {
           emitted.push(...[logs].flat());
         },

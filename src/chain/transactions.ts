@@ -27,11 +27,14 @@ import { blockHash } from "./blocks.js";
 import { type Fees, blobBaseFee } from "./fees.js";
 import type { ChainState } from "./state.js";
 
-/** The transaction types viem knows. */
-export type TransactionType = "legacy" | "eip2930" | "eip1559" | "eip4844" | "eip7702";
+/**
+ * The transaction types viem knows, as a transaction mock or a send has them:
+ * viem's own `TransactionType` also takes any string.
+ */
+export type MockTransactionType = "legacy" | "eip2930" | "eip1559" | "eip4844" | "eip7702";
 
 /** viem's transaction of `type`, mined or pending. */
-type TransactionOf<type extends TransactionType, pending extends boolean> = {
+type TransactionOf<type extends MockTransactionType, pending extends boolean> = {
   legacy: TransactionLegacy<bigint, number, pending>;
   eip2930: TransactionEIP2930<bigint, number, pending>;
   eip1559: TransactionEIP1559<bigint, number, pending>;
@@ -43,7 +46,7 @@ type TransactionOf<type extends TransactionType, pending extends boolean> = {
  * Any fields of viem's `type` transaction; `type` is optional for EIP-1559,
  * the default. A pending one says so: `blockNumber: null`.
  */
-type MockTransactionOf<type extends TransactionType, pending extends boolean> = Partial<
+type MockTransactionOf<type extends MockTransactionType, pending extends boolean> = Partial<
   Omit<TransactionOf<type, pending>, "type" | "typeHex">
 > &
   (type extends "eip1559" ? { type?: type } : { type: type }) &
@@ -56,14 +59,14 @@ type MockTransactionOf<type extends TransactionType, pending extends boolean> = 
  * `null` then, and it has no `blockTimestamp`.
  */
 export type MockTransaction = {
-  [type in TransactionType]: MockTransactionOf<type, false> | MockTransactionOf<type, true>;
-}[TransactionType];
+  [type in MockTransactionType]: MockTransactionOf<type, false> | MockTransactionOf<type, true>;
+}[MockTransactionType];
 
 /** The viem transaction a `MockTransaction` completes to: its type, mined or pending. */
 export type BuiltTransaction<transaction extends MockTransaction = MockTransaction> =
   transaction extends unknown
     ? TransactionOf<
-        transaction extends { type: infer type extends TransactionType } ? type : "eip1559",
+        transaction extends { type: infer type extends MockTransactionType } ? type : "eip1559",
         transaction extends { blockNumber: null } ? true : false
       >
     : never;
@@ -86,7 +89,7 @@ type TransactionFields = {
   v?: bigint | undefined;
   yParity?: number | undefined;
   chainId?: number | undefined;
-  type?: TransactionType | undefined;
+  type?: MockTransactionType | undefined;
   typeHex?: Hex | null | undefined;
   gasPrice?: bigint | undefined;
   maxFeePerGas?: bigint | undefined;
@@ -124,14 +127,14 @@ const dynamicFeeFields = [
   "yParity",
 ];
 /** Each type's own fields, beyond the shared ones. */
-const typeFields: Record<TransactionType, readonly string[]> = {
+const typeFields: Record<MockTransactionType, readonly string[]> = {
   legacy: ["gasPrice"],
   eip2930: ["gasPrice", "accessList", "yParity"],
   eip1559: dynamicFeeFields,
   eip4844: [...dynamicFeeFields, "blobVersionedHashes", "maxFeePerBlobGas"],
   eip7702: [...dynamicFeeFields, "authorizationList"],
 };
-const typeHexes: Record<TransactionType, Hex> = {
+const typeHexes: Record<MockTransactionType, Hex> = {
   legacy: "0x0",
   eip2930: "0x1",
   eip1559: "0x2",
@@ -153,7 +156,7 @@ type TransactionContext = {
 };
 
 /** Throws unless `transaction`'s fields are its type's, and a pending one's block fields agree. */
-function assertTransaction(transaction: TransactionFields): TransactionType {
+function assertTransaction(transaction: TransactionFields): MockTransactionType {
   const type = transaction.type ?? "eip1559";
   const own = typeFields[type];
   // Untyped callers can pass any type.
@@ -293,7 +296,7 @@ type SentFees = {
 };
 
 /** The transaction types by number, as a request's `type` param has them. */
-const typeNames: readonly TransactionType[] = [
+const typeNames: readonly MockTransactionType[] = [
   "legacy",
   "eip2930",
   "eip1559",
@@ -302,7 +305,7 @@ const typeNames: readonly TransactionType[] = [
 ];
 
 /** A request's type by its fields, as viem's `getTransactionType` reads them. */
-function typeByFields(request: Record<string, unknown>): TransactionType {
+function typeByFields(request: Record<string, unknown>): MockTransactionType {
   if (request.authorizationList !== undefined) return "eip7702";
   if (request.blobVersionedHashes !== undefined || request.maxFeePerBlobGas !== undefined)
     return "eip4844";
@@ -317,7 +320,7 @@ function typeByFields(request: Record<string, unknown>): TransactionType {
  * `accessList` or else legacy. Refused as invalid params for a type viem
  * doesn't know, or fees the type doesn't have, as a node refuses both.
  */
-export function sentType(request: unknown, fees: SentFees): TransactionType {
+export function sentType(request: unknown, fees: SentFees): MockTransactionType {
   const fields = isPlainObject(request) ? request : {};
   const { type } = fields;
   const named =

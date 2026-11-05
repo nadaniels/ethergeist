@@ -13,6 +13,7 @@ import {
   type EmittedLog,
   type EstimateGasCall,
   type LogsCall,
+  type LogsContext,
   type RpcValue,
   type SendTransactionCall,
   type StorageCall,
@@ -152,6 +153,9 @@ describe("getTransaction", () => {
   });
 });
 
+/** A reusable getLogs resolver, for what it can name. */
+const firstLog = ({ logs }: LogsContext) => logs.slice(0, 1);
+
 describe("getLogs", () => {
   const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
 
@@ -175,6 +179,10 @@ describe("getLogs", () => {
     // @ts-expect-error content isn't placed
     mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: alice })]);
     expectTypeOf(mock.actions.getLogs.calls).toEqualTypeOf<LogsCall[]>();
+  });
+
+  test("a reusable resolver names its context", () => {
+    mock.actions.getLogs().returns(firstLog);
   });
 
   test("fee actions take no params and answer bigints", () => {

@@ -2,8 +2,9 @@ import { type Abi, type Address, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
 
 import {
+  type CreateMockContractParameters,
   type MockBatch,
-  type MockContractDefaults,
+  type ContractDefaults,
   type MockNamespace,
   type MockRpc,
   createMockRpc,
@@ -16,8 +17,13 @@ const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const mock = createMockRpc();
 const usdc = mock.contract({ abi: erc20Abi, address: USDC });
 /** Registers a token with `defaults`, for what defaults take. */
-const defaultsOf = (defaults: MockContractDefaults<typeof erc20Abi>) =>
+const defaultsOf = (defaults: ContractDefaults<typeof erc20Abi>) =>
   createMockRpc().contract({ abi: erc20Abi, address: USDC, defaults });
+/** Registers a preset contract, for what `mock.contract()` takes. */
+const preset = <const abi extends Abi>(
+  rpc: MockRpc,
+  parameters: CreateMockContractParameters<abi>,
+) => rpc.contract(parameters);
 
 describe("async resolvers", () => {
   test("a resolver may return a promise of the right type", () => {
@@ -28,6 +34,16 @@ describe("async resolvers", () => {
     createMockRpc()
       .actions.getBalance()
       .returns(() => Promise.resolve(1n));
+  });
+});
+
+describe("presets", () => {
+  test("a helper takes what mock.contract() takes, keeping the ABI", () => {
+    const registered = preset(createMockRpc(), { abi: erc20Abi, address: USDC, name: "USDC" });
+    expectTypeOf(registered.abi).toEqualTypeOf(erc20Abi);
+    registered.read.decimals().returns(6);
+    // @ts-expect-error the ABI's own functions only
+    void registered.read.notAFunction;
   });
 });
 

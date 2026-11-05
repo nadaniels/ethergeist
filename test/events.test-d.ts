@@ -3,7 +3,7 @@ import { describe, expectTypeOf, test } from "vite-plus/test";
 
 import {
   type LogsCall,
-  type MockEventArgs,
+  type EventArgs,
   type MockEventLog,
   type TransactionRecord,
   contractEvents,
@@ -37,15 +37,15 @@ const unnamedAbi = [
   },
 ] as const;
 
-describe("MockEventArgs", () => {
+describe("EventArgs", () => {
   test("indexed args are required; the rest are optional", () => {
-    expectTypeOf<MockEventArgs<typeof erc20Abi, "Transfer">>().toEqualTypeOf<
+    expectTypeOf<EventArgs<typeof erc20Abi, "Transfer">>().toEqualTypeOf<
       { from: Address; to: Address } & { value?: bigint }
     >();
   });
 
   test("non-indexed structs are partial at any depth", () => {
-    type Args = MockEventArgs<typeof shapesAbi, "ShapeAdded">;
+    type Args = EventArgs<typeof shapesAbi, "ShapeAdded">;
     expectTypeOf<{
       id: 1n;
       shape: { origin: { y: 2n }; vertices: [{ x: 3n }] };
@@ -54,20 +54,20 @@ describe("MockEventArgs", () => {
   });
 
   test("indexed strings take the string, which the topic hashes", () => {
-    type Args = MockEventArgs<typeof shapesAbi, "Registered">;
+    type Args = EventArgs<typeof shapesAbi, "Registered">;
     expectTypeOf<Args["name"]>().toEqualTypeOf<string>();
     expectTypeOf<{ name: "alice"; owner: Address }>().toExtend<Args>();
     expectTypeOf<{ owner: Address }>().not.toExtend<Args>();
   });
 
   test("unnamed inputs are a complete tuple", () => {
-    expectTypeOf<MockEventArgs<typeof unnamedAbi, "Unnamed">>().toEqualTypeOf<
+    expectTypeOf<EventArgs<typeof unnamedAbi, "Unnamed">>().toEqualTypeOf<
       readonly [Address, bigint]
     >();
   });
 
   test("an overloaded event takes any overload's args", () => {
-    type Args = MockEventArgs<typeof shapesAbi, "Ping">;
+    type Args = EventArgs<typeof shapesAbi, "Ping">;
     expectTypeOf<{ a: 1n }>().toExtend<Args>();
     expectTypeOf<{ a: 1n; b: 2n }>().toExtend<Args>();
     expectTypeOf<{ a: "1" }>().not.toExtend<Args>();

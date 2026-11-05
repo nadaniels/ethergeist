@@ -11,7 +11,7 @@ import { invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import {
   type MockWriteAnswers,
-  type MockWriteContext,
+  type WriteContext,
   type MockWriteOutcome,
   encodeWriteOutcome,
   extendWriteBuilder,
@@ -24,15 +24,15 @@ import type { ActionContext, SendTransactionCall } from "./types.js";
  * What a send's resolver gets: the call; `fail`, which also takes a node's
  * refusal by name, e.g. `fail("insufficientFunds")`; and `emit` and
  * `revert`, which answer the transaction as it's mined (see
- * `MockWriteContext`). Without an ABI, `revert` takes a reason, a panic
+ * `WriteContext`). Without an ABI, `revert` takes a reason, a panic
  * code or raw data.
  */
 export type SendTransactionContext = ActionContext<
   SendTransactionCall,
   MockNodeFault<SendErrorName>
 > &
-  MockWriteContext & {
-    /** Mine the transaction reverted, e.g. `revert("paused")`: see `MockWriteContext`. */
+  WriteContext & {
+    /** Mine the transaction reverted, e.g. `revert("paused")`: see `WriteContext`. */
     revert: RevertFn<readonly []>;
   };
 

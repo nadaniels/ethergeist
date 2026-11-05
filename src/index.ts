@@ -33,6 +33,7 @@ export type {
   SendTransactionContext,
 } from "./actions/sendTransaction.js";
 export type { TransactionCountContext } from "./actions/getTransactionCount.js";
+export type { LogsContext } from "./actions/getLogs.js";
 export type { MockActions } from "./actions/typedActions.js";
 export { createMockRpc } from "./createMockRpc.js";
 export type { CreateMockRpcParameters, MockRpc } from "./types.js";
@@ -40,42 +41,47 @@ export type { MockPublicClientParameters } from "./viem/adapter.js";
 export type { RpcRequest, UnhandledRequest } from "./history/types.js";
 export type {
   CallContext,
+  CallPins,
+  ContractDefaults,
+  CreateMockContractParameters,
   MockBatch,
   MockCall,
-  MockCallPins,
   MockContract,
-  MockContractDefaults,
   MockContractEmit,
   MockContractEstimateAnswers,
+  MockContractFunction,
   MockContractWriteAnswers,
   MockEstimateGasFunction,
-  MockFunction,
   MockFunctionAnswers,
+  MockFunctionBuilder,
   MockNamespace,
-  MockTaggedCall,
-  MockContractFunction,
   MockReadFunction,
   MockSimulateFunction,
+  MockTaggedCall,
   MockWriteFunction,
-  MockWriteResolverContext,
   ResolverContext,
   RevertFn,
   RevertSpec,
+  WriteResolverContext,
 } from "./contracts/types.js";
 export type { MockBlock } from "./chain/blocks.js";
 export type { MockFeeHistory, MockFees } from "./chain/fees.js";
 export type {
   EmittedLog,
+  EventArgs,
   LogPlacement,
   MockContractEvents,
-  MockEventArgs,
   MockEventLog,
 } from "./logs/events.js";
 export { contractEvents } from "./logs/events.js";
-export type { BuiltTransaction, MockTransaction, TransactionType } from "./chain/transactions.js";
+export type {
+  BuiltTransaction,
+  MockTransaction,
+  MockTransactionType,
+} from "./chain/transactions.js";
 export type { MockReceipt } from "./actions/getTransactionReceipt.js";
 export type { LogsCall, LogsTopic } from "./logs/filter.js";
-export type { MockCheckpoint, MockRestoreOptions } from "./rpc/checks.js";
+export type { MockCheckpoint, RestoreOptions } from "./rpc/checks.js";
 export type { MockCallRecord } from "./contracts/types.js";
 export type { MockHistoryEntry } from "./history/types.js";
 export type { MockOutcome } from "./mocking/outcomes.js";
@@ -91,21 +97,23 @@ export {
 export type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
 export { match } from "./mocking/matchers.js";
 export type {
-  CallErrorName,
   EstimateErrorName,
   MockEstimateAnswers,
   MockFault,
   MockNodeFault,
   NodeErrorName,
   SendErrorName,
+  SimulateErrorName,
+  WithLimits,
 } from "./mocking/types.js";
 export { zeroResult } from "./mocking/zeroResult.js";
+export type { PartialStructs } from "./shared/abiValues.js";
 export { testAddress, testHash } from "./shared/testValues.js";
 export { testLog } from "./logs/testLog.js";
 export type { AddTransactionParameters } from "./transactions/addTransaction.js";
 export type { TransactionRecord } from "./transactions/store.js";
 export type {
   MockWriteAnswers,
-  MockWriteContext,
   MockWriteOutcome,
+  WriteContext,
 } from "./transactions/writeOutcome.js";

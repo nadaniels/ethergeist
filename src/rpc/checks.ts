@@ -112,7 +112,7 @@ export function createChecks({
 
     const saved = checkpoints.addCheckpoint();
 
-    function restore(options: MockRestoreOptions = {}) {
+    function restore(options: RestoreOptions = {}) {
       if (saved.invalidatedBy) {
         const cause =
           saved.invalidatedBy === "reset"
@@ -192,7 +192,7 @@ export type MockCheckpoint = {
    * Throws if the checkpoint is no longer valid, or, after restoring, if a
    * check in `options` fails.
    */
-  restore(options?: MockRestoreOptions): void;
+  restore(options?: RestoreOptions): void;
 };
 
 /**
@@ -200,7 +200,7 @@ export type MockCheckpoint = {
  * restoring (which clears what they look at) and thrown after, so a failing
  * check can't leave the next test running on this one's mocks.
  */
-export type MockRestoreOptions = {
+export type RestoreOptions = {
   /** Throw, like `assertNoUnhandled()`, if any request went unanswered. */
   assertNoUnhandled?: boolean;
   /**

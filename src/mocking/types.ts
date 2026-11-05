@@ -66,7 +66,7 @@ export type SendErrorName =
 /** The names an estimate can be refused with: see `NodeErrorName`. */
 export type EstimateErrorName = TransactionErrorName | "gasExceedsAllowance";
 /** The names an `eth_call` (`simulate`) can be refused with: see `NodeErrorName`. */
-export type CallErrorName = EstimateErrorName | "intrinsicGasTooLow";
+export type SimulateErrorName = EstimateErrorName | "intrinsicGasTooLow";
 
 /**
  * A `MockFault`, or a node's refusal by name, where a node can refuse: see

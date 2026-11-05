@@ -24,7 +24,7 @@ import { describe, expect, test } from "vite-plus/test";
 
 import {
   MockCheckError,
-  type MockContractDefaults,
+  type ContractDefaults,
   MockNotFoundError,
   MockSetupError,
   createMockRpc,
@@ -364,7 +364,7 @@ describe("named node errors", () => {
 });
 
 /** A token contract, and estimates of its write functions from alice. */
-function tokenSetup(defaults?: MockContractDefaults<typeof tokenAbi>) {
+function tokenSetup(defaults?: ContractDefaults<typeof tokenAbi>) {
   const { mock, client } = setup();
   const token = mock.contract({
     abi: tokenAbi,

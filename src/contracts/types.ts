@@ -13,10 +13,10 @@ import type {
   AbiParameterToPrimitiveType,
 } from "viem";
 
-import type { EmittedLog, MockContractEvents, MockEventArgsParameter } from "../logs/events.js";
+import type { EmittedLog, EventArgsParameter, MockContractEvents } from "../logs/events.js";
 import type { MockOutcome } from "../mocking/outcomes.js";
 import type {
-  CallErrorName,
+  SimulateErrorName,
   EstimateErrorName,
   MockEstimateAnswers,
   MockFault,
@@ -25,11 +25,11 @@ import type {
   WithLimits,
 } from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";
-import type { AllNamed, PartialStructs } from "../shared/abiValues.js";
+import type { PartialStructs } from "../shared/abiValues.js";
 import type { AddTransactionParameters } from "../transactions/addTransaction.js";
 import type {
   MockWriteAnswers,
-  MockWriteContext,
+  WriteContext,
   MockWriteOutcome,
 } from "../transactions/writeOutcome.js";
 
@@ -43,7 +43,7 @@ import type {
 export type MockContractEmit<abi extends Abi> = {
   [eventName in ContractEventName<abi>]: (
     ...params: [
-      ...MockEventArgsParameter<abi, eventName>,
+      ...EventArgsParameter<abi, eventName>,
       options?: Pick<AddTransactionParameters, "blockNumber" | "hash">,
     ]
   ) => EmittedLog;
@@ -54,7 +54,7 @@ type WriteMutability = "nonpayable" | "payable";
 /** What a namespace's mocks can fail with: a node refuses only transactions by name. */
 type FaultOf<mutability> = [mutability] extends [ReadMutability]
   ? MockFault
-  : MockNodeFault<CallErrorName>;
+  : MockNodeFault<SimulateErrorName>;
 
 /** Where a call came from when it arrived inside a Multicall3 `aggregate3`. */
 export type MockBatch = {
@@ -159,7 +159,8 @@ export type MockFunctionAnswers<abi extends Abi, args, result, fault = MockFault
   fails(fault: fault): void;
 };
 
-export type MockFunction<abi extends Abi, args, result, fault = MockFault> = WithLimits<
+/** A contract function's mock, as `read` and `simulate` register it: its answers, with limits. */
+export type MockFunctionBuilder<abi extends Abi, args, result, fault = MockFault> = WithLimits<
   MockFunctionAnswers<abi, args, result, fault>
 >;
 
@@ -178,7 +179,7 @@ export type MockFunction<abi extends Abi, args, result, fault = MockFault> = Wit
  *   nonpayable overload of a name with a payable one, or on any function of
  *   an ABI without literal types (not `as const`).
  */
-export type MockCallPins<abi extends Abi, functionName extends string> = {
+export type CallPins<abi extends Abi, functionName extends string> = {
   // Without `| undefined`, so a `match.where` predicate isn't given one.
   from?: Address;
   // By name, not by the args' overload: a `match.where` value would lose its type.
@@ -197,8 +198,8 @@ export type MockContractFunction<
 > = {
   <const args extends ContractFunctionArgs<abi, mutability, functionName>>(
     args?: args,
-    pins?: MockCallPins<abi, functionName>,
-  ): MockFunction<
+    pins?: CallPins<abi, functionName>,
+  ): MockFunctionBuilder<
     abi,
     args,
     MockReturnType<
@@ -232,7 +233,7 @@ export type MockEstimateGasFunction<
 > = {
   <const args extends ContractFunctionArgs<abi, WriteMutability, functionName>>(
     args?: args,
-    pins?: MockCallPins<abi, functionName>,
+    pins?: CallPins<abi, functionName>,
   ): WithLimits<MockContractEstimateAnswers<abi, args>>;
   /**
    * Every estimate of this function the mock has received, in order (the
@@ -245,18 +246,18 @@ export type MockEstimateGasFunction<
 };
 
 /**
- * What a write's resolver gets: the call, whose `from` is the sender, and
- * `emit`; its `revert` mines the transaction reverted (see
- * `MockWriteContext`).
+ * What a contract write's resolver gets, whole: the call, whose `from` is
+ * the sender, `fail`, and `WriteContext`'s `emit`; its `revert` mines the
+ * transaction reverted (see `WriteContext`).
  */
-export type MockWriteResolverContext<abi extends Abi, args> = ResolverContext<
+export type WriteResolverContext<abi extends Abi, args> = ResolverContext<
   abi,
   args,
   MockNodeFault<SendErrorName>
 > &
-  MockWriteContext & {
+  WriteContext & {
     from: Address;
-    /** Mine the transaction reverted, e.g. `revert("paused")`: see `MockWriteContext`. */
+    /** Mine the transaction reverted, e.g. `revert("paused")`: see `WriteContext`. */
     revert: RevertFn<abi>;
   };
 
@@ -265,7 +266,7 @@ export type MockWriteResolverContext<abi extends Abi, args> = ResolverContext<
  * `MockWriteAnswers`), its revert spelled with the contract's errors.
  */
 export type MockContractWriteAnswers<abi extends Abi, args> = Omit<
-  MockWriteAnswers<MockWriteResolverContext<abi, args>, never>,
+  MockWriteAnswers<WriteResolverContext<abi, args>, never>,
   "reverts"
 > & {
   /**
@@ -285,7 +286,7 @@ export type MockWriteFunction<
 > = {
   <const args extends ContractFunctionArgs<abi, WriteMutability, functionName>>(
     args?: args,
-    pins?: MockCallPins<abi, functionName>,
+    pins?: CallPins<abi, functionName>,
   ): WithLimits<MockContractWriteAnswers<abi, args>>;
   /**
    * Every send of this function the mock has received, in order (the last
@@ -433,7 +434,7 @@ type NamespaceDefaults<abi extends Abi, mutability extends ReadMutability | Writ
  * are registered before any other mock, so `read`/`simulate`/`estimateGas`/
  * `write` mocks always override them.
  */
-export type MockContractDefaults<abi extends Abi> = {
+export type ContractDefaults<abi extends Abi> = {
   read?: NamespaceDefaults<abi, ReadMutability>;
   simulate?: NamespaceDefaults<abi, WriteMutability>;
   estimateGas?: {
@@ -451,7 +452,7 @@ export type MockContractDefaults<abi extends Abi> = {
     [functionName in ContractFunctionName<abi, WriteMutability>]?:
       | MockWriteOutcome
       | ((
-          context: MockWriteResolverContext<
+          context: WriteResolverContext<
             abi,
             ContractFunctionArgs<abi, WriteMutability, functionName>
           >,
@@ -459,28 +460,38 @@ export type MockContractDefaults<abi extends Abi> = {
   };
 };
 
+/** What `mock.contract()` takes, e.g. for a helper that registers a preset contract. */
 export type CreateMockContractParameters<abi extends Abi> = {
   abi: abi;
   address: Address;
   /** A name for messages and history, e.g. `"USDC"`. Defaults to the address alone. */
   name?: string;
-  defaults?: MockContractDefaults<abi>;
+  defaults?: ContractDefaults<abi>;
 };
 
 /**
  * A multi-output function's outputs as an object keyed by output name, for
- * functions with two or more outputs that are all named.
+ * functions with two or more outputs that are all named. "All named" is
+ * spelled out, not a shared alias: TypeScript writes this file-local type
+ * out in a consumer's declarations, which can't name an alias `index.ts`
+ * doesn't export.
  */
 type NamedOutputs<abiFunction> = abiFunction extends {
   outputs: infer outputs extends readonly [AbiParameter, AbiParameter, ...AbiParameter[]];
 }
-  ? AllNamed<outputs> extends true
-    ? {
+  ? false extends (
+      outputs[number] extends { name: infer name extends string }
+        ? name extends ""
+          ? false
+          : true
+        : false
+    )
+    ? never
+    : {
         [output in outputs[number] as output["name"] & string]?: PartialStructs<
           AbiParameterToPrimitiveType<output, "outputs">
         >;
       }
-    : never
   : never;
 
 /** What `.returns()` accepts for a function: viem's return type, or named outputs. */

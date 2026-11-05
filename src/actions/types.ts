@@ -1,6 +1,6 @@
 import type { Address, BlockTag, Hash, Hex } from "viem";
 
-import type { TransactionType } from "../chain/transactions.js";
+import type { MockTransactionType } from "../chain/transactions.js";
 import type { LogsCall } from "../logs/filter.js";
 import type { MockFault, WithLimits } from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";
@@ -90,7 +90,7 @@ export type SendTransactionCall = {
   gasPrice?: bigint;
   maxFeePerGas?: bigint;
   maxPriorityFeePerGas?: bigint;
-  type: TransactionType;
+  type: MockTransactionType;
 };
 /** What a call to an action without params asked for: nothing. */
 export type EmptyCall = Record<string, never>;

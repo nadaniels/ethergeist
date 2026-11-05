@@ -18,7 +18,7 @@ import {
   isBlockTag,
 } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
-import type { TransactionType } from "../chain/transactions.js";
+import type { MockTransactionType } from "../chain/transactions.js";
 import type { Registry } from "../contracts/registry.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
@@ -69,7 +69,7 @@ export function pinTransaction(pinned: unknown) {
 export function sendCall(
   fields: ReturnType<typeof transactionParam>,
   from: Address,
-  type: TransactionType,
+  type: MockTransactionType,
 ): SendTransactionCall {
   const { to, value, data, nonce, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas } = fields;
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
