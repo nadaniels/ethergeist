@@ -206,9 +206,9 @@ export type MockActions = {
    * answers) leaves the chain as it was.
    *
    * `.returns()` takes what the chain did (`MockWriteOutcome`): its logs, a
-   * reverted status, its gas, a deploy's address; `.emits(logs)` is
-   * `.returns({ logs })`. `.reverts(spec)` reverts its estimate and mines it
-   * reverted if it's sent anyway. `.fails()` takes a node's refusal by name,
+   * reverted status, its gas, a deploy's address; `.emits(log)` or
+   * `.emits([a, b])` is `.returns({ logs: [a, b] })`. `.reverts(spec)`
+   * reverts its estimate and mines it reverted if it's sent anyway. `.fails()` takes a node's refusal by name,
    * e.g. `"insufficientFunds"` or `"nonceTooLow"`. A resolver also gets `emit` and `revert`
    * (see `MockWriteContext`). A matching mock also answers the
    * transaction's `eth_estimateGas` (when no estimate mock does) with

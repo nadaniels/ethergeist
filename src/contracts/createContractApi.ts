@@ -1,16 +1,23 @@
 import type { Abi, AbiFunction, Address } from "viem";
 
-import { type EmitOptions, contractEvents, encodeEventLog } from "../logs/events.js";
+import { contractEvents, encodeEventLog } from "../logs/events.js";
+import { formatValue } from "../mocking/format.js";
 import { withCalls } from "../mocking/handlers.js";
 import { MockSetupError } from "../shared/errors.js";
-import type { AddTransactionParameters } from "../transactions/addTransaction.js";
+import { isPlainObject } from "../shared/values.js";
+import {
+  type AddTransactionParameters,
+  transactionHashHint,
+} from "../transactions/addTransaction.js";
 import type { MockCall, MockContract, MockNamespace, MockTaggedCall } from "./types.js";
 
 /** Puts a transaction on the rpc's chain: its `addTransaction`. */
 export type AddTransaction = (fields: AddTransactionParameters) => { logs: readonly unknown[] };
 
-/** `contract.emit`'s options, its placement. */
-const emitOptionNames = new Set(["blockNumber", "transactionHash"]);
+/** `contract.emit`'s options: `addTransaction`'s placement. */
+const emitOptionNames = new Set(["blockNumber", "hash"]);
+const emitOptionsHint =
+  "Its options are blockNumber and hash; without blockNumber, it mines a new block.";
 
 /**
  * A contract's public API, the `MockContract` mocks are registered on: its
@@ -93,22 +100,21 @@ export function createContractApi<const abi extends Abi>({
     emit: Object.fromEntries(
       events.map((eventName) => [
         eventName,
-        (args?: unknown, options: EmitOptions = {}) => {
+        (args?: unknown, options: unknown = {}) => {
           assertAttached();
           const log = encodeEventLog(abi, address, eventName, args);
+          if (!isPlainObject(options))
+            throw new MockSetupError(
+              `contract.emit takes its options as an object; got ${formatValue(options)}.`,
+              { metaMessages: [emitOptionsHint] },
+            );
           const unknown = Object.keys(options).find((key) => !emitOptionNames.has(key));
           if (unknown !== undefined)
             throw new MockSetupError(`contract.emit has no option ${unknown}.`, {
-              metaMessages: [
-                "Its options are blockNumber and transactionHash; without blockNumber, it mines a new block.",
-              ],
+              metaMessages: [unknown === "transactionHash" ? transactionHashHint : emitOptionsHint],
             });
-          const { blockNumber, transactionHash: hash } = options;
-          return addTransaction({
-            logs: [log],
-            ...(blockNumber !== undefined && { blockNumber }),
-            ...(hash !== undefined && { hash }),
-          }).logs[0];
+          // Its options are addTransaction's own, checked there.
+          return addTransaction({ ...options, logs: [log] }).logs[0];
         },
       ]),
     ),

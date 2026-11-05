@@ -330,6 +330,9 @@ describe("write", () => {
     token.write.transfer([USDC, 1n]).returns();
     token.write.transfer().returns({ status: "reverted", gasUsed: 21_000n });
     token.write.transfer().emits([token.events.Transfer({ from: USDC, to: USDC, value: 1n })]);
+    token.write.transfer().emits(token.events.Transfer({ from: USDC, to: USDC, value: 1n }));
+    // @ts-expect-error -- not a log: no address, topics or data
+    token.write.transfer().emits({ logIndex: 0 });
     token.write.transfer().once().fails("insufficientFunds");
     token.write.transfer().reverts({ errorName: "Paused", args: [USDC] });
     token.write.transfer().returns(({ args, from, emit, revert }) => {

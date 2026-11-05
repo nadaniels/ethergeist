@@ -36,6 +36,7 @@ import { expectCause, expectThrows, hintsOf, lowercase, rejectionOf } from "./ut
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
+const carol = testAddress("carol");
 const USDC = testAddress("usdc");
 const signer = privateKeyToAccount(keccak256(toHex("signer")));
 
@@ -392,6 +393,27 @@ describe("eth_sendTransaction (node account)", () => {
 });
 
 describe("send mocks", () => {
+  test("emit one log, or a list, and a resolver's emit() takes either", async () => {
+    const { mock, wallet } = nodeSetup();
+    const [one, two, three] = [testLog("one"), testLog("two"), testLog("three")];
+    mock.actions.sendTransaction({ to: alice }).once().emits(one);
+    mock.actions.sendTransaction({ to: bob }).once().emits([]);
+    mock.actions.sendTransaction({ to: carol }).returns(({ emit }) => {
+      emit(two);
+      emit([three]);
+    });
+
+    await wallet.sendTransaction({ to: alice });
+    await wallet.sendTransaction({ to: bob });
+    await wallet.sendTransaction({ to: carol });
+
+    expect(mock.transactions.map(({ logs }) => logs.map(({ topics }) => topics))).toEqual([
+      [one.topics],
+      [],
+      [two.topics, three.topics],
+    ]);
+  });
+
   test("answer with what the chain did: logs, status, gas", async () => {
     const { mock, client, wallet } = nodeSetup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
@@ -492,7 +514,7 @@ describe("send mocks", () => {
       // @ts-expect-error -- the block comes from where it's mined
       send.returns({ blockNumber: 3n });
     }).toThrow(
-      new MockSetupError("A write's outcome has no blockNumber.", {
+      new MockSetupError("A send's outcome has no blockNumber.", {
         metaMessages: [
           "Its fields are logs, status, gasUsed, effectiveGasPrice and contractAddress; the rest " +
             "of its receipt comes from the transaction and the block it's mined in.",
@@ -502,64 +524,53 @@ describe("send mocks", () => {
     expectThrows(MockSetupError, "A reverted transaction has no logs.", () => {
       send.returns({ status: "reverted", logs: [testLog("noise")] });
     });
+    expectThrows(MockSetupError, 'A send\'s status is "success" or "reverted"; got failed.', () => {
+      // @ts-expect-error -- not a status
+      send.returns({ status: "failed" });
+    });
     expectThrows(
       MockSetupError,
-      'A write\'s status is "success" or "reverted"; got failed.',
-      () => {
-        // @ts-expect-error -- not a status
-        send.returns({ status: "failed" });
-      },
-    );
-    expectThrows(
-      MockSetupError,
-      "A write's gasUsed must be a bigint, zero or more; got -1n.",
+      "A send's gasUsed must be a bigint, zero or more; got -1n.",
       () => {
         send.returns({ gasUsed: -1n });
       },
     );
     expectThrows(
       MockSetupError,
-      "A write's effectiveGasPrice must be a bigint, zero or more; got 7.",
+      "A send's effectiveGasPrice must be a bigint, zero or more; got 7.",
       () => {
         // @ts-expect-error -- not a bigint
         send.returns({ effectiveGasPrice: 7 });
       },
     );
-    expectThrows(MockSetupError, "A write's logs must be a list; got", () => {
+    expectThrows(MockSetupError, "A send's logs must be a list; got", () => {
       // @ts-expect-error -- not a list
       send.returns({ logs: testLog("noise") });
     });
     send.returns({ status: "success", gasUsed: 0n, effectiveGasPrice: 0n });
     expectThrows(
       MockSetupError,
-      "A write's logs are placed when it's mined, but one already has a position",
+      "A send's logs are placed when it's mined, but one already has a position",
       () => {
-        send.emits([
-          mock.buildLog({
-            abi: erc20Abi,
-            address: USDC,
-            eventName: "Approval",
-            args: { owner: alice, spender: bob, value: 1n },
-          }),
-        ]);
+        send.emits([mock.buildLog(testLog("noise"))]);
       },
     );
-    expectThrows(MockSetupError, "A write's outcome must be an object; got true.", () => {
+    expectThrows(MockSetupError, "A send's outcome must be an object; got true.", () => {
       // @ts-expect-error -- an outcome, not an ABI value
       send.returns(true);
     });
     expectThrows(InvalidAddressError, /Address "0x123" is invalid/u, () => {
       send.returns({ contractAddress: "0x123" });
     });
-    expectThrows(MockSetupError, "A write's contractAddress must be an address; got 5.", () => {
+    expectThrows(MockSetupError, "A send's contractAddress must be an address; got 5.", () => {
       // @ts-expect-error -- not an address
       send.returns({ contractAddress: 5 });
     });
-    expectThrows(MockSetupError, "A write's log 0 isn't a log; got 5.", () => {
+    expectThrows(MockSetupError, "A send's log 0 isn't a log; got 5.", () => {
       // @ts-expect-error -- not a log
       send.emits([5]);
     });
-    expectThrows(MockSetupError, "A write's log 0 isn't a log; got { x: 1 }.", () => {
+    expectThrows(MockSetupError, "A send's log 0 isn't a log; got { x: 1 }.", () => {
       // @ts-expect-error -- not a log
       send.emits([{ x: 1 }]);
     });

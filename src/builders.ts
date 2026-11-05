@@ -1,4 +1,4 @@
-import { type Abi, type ContractEventName, formatTransaction, zeroHash } from "viem";
+import { formatTransaction, zeroHash } from "viem";
 
 import { type MockReceipt, placedReceipt } from "./actions/getTransactionReceipt.js";
 import type { ChainState } from "./chain/state.js";
@@ -7,7 +7,7 @@ import {
   type BuiltTransaction,
   type MockTransaction,
 } from "./chain/transactions.js";
-import { type BuildLogParameters, buildLog } from "./logs/events.js";
+import { type LogPlacement, type MockEventLog, buildLog } from "./logs/events.js";
 import { refuseUnencodable } from "./shared/errors.js";
 import type { TransactionStore } from "./transactions/store.js";
 
@@ -46,9 +46,7 @@ export function createBuilders(
           logsBefore: transactions.logsBefore,
         }),
       ),
-    /** A finished log, in the current block unless given; see `buildLog`. */
-    buildLog: <const abi extends Abi, eventName extends ContractEventName<abi>>(
-      parameters: BuildLogParameters<abi, eventName>,
-    ) => refuseUnencodable("buildLog()", () => buildLog(parameters, state)),
+    /** `log` placed as a finished log, in the current block unless given; see `buildLog`. */
+    buildLog: (log: MockEventLog, placement: LogPlacement = {}) => buildLog(log, placement, state),
   };
 }

@@ -10,6 +10,7 @@ import {
   createMockRpc,
   testAddress,
   testHash,
+  testLog,
 } from "../src/index.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -122,22 +123,23 @@ describe("contractEvents()", () => {
 });
 
 describe("mock.buildLog()", () => {
-  test("infers the event from the ABI and returns a viem log", () => {
+  test("takes a log's content and its placement, and returns a viem log", () => {
     const mock = createMockRpc();
-    const log = mock.buildLog({
-      abi: erc20Abi,
-      address: USDC,
-      eventName: "Transfer",
-      args: { from: alice, to: bob, value: 5n },
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const log = mock.buildLog(usdc.events.Transfer({ from: alice, to: bob, value: 5n }), {
       blockNumber: 7n,
+      transactionHash: testHash("x"),
+      transactionIndex: 1,
+      logIndex: 2,
     });
     expectTypeOf(log).toEqualTypeOf<Log<bigint, number, false>>();
 
-    mock.buildLog({ abi: shapesAbi, address: USDC, eventName: "Paused" });
-    // @ts-expect-error -- args are required when an arg is indexed
+    mock.buildLog(testLog("noise"));
+    mock.buildLog(contractEvents({ abi: shapesAbi, address: USDC }).Paused());
+    // @ts-expect-error -- content, not an event's parameters
     mock.buildLog({ abi: erc20Abi, address: USDC, eventName: "Transfer" });
-    // @ts-expect-error -- `to` is indexed, so required
-    mock.buildLog({ abi: erc20Abi, address: USDC, eventName: "Transfer", args: { from: alice } });
+    // @ts-expect-error -- a log's transaction is transactionHash
+    mock.buildLog(testLog("noise"), { hash: testHash("x") });
   });
 });
 
@@ -152,6 +154,9 @@ describe("emit", () => {
     >();
     shapes.emit.Paused();
     shapes.emit.Paused(undefined, { blockNumber: 3n });
+    usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 3n, hash: testHash("x") });
+    // @ts-expect-error -- a transaction's hash is hash, as in mock.addTransaction
+    usdc.emit.Transfer({ from: alice, to: bob }, { transactionHash: testHash("x") });
     // @ts-expect-error -- `to` is indexed, so required
     usdc.emit.Transfer({ from: alice });
     // @ts-expect-error -- not an option

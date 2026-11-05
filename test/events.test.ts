@@ -20,6 +20,7 @@ import {
   match,
   testAddress,
   testHash,
+  testLog,
 } from "../src/index.js";
 import { expectRejects, expectThrows, lowercase } from "./utils.js";
 
@@ -147,7 +148,7 @@ describe("contract.events", () => {
   });
 
   test("an arg its encoder can't convert throws the mock's error", () => {
-    const { mock, usdc } = setup();
+    const { usdc } = setup();
 
     const error = expectThrows(
       MockSetupError,
@@ -157,15 +158,6 @@ describe("contract.events", () => {
         usdc.events.Transfer({ from: alice, to: bob, value: "soon" }),
     );
     expect(error.cause).toBeInstanceOf(SyntaxError);
-    expectThrows(MockSetupError, `Event "Transfer" was given a value it can't encode`, () =>
-      mock.buildLog({
-        abi: erc20Abi,
-        address: USDC,
-        eventName: "Transfer",
-        // @ts-expect-error value is a bigint
-        args: { from: alice, to: bob, value: "soon" },
-      }),
-    );
   });
 
   test("events with other arg names stay overloads, each chosen by its args", () => {
@@ -342,12 +334,9 @@ describe("contractEvents()", () => {
 
   test("a receipt rejecting a placed log points to it", () => {
     const { mock } = setup();
-    const placed = mock.buildLog({
-      abi: erc20Abi,
-      address: FACTORY,
-      eventName: "Transfer",
-      args: { from: alice, to: bob },
-    });
+    const placed = mock.buildLog(
+      contractEvents({ abi: erc20Abi, address: FACTORY }).Transfer({ from: alice, to: bob }),
+    );
 
     expectThrows(
       MockSetupError,
@@ -362,43 +351,39 @@ describe("contractEvents()", () => {
 });
 
 describe("mock.buildLog()", () => {
-  test("a block its encoder can't convert throws the mock's error", () => {
-    const { mock } = setup();
+  test("places a log's content, from events, contractEvents() or testLog()", async () => {
+    const { mock, client, usdc } = setup();
+    const block = await client.getBlock({ blockNumber: 7n });
+    const hash = testHash("transfer");
+    const factory = contractEvents({ abi: erc20Abi, address: testAddress("factory") });
+    const placement = { blockNumber: 7n, transactionHash: hash, transactionIndex: 2, logIndex: 3 };
 
-    expectThrows(
-      MockSetupError,
-      "buildLog() was given a value it can't encode: Cannot convert x to a BigInt",
-      () =>
-        mock.buildLog({
-          abi: erc20Abi,
-          address: USDC,
-          eventName: "Transfer",
-          args: { from: alice, to: bob, value: 5n },
-          // @ts-expect-error a block number is a bigint
-          blockNumber: "x",
-        }),
-    );
+    for (const content of [
+      usdc.events.Transfer({ from: alice, to: bob, value: 5n }),
+      factory.Transfer({ from: alice, to: bob }),
+      testLog("noise"),
+    ])
+      expect(mock.buildLog(content, placement)).toEqual({
+        ...content,
+        address: lowercase(content.address),
+        removed: false,
+        blockHash: block.hash,
+        blockTimestamp: block.timestamp,
+        ...placement,
+      });
   });
 
   test("equals the log a mocked receipt answers, placed the same", async () => {
     const { mock, client, usdc } = setup();
     const hash = testHash("transfer");
-    const args = { from: alice, to: bob, value: 5n };
+    const content = usdc.events.Transfer({ from: alice, to: bob, value: 5n });
     mock.actions
       .getTransactionReceipt({ hash })
-      .returns({ blockNumber: 7n, transactionIndex: 2, logs: [usdc.events.Transfer(args)] });
+      .returns({ blockNumber: 7n, transactionIndex: 2, logs: [content] });
 
     const { logs } = await client.getTransactionReceipt({ hash });
     expect(logs).toEqual([
-      mock.buildLog({
-        abi: erc20Abi,
-        address: USDC,
-        eventName: "Transfer",
-        args,
-        blockNumber: 7n,
-        transactionHash: hash,
-        transactionIndex: 2,
-      }),
+      mock.buildLog(content, { blockNumber: 7n, transactionHash: hash, transactionIndex: 2 }),
     ]);
     // The block hash and timestamp are the generated block's, not the current one's.
     const block = await client.getBlock({ blockNumber: 7n });
@@ -407,8 +392,8 @@ describe("mock.buildLog()", () => {
   });
 
   test("defaults to the current block, and zeros for the rest", () => {
-    const { mock } = setup();
-    const log = mock.buildLog({ abi: shapesAbi, address: SHAPES, eventName: "Paused" });
+    const { mock, shapes } = setup();
+    const log = mock.buildLog(shapes.events.Paused());
 
     expect(log).toMatchObject({
       address: lowercase(SHAPES),
@@ -418,14 +403,107 @@ describe("mock.buildLog()", () => {
       logIndex: 0,
       removed: false,
     });
+    expect(mock.buildLog(shapes.events.Paused(), {})).toEqual(log);
   });
 
-  test("throws for an event the ABI doesn't have", () => {
+  test("refuses placement values a log can't have, as addTransaction refuses them", () => {
+    const { mock, usdc } = setup();
+    const content = usdc.events.Transfer({ from: alice, to: bob });
+
+    for (const [placement, message] of [
+      [{ blockNumber: 5 }, "A block number must be a bigint, zero or more; got 5."],
+      [{ blockNumber: -1n }, "A block number must be a bigint, zero or more; got -1n."],
+      [{ transactionHash: "0x12" }, "A transaction hash must be 32 bytes; got 0x12."],
+      [{ transactionIndex: 1.5 }, "A transaction index must be an integer, zero or more; got 1.5."],
+      [{ logIndex: -1 }, "A log index must be an integer, zero or more; got -1."],
+      [{ logIndex: "x" }, "A log index must be an integer, zero or more; got x."],
+    ] as const)
+      // @ts-expect-error -- some aren't the placement's types
+      expectThrows(MockSetupError, message, () => mock.buildLog(content, placement));
+  });
+
+  test("refuses content that's already placed: it's placed once", () => {
+    const { mock, usdc } = setup();
+    const placed = mock.buildLog(usdc.events.Transfer({ from: alice, to: bob }));
+    const emitted = usdc.emit.Transfer({ from: alice, to: bob });
+
+    for (const log of [
+      placed,
+      emitted,
+      { ...usdc.events.Transfer({ from: alice, to: bob }), logIndex: 0 },
+    ]) {
+      const error = expectThrows(
+        MockSetupError,
+        "mock.buildLog() places a log's content, but this log already has a position.",
+        () => mock.buildLog(log),
+      );
+      expect(error.metaMessages).toEqual([
+        "Pass a log from contract.events, contractEvents() or testLog(), and its position as " +
+          "buildLog()'s placement.",
+      ]);
+    }
+  });
+
+  test("refuses what isn't a log's content", () => {
     const { mock } = setup();
 
-    expectThrows(MockSetupError, 'No event "Swap" on this ABI.', () =>
-      // @ts-expect-error not an event of erc20Abi
-      mock.buildLog({ abi: erc20Abi, address: USDC, eventName: "Swap", args: {} }),
+    const error = expectThrows(MockSetupError, "mock.buildLog() takes a log; got 5.", () =>
+      // @ts-expect-error -- not a log
+      mock.buildLog(5),
     );
+    expect(error.metaMessages).toEqual([
+      "Logs come from contract.events, contractEvents() or testLog().",
+    ]);
+    expectThrows(MockSetupError, "mock.buildLog() takes a log; got undefined.", () =>
+      // @ts-expect-error -- not a log
+      mock.buildLog(),
+    );
+    // Its parameters before it took content: a log's content has no abi.
+    expectThrows(
+      MockSetupError,
+      "mock.buildLog() takes a log's content, which has no field abi.",
+      () =>
+        mock.buildLog({
+          // @ts-expect-error -- not a log's content
+          abi: erc20Abi,
+          address: USDC,
+          eventName: "Transfer",
+          args: { from: alice, to: bob },
+        }),
+    );
+    expect(() => mock.buildLog({ address: "0x12", topics: [], data: "0x" })).toThrow(
+      InvalidAddressError,
+    );
+  });
+
+  test("refuses a placement that isn't one, pointing a transaction's hash to transactionHash", () => {
+    const { mock, usdc } = setup();
+    const content = usdc.events.Transfer({ from: alice, to: bob });
+
+    expectThrows(MockSetupError, "mock.buildLog() takes its placement as an object; got 7n.", () =>
+      // @ts-expect-error -- a placement, not a block number
+      mock.buildLog(content, 7n),
+    );
+    const hash = expectThrows(
+      MockSetupError,
+      "mock.buildLog()'s placement has no field hash.",
+      () =>
+        // @ts-expect-error -- a log's transaction is transactionHash
+        mock.buildLog(content, { hash: testHash("transfer") }),
+    );
+    expect(hash.metaMessages).toEqual([
+      "A log's transaction is transactionHash, as on a log; hash is a transaction's.",
+    ]);
+    const mine = expectThrows(
+      MockSetupError,
+      "mock.buildLog()'s placement has no field mine.",
+      () =>
+        // @ts-expect-error -- not a placement field
+        mock.buildLog(content, { mine: true }),
+    );
+    expect(mine.metaMessages).toEqual([
+      "Its fields are blockNumber, transactionHash, transactionIndex and logIndex; left out, " +
+        "the current block and zeros.",
+    ]);
   });
 });

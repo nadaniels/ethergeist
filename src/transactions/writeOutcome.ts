@@ -1,6 +1,6 @@
 import { type Address, getAddress } from "viem";
 
-import { type MockEventLog, isPlaced } from "../logs/events.js";
+import { type MockEventLog, isPlaced, refuseNonLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import type { Builder } from "../mocking/handlers.js";
 import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
@@ -36,8 +36,8 @@ export type MockWriteOutcome = {
  */
 export type MockWriteContext = {
   /**
-   * Adds logs to the transaction, placed when it's mined, as `.emits()`
-   * does. Use it rather than `mock.addTransaction()` or `contract.emit`,
+   * Adds a log, or logs, to the transaction, placed when it's mined, as
+   * `.emits()` does. Use it rather than `mock.addTransaction()` or `contract.emit`,
    * which would put a transaction of their own on the chain, and are
    * refused in a write's resolver up to its first `await` (after it, they
    * would still place that separate transaction).
@@ -62,8 +62,8 @@ export type MockWriteAnswers<context, revertSpec> = {
       | MockWriteOutcome
       | ((context: context) => MockWriteOutcome | void | Promise<MockWriteOutcome | void>),
   ): void;
-  /** Mined with these logs: `.returns({ logs })`. */
-  emits(logs: readonly MockEventLog[]): void;
+  /** Mined with this log, or these logs: `.returns({ logs: [log] })`. */
+  emits(logs: MockEventLog | readonly MockEventLog[]): void;
   /**
    * The transaction reverts: its estimate reverts with `spec`, so a client
    * that estimates first throws before it sends; a send that reaches the
@@ -90,7 +90,7 @@ const fieldsHint =
   "its receipt comes from the transaction and the block it's mined in.";
 
 /**
- * A write's outcome, checked, with its contract address checksummed. A
+ * A send's outcome, checked, with its contract address checksummed. A
  * resolver that returns nothing, like `.returns()`, answers a success. Only
  * a deploy has a contract address: `isDeploy` is whether the write is one,
  * or `undefined` when that isn't known yet (a static answer whose `to`
@@ -102,35 +102,35 @@ export function encodeWriteOutcome(
 ): MockWriteOutcome {
   if (value === undefined || value === zeroResult) return {};
   if (!isPlainObject(value))
-    throw new MockSetupError(`A write's outcome must be an object; got ${formatValue(value)}.`, {
+    throw new MockSetupError(`A send's outcome must be an object; got ${formatValue(value)}.`, {
       metaMessages: [fieldsHint],
     });
   const unknown = Object.keys(value).find((key) => !outcomeFields.has(key));
   if (unknown !== undefined)
-    throw new MockSetupError(`A write's outcome has no ${unknown}.`, {
+    throw new MockSetupError(`A send's outcome has no ${unknown}.`, {
       metaMessages: [fieldsHint],
     });
   const { logs = [], status, gasUsed, effectiveGasPrice, contractAddress } = value;
-  refuseNonLogs(logs, "A write's");
+  refuseNonLogs(logs, "A send's");
   if (status !== undefined && status !== "success" && status !== "reverted")
     throw new MockSetupError(
-      `A write's status is "success" or "reverted"; got ${formatValue(status)}.`,
+      `A send's status is "success" or "reverted"; got ${formatValue(status)}.`,
     );
   refuseRevertedLogs(status, logs);
   for (const [name, gas] of Object.entries({ gasUsed, effectiveGasPrice }))
     if (gas !== undefined && (typeof gas !== "bigint" || gas < 0n))
       throw new MockSetupError(
-        `A write's ${name} must be a bigint, zero or more; got ${formatValue(gas)}.`,
+        `A send's ${name} must be a bigint, zero or more; got ${formatValue(gas)}.`,
       );
   if (contractAddress !== undefined && typeof contractAddress !== "string")
     throw new MockSetupError(
-      `A write's contractAddress must be an address; got ${formatValue(contractAddress)}.`,
+      `A send's contractAddress must be an address; got ${formatValue(contractAddress)}.`,
     );
   if (contractAddress !== undefined && isDeploy === false)
     throw new MockSetupError("Only a deploy (to: null) has a contractAddress.");
   if (logs.some((log: object) => isPlaced(log)))
     throw new MockSetupError(
-      "A write's logs are placed when it's mined, but one already has a position (e.g. from " +
+      "A send's logs are placed when it's mined, but one already has a position (e.g. from " +
         "mock.buildLog()).",
       { metaMessages: ["Pass a log from contract.events."] },
     );
@@ -138,30 +138,6 @@ export function encodeWriteOutcome(
     ...value,
     ...(typeof contractAddress === "string" && { contractAddress: getAddress(contractAddress) }),
   };
-}
-
-/**
- * Refuses `logs` unless it's a list of logs, for `subject` ("A write's"):
- * a log that isn't one would fail where it's placed, as the mock's bug.
- */
-export function refuseNonLogs(
-  logs: unknown,
-  subject: string,
-): asserts logs is readonly MockEventLog[] {
-  if (!Array.isArray(logs))
-    throw new MockSetupError(`${subject} logs must be a list; got ${formatValue(logs)}.`);
-  logs.forEach((log: unknown, index: number) => {
-    if (
-      !isPlainObject(log) ||
-      typeof log.address !== "string" ||
-      (log.topics !== undefined && !Array.isArray(log.topics))
-    )
-      throw new MockSetupError(`${subject} log ${index} isn't a log; got ${formatValue(log)}.`, {
-        metaMessages: ["Pass logs from contract.events, contractEvents() or testLog()."],
-      });
-    // getAddress validates it; the store checksums it where it's placed.
-    getAddress(log.address);
-  });
 }
 
 /**
@@ -233,8 +209,8 @@ export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void 
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the types guarantee a resolver's signature
       returns(typeof value === "function" ? withWriteContext(value as () => unknown) : value);
     },
-    emits(logs: readonly MockEventLog[]) {
-      returns({ logs });
+    emits(logs: MockEventLog | readonly MockEventLog[]) {
+      returns({ logs: [logs].flat() });
     },
     // The unwrapped `returns`, so the estimate still sees the resolver's `revert`.
     reverts(spec?: unknown) {

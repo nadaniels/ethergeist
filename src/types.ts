@@ -2,7 +2,6 @@ import type {
   Abi,
   Address,
   Chain,
-  ContractEventName,
   CustomTransport,
   CustomTransportConfig,
   Log,
@@ -22,7 +21,7 @@ import type {
 } from "./contracts/types.js";
 import type { FormatHistoryOptions } from "./history/format.js";
 import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./history/types.js";
-import type { BuildLogParameters, EmittedLog } from "./logs/events.js";
+import type { EmittedLog, LogPlacement, MockEventLog } from "./logs/events.js";
 import type { MockFault } from "./mocking/types.js";
 import type { MockCheckpoint } from "./rpc/checks.js";
 import type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
@@ -150,18 +149,17 @@ export type MockRpc = {
    */
   buildReceipt(receipt?: MockReceipt): TransactionReceipt;
   /**
-   * The log `address` emits for `eventName` with `args`, as a complete viem
-   * log, for where no mock places it: `toEqual`, props, a function that
-   * parses logs. The same encoding as a contract's `events`, in the current
-   * block unless given, with other position fields zero. Its address is
-   * lowercase, as nodes send it: compare with `isAddressEqual`, not `toBe`.
-   * Not for a transaction's logs, which it places itself: use
-   * `contract.events`, or `contractEvents({ abi, address })` for a contract
-   * you don't mock.
+   * A log's content, from a contract's `events`, `contractEvents()` or
+   * `testLog()`, placed as a complete viem log, for where no mock places
+   * it: `toEqual`, props, a function that parses logs, a `getLogs` mock's
+   * answer. In the current block unless `placement` says otherwise (see
+   * `LogPlacement`), with other position fields zero: the chain doesn't
+   * count it, so give `logIndex` to match a block with other logs. Its
+   * address is lowercase, as nodes send it: compare with `isAddressEqual`,
+   * not `toBe`. Content already placed is refused, and what it returns
+   * isn't for a transaction's logs, which place their content themselves.
    */
-  buildLog<const abi extends Abi, eventName extends ContractEventName<abi>>(
-    parameters: BuildLogParameters<abi, eventName>,
-  ): Log<bigint, number, false>;
+  buildLog(log: MockEventLog, placement?: LogPlacement): Log<bigint, number, false>;
   /**
    * Puts a transaction the app didn't send on the chain, mining a new block
    * for it unless `blockNumber` names one. Mined, it moves the clock and a

@@ -2,10 +2,10 @@ import { type Hash, type TransactionReceipt, formatTransactionReceipt } from "vi
 
 import { hashParam } from "../chain/params.js";
 import { type ReceiptFields, completeReceipt, toRpcReceipt } from "../chain/receipts.js";
-import { type MockEventLog, isPlaced } from "../logs/events.js";
+import { type MockEventLog, isPlaced, refuseNonLogs } from "../logs/events.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-import { refuseNonLogs, refuseRevertedLogs } from "../transactions/writeOutcome.js";
+import { refuseRevertedLogs } from "../transactions/writeOutcome.js";
 import { pinnedHash, registeredAt, unwrapRegistered } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ReceiptCall } from "./types.js";

@@ -12,13 +12,14 @@ import {
   encodeAbiParameters,
   encodeEventTopics,
   getAddress,
+  isHash,
   zeroHash,
 } from "viem";
 
 import { blockHash } from "../chain/blocks.js";
 import { placeLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
-import { formatCall } from "../mocking/format.js";
+import { formatCall, formatValue } from "../mocking/format.js";
 import { assertNoMatchers } from "../mocking/matching.js";
 import {
   type AllNamed,
@@ -42,14 +43,27 @@ export type MockEventLog = {
 };
 
 /**
- * Where `mock.buildLog` puts a log: its block and transaction. Left out, the
- * current block and zeros.
+ * Where `mock.buildLog` puts a log, in a log's own field names: its block,
+ * its transaction, and its place in them. Left out, the current block, a
+ * zero hash, and index 0.
  */
 export type LogPlacement = {
   blockNumber?: bigint;
+  /** Its transaction's hash. */
   transactionHash?: Hash;
+  /** Its transaction's index in the block. */
   transactionIndex?: number;
+  /**
+   * Its index in the block, counted over every transaction's logs. Not
+   * counted for you: give it to match a block with other logs before it.
+   */
+  logIndex?: number;
 };
+
+const placementFields = new Set(["blockNumber", "transactionHash", "transactionIndex", "logIndex"]);
+const placementHint =
+  "Its fields are blockNumber, transactionHash, transactionIndex and logIndex; left out, the " +
+  "current block and zeros.";
 
 /** Fields a placed log has, which a transaction gives the logs it places. */
 const positionFields = [
@@ -64,27 +78,35 @@ const positionFields = [
 /** Whether `log` already has a position on the chain (e.g. from `mock.buildLog()`): it's placed only once. */
 export const isPlaced = (log: object) => positionFields.some((field) => field in log);
 
+const logsHint = "Logs come from contract.events, contractEvents() or testLog().";
+
 /**
- * Where `contract.emit` puts its transaction: placed like a sent one, in a
- * newly mined block, unless `blockNumber` names one. Each call is one
- * transaction, so two calls are two blocks: add a transaction's logs
- * together, as `mock.addTransaction({ logs: [a, b] })`.
+ * Refuses `log` unless it's a log's content, saying `notALog` ("A send's log
+ * 0 isn't a log"): a log that isn't one would fail where it's placed, as
+ * the mock's bug.
  */
-export type EmitOptions = {
-  /**
-   * The block to place the transaction in, after the transactions already
-   * there, without mining: an earlier block for history, the current one
-   * to share a block, or a later one, which is on the chain once it's mined.
-   * A watcher that has already polled the block misses it, as it misses
-   * anything added to a block it has read.
-   */
-  blockNumber?: bigint;
-  /**
-   * The transaction's hash, e.g. one the app reads from a URL. Defaults to
-   * one made from its position. Refused if it's already on the chain.
-   */
-  transactionHash?: Hash;
-};
+function refuseNonLog(log: unknown, notALog: string): asserts log is MockEventLog {
+  if (
+    !isPlainObject(log) ||
+    typeof log.address !== "string" ||
+    (log.topics !== undefined && !Array.isArray(log.topics))
+  )
+    throw new MockSetupError(`${notALog}; got ${formatValue(log)}.`, { metaMessages: [logsHint] });
+  // getAddress validates it; it's checksummed or lowercased where it's placed.
+  getAddress(log.address);
+}
+
+/** Refuses `logs` unless it's a list of logs, for `subject` ("A send's"). */
+export function refuseNonLogs(
+  logs: unknown,
+  subject: string,
+): asserts logs is readonly MockEventLog[] {
+  if (!Array.isArray(logs))
+    throw new MockSetupError(`${subject} logs must be a list; got ${formatValue(logs)}.`);
+  logs.forEach((log: unknown, index: number) => {
+    refuseNonLog(log, `${subject} log ${index} isn't a log`);
+  });
+}
 
 /** An indexed input's value is required; a non-indexed one may be a partial struct. */
 type EventInputValue<input extends AbiParameter> = input extends { indexed: true }
@@ -109,7 +131,7 @@ type EventInputsArgs<inputs extends readonly AbiParameter[]> =
     : { readonly [index in keyof inputs]: EventInputValue<inputs[index]> };
 
 /**
- * An event's args, as `events.X()` and `mock.buildLog` take them: indexed args
+ * An event's args, as `events.X()` and `contract.emit.X()` take them: indexed args
  * are required, since filters match on them and a zero would quietly miss.
  * The rest may be left out, at any depth of a struct, and are zero-filled,
  * as in `.returns()`. Events with unnamed inputs take every arg, in order.
@@ -125,7 +147,7 @@ export type MockEventArgs<
 type AllOptional<value> = Partial<value> extends value ? true : false;
 
 /** `args` as a parameter: optional when the event's args may all be left out. */
-type MockEventArgsParameter<abi extends Abi, eventName extends ContractEventName<abi>> =
+export type MockEventArgsParameter<abi extends Abi, eventName extends ContractEventName<abi>> =
   AllOptional<MockEventArgs<abi, eventName>> extends true
     ? [args?: MockEventArgs<abi, eventName>]
     : [args: MockEventArgs<abi, eventName>];
@@ -143,46 +165,89 @@ export type MockContractEvents<abi extends Abi> = {
  */
 export type EmittedLog = Readonly<Log<bigint, number, false>>;
 
-/** A contract's events by name, each emitting its log as one transaction; see `EmitOptions`. */
-export type MockContractEmit<abi extends Abi> = {
-  [eventName in ContractEventName<abi>]: (
-    ...params: [...MockEventArgsParameter<abi, eventName>, options?: EmitOptions]
-  ) => EmittedLog;
-};
-
-export type BuildLogParameters<
-  abi extends Abi,
-  eventName extends ContractEventName<abi>,
-> = LogPlacement & {
-  abi: abi;
-  address: Address;
-  eventName: eventName;
-  /** The log's index in its block. Defaults to 0. */
-  logIndex?: number;
-} & (AllOptional<MockEventArgs<abi, eventName>> extends true
-    ? { args?: MockEventArgs<abi, eventName> }
-    : { args: MockEventArgs<abi, eventName> });
+/** A log's content fields: a log from `events`, `contractEvents()` or `testLog()` has no others. */
+const contentFields = new Set(["address", "topics", "data"]);
 
 /**
- * The log `address` emits for `eventName` with `args`, as a complete viem
- * log: the same encoding as a contract's `events`, and the same placement
- * as an added transaction's logs. The block is `chain`'s current one unless
- * given, its hash and timestamp are the mock's generated ones, and other
- * position fields left out are zero.
+ * `log`'s content as a complete viem log, placed at `placement`: the same
+ * placement as a transaction's logs, without the chain counting it. The
+ * block is `chain`'s current one unless given, its hash and timestamp are
+ * the mock's generated ones, and other position fields left out are zero.
+ * Content already placed is refused, as everywhere that places logs.
  */
-export function buildLog<const abi extends Abi, eventName extends ContractEventName<abi>>(
-  parameters: BuildLogParameters<abi, eventName>,
+export function buildLog(
+  log: MockEventLog,
+  placement: LogPlacement,
   chain: Pick<ChainState, "blockNumber" | "timestampAt">,
 ): Log<bigint, number, false> {
-  const { abi, address, eventName, blockNumber = chain.blockNumber } = parameters;
-  const args: unknown = "args" in parameters ? parameters.args : undefined;
-  return placeLog(encodeEventLog(abi, address, eventName, args), {
+  refuseNonLog(log, "mock.buildLog() takes a log");
+  if (isPlaced(log))
+    throw new MockSetupError(
+      "mock.buildLog() places a log's content, but this log already has a position.",
+      {
+        metaMessages: [
+          "Pass a log from contract.events, contractEvents() or testLog(), and its position " +
+            "as buildLog()'s placement.",
+        ],
+      },
+    );
+  const field = Object.keys(log).find((key) => !contentFields.has(key));
+  if (field !== undefined)
+    throw new MockSetupError(
+      `mock.buildLog() takes a log's content, which has no field ${field}.`,
+      {
+        metaMessages: [
+          "Build it with contract.events, contractEvents() or testLog(), then place it: " +
+            "mock.buildLog(contract.events.Transfer(args), { blockNumber }).",
+        ],
+      },
+    );
+  if (!isPlainObject(placement))
+    throw new MockSetupError(
+      `mock.buildLog() takes its placement as an object; got ${formatValue(placement)}.`,
+      { metaMessages: [placementHint] },
+    );
+  const unknown = Object.keys(placement).find((key) => !placementFields.has(key));
+  if (unknown !== undefined)
+    throw new MockSetupError(`mock.buildLog()'s placement has no field ${unknown}.`, {
+      metaMessages: [
+        unknown === "hash"
+          ? "A log's transaction is transactionHash, as on a log; hash is a transaction's."
+          : placementHint,
+      ],
+    });
+  const {
+    blockNumber = chain.blockNumber,
+    transactionHash,
+    transactionIndex,
+    logIndex,
+  } = placement;
+  if (typeof blockNumber !== "bigint" || blockNumber < 0n)
+    throw new MockSetupError(
+      `A block number must be a bigint, zero or more; got ${formatValue(blockNumber)}.`,
+    );
+  if (
+    transactionHash !== undefined &&
+    (typeof transactionHash !== "string" || !isHash(transactionHash))
+  )
+    throw new MockSetupError(
+      `A transaction hash must be 32 bytes; got ${formatValue(transactionHash)}.`,
+    );
+  for (const [name, index] of Object.entries({
+    "transaction index": transactionIndex,
+    "log index": logIndex,
+  }))
+    if (index !== undefined && (!Number.isSafeInteger(index) || index < 0))
+      throw new MockSetupError(
+        `A ${name} must be an integer, zero or more; got ${formatValue(index)}.`,
+      );
+  return placeLog(log, {
     blockHash: blockHash(blockNumber),
     blockNumber,
     blockTimestamp: chain.timestampAt(blockNumber),
-    transactionHash: parameters.transactionHash ?? zeroHash,
-    transactionIndex: parameters.transactionIndex ?? 0,
-    logIndex: parameters.logIndex ?? 0,
+    transactionHash: transactionHash ?? zeroHash,
+    transactionIndex: transactionIndex ?? 0,
+    logIndex: logIndex ?? 0,
   });
 }
 

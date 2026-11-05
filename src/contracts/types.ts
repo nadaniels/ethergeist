@@ -4,6 +4,7 @@ import type {
   Address,
   ContractErrorArgs,
   ContractErrorName,
+  ContractEventName,
   ContractFunctionArgs,
   ContractFunctionName,
   ContractFunctionReturnType,
@@ -12,7 +13,7 @@ import type {
   AbiParameterToPrimitiveType,
 } from "viem";
 
-import type { MockContractEmit, MockContractEvents } from "../logs/events.js";
+import type { EmittedLog, MockContractEvents, MockEventArgsParameter } from "../logs/events.js";
 import type { MockOutcome } from "../mocking/outcomes.js";
 import type {
   CallErrorName,
@@ -25,11 +26,28 @@ import type {
 } from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";
 import type { AllNamed, PartialStructs } from "../shared/abiValues.js";
+import type { AddTransactionParameters } from "../transactions/addTransaction.js";
 import type {
   MockWriteAnswers,
   MockWriteContext,
   MockWriteOutcome,
 } from "../transactions/writeOutcome.js";
+
+/**
+ * A contract's events by name, each emitting its log as a transaction of
+ * its own: `mock.addTransaction()`'s shorthand, placed by its
+ * `blockNumber` and `hash`. Each call is one transaction, so two calls are
+ * two blocks: add a transaction's logs together, as
+ * `mock.addTransaction({ logs: [a, b] })`.
+ */
+export type MockContractEmit<abi extends Abi> = {
+  [eventName in ContractEventName<abi>]: (
+    ...params: [
+      ...MockEventArgsParameter<abi, eventName>,
+      options?: Pick<AddTransactionParameters, "blockNumber" | "hash">,
+    ]
+  ) => EmittedLog;
+};
 
 type ReadMutability = "pure" | "view";
 type WriteMutability = "nonpayable" | "payable";
@@ -350,9 +368,10 @@ export type MockContract<abi extends Abi> = {
    * `mock.actions.sendTransaction`, which answers what they don't.
    *
    * `.returns()` takes the outcome (`MockWriteOutcome`): its logs, a
-   * reverted status, its gas; `.emits(logs)` is `.returns({ logs })`. The
-   * return value isn't on the chain: it goes on `simulate`. `.reverts(spec)`
-   * reverts its estimate and mines it reverted if it's sent anyway.
+   * reverted status, its gas; `.emits(log)` or `.emits([a, b])` is
+   * `.returns({ logs: [a, b] })`. The return value isn't on the chain: it
+   * goes on `simulate`. `.reverts(spec)` reverts its estimate and mines it
+   * reverted if it's sent anyway.
    * `.fails()` takes a node's refusal by name, e.g. `"insufficientFunds"`. A
    * matching mock also answers the transaction's `eth_estimateGas` (when no
    * `estimateGas` mock does) with 100,000 gas, without running it or using
@@ -380,8 +399,8 @@ export type MockContract<abi extends Abi> = {
    * newly mined block, e.g. `emit.Transfer({ from, to, value })`, for
    * `getLogs`, watchers and receipts to find. Returns the placed log.
    * Shorthand for `mock.addTransaction({ logs: [contract.events.X(args)] })`,
-   * placed by `options` (see `EmitOptions`): its `transactionHash` is the
-   * transaction's `hash`.
+   * placed by `options`, addTransaction's `blockNumber` and `hash` (see
+   * `AddTransactionParameters`): the log's `transactionHash` is that `hash`.
    */
   emit: MockContractEmit<abi>;
 };

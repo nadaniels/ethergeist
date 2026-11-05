@@ -78,7 +78,7 @@ describe("a write mock", () => {
     async (account) => {
       const { mock, client, usdc, from, transfer } = setup(account);
       const log = usdc.events.Transfer({ from, to: bob, value: 5n });
-      usdc.write.transfer([bob, 5n]).emits([log]);
+      usdc.write.transfer([bob, 5n]).emits(log);
 
       const hash = await transfer();
       const receipt = await client.waitForTransactionReceipt({ hash, pollingInterval: 10 });
@@ -730,7 +730,7 @@ describe("registration refusals", () => {
     const { usdc } = setup();
     const write = usdc.write.transfer();
 
-    expectThrows(MockSetupError, "A write's outcome has no transactionHash.", () => {
+    expectThrows(MockSetupError, "A send's outcome has no transactionHash.", () => {
       // @ts-expect-error -- the transaction's hash comes from where it's mined
       write.returns({ transactionHash: "0x12" });
     });
@@ -741,18 +741,14 @@ describe("registration refusals", () => {
       write.returns({ contractAddress: USDC });
     });
     // A log is an emitter's address and its topics and data, not the event's args.
-    expectThrows(
-      MockSetupError,
-      /^A write's log 0 isn't a log; got \{ eventName: Transfer/u,
-      () => {
-        // @ts-expect-error -- not a log
-        write.returns({ logs: [{ eventName: "Transfer", args: { to: alice, value: 1n } }] });
-      },
-    );
+    expectThrows(MockSetupError, /^A send's log 0 isn't a log; got \{ eventName: Transfer/u, () => {
+      // @ts-expect-error -- not a log
+      write.returns({ logs: [{ eventName: "Transfer", args: { to: alice, value: 1n } }] });
+    });
     expectThrows(InvalidAddressError, /Address "0x12" is invalid/u, () => {
       write.emits([{ address: "0x12", topics: [], data: "0x" }]);
     });
-    expectThrows(MockSetupError, "A write's outcome must be an object; got true.", () => {
+    expectThrows(MockSetupError, "A send's outcome must be an object; got true.", () => {
       // @ts-expect-error -- a write answers with its outcome; the return value goes on simulate
       write.returns(true);
     });
@@ -801,17 +797,22 @@ describe("registration refusals", () => {
     {
       name: "a log without an address",
       outcome: { logs: [{ topics: [], data: "0x" }] },
-      message: "A write's log 1 isn't a log; got { topics: [], data: 0x }.",
+      message: "A send's log 1 isn't a log; got { topics: [], data: 0x }.",
     },
     {
       name: "a log whose topics aren't a list",
       outcome: { logs: [{ address: USDC, topics: 5, data: "0x" }] },
-      message: `A write's log 1 isn't a log; got { address: ${USDC}, topics: 5, data: 0x }.`,
+      message: `A send's log 1 isn't a log; got { address: ${USDC}, topics: 5, data: 0x }.`,
+    },
+    {
+      name: "logs that aren't a list, after emit()",
+      outcome: { logs: 5 },
+      message: "A send's logs must be a list; got 5.",
     },
     {
       name: "a value that isn't an outcome, after emit()",
       outcome: true,
-      message: "A write's outcome must be an object; got true.",
+      message: "A send's outcome must be an object; got true.",
     },
   ])("a resolver's outcome with $name is refused at the send", async ({ outcome, message }) => {
     const { mock, usdc, transfer } = setup();

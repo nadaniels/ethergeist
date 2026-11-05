@@ -462,10 +462,15 @@ features land; tick them off as pages get written.
     in a block not mined yet answers over the pending transaction, which
     has no block or index: to answer it mined, give `blockNumber` (and
     `transactionIndex`, 0 otherwise).
-  - `mock.buildLog({ abi, address, eventName, args, blockNumber, … })` for a
-    complete viem log where no mock places it (`toEqual`, Storybook props,
-    a function that parses logs). Receipt mocks, added transactions and
-    writes place logs themselves, so they take `contract.events` values. For a receipt's
+  - `mock.buildLog(content, placement?)` places a log's content (from
+    `contract.events`, `contractEvents()` or `testLog()`) as a complete viem
+    log where no mock places it (`toEqual`, Storybook props, a function that
+    parses logs, a `getLogs` mock's answer). `placement` is in a log's own
+    words, `{ blockNumber, transactionHash, transactionIndex, logIndex }`:
+    left out, the current block and zeros, with nothing counted from the
+    chain, so give `logIndex` to match a block with other logs. Receipt
+    mocks, added transactions and writes place logs themselves, so they take
+    content, and refuse a built log. For a receipt's
     logs from a contract the app decodes but never calls (an indexer, a
     receipt parser), `contractEvents({ abi, address })` builds the same logs
     without registering it, so it doesn't answer `getCode`, claim its
@@ -494,8 +499,10 @@ features land; tick them off as pages get written.
     `fields.input`, as in viem. A reverted one has no logs, and deploys
     (`to: null`) aren't supported. E.g. a wallet's replacement:
     `mock.addTransaction({ from, nonce, to, data, hash })`.
-  - Its `hash` is the transaction's; `contract.emit`'s options call it
-    `transactionHash`, as a log does.
+  - Its `hash` is the transaction's, and `contract.emit`'s options take the
+    same `blockNumber` and `hash` (`transactionHash` is refused there,
+    pointing at `hash`). A log's position is spelled a log's way only in
+    `mock.buildLog()`'s placement.
   - Each one mines a block, so it moves a pending
     `waitForTransactionReceipt({ confirmations })` on by one, and the
     clock by one block time: seeding 100 transfers moves `latest`'s
@@ -673,7 +680,8 @@ features land; tick them off as pages get written.
   - `.returns()` takes what the chain did, not an ABI value:
     `{ logs, status, gasUsed, effectiveGasPrice, contractAddress }`, all
     optional; the rest of the receipt comes from where it's mined.
-    `.emits(logs)` is `.returns({ logs })`; `.returns({ status:
+    `.emits(log)` or `.emits([a, b])` is `.returns({ logs: [a, b] })`, and a
+    resolver's `emit()` takes either too; `.returns({ status:
     "reverted" })` mines it reverted (no logs). `.reverts(spec)` reverts the
     estimate, so a local account throws before sending, and mines it
     reverted if it's sent anyway (`gas` set, or a node's account). A

@@ -576,12 +576,9 @@ describe("getTransactionReceipt", () => {
 
   test("a log that already has a position is refused: the receipt places it", () => {
     const { mock } = setup();
-    const placed = mock.buildLog({
-      abi: erc20Abi,
-      address: USDC,
-      eventName: "Transfer",
-      args: { from: alice, to: bob },
-    });
+    const placed = mock.buildLog(
+      contractEvents({ abi: erc20Abi, address: USDC }).Transfer({ from: alice, to: bob }),
+    );
 
     const error = expectThrows(
       MockSetupError,
@@ -761,12 +758,9 @@ describe("mock.buildReceipt()", () => {
 
   test("refuses a log that already has a position, as a receipt mock does", () => {
     const { mock } = setup();
-    const placed = mock.buildLog({
-      abi: erc20Abi,
-      address: USDC,
-      eventName: "Transfer",
-      args: { from: alice, to: bob },
-    });
+    const placed = mock.buildLog(
+      contractEvents({ abi: erc20Abi, address: USDC }).Transfer({ from: alice, to: bob }),
+    );
 
     expectThrows(
       MockSetupError,
@@ -828,12 +822,9 @@ describe("addresses in answers are lowercase, as nodes send them", () => {
 
   test("in builders, which equal what the mock answers", () => {
     const { mock } = setup();
-    const log = mock.buildLog({
-      abi: erc20Abi,
-      address: USDC,
-      eventName: "Transfer",
-      args: { from: alice, to: bob },
-    });
+    const log = mock.buildLog(
+      contractEvents({ abi: erc20Abi, address: USDC }).Transfer({ from: alice, to: bob }),
+    );
     expect(log.address).toBe(lowercase(USDC));
     expect(mock.buildReceipt({ from: alice }).from).toBe(lowercase(alice));
   });

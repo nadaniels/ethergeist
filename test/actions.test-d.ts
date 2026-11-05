@@ -164,14 +164,9 @@ describe("getLogs", () => {
 
   test("returns placed logs, or a resolver with the store's logs", () => {
     mock.actions.getLogs().returns([usdc.emit.Transfer({ from: alice, to: alice })]);
-    mock.actions.getLogs().returns([
-      mock.buildLog({
-        abi: erc20Abi,
-        address: usdc.address,
-        eventName: "Approval",
-        args: { owner: alice, spender: alice },
-      }),
-    ]);
+    mock.actions
+      .getLogs()
+      .returns([mock.buildLog(usdc.events.Approval({ owner: alice, spender: alice }))]);
     mock.actions.getLogs().returns((context) => {
       expectTypeOf(context.logs).toEqualTypeOf<EmittedLog[]>();
       expectTypeOf(context.fromBlock).toEqualTypeOf<bigint | undefined>();
@@ -237,6 +232,7 @@ describe("getLogs", () => {
     // @ts-expect-error the sender is `from`, as the request has it
     mock.actions.sendTransaction({ account: alice });
     mock.actions.sendTransaction({ to: alice, value: 1n }).once().emits([]);
+    mock.actions.sendTransaction().emits(testLog("noise"));
     mock.actions.sendTransaction().returns();
     mock.actions.sendTransaction().reverts("paused");
     mock.actions.sendTransaction().reverts({ panic: 0x11 });

@@ -45,6 +45,7 @@ export type {
   MockCallPins,
   MockContract,
   MockContractDefaults,
+  MockContractEmit,
   MockContractEstimateAnswers,
   MockContractWriteAnswers,
   MockEstimateGasFunction,
@@ -64,11 +65,8 @@ export type {
 export type { MockBlock } from "./chain/blocks.js";
 export type { MockFeeHistory, MockFees } from "./chain/fees.js";
 export type {
-  BuildLogParameters,
-  EmitOptions,
   EmittedLog,
   LogPlacement,
-  MockContractEmit,
   MockContractEvents,
   MockEventArgs,
   MockEventLog,

@@ -1,10 +1,10 @@
 import { type Address, type Hash, type Hex, getAddress, isHash, isHex } from "viem";
 
-import { type MockEventLog, isPlaced } from "../logs/events.js";
+import { type MockEventLog, isPlaced, refuseNonLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-import { refuseNonLogs, refuseRevertedLogs } from "./writeOutcome.js";
+import { refuseRevertedLogs } from "./writeOutcome.js";
 
 /**
  * A transaction the app didn't send, as `mock.addTransaction` takes it, in
@@ -58,6 +58,9 @@ const addTransactionFields = new Set([
   "blockNumber",
   "hash",
 ]);
+/** The hint for `transactionHash` where a transaction's hash is `hash`. */
+export const transactionHashHint =
+  "The transaction's hash is hash, as on a transaction; transactionHash is a log's.";
 const fieldsHint =
   "Its fields are from, to, value, data, nonce, logs, status, gasUsed, blockNumber and hash; " +
   "without blockNumber, it mines a new block.";
@@ -78,7 +81,7 @@ export function checkAddTransaction(fields: AddTransactionParameters) {
     throw new MockSetupError(`mock.addTransaction() has no field ${unknown}.`, {
       metaMessages: [
         unknown === "transactionHash"
-          ? "The transaction's hash is hash, as on a transaction; transactionHash is a log's."
+          ? transactionHashHint
           : unknown === "address" || unknown === "topics"
             ? "A log goes in logs: mock.addTransaction({ logs: [log] })."
             : fieldsHint,
