@@ -1,13 +1,12 @@
 import { type Address, getAddress } from "viem";
 
-import type { MockEventLog } from "../logs/events.js";
+import { type MockEventLog, isPlaced } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import type { Builder } from "../mocking/handlers.js";
 import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockRevertError, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-import { isPlaced } from "./store.js";
 
 /**
  * What the chain did with a sent transaction, as a write mock answers it:
@@ -38,9 +37,10 @@ export type MockWriteOutcome = {
 export type MockWriteContext = {
   /**
    * Adds logs to the transaction, placed when it's mined, as `.emits()`
-   * does. Use it rather than `mock.emit()`, which would put a transaction
-   * of its own on the chain, and is refused in a write's resolver up to its
-   * first `await` (after it, it would still place that separate transaction).
+   * does. Use it rather than `mock.addTransaction()` or `contract.emit`,
+   * which would put a transaction of their own on the chain, and are
+   * refused in a write's resolver up to its first `await` (after it, they
+   * would still place that separate transaction).
    */
   emit: (logs: MockEventLog | readonly MockEventLog[]) => void;
 };
@@ -111,32 +111,17 @@ export function encodeWriteOutcome(
       metaMessages: [fieldsHint],
     });
   const { logs = [], status, gasUsed, effectiveGasPrice, contractAddress } = value;
-  if (!Array.isArray(logs))
-    throw new MockSetupError(`A write's logs must be a list; got ${formatValue(logs)}.`);
+  refuseNonLogs(logs, "A write's");
   if (status !== undefined && status !== "success" && status !== "reverted")
     throw new MockSetupError(
       `A write's status is "success" or "reverted"; got ${formatValue(status)}.`,
     );
-  if (status === "reverted" && logs.length > 0)
-    throw new MockSetupError("A reverted transaction has no logs.");
+  refuseRevertedLogs(status, logs);
   for (const [name, gas] of Object.entries({ gasUsed, effectiveGasPrice }))
     if (gas !== undefined && (typeof gas !== "bigint" || gas < 0n))
       throw new MockSetupError(
         `A write's ${name} must be a bigint, zero or more; got ${formatValue(gas)}.`,
       );
-  // A log that isn't one would fail at the send, as the mock's bug, so it's refused here.
-  logs.forEach((log: unknown, index: number) => {
-    if (
-      !isPlainObject(log) ||
-      typeof log.address !== "string" ||
-      (log.topics !== undefined && !Array.isArray(log.topics))
-    )
-      throw new MockSetupError(`A write's log ${index} isn't a log; got ${formatValue(log)}.`, {
-        metaMessages: ["Pass logs from contract.events, contractEvents() or testLog()."],
-      });
-    // getAddress validates it; the store checksums it at the send.
-    getAddress(log.address);
-  });
   if (contractAddress !== undefined && typeof contractAddress !== "string")
     throw new MockSetupError(
       `A write's contractAddress must be an address; got ${formatValue(contractAddress)}.`,
@@ -156,6 +141,39 @@ export function encodeWriteOutcome(
 }
 
 /**
+ * Refuses `logs` unless it's a list of logs, for `subject` ("A write's"):
+ * a log that isn't one would fail where it's placed, as the mock's bug.
+ */
+export function refuseNonLogs(
+  logs: unknown,
+  subject: string,
+): asserts logs is readonly MockEventLog[] {
+  if (!Array.isArray(logs))
+    throw new MockSetupError(`${subject} logs must be a list; got ${formatValue(logs)}.`);
+  logs.forEach((log: unknown, index: number) => {
+    if (
+      !isPlainObject(log) ||
+      typeof log.address !== "string" ||
+      (log.topics !== undefined && !Array.isArray(log.topics))
+    )
+      throw new MockSetupError(`${subject} log ${index} isn't a log; got ${formatValue(log)}.`, {
+        metaMessages: ["Pass logs from contract.events, contractEvents() or testLog()."],
+      });
+    // getAddress validates it; the store checksums it where it's placed.
+    getAddress(log.address);
+  });
+}
+
+/**
+ * Refuses logs on a reverted transaction, which emits none: for a write's
+ * outcome and an added transaction alike.
+ */
+export function refuseRevertedLogs(status: unknown, logs: readonly unknown[]): void {
+  if (status === "reverted" && logs.length > 0)
+    throw new MockSetupError("A reverted transaction has no logs.");
+}
+
+/**
  * A write mock's `.reverts()` answer: mined reverted, as a send that reaches
  * the chain is. The resolver carries `error`, so an estimate the mock
  * implies reverts with it without running anything (see `registeredRevert`).
@@ -167,7 +185,7 @@ const revertedWith = (error: MockRevertError) =>
 type WriteEngine = {
   /** What a resolver's `revert(spec)` and `.reverts(spec)` revert with. */
   revertError(spec?: unknown): MockRevertError;
-  /** Runs a resolver, refusing `mock.emit()` in its body. */
+  /** Runs a resolver, refusing `mock.addTransaction()` in its body. */
   whileWriting<result>(run: () => result): result;
 };
 

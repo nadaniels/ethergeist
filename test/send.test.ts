@@ -978,9 +978,9 @@ describe("nonces follow sends", () => {
     expect(await client.getTransactionCount({ address: alice })).toBe(6);
   });
 
-  test("each sender counts its own; emits count for no one", async () => {
+  test("each sender counts its own; a transaction added without a from counts for no one", async () => {
     const { mock, client, wallet } = nodeSetup();
-    mock.emit(testLog("noise"));
+    mock.addTransaction({ logs: [testLog("noise")] });
 
     await wallet.sendTransaction({ to: bob });
     await wallet.sendTransaction({ account: bob, to: alice });
@@ -1180,17 +1180,19 @@ describe("eth_sendRawTransactionSync (EIP-7966, a local account's *Sync sends)",
   });
 
   test.each(["eth_sendRawTransaction", "eth_sendRawTransactionSync"])(
-    "%s of bytes whose hash an unmined emit() already claimed is refused as a setup error",
+    "%s of bytes whose hash an unmined added transaction already claimed is refused as a setup error",
     async (method) => {
       const { mock, wallet } = localSetup();
       const raw = await signedTransfer(wallet);
-      mock.emit(testLog("noise"), { transactionHash: keccak256(raw), blockNumber: 15n });
+      mock.addTransaction({ logs: [testLog("noise")], hash: keccak256(raw), blockNumber: 15n });
 
       const error = await rejectionOf(mock.request({ method, params: [raw] }));
 
-      expect(expectCause(error, MockSetupError).shortMessage).toBe(
-        `Transaction ${keccak256(raw)} is already on the chain.`,
-      );
+      const refused = expectCause(error, MockSetupError);
+      expect(refused.shortMessage).toBe(`Transaction ${keccak256(raw)} is already on the chain.`);
+      expect(refused.metaMessages).toEqual([
+        "A transaction added in a block not mined yet already claims this hash: give that one another hash.",
+      ]);
       expect(mock.transactions).toHaveLength(1);
       expect(mock.blockNumber).toBe(10n);
     },

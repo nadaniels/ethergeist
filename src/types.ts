@@ -22,10 +22,11 @@ import type {
 } from "./contracts/types.js";
 import type { FormatHistoryOptions } from "./history/format.js";
 import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./history/types.js";
-import type { BuildLogParameters, EmitOptions, EmittedLog, MockEventLog } from "./logs/events.js";
+import type { BuildLogParameters, EmittedLog } from "./logs/events.js";
 import type { MockFault } from "./mocking/types.js";
 import type { MockCheckpoint } from "./rpc/checks.js";
 import type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
+import type { AddTransactionParameters } from "./transactions/addTransaction.js";
 import type { TransactionRecord } from "./transactions/store.js";
 import type { MockPublicClientParameters } from "./viem/adapter.js";
 
@@ -156,20 +157,22 @@ export type MockRpc = {
     parameters: BuildLogParameters<abi, eventName>,
   ): Log<bigint, number, false>;
   /**
-   * Puts a transaction with these logs on the chain: values from a
-   * contract's `events`, or `contractEvents()` or `testLog()` for any other
-   * address (not one marked `empty()`). It's placed like a sent transaction,
-   * in a newly mined block, so watchers see it, and it moves the clock and a
-   * pending `waitForTransactionReceipt({ confirmations })` on a block; see
-   * `EmitOptions` for another block. Its receipt, transaction and block
-   * answer from it (from the zero address, to the zero address, no gas),
-   * unless a mock for its hash answers first. One call is one transaction:
-   * a swap's logs from several contracts go in one `mock.emit([…])`.
-   * Returns the placed logs; their addresses are lowercase, as nodes send
-   * them: compare with `isAddressEqual`, not `toBe`.
+   * Puts a transaction the app didn't send on the chain, mining a new block
+   * for it unless `blockNumber` names one. Mined, it moves the clock and a
+   * pending `waitForTransactionReceipt({ confirmations })` on a block, and
+   * watchers see it. Its fields are a send's, all optional (see
+   * `AddTransactionParameters`): `mock.addTransaction()` is a success from
+   * and to the zero address, with no input, value, gas or logs. Its logs
+   * are values from a contract's `events`, or `contractEvents()` or
+   * `testLog()` for any other address (not one marked `empty()`): a swap's
+   * logs from several contracts go in one transaction, `{ logs: [a, b] }`.
+   * Its receipt, transaction and block answer from it, unless a mock for
+   * its hash answers first. Returns its record, as `mock.transactions`
+   * lists it, with `data` as `fields.input`; its logs' addresses are
+   * lowercase, as nodes send them: compare with `isAddressEqual`, not `toBe`.
+   * For one event, `contract.emit.X(args)` is shorter.
    */
-  emit(log: MockEventLog, options?: EmitOptions): EmittedLog;
-  emit(logs: readonly MockEventLog[], options?: EmitOptions): EmittedLog[];
+  addTransaction(fields?: AddTransactionParameters): TransactionRecord;
   /**
    * Every log on the chain, by block and log index, as `getLogs` would answer
    * them, with lowercase addresses: compare with `isAddressEqual`, not `toBe`.
@@ -177,7 +180,7 @@ export type MockRpc = {
    */
   readonly logs: EmittedLog[];
   /**
-   * The chain's transactions, by block and index: what `emit` and sends put on it.
+   * The chain's transactions, by block and index: what `addTransaction` and sends put on it.
    * State, like registered mocks: `checkpoint()` and `reset()` restore it,
    * `clearCalls()` and `historyLimit` leave it.
    */

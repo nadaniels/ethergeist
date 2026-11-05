@@ -108,10 +108,11 @@ describe("testLog()", () => {
     mock.contract({ abi: erc20Abi, address: USDC });
     mock.empty(testAddress("empty"));
 
-    expect(mock.emit(testLog("noise", { address: USDC })).topics).toEqual([
+    const added = (log: ReturnType<typeof testLog>) => mock.addTransaction({ logs: [log] }).logs[0];
+    expect(added(testLog("noise", { address: USDC }))?.topics).toEqual([
       testHash("Unknown(noise)"),
     ]);
-    expect(mock.emit(testLog("noise")).address).toBe(lowercase(testAddress("noise")));
-    expectThrows(MockSetupError, "is marked empty()", () => mock.emit(testLog("empty")));
+    expect(added(testLog("noise"))?.address).toBe(lowercase(testAddress("noise")));
+    expectThrows(MockSetupError, "is marked empty()", () => added(testLog("empty")));
   });
 });

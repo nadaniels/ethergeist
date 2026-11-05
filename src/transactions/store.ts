@@ -4,10 +4,11 @@ import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
 import { completeReceipt, placeLog, toRpcReceipt } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { type TransactionType, encodeTransaction } from "../chain/transactions.js";
-import type { EmitOptions, EmittedLog, MockEventLog } from "../logs/events.js";
+import type { EmittedLog, MockEventLog } from "../logs/events.js";
 import { type LogsCall, topicsMatch } from "../logs/filter.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
 import { testHash } from "../shared/testValues.js";
+import { type AddTransactionParameters, checkAddTransaction } from "./addTransaction.js";
 
 /**
  * A transaction on the mock's chain, as `mock.transactions` lists it: the
@@ -18,7 +19,8 @@ import { testHash } from "../shared/testValues.js";
 export type TransactionRecord = {
   readonly hash: Hash;
   /**
-   * How it got on the chain: `"added"` by the mock's API (`emit()`), or
+   * How it got on the chain: `"added"` by the mock's API
+   * (`mock.addTransaction()` or `contract.emit`), or
    * `"sent"` over JSON-RPC (`eth_sendTransaction`, `eth_sendRawTransaction`
    * or its Sync form), whoever sent it.
    */
@@ -26,7 +28,8 @@ export type TransactionRecord = {
   /**
    * The transaction's own fields, as its request or signed bytes had them;
    * any left out answer a node's defaults: zero or empty, an `"eip1559"`
-   * type, and fees suggested at its block. An emit's are all left out.
+   * type, and fees suggested at its block. An added one's are what it was
+   * given, with `data` as `input`, and with a `from`, the nonce it took.
    */
   readonly fields: Readonly<{
     from?: Address;
@@ -43,7 +46,7 @@ export type TransactionRecord = {
   /**
    * What its receipt says beyond its position and logs, where a write's
    * outcome set it or it's a deploy's address. Left out, a success that
-   * used the gas it was sent with (none for an emit), at the price it paid.
+   * used the gas it was sent with (none for an added one), at the price it paid.
    */
   readonly receipt: Readonly<{
     status?: "success" | "reverted";
@@ -64,21 +67,6 @@ type NewRecord = Pick<TransactionRecord, "origin" | "fields" | "receipt"> & {
   logs: readonly MockEventLog[];
 };
 
-/** Fields a placed log has, which `emit` takes from its options instead. */
-const positionFields = [
-  "blockHash",
-  "blockNumber",
-  "blockTimestamp",
-  "transactionHash",
-  "transactionIndex",
-  "logIndex",
-] as const;
-
-const emitOptionNames = new Set(["blockNumber", "transactionHash"]);
-
-/** Whether `log` already has a position on the chain (e.g. from `mock.buildLog()`): it's placed only once. */
-export const isPlaced = (log: object) => positionFields.some((field) => field in log);
-
 /** The gas a transaction used: its receipt's, or else what it was sent with. */
 const gasUsedBy = ({ receipt, fields }: TransactionRecord) => receipt.gasUsed ?? fields.gas ?? 0n;
 
@@ -86,7 +74,7 @@ export type TransactionStore = ReturnType<typeof createTransactionStore>;
 
 /**
  * The chain's transactions, one record each, in blocks of `state`: what
- * `emit` and sends put on the chain, and what receipts, transactions, blocks and
+ * `addTransaction` and sends put on the chain, and what receipts, transactions, blocks and
  * `eth_getLogs` answer from once a request doesn't match a mock. A record is
  * on the chain once its block is mined (at or below the head); placed in a
  * later block, it's waiting, as a pending transaction is.
@@ -130,12 +118,15 @@ export function createTransactionStore({
     if (find(hash) !== undefined)
       throw new MockSetupError(`Transaction ${hash} is already on the chain.`, {
         // A hash the mock made collides only with one named after its position.
-        metaMessages:
+        metaMessages: [
           record.hash === undefined
-            ? [`Name a hash other than one the mock makes, testHash("tx:<block>:<index>").`]
-            : [
-                "Each emit() is a transaction: emit a transaction's logs together, as mock.emit([a, b]).",
-              ],
+            ? `Name a hash other than one the mock makes, testHash("tx:<block>:<index>").`
+            : record.origin === "added"
+              ? "Give each added transaction its own hash; one transaction's logs go in one " +
+                "call, as mock.addTransaction({ logs: [a, b] })."
+              : "A transaction added in a block not mined yet already claims this hash: give " +
+                "that one another hash.",
+        ],
       });
     const firstLogIndex = earlier.reduce((count, each) => count + each.logs.length, 0);
     // Frozen, topics too, so changing one throws instead of changing what the chain answers.
@@ -171,14 +162,15 @@ export function createTransactionStore({
     state.mine(blocks);
   }
 
-  /** Whether a write's resolver is running its body, during which `emit` is refused. */
+  /** Whether a write's resolver is running its body, during which adding a transaction is refused. */
   let writing = false;
 
   /**
-   * Runs a write's resolver, refusing `emit` in its body: it would put a
-   * transaction of its own on the chain, mined in the middle of the send.
-   * Only up to its first `await`, so code elsewhere (a demo's ticker) can
-   * still emit while a resolver waits.
+   * Runs a write's resolver, refusing `addTransaction` (and so
+   * `contract.emit`) in its body: it would put a transaction of its own on
+   * the chain, mined in the middle of the send. Only up to its first
+   * `await`, so code elsewhere (a demo's ticker) can still add one while a
+   * resolver waits.
    */
   function whileWriting<result>(run: () => result): result {
     const outer = writing;
@@ -190,45 +182,30 @@ export function createTransactionStore({
     }
   }
 
-  /** Places one transaction's logs, returning one for one and an array for an array. */
-  function emit(log: MockEventLog, options?: EmitOptions): EmittedLog;
-  function emit(logs: readonly MockEventLog[], options?: EmitOptions): EmittedLog[];
-  function emit(
-    given: MockEventLog | readonly MockEventLog[],
-    options: EmitOptions = {},
-  ): EmittedLog | EmittedLog[] {
+  /**
+   * Places one transaction the app didn't send, from `fields`: checked
+   * first, then in `blockNumber`, or left out, in a newly mined block. A
+   * nonce left out is `from`'s next, as a send takes it.
+   */
+  function addTransaction(fields: AddTransactionParameters = {}): TransactionRecord {
     if (writing)
-      throw new MockSetupError("emit() can't run while a write's resolver answers a send.", {
-        metaMessages: [
-          "Use the resolver's emit(), which adds logs to the transaction it answers; this one " +
-            "would put a transaction of its own on the chain, mined mid-send.",
-        ],
-      });
-    const values = isLogList(given) ? given : [given];
-    if (values.length === 0) throw new MockSetupError("emit() requires at least one log.");
-    for (const value of values)
-      if (isPlaced(value))
-        throw new MockSetupError(
-          "emit() places logs itself, but this one already has a position (e.g. from " +
-            "mock.buildLog()).",
-          {
-            metaMessages: [
-              "Pass a log from contract.events, and set its block or transaction in emit()'s options.",
-            ],
-          },
-        );
-    const unknown = Object.keys(options).find((key) => !emitOptionNames.has(key));
-    if (unknown !== undefined)
-      throw new MockSetupError(`emit() has no option "${unknown}".`, {
-        metaMessages: [
-          "Its options are blockNumber and transactionHash; without blockNumber, it mines a new block.",
-        ],
-      });
-    const { logs } = add(
-      { origin: "added", hash: options.transactionHash, fields: {}, receipt: {}, logs: values },
-      { blockNumber: options.blockNumber },
+      throw new MockSetupError(
+        "mock.addTransaction() and contract.emit can't run while a write's resolver answers a send.",
+        {
+          metaMessages: [
+            "Use the resolver's emit(), which adds logs to the transaction it answers; these " +
+              "would put a transaction of their own on the chain, mined mid-send.",
+          ],
+        },
+      );
+    const { blockNumber, ...record } = checkAddTransaction(fields);
+    const { from, nonce } = record.fields;
+    return add(
+      from === undefined || nonce !== undefined
+        ? record
+        : { ...record, fields: { ...record.fields, nonce: nonceOf(from, "pending") } },
+      { blockNumber },
     );
-    return isLogList(given) ? [...logs] : logs[0]!;
   }
 
   /** A record's transaction in its JSON-RPC form: pending until its block is mined. */
@@ -282,8 +259,9 @@ export function createTransactionStore({
 
   /**
    * The nonce `address`'s next transaction would take: one past the highest
-   * it has sent, or 0. At `"pending"`, over every send; at a block, over
-   * those mined at or before it. Emits aren't sends: they count for no one.
+   * of its transactions, or 0. At `"pending"`, over all of them; at a
+   * block, over those mined at or before it. Sends count, and so do
+   * transactions added with a `from`; one added without counts for no one.
    */
   function nonceOf(address: Address, block: bigint | "pending") {
     const from = getAddress(address);
@@ -299,7 +277,7 @@ export function createTransactionStore({
 
   return {
     add,
-    emit,
+    addTransaction,
     whileWriting,
     mine,
     logsFor,
@@ -378,10 +356,4 @@ export function createTransactionStore({
       };
     },
   };
-}
-
-function isLogList(
-  given: MockEventLog | readonly MockEventLog[],
-): given is readonly MockEventLog[] {
-  return Array.isArray(given);
 }

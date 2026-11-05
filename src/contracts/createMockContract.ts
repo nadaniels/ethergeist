@@ -11,7 +11,6 @@ import {
   toFunctionSelector,
 } from "viem";
 
-import { type EmitOptions, type MockEventLog } from "../logs/events.js";
 import { fail } from "../mocking/faults.js";
 import { type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
 import { assertNoRunnerMatchers, firstMismatch, specificity } from "../mocking/matching.js";
@@ -30,7 +29,7 @@ import {
   extendWriteBuilder,
 } from "../transactions/writeOutcome.js";
 import { encodeAnswer, createRevertError } from "./answers.js";
-import { createContractApi } from "./createContractApi.js";
+import { type AddTransaction, createContractApi } from "./createContractApi.js";
 import { type Pins, createFunctions, firstPinMismatch, pinArgs, pinCall } from "./functions.js";
 import { formatContract, missError, unusedLine } from "./messages.js";
 import type {
@@ -106,17 +105,17 @@ export function createMockContract<const abi extends Abi>(
   hooks: {
     /** Called with every decoded call, tagged, so the rpc can keep a log across contracts. */
     onCall?: (call: MockTaggedCall) => void;
-    /** Puts a transaction with these logs on the rpc's chain. */
-    emit?: (logs: readonly MockEventLog[], options?: EmitOptions) => readonly unknown[];
+    /** Puts a transaction on the rpc's chain. */
+    addTransaction?: AddTransaction;
     /** How many calls each list keeps: the contract's, and each function's. */
     recordLimit?: RecordLimit;
-    /** Runs a write's resolver, refusing the rpc's `emit` in its body. */
+    /** Runs a write's resolver, refusing the rpc's `addTransaction` in its body. */
     whileWriting?: <result>(run: () => result) => result;
   } = {},
 ): InternalMockContract<abi> {
   const {
     onCall = () => {},
-    emit = () => [],
+    addTransaction = () => ({ logs: [] }),
     recordLimit = unlimited,
     whileWriting = <result>(run: () => result) => run(),
   } = hooks;
@@ -211,7 +210,7 @@ export function createMockContract<const abi extends Abi>(
     register,
     calls: () => calls.kept,
     callsTo,
-    emit,
+    addTransaction,
     assertAttached,
   });
 

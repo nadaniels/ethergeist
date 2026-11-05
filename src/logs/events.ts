@@ -31,7 +31,7 @@ import { isPlainObject } from "../shared/values.js";
 
 /**
  * A log's content, encoded from an event and its args: who emitted it, its
- * topics, and its data. It has no position; the receipt, `emit`, or
+ * topics, and its data. It has no position; the receipt, transaction or
  * `mock.buildLog` it goes to gives it one.
  */
 export type MockEventLog = {
@@ -51,11 +51,24 @@ export type LogPlacement = {
   transactionIndex?: number;
 };
 
+/** Fields a placed log has, which a transaction gives the logs it places. */
+const positionFields = [
+  "blockHash",
+  "blockNumber",
+  "blockTimestamp",
+  "transactionHash",
+  "transactionIndex",
+  "logIndex",
+] as const;
+
+/** Whether `log` already has a position on the chain (e.g. from `mock.buildLog()`): it's placed only once. */
+export const isPlaced = (log: object) => positionFields.some((field) => field in log);
+
 /**
- * Where `emit` puts a transaction: placed like a sent one, in a newly mined
- * block, unless `blockNumber` names one. Each call is one transaction, so
- * two calls are two blocks: emit a transaction's logs together, as
- * `mock.emit([a, b])`.
+ * Where `contract.emit` puts its transaction: placed like a sent one, in a
+ * newly mined block, unless `blockNumber` names one. Each call is one
+ * transaction, so two calls are two blocks: add a transaction's logs
+ * together, as `mock.addTransaction({ logs: [a, b] })`.
  */
 export type EmitOptions = {
   /**
@@ -125,7 +138,7 @@ export type MockContractEvents<abi extends Abi> = {
 };
 
 /**
- * A log `emit` placed, as `getLogs` answers it. Frozen: it's the mock's own
+ * A log a transaction placed on the chain, as `getLogs` answers it. Frozen: it's the mock's own
  * copy, so changing it throws; spread it to make a changed one.
  */
 export type EmittedLog = Readonly<Log<bigint, number, false>>;

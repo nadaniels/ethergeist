@@ -24,8 +24,8 @@ export type MockLog = Partial<Omit<Log<bigint, number, false>, "topics">> & {
 
 /**
  * A mocked receipt: any receipt fields, with logs that may be partial too.
- * Its `logs` are legacy: for a receipt with these logs, emit them instead,
- * `mock.emit(logs, { transactionHash })`, whose receipt answers itself.
+ * Its `logs` are legacy: for a receipt with these logs, add its transaction
+ * instead, `mock.addTransaction({ hash, logs })`, whose receipt answers itself.
  */
 export type MockReceipt = Partial<Omit<TransactionReceipt, "logs">> & { logs?: MockLog[] };
 

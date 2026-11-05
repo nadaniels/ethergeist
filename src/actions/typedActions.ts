@@ -98,16 +98,16 @@ export type MockActions = {
    * `"success"`, the block is the current one, and logs get their index, block,
    * and transaction from the receipt; the rest is zero. A static receipt is
    * mined when it's registered, so it stays in that block as more are mined:
-   * for a hash pinned exactly that's on the chain (emitted or sent), its
-   * transaction's block and index, so register it after the emit (and after
-   * its block is mined). A resolver's is in the block current when
-   * it answers. `null` answers "no
+   * for a hash pinned exactly that's on the chain (added or sent), its
+   * transaction's block and index, so register it after the transaction is
+   * added (and after its block is mined). A resolver's is in the block
+   * current when it answers. `null` answers "no
    * such transaction". A mock is an override, for answers the chain
    * shouldn't give (`null`, a reverted status): unmocked, the hash of a
    * transaction on the chain answers its receipt (`null` while it's placed in a
    * block not mined yet), and other hashes aren't answered.
-   * Its `logs` are legacy: for a receipt with these logs, emit them instead,
-   * `mock.emit(logs, { transactionHash })`.
+   * Its `logs` are legacy: for a receipt with these logs, add its transaction
+   * instead, `mock.addTransaction({ hash, logs })`.
    */
   getTransactionReceipt: MockAction<ReceiptCall, MockReceipt | null>;
   /**
@@ -118,16 +118,17 @@ export type MockActions = {
    * transaction on the chain is, if it has one), a resolver's when it answers. Fields its `type` doesn't have throw, and
    * `blockNumber: null` makes it pending. `null` answers "no such
    * transaction". A mock is an override: unmocked, the hash of a transaction
-   * on the chain answers it (emitted or sent; pending while it's placed in a block
+   * on the chain answers it (added or sent; pending while it's placed in a block
    * not mined yet), and other hashes aren't answered.
    * `mock.buildTransaction()` builds the same transaction.
    */
   getTransaction: MockAction<TransactionCall, MockTransaction | null>;
   /**
    * `eth_getLogs`, for `getLogs` and `getContractEvents`. Unmocked, it's
-   * answered from emitted logs (`mock.emit()`), filtered as a node filters
-   * them, at any address: `[]` where nothing was emitted. A mock answers
-   * first, with placed logs (from `emit()` or `mock.buildLog()`), or fails,
+   * answered from the chain's logs (from `mock.addTransaction()`,
+   * `contract.emit` and sends), filtered as a node filters them, at any
+   * address: `[]` where nothing was emitted. A mock answers
+   * first, with placed logs (from `mock.logs` or `mock.buildLog()`), or fails,
    * e.g. for a provider's block range cap; its resolver gets the emitted logs
    * the filter matches as `logs`.
    */
@@ -159,10 +160,11 @@ export type MockActions = {
   getFeeHistory: MockAction<FeeHistoryCall, MockFeeHistory>;
   /**
    * `eth_getTransactionCount`, an account's nonce: unmocked, the chain's
-   * count, one past the highest nonce the address has sent (0 if none),
-   * over its sends mined at or before the block (all of them at
-   * `"pending"`); emits aren't sends. viem asks for `"pending"` when
-   * preparing a transaction, and `"latest"` by default. A static
+   * count, one past the highest nonce of the address's transactions (0 if
+   * none), over those mined at or before the block (all of them at
+   * `"pending"`): its sends, and transactions added with it as `from`.
+   * viem asks for `"pending"` when preparing a transaction, and `"latest"`
+   * by default. A static
    * `.returns(7)` is the answer, so it doesn't count up; for a starting
    * nonce that does, a resolver reads `count`:
    * `.returns(({ count }) => Math.max(7, count))`. An `eth_sendTransaction`

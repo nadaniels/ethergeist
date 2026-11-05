@@ -100,13 +100,13 @@ describe("emit", () => {
     const { mock, usdc, dai } = setup();
     const block = { blockNumber: 10n };
 
-    const swap = mock.emit(
-      [
+    const { logs: swap } = mock.addTransaction({
+      logs: [
         usdc.events.Transfer({ from: alice, to: bob, value: 5n }),
         dai.events.Transfer({ from: bob, to: alice, value: 4n }),
       ],
-      block,
-    );
+      ...block,
+    });
     const next = usdc.emit.Approval({ owner: alice, spender: bob, value: 1n }, block);
 
     expect(swap.map((log) => [log.transactionIndex, log.logIndex])).toEqual([
@@ -122,10 +122,13 @@ describe("emit", () => {
     const { mock, usdc } = setup();
     const hash = testHash("swap-1");
 
-    const log = mock.emit(usdc.events.Transfer({ from: alice, to: bob, value: 5n }), {
-      blockNumber: 4n,
-      transactionHash: hash,
-    });
+    const log = usdc.emit.Transfer(
+      { from: alice, to: bob, value: 5n },
+      {
+        blockNumber: 4n,
+        transactionHash: hash,
+      },
+    );
     expect(log).toMatchObject({ blockNumber: 4n, transactionHash: hash, transactionIndex: 0 });
     expect(mock.blockNumber).toBe(10n);
   });
@@ -137,12 +140,13 @@ describe("emit", () => {
 
     const upper = `0x${hash.slice(2).toUpperCase()}` as const;
     const again = () =>
-      mock.emit(usdc.events.Transfer({ from: bob, to: carol }), { transactionHash: upper });
+      mock.addTransaction({ logs: [usdc.events.Transfer({ from: bob, to: carol })], hash: upper });
     expect(again).toThrow(MockSetupError);
     expectThrows(
       MockSetupError,
       `Transaction ${upper} is already on the chain.\n\n` +
-        "Each emit() is a transaction: emit a transaction's logs together, as mock.emit([a, b]).",
+        "Give each added transaction its own hash; one transaction's logs go in one call, as " +
+        "mock.addTransaction({ logs: [a, b] }).",
       again,
     );
     expect(mock.blockNumber).toBe(11n);
@@ -164,20 +168,37 @@ describe("emit", () => {
 
   test("has no mine or transactionIndex option", () => {
     const { mock, usdc } = setup();
-    const log = usdc.events.Transfer({ from: alice, to: bob });
 
     expectThrows(
       MockSetupError,
-      'emit() has no option "mine".\n\n' +
+      "contract.emit has no option mine.\n\n" +
         "Its options are blockNumber and transactionHash; without blockNumber, it mines a new block.",
       // @ts-expect-error -- gone: a plain emit mines
-      () => mock.emit(log, { mine: true }),
+      () => usdc.emit.Transfer({ from: alice, to: bob }, { mine: true }),
     );
-    expectThrows(MockSetupError, 'emit() has no option "transactionIndex".', () =>
+    expectThrows(MockSetupError, "contract.emit has no option transactionIndex.", () =>
       // @ts-expect-error -- gone: a block's transactions have no holes
       usdc.emit.Transfer({ from: alice, to: bob }, { transactionIndex: 3 }),
     );
     expect(mock.blockNumber).toBe(10n);
+  });
+
+  test("refuses a block that isn't a bigint, zero or more, or a hash that isn't 32 bytes", () => {
+    const { mock, usdc } = setup();
+    const args = { from: alice, to: bob };
+
+    expectThrows(MockSetupError, "A block number must be a bigint, zero or more; got 3.", () =>
+      // @ts-expect-error -- a number
+      usdc.emit.Transfer(args, { blockNumber: 3 }),
+    );
+    expectThrows(MockSetupError, "A block number must be a bigint, zero or more; got -1n.", () =>
+      usdc.emit.Transfer(args, { blockNumber: -1n }),
+    );
+    expectThrows(MockSetupError, "A transaction hash must be 32 bytes; got 0x12.", () =>
+      usdc.emit.Transfer(args, { transactionHash: "0x12" }),
+    );
+    expect(mock.blockNumber).toBe(10n);
+    expect(mock.transactions).toEqual([]);
   });
 
   test("logs in a later block appear once it's mined", async () => {
@@ -194,26 +215,30 @@ describe("emit", () => {
     mock.empty(carol);
     const other = createMockRpc().contract({ abi: erc20Abi, address: carol });
 
-    expectThrows(MockSetupError, "emit() requires at least one log.", () => mock.emit([]));
     expectThrows(
       MockSetupError,
-      "emit() places logs itself, but this one already has a position (e.g. from mock.buildLog()).\n\n" +
-        "Pass a log from contract.events, and set its block or transaction in emit()'s options.",
+      "mock.addTransaction() places logs itself, but one already has a position (e.g. from " +
+        "mock.buildLog()).\n\n" +
+        "Pass a log from contract.events, and its block or hash as addTransaction()'s blockNumber or hash.",
       () =>
-        mock.emit(
-          mock.buildLog({
-            abi: erc20Abi,
-            address: USDC,
-            eventName: "Transfer",
-            args: { from: alice, to: bob },
-          }),
-        ),
+        mock.addTransaction({
+          logs: [
+            mock.buildLog({
+              abi: erc20Abi,
+              address: USDC,
+              eventName: "Transfer",
+              args: { from: alice, to: bob },
+            }),
+          ],
+        }),
     );
     expectThrows(MockSetupError, `${carol} is marked empty(), with no code to emit this log.`, () =>
-      mock.emit([
-        usdc.events.Transfer({ from: alice, to: bob }),
-        other.events.Transfer({ from: alice, to: bob }),
-      ]),
+      mock.addTransaction({
+        logs: [
+          usdc.events.Transfer({ from: alice, to: bob }),
+          other.events.Transfer({ from: alice, to: bob }),
+        ],
+      }),
     );
     expect(mock.blockNumber).toBe(10n);
     expect(mock.logs).toEqual([]);
@@ -223,8 +248,10 @@ describe("emit", () => {
     const { mock, client } = setup();
     const other = createMockRpc().contract({ abi: erc20Abi, address: carol });
 
-    const log = mock.emit(other.events.Transfer({ from: alice, to: bob, value: 1n }));
-    expect(await client.getLogs({ address: carol })).toEqual([log]);
+    const { logs } = mock.addTransaction({
+      logs: [other.events.Transfer({ from: alice, to: bob, value: 1n })],
+    });
+    expect(await client.getLogs({ address: carol })).toEqual(logs);
   });
 
   test("each block's transactions and logs are indexed from 0", () => {
@@ -259,12 +286,12 @@ describe("emit", () => {
       transactionHash: testHash("x"),
     };
 
-    const emit = () => mock.emit(log, { blockNumber: 10n });
-    expect(emit).toThrow(MockSetupError);
+    const add = () => mock.addTransaction({ logs: [log], blockNumber: 10n });
+    expect(add).toThrow(MockSetupError);
     expectThrows(
       MockSetupError,
-      "emit() places logs itself, but this one already has a position",
-      emit,
+      "mock.addTransaction() places logs itself, but one already has a position",
+      add,
     );
   });
 
@@ -287,13 +314,13 @@ describe("emit", () => {
   test("mock.logs lists every log by block and log index, whatever order they were emitted in", () => {
     const { mock, usdc, dai } = setup();
 
-    mock.emit(
-      [
+    mock.addTransaction({
+      logs: [
         usdc.events.Transfer({ from: alice, to: bob }),
         dai.events.Transfer({ from: bob, to: alice }),
       ],
-      { blockNumber: 9n },
-    );
+      blockNumber: 9n,
+    });
     usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 10n });
     usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 5n });
     expect(mock.logs.map((log) => [log.blockNumber, log.logIndex])).toEqual([
@@ -645,12 +672,14 @@ describe("the transaction an emit makes", () => {
     ]);
   });
 
-  test("one emit of several contracts' logs is one transaction, with all of them", async () => {
+  test("one transaction with several contracts' logs has all of them", async () => {
     const { mock, client, usdc, dai } = setup();
-    const logs = mock.emit([
-      usdc.events.Transfer({ from: alice, to: bob, value: 5n }),
-      dai.events.Transfer({ from: bob, to: alice, value: 4n }),
-    ]);
+    const { logs } = mock.addTransaction({
+      logs: [
+        usdc.events.Transfer({ from: alice, to: bob, value: 5n }),
+        dai.events.Transfer({ from: bob, to: alice, value: 4n }),
+      ],
+    });
 
     const receipt = await client.getTransactionReceipt({ hash: logs[0]!.transactionHash });
     expect(receipt.logs).toEqual(logs);
@@ -1021,7 +1050,7 @@ describe("mock.actions.getLogs", () => {
 
     expectThrows(
       MockSetupError,
-      "getLogs answers placed logs, e.g. from emit() or mock.buildLog(); log 0 has no position.",
+      "getLogs answers placed logs, e.g. from mock.logs or mock.buildLog(); log 0 has no position.",
       () => {
         // @ts-expect-error -- content, not a placed log
         mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: bob })]);

@@ -16,7 +16,7 @@ export type TransactionCountContext = ActionContext<TransactionCountCall> & {
   readonly count: number;
 };
 
-/** `eth_getTransactionCount`, an account's nonce: unmocked, what it has sent (`nonceOf`). */
+/** `eth_getTransactionCount`, an account's nonce: unmocked, its transactions' count (`nonceOf`). */
 export const getTransactionCount = ({
   state,
   transactions,

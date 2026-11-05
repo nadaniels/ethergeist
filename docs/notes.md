@@ -152,9 +152,10 @@ features land; tick them off as pages get written.
     `write.transfer().returns(true)` is a type error. A call to a contract
     has no `contractAddress`.
   - Resolvers get the call (`from` is the sender) and `emit(logs)`, which
-    adds logs to the transaction; `mock.emit()` is refused inside one (up
-    to its first `await`; code elsewhere can still emit while it waits), as
-    it would mine a transaction of its own mid-send. `revert(spec)` mines
+    adds logs to the transaction; `mock.addTransaction()` and
+    `contract.emit` are refused inside one (up to its first `await`; code
+    elsewhere can still add transactions while it waits), as they would
+    mine a transaction of their own mid-send. `revert(spec)` mines
     it reverted, dropping what it emitted. Send mocks' resolvers get both
     too.
   - The estimate: a matching write mock answers the transaction's
@@ -392,32 +393,45 @@ features land; tick them off as pages get written.
   - A receipt's log that names another block or transaction throws (e.g. a
     `mock.buildLog()` result for another block).
   - Legacy: a receipt mock's `logs`. For a receipt with these logs for a
-    hash the app has, emit them instead, `mock.emit(logs, { transactionHash })`:
-    the emit's receipt, transaction and block answer from it. Receipt and
-    transaction mocks are for answers the chain shouldn't give: `null`, a
-    dropped transaction, a reverted status. A static one pinned to an
-    emitted hash takes that transaction's block and index, as of
-    registration: register it after the emit, and after its block is mined.
+    hash the app has, add its transaction instead,
+    `mock.addTransaction({ hash, logs })`: its receipt, transaction and
+    block answer from it. Receipt and transaction mocks are for answers the
+    chain shouldn't give: `null`, a dropped transaction, a reverted status.
+    A static one pinned to an added hash takes that transaction's block and
+    index, as of registration: register it after the transaction is added,
+    and after its block is mined.
   - `mock.buildLog({ abi, address, eventName, args, blockNumber, … })` for a
     complete viem log where no mock places it (`toEqual`, Storybook props,
-    a function that parses logs). Inside a mock, receipts and `emit` place
+    a function that parses logs). Inside a mock, receipts and transactions place
     logs themselves, so they take `contract.events` values. For a receipt's
     logs from a contract the app decodes but never calls (an indexer, a
     receipt parser), `contractEvents({ abi, address })` builds the same logs
     without registering it, so it doesn't answer `getCode`, claim its
-    address, or show in "Registered" lists; `emit` takes them too. And
+    address, or show in "Registered" lists; `addTransaction` takes them too. And
     `mock.buildReceipt(fields)` for the receipt `.returns(fields)` answers
     (pass `transactionHash` to match the request's). Both default to the
     mock's current block. Both share the mock's encoding and
     defaults, so `toEqual` against what the app got works.
-- [ ] Emitting logs: `contract.emit.Transfer(args, options)`, or
-      `mock.emit(logs, options)` for several logs in one transaction
-      (e.g. a swap's transfers and its `Swap`). Show:
+- [ ] Emitting logs and adding transactions: `contract.emit.Transfer(args,
+      options)` for one event, or `mock.addTransaction({ logs, … })` for
+      several logs in one transaction (e.g. a swap's transfers and its
+      `Swap`), or another transaction the app didn't send. Show:
   - One call is one transaction, placed like a sent one: in a newly mined
     block, so watchers see it. Two `contract.emit` calls are two
     transactions in two blocks: a swap's logs from several contracts go in
-    one `mock.emit([…])`.
-  - Each emit mines a block, so it moves a pending
+    one `mock.addTransaction({ logs: [a, b] })`.
+  - `mock.addTransaction(fields)` takes a send's words, all optional:
+    `from`, `to`, `value`, `data`, `nonce` from the call; `logs`, `status`
+    and `gasUsed` from the outcome; and `blockNumber` and `hash` for where
+    it goes. `mock.addTransaction()` is a placeholder: a success from and
+    to the zero address, with no input, value, gas or logs. It returns the
+    record `mock.transactions` lists, where `data` reads back as
+    `fields.input`, as in viem. A reverted one has no logs, and deploys
+    (`to: null`) aren't supported. E.g. a wallet's replacement:
+    `mock.addTransaction({ from, nonce, to, data, hash })`.
+  - Its `hash` is the transaction's; `contract.emit`'s options call it
+    `transactionHash`, as a log does.
+  - Each one mines a block, so it moves a pending
     `waitForTransactionReceipt({ confirmations })` on by one, and the
     clock by one block time: seeding 100 transfers moves `latest`'s
     timestamp by 20 minutes. Seed history with `{ blockNumber }` instead.
@@ -426,18 +440,19 @@ features land; tick them off as pages get written.
     one to share a block, or a later one, which is on the chain once
     `mine()` reaches it (until then its receipt is `null` and its
     transaction pending). So `{ blockNumber: mock.blockNumber + 1n }`
-    places a transaction in the next block, while a plain emit mines that
+    places a transaction in the next block, while a plain one mines that
     block, after the ones placed there.
   - Positions are assigned: `logIndex` counts per block, each call is the
-    block's next transaction, with a generated hash. Pass `transactionHash`
-    for a hash the app already has (one from a URL); a hash already on the
-    chain is refused, since a transaction's receipt never grows.
-  - The emit's receipt, transaction and block answer from it: a success
-    from the zero address to the zero address, no input, nonce 0, no gas.
-    A mock for its hash answers first. A `getBlock` mock still lists the
-    block's emitted transactions, unless it sets `transactions`.
-  - `emit` returns the placed logs, which equal what `getLogs` and the
-    receipt answer.
+    block's next transaction, with a generated hash. Pass a hash the app
+    already has (one from a URL); a hash already on the chain is refused,
+    since a transaction's receipt never grows.
+  - Its receipt, transaction and block answer from it, from its fields or
+    their defaults. A mock for its hash answers first. A `getBlock` mock
+    still lists the block's added transactions, unless it sets
+    `transactions`.
+  - `contract.emit` returns the placed log, and `addTransaction` the record
+    with its placed logs, which equal what `getLogs` and the receipt
+    answer.
   - Logs come from any address, registered or not (`contractEvents()`,
     `testLog()`), except one marked `empty()`, which has no code to emit
     them. `getLogs` answers for any address: `[]` where nothing emitted, as
@@ -451,8 +466,8 @@ features land; tick them off as pages get written.
     hash, more than 4 topics. They're answers, not unhandled; history shows
     `✗ rpc error`.
   - `mock.logs` lists every emitted log, and `mock.transactions` every
-    transaction on the chain, emitted or sent. They're state: `restore()`
-    removes what was emitted or sent since the checkpoint, `reset()` all of
+    transaction on the chain, added or sent. They're state: `restore()`
+    removes what was added or sent since the checkpoint, `reset()` all of
     it; `clearCalls()` and `historyLimit` keep them.
   - Logs carry `blockTimestamp` (reth sends it; some nodes don't), from the
     generated block: in `getLogs`, in receipts, and from `mock.buildLog()`,
@@ -468,8 +483,8 @@ features land; tick them off as pages get written.
   - Pins match the decoded filter (`address`, `topics`, `fromBlock`,
     `toBlock` as resolved bigints, `blockHash`), with matchers.
   - A mock answers before the emitted logs and the node's rules, so an
-    override works for a range past the head. `.returns([...])` takes placed logs (from `emit()` or
-    `mock.buildLog()`), not `contract.events` content; `.returns()` is `[]`.
+    override works for a range past the head. `.returns([...])` takes
+    placed logs (from `mock.logs` or `mock.buildLog()`), not `contract.events` content; `.returns()` is `[]`.
   - Recipes: a block range cap, with a resolver that fails big ranges and
     answers `logs` (the emitted logs the filter matches) otherwise; a
     result cap, failing when `logs` is too long; and `.once().fails(…)` for
@@ -514,12 +529,15 @@ features land; tick them off as pages get written.
       `estimateGas`): `"latest"` when none was given, and none for a block
       number. A pin without a tag matches any block.
 - [ ] Nonces follow sends: unmocked, `getTransactionCount` answers one past
-      the highest nonce the address has sent (0 if none), so a local
+      the highest nonce of the address's transactions (0 if none), so a local
       account's writes take 0, 1, … with no mock. Show:
-  - At a block (number or hash), it counts the sends mined at or before
-    it; `"pending"` counts every send (the same until pending mode, 077).
+  - At a block (number or hash), it counts the transactions mined at or
+    before it; `"pending"` counts all of them (the same until pending mode, 077).
     viem asks for `"pending"` when preparing a transaction for a local
-    account. Emits aren't sends: they count for no one.
+    account. A transaction added with a `from` counts for it, as a send
+    does: without a `nonce` it takes the sender's next, so adds from one
+    sender count up; with one, it's taken as given. Added without a
+    `from`, it counts for no one.
   - Nonces are taken as sent, unchecked: a raw transaction with nonce 5
     makes the next count 6. A node's refusal is `.fails("nonceTooLow")`.
   - An `eth_sendTransaction` without a nonce takes the chain's count, as
@@ -913,8 +931,8 @@ features land; tick them off as pages get written.
       multicalls many functions per poll. Change answers over time with
       a resolver that reads app state, or by calling `.returns()` again on a
       kept builder, never by registering a new mock on a timer: each
-      registration is kept (and matched against) for good. Likewise, `emit`
-      on a timer grows `mock.logs`, which `getLogs` searches on every poll.
+      registration is kept (and matched against) for good. Likewise, adding
+      transactions on a timer grows `mock.logs`, which `getLogs` searches on every poll.
 
 ## 11. State your test owns (controlled mocks)
 

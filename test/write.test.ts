@@ -827,14 +827,14 @@ describe("registration refusals", () => {
     expect(mock.transactions).toEqual([]);
   });
 
-  test("mock.emit() in a write's resolver is refused, pointing at the resolver's emit()", async () => {
+  test("adding a transaction in a write's resolver is refused, pointing at the resolver's emit()", async () => {
     const { mock, usdc, transfer } = setup();
     usdc.write.transfer().returns(() => {
       usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
     });
     // An async resolver is refused too, up to its first await.
     mock.actions.sendTransaction({ to: bob }).returns(async () => {
-      mock.emit(testLog("noise"));
+      mock.addTransaction({ logs: [testLog("noise")] });
       await Promise.resolve();
     });
 
@@ -852,18 +852,18 @@ describe("registration refusals", () => {
     for (const error of errors) {
       const refused = expectCause(error, MockSetupError);
       expect(refused.shortMessage).toBe(
-        "emit() can't run while a write's resolver answers a send.",
+        "mock.addTransaction() and contract.emit can't run while a write's resolver answers a send.",
       );
       expect(hintsOf(refused)).toMatch(/^Use the resolver's emit\(\)/u);
     }
     expect(mock.transactions).toEqual([]);
-    // Once the resolver is done, emit() works again.
-    mock.emit(testLog("noise"));
+    // Once the resolver is done, adding works again.
+    mock.addTransaction({ logs: [testLog("noise")] });
     expect(mock.transactions).toHaveLength(1);
   });
 });
 
-describe("emit() while a write's resolver waits", () => {
+describe("adding a transaction while a write's resolver waits", () => {
   test("is the app's own: only a resolver's body is refused", async () => {
     const { mock, usdc, transfer } = setup();
     const { promise: gate, resolve: release } = Promise.withResolvers<void>();
@@ -875,8 +875,8 @@ describe("emit() while a write's resolver waits", () => {
     await vi.waitFor(() => {
       expect(usdc.write.transfer.calls).toHaveLength(1);
     });
-    // A demo's ticker emits while the send is pending.
-    mock.emit(testLog("tick"));
+    // A demo's ticker adds one while the send is pending.
+    mock.addTransaction({ logs: [testLog("tick")] });
     release();
     await sent;
 

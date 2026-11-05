@@ -1,13 +1,16 @@
 import type { Abi, AbiFunction, Address } from "viem";
 
-import {
-  type EmitOptions,
-  type MockEventLog,
-  contractEvents,
-  encodeEventLog,
-} from "../logs/events.js";
+import { type EmitOptions, contractEvents, encodeEventLog } from "../logs/events.js";
 import { withCalls } from "../mocking/handlers.js";
+import { MockSetupError } from "../shared/errors.js";
+import type { AddTransactionParameters } from "../transactions/addTransaction.js";
 import type { MockCall, MockContract, MockNamespace, MockTaggedCall } from "./types.js";
+
+/** Puts a transaction on the rpc's chain: its `addTransaction`. */
+export type AddTransaction = (fields: AddTransactionParameters) => { logs: readonly unknown[] };
+
+/** `contract.emit`'s options, its placement. */
+const emitOptionNames = new Set(["blockNumber", "transactionHash"]);
 
 /**
  * A contract's public API, the `MockContract` mocks are registered on: its
@@ -22,7 +25,7 @@ export function createContractApi<const abi extends Abi>({
   register,
   calls,
   callsTo,
-  emit,
+  addTransaction,
   assertAttached,
 }: {
   abi: abi;
@@ -42,8 +45,8 @@ export function createContractApi<const abi extends Abi>({
   calls: () => readonly MockTaggedCall[];
   /** The calls a namespace's function received, every overload's. */
   callsTo: (namespace: MockNamespace, functionName: string) => MockCall[];
-  /** Puts a transaction with these logs on the rpc's chain. */
-  emit: (logs: readonly MockEventLog[], options?: EmitOptions) => readonly unknown[];
+  /** Puts a transaction on the rpc's chain. */
+  addTransaction: AddTransaction;
   /** Throws if the contract was removed. */
   assertAttached: () => void;
 }): MockContract<abi> {
@@ -90,9 +93,22 @@ export function createContractApi<const abi extends Abi>({
     emit: Object.fromEntries(
       events.map((eventName) => [
         eventName,
-        (args?: unknown, options?: EmitOptions) => {
+        (args?: unknown, options: EmitOptions = {}) => {
           assertAttached();
-          return emit([encodeEventLog(abi, address, eventName, args)], options)[0];
+          const log = encodeEventLog(abi, address, eventName, args);
+          const unknown = Object.keys(options).find((key) => !emitOptionNames.has(key));
+          if (unknown !== undefined)
+            throw new MockSetupError(`contract.emit has no option ${unknown}.`, {
+              metaMessages: [
+                "Its options are blockNumber and transactionHash; without blockNumber, it mines a new block.",
+              ],
+            });
+          const { blockNumber, transactionHash: hash } = options;
+          return addTransaction({
+            logs: [log],
+            ...(blockNumber !== undefined && { blockNumber }),
+            ...(hash !== undefined && { hash }),
+          }).logs[0];
         },
       ]),
     ),

@@ -98,7 +98,7 @@ export function sendTransaction({
   /**
    * A raw send's hash, if its transaction is already mined. The same bytes
    * sent twice at once both reach the mocks; only one is placed. A record
-   * with its hash that isn't mined (an `emit()` into a future block) isn't
+   * with its hash that isn't mined (one added to a future block) isn't
    * the send: `add` refuses the hash as taken.
    */
   const sentBefore = (call: SendTransactionCall) => {

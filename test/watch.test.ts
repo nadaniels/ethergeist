@@ -180,10 +180,12 @@ describe("watchEvent", () => {
     await vi.waitFor(() => {
       expect(mock.requests.map((r) => r.method)).toContain("eth_blockNumber");
     });
-    mock.emit([
-      usdc.events.Transfer({ from: alice, to: alice, value: 1n }),
-      usdc.events.Transfer({ from: alice, to: bob, value: 2n }),
-    ]);
+    mock.addTransaction({
+      logs: [
+        usdc.events.Transfer({ from: alice, to: alice, value: 1n }),
+        usdc.events.Transfer({ from: alice, to: bob, value: 2n }),
+      ],
+    });
     await vi.waitFor(() => {
       expect(batches).toEqual([[2n]]);
     });

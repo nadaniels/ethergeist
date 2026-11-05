@@ -26,7 +26,8 @@ shared → mocking → chain → logs → transactions → contracts → actions
 - **`logs/`:** a log's content (`contract.events`, `testLog`) and how
   `eth_getLogs` filters match logs.
 - **`transactions/`:** the chain's transactions, one record each
-  (`createTransactionStore`): what `emit` puts on the chain, and what
+  (`createTransactionStore`): what `mock.addTransaction` (its fields checked
+  in `addTransaction.ts`) and sends put on the chain, and what
   receipts, transactions, blocks and `eth_getLogs` answer from when no mock
   answers first. Every record goes in through `add`, and all mining through
   its `mine`; a record is on the chain once its block is mined (at or below

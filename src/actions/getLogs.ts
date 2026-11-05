@@ -25,7 +25,7 @@ export const getLogs = ({
   transactions,
 }: ActionsContext): Definition<LogsCall, RpcLog[]> => ({
   name: "getLogs",
-  hint: "mock.actions.getLogs(…).returns(…), or mock.emit(…)",
+  hint: "mock.actions.getLogs(…).returns(…), or mock.addTransaction({ logs })",
   decode: (params) => decodeLogsCall(params, state.resolveBlock),
   pin: pinAddress,
   zero: [],
@@ -51,7 +51,7 @@ const placedFields = {
 
 /**
  * Logs a `getLogs` mock answered with, in JSON-RPC form. They must be placed
- * (from `emit()` or `mock.buildLog()`): content alone has no block or transaction.
+ * (from `mock.logs` or `mock.buildLog()`): content alone has no block or transaction.
  */
 function toRpcLogs(value: unknown): RpcLog[] {
   if (!Array.isArray(value))
@@ -62,7 +62,7 @@ function toRpcLogs(value: unknown): RpcLog[] {
       Object.entries(placedFields).every(([field, type]) => typeof log[field] === type);
     if (!placed)
       throw new MockSetupError(
-        `getLogs answers placed logs, e.g. from emit() or mock.buildLog(); log ${i} has no position.`,
+        `getLogs answers placed logs, e.g. from mock.logs or mock.buildLog(); log ${i} has no position.`,
       );
     // Left out for a node that doesn't send it; anything else would be dropped.
     const { blockTimestamp } = log;

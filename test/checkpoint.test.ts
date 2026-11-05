@@ -474,7 +474,7 @@ describe("a transaction the last restore() or reset() removed", () => {
   test("its receipt and transaction lookups still aren't answered, and say why", async () => {
     const { mock, client } = setup();
     const baseline = mock.checkpoint();
-    const { transactionHash: hash } = mock.emit(testLog("sent"));
+    const { hash } = mock.addTransaction({ logs: [testLog("sent")] });
     baseline.restore();
 
     const receipt = await notFound(client.getTransactionReceipt({ hash }));
@@ -492,7 +492,7 @@ describe("a transaction the last restore() or reset() removed", () => {
 
   test("after reset() too, in any case, ahead of the registered mocks", async () => {
     const { mock, client } = setup();
-    const { transactionHash: hash } = mock.emit(testLog("sent"));
+    const { hash } = mock.addTransaction({ logs: [testLog("sent")] });
     mock.reset();
     mock.actions.getTransactionReceipt({ hash: testHash("other") }).returns({});
 
@@ -505,7 +505,7 @@ describe("a transaction the last restore() or reset() removed", () => {
   test("the next restore replaces what the last one removed", async () => {
     const { mock, client } = setup();
     const baseline = mock.checkpoint();
-    const { transactionHash: hash } = mock.emit(testLog("sent"));
+    const { hash } = mock.addTransaction({ logs: [testLog("sent")] });
     baseline.restore();
     baseline.restore();
 
@@ -517,9 +517,9 @@ describe("a transaction the last restore() or reset() removed", () => {
 
   test("a transaction the restore kept isn't one it removed", async () => {
     const { mock, client } = setup();
-    const { transactionHash: kept } = mock.emit(testLog("kept"));
+    const { hash: kept } = mock.addTransaction({ logs: [testLog("kept")] });
     const baseline = mock.checkpoint();
-    mock.emit(testLog("sent"));
+    mock.addTransaction({ logs: [testLog("sent")] });
     baseline.restore();
 
     expect((await client.getTransactionReceipt({ hash: kept })).transactionHash).toBe(kept);
@@ -531,7 +531,7 @@ describe("a transaction the last restore() or reset() removed", () => {
     const { mock, client, read } = setup();
     const baseline = mock.checkpoint();
     mock.contract({ abi: erc20Abi, address: DAI });
-    const { transactionHash: hash } = mock.emit(testLog("sent"));
+    const { hash } = mock.addTransaction({ logs: [testLog("sent")] });
     baseline.restore();
 
     // A receipt wait from the last test, still polling, and this test's own miss.
@@ -578,12 +578,12 @@ describe("a transaction the last restore() or reset() removed", () => {
     const { mock, client, read } = setup();
     const baseline = mock.checkpoint();
     mock.contract({ abi: erc20Abi, address: DAI });
-    const { transactionHash: hash } = mock.emit(testLog("sent"));
+    const { hash } = mock.addTransaction({ logs: [testLog("sent")] });
     baseline.restore();
 
     // The next test registers and sends the same again, then misses for real.
     mock.contract({ abi: erc20Abi, address: DAI });
-    mock.emit(testLog("sent"), { transactionHash: hash });
+    mock.addTransaction({ logs: [testLog("sent")], hash });
     expect((await client.getTransactionReceipt({ hash })).transactionHash).toBe(hash);
     await rejectionOf(read(DAI, "decimals"));
     await rejectionOf(client.getTransactionReceipt({ hash: testHash("other") }));
@@ -600,7 +600,7 @@ describe("a transaction the last restore() or reset() removed", () => {
     mock.contract({ abi: erc20Abi, address: USDC });
     const baseline = mock.checkpoint();
     mock.contract({ abi: erc20Abi, address: DAI });
-    mock.emit(testLog("sent"));
+    mock.addTransaction({ logs: [testLog("sent")] });
     baseline.restore();
 
     // A contract the restore kept.

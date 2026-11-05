@@ -5,9 +5,11 @@ import {
   type LogsCall,
   type MockEventArgs,
   type MockEventLog,
+  type TransactionRecord,
   contractEvents,
   createMockRpc,
   testAddress,
+  testHash,
 } from "../src/index.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -155,14 +157,21 @@ describe("emit", () => {
     // @ts-expect-error -- gone: a plain emit mines a new block
     usdc.emit.Transfer({ from: alice, to: bob }, { mine: true });
     // @ts-expect-error -- gone: a block's transactions have no holes
-    mock.emit(usdc.events.Transfer({ from: alice, to: bob }), { transactionIndex: 1 });
+    usdc.emit.Transfer({ from: alice, to: bob }, { transactionIndex: 1 });
+    // @ts-expect-error -- a transaction's hash is hash; transactionHash is a log's
+    mock.addTransaction({ transactionHash: testHash("x") });
+    // @ts-expect-error -- deploys aren't supported
+    mock.addTransaction({ to: null });
   });
 
-  test("mock.emit returns one log for one, and an array for an array", () => {
+  test("contract.emit returns its log, and mock.addTransaction its record", () => {
     const log = usdc.events.Transfer({ from: alice, to: bob });
-    const emitted = mock.emit(log);
+    const emitted = usdc.emit.Transfer({ from: alice, to: bob });
     expectTypeOf(emitted).toEqualTypeOf<Readonly<Log<bigint, number, false>>>();
-    expectTypeOf(mock.emit([log, log])).toEqualTypeOf<Readonly<Log<bigint, number, false>>[]>();
+    expectTypeOf(mock.addTransaction({ logs: [log, log] })).toEqualTypeOf<TransactionRecord>();
+    expectTypeOf(mock.addTransaction().logs).toEqualTypeOf<
+      readonly Readonly<Log<bigint, number, false>>[]
+    >();
     // Read-only, yet it goes wherever a log does, e.g. a mocked receipt.
     mock.actions.getTransactionReceipt().returns({ logs: [emitted] });
   });

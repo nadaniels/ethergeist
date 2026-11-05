@@ -1,4 +1,10 @@
-import { TransactionNotFoundError, createPublicClient, parseGwei } from "viem";
+import {
+  TransactionNotFoundError,
+  createPublicClient,
+  createWalletClient,
+  parseGwei,
+  zeroAddress,
+} from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
@@ -7,8 +13,9 @@ import {
   createMockRpc,
   testAddress,
   testHash,
+  testLog,
 } from "../src/index.js";
-import { expectCause, expectThrows, rejectionOf } from "./utils.js";
+import { expectCause, expectThrows, lowercase, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
@@ -267,5 +274,217 @@ describe("getTransaction", () => {
       '"eth_getTransactionByHash" has a typed mock: use mock.actions.getTransaction().',
       () => mock.method("eth_getTransactionByHash"),
     );
+  });
+});
+
+describe("mock.addTransaction", () => {
+  test("with no fields, places a success from and to the zero address in a newly mined block", async () => {
+    const { mock, client } = setup();
+
+    const record = mock.addTransaction();
+
+    expect(mock.blockNumber).toBe(11n);
+    expect(record).toEqual({
+      hash: testHash("tx:11:0"),
+      origin: "added",
+      fields: {},
+      receipt: {},
+      logs: [],
+      position: { blockNumber: 11n, index: 0 },
+    });
+    expect(mock.transactions).toEqual([record]);
+    expect(mock.transactions[0]).toBe(record);
+    expect(await client.getTransaction({ hash: record.hash })).toMatchObject({
+      from: zeroAddress,
+      to: zeroAddress,
+      value: 0n,
+      input: "0x",
+      nonce: 0,
+      blockNumber: 11n,
+    });
+    expect(await client.getTransactionReceipt({ hash: record.hash })).toMatchObject({
+      status: "success",
+      logs: [],
+      gasUsed: 0n,
+    });
+  });
+
+  test("takes a send's fields, with data read back as input", async () => {
+    const { mock, client } = setup();
+    const router = testAddress("router");
+
+    const record = mock.addTransaction({
+      from: lowercase(alice),
+      to: lowercase(router),
+      value: 5n,
+      data: "0x1234",
+      nonce: 0x120,
+      status: "reverted",
+      gasUsed: 21_000n,
+      hash,
+      blockNumber: 4n,
+    });
+
+    expect(mock.blockNumber).toBe(10n);
+    expect(record).toMatchObject({
+      hash,
+      fields: { from: alice, to: router, value: 5n, input: "0x1234", nonce: 0x120 },
+      receipt: { status: "reverted", gasUsed: 21_000n },
+      position: { blockNumber: 4n, index: 0 },
+    });
+    expect(await client.getTransaction({ hash })).toMatchObject({
+      from: lowercase(alice),
+      to: lowercase(router),
+      value: 5n,
+      input: "0x1234",
+      nonce: 0x120,
+      blockNumber: 4n,
+    });
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      status: "reverted",
+      gasUsed: 21_000n,
+      blockNumber: 4n,
+    });
+  });
+
+  test("a nonce left out is the sender's next, so adds from one sender count up, as sends do", async () => {
+    const { mock, client } = setup();
+    const wallet = createWalletClient({
+      account: alice,
+      chain: mock.chain,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+
+    mock.addTransaction({ from: alice });
+    mock.addTransaction({ from: alice });
+    mock.addTransaction({ from: bob, nonce: 7 });
+    mock.addTransaction({ nonce: 40 });
+    await wallet.sendTransaction({ to: bob });
+    mock.addTransaction({ from: alice });
+
+    expect(mock.transactions.map(({ fields }) => [fields.from, fields.nonce])).toEqual([
+      [alice, 0],
+      [alice, 1],
+      [bob, 7],
+      [undefined, 40],
+      [alice, 2],
+      [alice, 3],
+    ]);
+    expect(await client.getTransactionCount({ address: alice })).toBe(4);
+    expect(await client.getTransactionCount({ address: bob })).toBe(8);
+    expect(await client.getTransactionCount({ address: zeroAddress })).toBe(0);
+  });
+
+  test("one in a block not mined yet counts at pending, not at the head", async () => {
+    const { mock, client } = setup();
+
+    mock.addTransaction({ from: alice, blockNumber: 12n });
+
+    expect(await client.getTransactionCount({ address: alice, blockTag: "pending" })).toBe(1);
+    expect(await client.getTransactionCount({ address: alice })).toBe(0);
+    mock.mine(2n);
+    expect(await client.getTransactionCount({ address: alice })).toBe(1);
+  });
+
+  test("restore() takes an added transaction off the chain, and its nonce with it", async () => {
+    const { mock, client } = setup();
+    mock.addTransaction({ from: alice });
+    const checkpoint = mock.checkpoint();
+    const { hash: later } = mock.addTransaction({ from: alice });
+
+    checkpoint.restore();
+
+    expect(mock.transactions).toHaveLength(1);
+    expect(await client.getTransactionCount({ address: alice })).toBe(1);
+    expect(mock.addTransaction({ from: alice, hash: later }).fields.nonce).toBe(1);
+  });
+
+  test.each<[string, Record<string, unknown>, string, string?]>([
+    [
+      "transactionHash",
+      { transactionHash: hash },
+      "mock.addTransaction() has no field transactionHash.",
+      "The transaction's hash is hash, as on a transaction; transactionHash is a log's.",
+    ],
+    [
+      "an unknown field",
+      { gas: 1n },
+      "mock.addTransaction() has no field gas.",
+      "Its fields are from, to, value, data, nonce, logs, status, gasUsed, blockNumber and hash; " +
+        "without blockNumber, it mines a new block.",
+    ],
+    ["a deploy", { to: null }, "mock.addTransaction() doesn't deploy: to can't be null."],
+    ["a number block", { blockNumber: 3 }, "A block number must be a bigint, zero or more; got 3."],
+    [
+      "a negative block",
+      { blockNumber: -1n },
+      "A block number must be a bigint, zero or more; got -1n.",
+    ],
+    ["a short hash", { hash: "0x12" }, "A transaction hash must be 32 bytes; got 0x12."],
+    [
+      "logs on a reverted transaction",
+      { status: "reverted", logs: [testLog("noise")] },
+      "A reverted transaction has no logs.",
+    ],
+    [
+      "an unknown status",
+      { status: "pending" },
+      'A transaction\'s status is "success" or "reverted"; got pending.',
+    ],
+    [
+      "a negative value",
+      { value: -1n },
+      "A transaction's value must be a bigint, zero or more; got -1n.",
+    ],
+    [
+      "a number gasUsed",
+      { gasUsed: 1 },
+      "A transaction's gasUsed must be a bigint, zero or more; got 1.",
+    ],
+    ["data that isn't hex", { data: "0xzz" }, "A transaction's data must be hex; got 0xzz."],
+    [
+      "a fractional nonce",
+      { nonce: 1.5 },
+      "A transaction's nonce must be an integer, zero or more; got 1.5.",
+    ],
+    ["logs that aren't a list", { logs: testLog("noise") }, "A transaction's logs must be a list"],
+    ["a log that isn't one", { logs: [null] }, "A transaction's log 0 isn't a log; got null."],
+    [
+      "a log whose topics aren't a list",
+      { logs: [testLog("noise"), { ...testLog("noise"), topics: "0xab" }] },
+      "A transaction's log 1 isn't a log",
+    ],
+  ])("refuses %s, and changes nothing", (_, fields, message, hint) => {
+    const { mock } = setup();
+
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+    const error = expectThrows(MockSetupError, message, () => mock.addTransaction(fields as never));
+    if (hint !== undefined) expect(error.metaMessages).toEqual([hint]);
+    expect(mock.blockNumber).toBe(10n);
+    expect(mock.transactions).toEqual([]);
+  });
+
+  test("refuses what isn't an object of fields, such as a log on its own", () => {
+    const { mock } = setup();
+
+    expectThrows(MockSetupError, "mock.addTransaction() takes an object of fields; got [", () =>
+      // @ts-expect-error -- logs go in { logs }
+      mock.addTransaction([testLog("noise")]),
+    );
+    // A log alone shares data with a transaction, so the types let it through.
+    const error = expectThrows(MockSetupError, "mock.addTransaction() has no field address.", () =>
+      mock.addTransaction(testLog("noise")),
+    );
+    expect(error.metaMessages).toEqual([
+      "A log goes in logs: mock.addTransaction({ logs: [log] }).",
+    ]);
+  });
+
+  test("refuses a reverted write's logs with the same message", () => {
+    const { mock } = setup();
+
+    expectThrows(MockSetupError, "A reverted transaction has no logs.", () => {
+      mock.actions.sendTransaction().returns({ status: "reverted", logs: [testLog("noise")] });
+    });
   });
 });

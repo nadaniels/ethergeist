@@ -84,7 +84,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
       registry.assertUnregistered(contractParameters.address);
       const internal = createMockContract(contractParameters, {
         onCall: recorder.onCall,
-        emit: transactions.emit,
+        addTransaction: transactions.addTransaction,
         whileWriting: transactions.whileWriting,
         recordLimit,
       });
@@ -95,7 +95,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     buildTransaction: builders.buildTransaction,
     buildReceipt: builders.buildReceipt,
     buildLog: builders.buildLog,
-    emit: transactions.emit,
+    addTransaction: transactions.addTransaction,
     get logs(): EmittedLog[] {
       return transactions.logs;
     },
