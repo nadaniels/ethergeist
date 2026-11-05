@@ -93,6 +93,21 @@ describe("getTransaction", () => {
     expect((await client.getTransaction({ hash })).blockNumber).toBe(11n);
   });
 
+  test("an answer that isn't an object or null is refused, a receipt's too", () => {
+    const { mock } = setup();
+
+    for (const value of [5, [{}]]) {
+      expect(() => {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+        mock.actions.getTransaction({ hash }).returns(value as never);
+      }).toThrow(MockSetupError);
+      expect(() => {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+        mock.actions.getTransactionReceipt({ hash }).returns(value as never);
+      }).toThrow(MockSetupError);
+    }
+  });
+
   test("fees come from the transaction's block; set ones give its effective gas price", () => {
     const { mock } = setup();
     mock.setFees({ baseFeePerGas: parseGwei("50") });
@@ -462,6 +477,16 @@ describe("mock.addTransaction", () => {
     if (hint !== undefined) expect(error.metaMessages).toEqual([hint]);
     expect(mock.blockNumber).toBe(10n);
     expect(mock.transactions).toEqual([]);
+  });
+
+  test("places its own copy of a log's topics, so the caller's stay theirs", () => {
+    const { mock } = setup();
+    const log = testLog("noise");
+    const { logs } = mock.addTransaction({ logs: [log] });
+
+    log.topics.splice(0, 1);
+    expect(logs[0]?.topics).toHaveLength(1);
+    expect(mock.logs[0]?.topics).toHaveLength(1);
   });
 
   test("refuses what isn't an object of fields, such as a log on its own", () => {
