@@ -730,16 +730,16 @@ describe("the transaction an emit makes", () => {
   test("a mock for its hash answers first: an override", async () => {
     const { mock, client, usdc } = setup();
     const { transactionHash: hash } = usdc.emit.Transfer({ from: alice, to: bob });
-    mock.actions.getTransactionReceipt({ hash }).once().returns({ status: "reverted" });
+    mock.actions.getTransactionReceipt({ hash }).once().returns({ gasUsed: 5n });
     mock.actions
       .getTransactionReceipt({ hash })
       .once()
       .returns(() => null);
     mock.actions.getTransaction({ hash }).once().returns({ from: alice });
 
-    expect((await client.getTransactionReceipt({ hash })).status).toBe("reverted");
+    expect((await client.getTransactionReceipt({ hash })).gasUsed).toBe(5n);
     expect(await mock.request({ method: "eth_getTransactionReceipt", params: [hash] })).toBeNull();
-    expect((await client.getTransactionReceipt({ hash })).status).toBe("success");
+    expect((await client.getTransactionReceipt({ hash })).gasUsed).toBe(0n);
     expect((await client.getTransaction({ hash })).from).toBe(lowercase(alice));
     expect((await client.getTransaction({ hash })).from).toBe(zeroAddress);
   });
@@ -774,46 +774,6 @@ describe("the transaction an emit makes", () => {
     expect((await client.getBlock({ blockNumber: 11n })).transactions).toEqual([]);
     // A hash only the mock knows isn't the head block, though its number defaults to the head.
     expect((await client.getBlock({ blockHash: unknown })).transactions).toEqual([]);
-  });
-
-  test("a static receipt or transaction mock for its hash takes its block and index", async () => {
-    const { mock, client, usdc } = setup();
-    usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 11n });
-    const log = usdc.emit.Transfer({ from: alice, to: bob });
-    const hash = log.transactionHash;
-    mock.mine(2n);
-    mock.actions.getTransactionReceipt({ hash }).returns({ status: "reverted", logs: [log] });
-    mock.actions.getTransaction({ hash }).returns({ from: alice });
-
-    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
-      status: "reverted",
-      blockNumber: 11n,
-      transactionIndex: 1,
-      logs: [log],
-    });
-    expect(await client.getTransaction({ hash })).toMatchObject({
-      from: lowercase(alice),
-      blockNumber: 11n,
-      transactionIndex: 1,
-    });
-  });
-
-  test("a receipt mock for a hash not on the chain yet is mined when registered", async () => {
-    const { mock, client, usdc } = setup();
-    const { transactionHash: hash } = usdc.emit.Transfer(
-      { from: alice, to: bob },
-      { blockNumber: 12n },
-    );
-    mock.actions.getTransactionReceipt({ hash }).returns({});
-    mock.actions.getTransactionReceipt({ hash: match.any() }).returns({});
-    mock.actions.getTransaction({ hash }).returns({ blockNumber: 3n });
-    mock.mine(3n);
-
-    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
-      blockNumber: 10n,
-      transactionIndex: 0,
-    });
-    expect((await client.getTransaction({ hash })).blockNumber).toBe(3n);
   });
 
   test("mock.transactions lists the records, by block and index", () => {

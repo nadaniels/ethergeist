@@ -8,8 +8,6 @@ import {
   BlockNotFoundError,
   TimeoutError,
   TransactionReceiptNotFoundError,
-  encodeAbiParameters,
-  encodeEventTopics,
   createPublicClient,
   createWalletClient,
   keccak256,
@@ -19,7 +17,6 @@ import {
   erc20Abi,
   getAddress,
   parseEther,
-  zeroAddress,
   zeroHash,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
@@ -32,11 +29,13 @@ import {
   MockResolverError,
   MockSetupError,
   type RpcValue,
+  contractEvents,
   createMockRpc,
   match,
   zeroResult,
   testAddress,
   testHash,
+  testLog,
 } from "../src/index.js";
 import { expectCause, expectThrows, hintsOf, findCause, lowercase, rejectionOf } from "./utils.js";
 
@@ -435,16 +434,11 @@ describe("getBlock", () => {
 describe("getTransactionReceipt", () => {
   const txHash = keccak256(toHex("transfer"));
   const otherHash = keccak256(toHex("other"));
-  const transferLog = {
-    address: USDC,
-    // encodeEventTopics is typed for filters; with every indexed arg given, each topic is hex.
-    topics: encodeEventTopics({
-      abi: erc20Abi,
-      eventName: "Transfer",
-      args: { from: alice, to: bob },
-    }).filter((topic) => typeof topic === "string"),
-    data: encodeAbiParameters([{ type: "uint256" }], [5n]),
-  } as const;
+  const transferLog = contractEvents({ abi: erc20Abi, address: USDC }).Transfer({
+    from: alice,
+    to: bob,
+    value: 5n,
+  });
 
   test("defaults to a successful receipt in the current block", async () => {
     const { mock, client } = setup();
@@ -560,15 +554,15 @@ describe("getTransactionReceipt", () => {
     expect((await client.getTransactionReceipt({ hash: testHash("any") })).blockNumber).toBe(12n);
   });
 
-  test("a receipt with an emitted log stays consistent with it after mine()", async () => {
+  test("a mock over an emitted log's transaction keeps its logs and block after mine()", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });
     const log = usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
-    mock.actions.getTransactionReceipt({ hash: log.transactionHash }).returns({ logs: [log] });
+    mock.actions.getTransactionReceipt({ hash: log.transactionHash }).returns({ gasUsed: 5n });
     mock.mine();
 
     const receipt = await client.getTransactionReceipt({ hash: log.transactionHash });
-    expect(receipt.blockNumber).toBe(log.blockNumber);
+    expect(receipt).toMatchObject({ blockNumber: log.blockNumber, gasUsed: 5n });
     expect(receipt.logs).toEqual([log]);
   });
 
@@ -580,9 +574,8 @@ describe("getTransactionReceipt", () => {
     expect((await client.getTransactionReceipt({ hash: txHash })).blockNumber).toBe(11n);
   });
 
-  test("a log placed elsewhere throws, naming where", () => {
+  test("a log that already has a position is refused: the receipt places it", () => {
     const { mock } = setup();
-    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
     const placed = mock.buildLog({
       abi: erc20Abi,
       address: USDC,
@@ -590,81 +583,35 @@ describe("getTransactionReceipt", () => {
       args: { from: alice, to: bob },
     });
 
-    expectThrows(
+    const error = expectThrows(
       MockSetupError,
-      "Receipt log 0 has blockNumber 10n, but the receipt's is 7n.\n\nA receipt places its logs: " +
-        "pass only their content, e.g. from contract.events, or contractEvents({ abi, address }) " +
-        "for a contract you don't mock.",
+      "A receipt places its logs, but one already has a position (e.g. from mock.buildLog()).",
       () => {
-        mock.actions.getTransactionReceipt().returns({ blockNumber: 7n, logs: [placed] });
+        mock.actions.getTransactionReceipt().returns({ logs: [placed] });
       },
     );
-    // A pinned hash is known at registration, so a log from another transaction fails there.
-    const otherLog = {
-      ...usdc.events.Transfer({ from: alice, to: bob }),
-      transactionHash: otherHash,
-    };
-    expectThrows(
-      MockSetupError,
-      `Receipt log 0 has transactionHash ${otherHash}, but the receipt's is ${txHash}.`,
-      () => {
-        mock.actions.getTransactionReceipt({ hash: txHash }).returns({ logs: [otherLog] });
-      },
-    );
+    expect(error.metaMessages).toEqual([
+      "Pass a log's content, from contract.events, or contractEvents({ abi, address }) for a " +
+        "contract you don't mock.",
+    ]);
   });
 
-  test("a hash pinned with a matcher is known only once a request arrives", async () => {
+  test("its logs answer this receipt only: getLogs doesn't see them", async () => {
     const { mock, client } = setup();
-    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
-    const otherLog = {
-      ...usdc.events.Transfer({ from: alice, to: bob }),
-      transactionHash: otherHash,
-    };
-    mock.actions.getTransactionReceipt({ hash: match.any() }).returns({ logs: [otherLog] });
+    mock.actions.getTransactionReceipt({ hash: txHash }).returns({ logs: [transferLog] });
 
-    expect(String(await rejectionOf(client.getTransactionReceipt({ hash: txHash })))).toContain(
-      `Receipt log 0 has transactionHash ${otherHash}, but the receipt's is ${txHash}.`,
-    );
+    expect((await client.getTransactionReceipt({ hash: txHash })).logs).toHaveLength(1);
+    expect(await client.getLogs()).toEqual([]);
   });
 
-  test("a log placed where the receipt is fits, e.g. an emitted one", async () => {
-    const { mock, client } = setup();
-    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
-    const log = usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
-    mock.actions.getTransactionReceipt({ hash: log.transactionHash }).returns({ logs: [log] });
+  test("a reverted one with its own logs is refused, as a reverted transaction has none", () => {
+    const { mock } = setup();
 
-    const receipt = await client.getTransactionReceipt({ hash: log.transactionHash });
-    expect(receipt.logs).toEqual([log]);
-  });
-
-  test("a log with another block's timestamp throws", async () => {
-    const { mock, client } = setup();
-    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
-    const log = usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
-    const { timestamp } = await client.getBlock({ blockNumber: log.blockNumber });
-
-    expectThrows(
-      MockSetupError,
-      `Receipt log 0 has blockTimestamp 1n, but the receipt's is ${timestamp}n.`,
-      () => {
-        mock.actions
-          .getTransactionReceipt({ hash: log.transactionHash })
-          .returns({ logs: [{ ...log, blockTimestamp: 1n }] });
-      },
-    );
-  });
-
-  test("a log without blockTimestamp has none, as from a node that doesn't send it", async () => {
-    const { mock, client } = setup();
-    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
-    const log = usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
-    mock.actions
-      .getTransactionReceipt({ hash: log.transactionHash })
-      .returns({ logs: [{ ...log, blockTimestamp: undefined }] });
-
-    const receipt = await client.getTransactionReceipt({ hash: log.transactionHash });
-    expect(receipt.logs[0]?.blockTimestamp).toBeUndefined();
-    expect(receipt.logs[0]?.blockNumber).toBe(log.blockNumber);
+    expectThrows(MockSetupError, "A reverted transaction has no logs.", () => {
+      mock.actions
+        .getTransactionReceipt({ hash: txHash })
+        .returns({ status: "reverted", logs: [transferLog] });
+    });
   });
 
   test("an invalid static value fails at registration", () => {
@@ -679,7 +626,7 @@ describe("getTransactionReceipt", () => {
       },
     );
     expect(() => {
-      mock.actions.getTransactionReceipt().returns({ logs: [{ address: "0x1234" }] });
+      mock.actions.getTransactionReceipt().returns({ from: "0x1234" });
     }).toThrow(InvalidAddressError);
   });
 });
@@ -801,12 +748,31 @@ describe("mock.buildReceipt()", () => {
     });
   });
 
-  test("a log's content defaults to empty, at the zero address", () => {
-    const { mock } = setup();
+  test("places its logs' content as the chain places a transaction's", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const content = [usdc.events.Transfer({ from: alice, to: bob, value: 5n }), testLog("noise")];
+    const { hash } = mock.addTransaction({ blockNumber: 10n, logs: content });
 
-    expect(mock.buildReceipt({ logs: [{}] }).logs).toMatchObject([
-      { address: zeroAddress, topics: [], data: "0x", logIndex: 0, removed: false },
-    ]);
+    expect(mock.buildReceipt({ transactionHash: hash, logs: content }).logs).toEqual(
+      (await client.getTransactionReceipt({ hash })).logs,
+    );
+  });
+
+  test("refuses a log that already has a position, as a receipt mock does", () => {
+    const { mock } = setup();
+    const placed = mock.buildLog({
+      abi: erc20Abi,
+      address: USDC,
+      eventName: "Transfer",
+      args: { from: alice, to: bob },
+    });
+
+    expectThrows(
+      MockSetupError,
+      "A receipt places its logs, but one already has a position (e.g. from mock.buildLog()).",
+      () => mock.buildReceipt({ logs: [placed] }),
+    );
   });
 
   test("defaults to a successful receipt in the current block, with a zero hash", () => {

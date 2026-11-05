@@ -22,7 +22,6 @@ import type { TransactionType } from "../chain/transactions.js";
 import type { Registry } from "../contracts/registry.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-import type { TransactionStore } from "../transactions/store.js";
 import type { AddressAtBlockCall, SendTransactionCall } from "./types.js";
 
 /** Encodes a bigint answer as a JSON-RPC quantity; `what` names it in the error. */
@@ -140,24 +139,29 @@ export const pinnedHash = (pinned: unknown): { hash: Hash } | undefined =>
     ? { hash: pinned.hash }
     : undefined;
 
-/**
- * Fixes a static receipt's or transaction's block, which a node never moves,
- * at registration: where its transaction is on the chain, if its pinned hash
- * is one there, and otherwise the current block, as if mined now. A
- * transaction placed in a block not mined yet isn't on the chain, so it's
- * the current block too. Pending (`blockNumber: null`) and a given block
- * stay as they are.
- */
-export function minedWhenRegistered(state: ChainState, transactions: TransactionStore) {
-  return (value: unknown, call: { hash: Hash } | undefined) => {
-    if (!isPlainObject(value) || value.blockNumber !== undefined) return value;
-    const mined = call === undefined ? undefined : transactions.minedAt(call.hash);
-    return mined === undefined
-      ? { ...value, blockNumber: state.blockNumber }
-      : {
-          ...value,
-          blockNumber: mined.blockNumber,
-          transactionIndex: value.transactionIndex ?? mined.index,
-        };
-  };
+/** A static answer with the head when it was registered: see `registeredAt`. */
+class Registered {
+  readonly value: unknown;
+  readonly blockNumber: bigint;
+  constructor(value: unknown, blockNumber: bigint) {
+    this.value = value;
+    this.blockNumber = blockNumber;
+  }
 }
+
+/**
+ * Keeps the head at registration beside a static receipt or transaction,
+ * which a node never moves: for a hash not on the chain, it's the block the
+ * answer is mined in. The value is held as given, not copied.
+ */
+export const registeredAt = (state: ChainState) => (value: unknown) =>
+  new Registered(value, state.blockNumber);
+
+/**
+ * An answer and the block a static one was registered in; `undefined` for a
+ * resolver's, which is made in the block current when it answers.
+ */
+export const unwrapRegistered = (
+  answer: unknown,
+): { value: unknown; blockNumber: bigint | undefined } =>
+  answer instanceof Registered ? answer : { value: answer, blockNumber: undefined };

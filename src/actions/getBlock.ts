@@ -1,4 +1,4 @@
-import { type RpcBlock, formatBlock } from "viem";
+import { type RpcBlock, formatBlock, hexToBigInt } from "viem";
 
 import { numberOfBlockHash, toRpcBlock } from "../chain/blocks.js";
 import { hashParam } from "../chain/params.js";
@@ -58,11 +58,25 @@ export const getBlock = ({
     // A pinned, unknown hash is the block's own hash.
     const base = blockHash === undefined ? generated : { ...generated, hash: blockHash };
     const rpc = toRpcBlock({ ...base, ...value });
-    // A mock's fields go over the chain's block, its transactions too, unless it sets its own.
+    // A mock's fields go over the chain's block, its transactions too, unless it sets its own;
+    // the block it answers places them.
     if (value.transactions !== undefined || call === undefined || !onChain(call, state)) return rpc;
+    // A pending block (only through a cast) has no number or hash to place them with.
+    const placement =
+      rpc.number === null || rpc.hash === null
+        ? undefined
+        : {
+            blockNumber: hexToBigInt(rpc.number),
+            blockHash: rpc.hash,
+            blockTimestamp: hexToBigInt(rpc.timestamp),
+          };
     return {
       ...rpc,
-      transactions: transactions.transactionsIn(call.blockNumber, call.includeTransactions),
+      transactions: transactions.transactionsIn(
+        call.blockNumber,
+        call.includeTransactions,
+        placement,
+      ),
     };
   },
   view: (rpc) =>

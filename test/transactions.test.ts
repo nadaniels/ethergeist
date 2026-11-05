@@ -1,4 +1,5 @@
 import {
+  type Hash,
   TransactionNotFoundError,
   createPublicClient,
   createWalletClient,
@@ -511,5 +512,340 @@ describe("mock.addTransaction", () => {
     expectThrows(MockSetupError, "A reverted transaction has no logs.", () => {
       mock.actions.sendTransaction().returns({ status: "reverted", logs: [testLog("noise")] });
     });
+  });
+});
+
+// A mock answers over what the chain would answer at that request: the record once it's
+// mined, and otherwise zeros, in the block current at registration (static) or now (resolver).
+describe("receipt and transaction mocks over the chain", () => {
+  const log = testLog("noise");
+
+  test("a mock's fields go over its mined transaction, agreeing with getTransaction and getBlock", async () => {
+    const { mock, client } = setup();
+    mock.addTransaction({ blockNumber: 11n });
+    mock.addTransaction({
+      hash,
+      from: alice,
+      to: bob,
+      value: 1n,
+      gasUsed: 21_000n,
+      logs: [log],
+      blockNumber: 11n,
+    });
+    mock.actions.getTransactionReceipt({ hash }).returns({ effectiveGasPrice: 7n });
+    mock.actions.getTransaction({ hash }).returns(() => ({ nonce: 9 }));
+    mock.mine();
+
+    const receipt = await client.getTransactionReceipt({ hash });
+    const transaction = await client.getTransaction({ hash });
+    const block = await client.getBlock({ blockNumber: 11n, includeTransactions: true });
+    expect(receipt).toMatchObject({
+      effectiveGasPrice: 7n,
+      status: "success",
+      from: lowercase(alice),
+      to: lowercase(bob),
+      gasUsed: 21_000n,
+      blockNumber: 11n,
+      blockHash: block.hash,
+      transactionIndex: 1,
+      logs: mock.logs,
+    });
+    expect(transaction).toMatchObject({
+      nonce: 9,
+      from: lowercase(alice),
+      value: 1n,
+      transactionIndex: 1,
+    });
+    expect({ ...transaction, nonce: 0 }).toEqual(block.transactions[1]);
+  });
+
+  test("a pending one over a mined transaction answers it pending", async () => {
+    const { mock, client } = setup();
+    mock.addTransaction({ hash, from: alice });
+    mock.actions.getTransaction({ hash }).returns({ blockNumber: null });
+
+    expect(await client.getTransaction({ hash })).toMatchObject({
+      from: lowercase(alice),
+      blockNumber: null,
+      blockHash: null,
+      transactionIndex: null,
+    });
+  });
+
+  test("buildReceipt() refuses a log that isn't one", () => {
+    const { mock } = setup();
+
+    expectThrows(MockSetupError, "A receipt's log 0 isn't a log; got null.", () =>
+      // @ts-expect-error a log is an object
+      mock.buildReceipt({ logs: [null] }),
+    );
+  });
+
+  test("one for a hash in a block not mined yet goes over the pending transaction, and zeros for its receipt, until it's mined", async () => {
+    const { mock, client } = setup();
+    mock.addTransaction({ hash, from: alice, blockNumber: 12n, logs: [log] });
+    mock.actions.getTransactionReceipt({ hash }).returns({ gasUsed: 5n });
+    mock.actions.getTransaction({ hash }).returns({ value: 2n });
+    mock.mine();
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      blockNumber: 10n,
+      from: zeroAddress,
+      gasUsed: 5n,
+      logs: [],
+    });
+    expect(await client.getTransaction({ hash })).toMatchObject({
+      blockNumber: null,
+      transactionIndex: null,
+      from: lowercase(alice),
+      value: 2n,
+    });
+    mock.mine();
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      blockNumber: 12n,
+      from: lowercase(alice),
+      gasUsed: 5n,
+      logs: mock.logs,
+    });
+    expect(await client.getTransaction({ hash })).toMatchObject({
+      blockNumber: 12n,
+      from: lowercase(alice),
+      value: 2n,
+    });
+  });
+
+  test("for a hash not on the chain, a static one stays in its block, and its own hash wins", async () => {
+    const { mock, client } = setup();
+    const other = testHash("other");
+    mock.actions.getTransactionReceipt({ hash }).returns({ transactionHash: other });
+    mock.mine();
+
+    const receipt = await client.getTransactionReceipt({ hash });
+    expect(receipt).toMatchObject({ transactionHash: other, blockNumber: 10n });
+    expect(await client.getTransactionConfirmations({ transactionReceipt: receipt })).toBe(2n);
+  });
+
+  test("takes a built receipt, whose logs are empty", async () => {
+    const { mock, client } = setup();
+    const built = mock.buildReceipt({ transactionHash: hash, gasUsed: 5n });
+    mock.actions.getTransactionReceipt({ hash }).returns(built);
+
+    expect(await client.getTransactionReceipt({ hash })).toEqual(built);
+  });
+
+  test("a value changed after .returns() shows: it's held as given", async () => {
+    const { mock, client } = setup();
+    const fields: { gasUsed?: bigint } = {};
+    mock.actions.getTransactionReceipt({ hash }).returns(fields);
+    fields.gasUsed = 5n;
+    mock.mine();
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      gasUsed: 5n,
+      blockNumber: 10n,
+    });
+  });
+
+  test("restore() takes the transaction away from under it, back to zeros in its block", async () => {
+    const { mock, client } = setup();
+    mock.actions.getTransactionReceipt({ hash }).returns({ gasUsed: 5n });
+    const checkpoint = mock.checkpoint();
+    mock.addTransaction({ hash, from: alice });
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      blockNumber: 11n,
+      from: lowercase(alice),
+    });
+    checkpoint.restore();
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      blockNumber: 10n,
+      from: zeroAddress,
+      gasUsed: 5n,
+    });
+  });
+
+  test("a reverted receipt over a mined transaction with logs is refused at .returns()", () => {
+    const { mock } = setup();
+    mock.addTransaction({ hash, logs: [log] });
+
+    const error = expectThrows(MockSetupError, "A reverted transaction has no logs.", () => {
+      mock.actions.getTransactionReceipt({ hash }).returns({ status: "reverted" });
+    });
+    expect(error.metaMessages).toEqual([
+      `Transaction ${hash} on the chain has 1 log(s): answer this receipt without them, ` +
+        '{ status: "reverted", logs: [] }, or add it reverted, ' +
+        'mock.addTransaction({ …, status: "reverted" }), so every method agrees.',
+    ]);
+  });
+
+  test("a reverted receipt with logs: [] over a transaction with logs answers without them", async () => {
+    const { mock, client } = setup();
+    mock.addTransaction({ hash, from: alice, logs: [log] });
+    mock.actions.getTransactionReceipt({ hash }).returns({ status: "reverted", logs: [] });
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      status: "reverted",
+      from: lowercase(alice),
+      logs: [],
+    });
+    expect(await client.getLogs({ fromBlock: 0n })).toHaveLength(1);
+  });
+
+  test("and at request time once one placed later is mined, or for a resolver's", async () => {
+    const { mock, client } = setup();
+    mock.addTransaction({ hash, from: alice, blockNumber: 11n, logs: [log] });
+    mock.actions.getTransactionReceipt({ hash }).returns({ status: "reverted" });
+    mock.actions.getTransactionReceipt({ hash: testHash("tx-2") }).returns(() => ({
+      status: "reverted",
+    }));
+    mock.addTransaction({ hash: testHash("tx-2"), logs: [log], blockNumber: 11n });
+
+    expect((await client.getTransactionReceipt({ hash })).status).toBe("reverted");
+    mock.mine();
+    for (const each of [hash, testHash("tx-2")])
+      expectCause(await rejectionOf(client.getTransactionReceipt({ hash: each })), MockSetupError);
+    // Without logs, a reverted one keeps the rest of its receipt.
+    mock.addTransaction({ hash: testHash("tx-3"), from: alice });
+    mock.actions.getTransactionReceipt({ hash: testHash("tx-3") }).returns({ status: "reverted" });
+    expect(await client.getTransactionReceipt({ hash: testHash("tx-3") })).toMatchObject({
+      status: "reverted",
+      from: lowercase(alice),
+    });
+  });
+
+  test("logs over a transaction on the chain replace its logs in that receipt only", async () => {
+    const { mock, client } = setup();
+    const own = testLog("own");
+    mock.addTransaction({ blockNumber: 11n, logs: [testLog("earlier")] });
+    mock.addTransaction({ hash, blockNumber: 11n, logs: [log] });
+    mock.mine();
+    mock.actions.getTransactionReceipt({ hash }).returns({ logs: [own] });
+
+    const receipt = await client.getTransactionReceipt({ hash });
+    expect(receipt.logs).toEqual([
+      {
+        ...own,
+        address: lowercase(own.address),
+        blockHash: receipt.blockHash,
+        blockNumber: 11n,
+        blockTimestamp: (await client.getBlock({ blockNumber: 11n })).timestamp,
+        transactionHash: hash,
+        transactionIndex: 1,
+        // After the earlier transaction's log, as a node counts them across the block.
+        logIndex: 1,
+        removed: false,
+      },
+    ]);
+    expect((await client.getLogs({ fromBlock: 0n })).map((each) => each.topics)).toEqual([
+      testLog("earlier").topics,
+      log.topics,
+    ]);
+  });
+
+  test("a receipt's logs are indexed after the logs before it in its block, wherever it's placed", async () => {
+    const { mock, client } = setup();
+    // Block 11: one log at index 0; block 12: two logs at indexes 0 and 1.
+    mock.addTransaction({ blockNumber: 11n, logs: [testLog("a")] });
+    mock.addTransaction({ blockNumber: 12n, logs: [testLog("b"), testLog("c")] });
+    mock.addTransaction({ hash, blockNumber: 11n, logs: [log] });
+    mock.mine(2n);
+
+    expect((await client.getTransactionReceipt({ hash })).logs[0]?.logIndex).toBe(1);
+    // Moved to block 12 after its two transactions' logs: index 2.
+    mock.actions.getTransactionReceipt({ hash }).returns({ blockNumber: 12n, transactionIndex: 1 });
+    expect((await client.getTransactionReceipt({ hash })).logs[0]?.logIndex).toBe(2);
+    // A hash the chain doesn't have, placed after block 11's first transaction: index 1.
+    const other = testHash("unknown");
+    mock.actions
+      .getTransactionReceipt({ hash: other })
+      .returns({ blockNumber: 11n, transactionIndex: 1, logs: [testLog("own")] });
+    expect((await client.getTransactionReceipt({ hash: other })).logs[0]?.logIndex).toBe(1);
+  });
+
+  test("a mock with logs for a hash placed later keeps answering them once it's mined", async () => {
+    const { mock, client } = setup();
+    mock.addTransaction({ hash, blockNumber: 12n, logs: [log] });
+    mock.actions.getTransactionReceipt({ hash }).returns({ logs: [testLog("own")] });
+
+    expect((await client.getTransactionReceipt({ hash })).logs[0]?.blockNumber).toBe(10n);
+    mock.mine(2n);
+    const { logs } = await client.getTransactionReceipt({ hash });
+    expect(logs.map((each) => [each.topics, each.blockNumber])).toEqual([
+      [testLog("own").topics, 12n],
+    ]);
+  });
+
+  test("a receipt's placement over a transaction on the chain moves its logs, reindexed in their new block", async () => {
+    const { mock, client } = setup();
+    const other = testHash("other");
+    mock.addTransaction({ blockNumber: 11n, logs: [testLog("earlier")] });
+    mock.addTransaction({ hash, blockNumber: 11n, logs: [log] });
+    mock.mine();
+    mock.actions
+      .getTransactionReceipt({ hash })
+      .returns({ blockNumber: 7n, transactionIndex: 5, transactionHash: other });
+
+    const receipt = await client.getTransactionReceipt({ hash });
+    const block = await client.getBlock({ blockNumber: 7n });
+    expect(receipt).toMatchObject({ blockNumber: 7n, blockHash: block.hash, transactionIndex: 5 });
+    expect(receipt.logs).toMatchObject([
+      {
+        blockNumber: 7n,
+        blockHash: block.hash,
+        blockTimestamp: block.timestamp,
+        transactionHash: other,
+        transactionIndex: 5,
+        // Block 7 has no logs on the chain before it: it's the block's first.
+        logIndex: 0,
+      },
+    ]);
+  });
+
+  test("a built receipt over a transaction on the chain answers its own fields and logs", async () => {
+    const { mock, client } = setup();
+    mock.addTransaction({ blockNumber: 11n });
+    mock.addTransaction({ hash, from: alice, blockNumber: 11n, logs: [log] });
+    mock.mine();
+    const built = mock.buildReceipt({ transactionHash: hash, gasUsed: 5n });
+    mock.actions.getTransactionReceipt({ hash }).returns(built);
+
+    expect(await client.getTransactionReceipt({ hash })).toEqual(built);
+  });
+
+  test("a getBlock mock's number and hash place the transactions it lists", async () => {
+    const { mock, client } = setup();
+    const blockHash = testHash("block");
+    mock.addTransaction({ hash });
+    mock.actions.getBlock({ blockNumber: 11n }).returns({ number: 5n, hash: blockHash });
+
+    const block = await client.getBlock({ blockNumber: 11n, includeTransactions: true });
+    expect(block.transactions).toMatchObject([
+      { hash, blockNumber: 5n, blockHash, blockTimestamp: block.timestamp },
+    ]);
+  });
+
+  test("a getBlock mock without a number or hash lists its transactions as the chain has them", async () => {
+    const { mock } = setup();
+    mock.addTransaction({ hash });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a pending block, which the types rule out
+    mock.actions.getBlock({ blockNumber: 11n }).returns({ number: null, hash: null } as never);
+
+    const block = await mock.request({ method: "eth_getBlockByNumber", params: ["0xb", true] });
+    expect(block).toMatchObject({ number: null, transactions: [{ hash, blockNumber: "0xb" }] });
+  });
+
+  test("a type its transaction's fields don't fit is a setup error when it answers", async () => {
+    const { mock, client } = setup();
+    const sent = await mock.request({
+      method: "eth_sendTransaction",
+      params: [{ from: alice, to: bob, maxFeePerGas: "0x1" }],
+    });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a send answers its hash
+    mock.actions.getTransaction({ hash: sent as Hash }).returns({ type: "legacy" });
+
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a send answers its hash
+    const error = await rejectionOf(client.getTransaction({ hash: sent as Hash }));
+    expectCause(error, MockSetupError);
+    expect(String(error)).toContain("An legacy transaction has no maxFeePerGas");
   });
 });

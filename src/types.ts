@@ -10,10 +10,10 @@ import type {
   TransactionReceipt,
 } from "viem";
 
+import type { MockReceipt } from "./actions/getTransactionReceipt.js";
 import type { MockActions } from "./actions/typedActions.js";
 import type { MockMethodBuilder } from "./actions/types.js";
 import type { MockFees } from "./chain/fees.js";
-import type { MockReceipt } from "./chain/receipts.js";
 import type { BuiltTransaction, MockTransaction } from "./chain/transactions.js";
 import type {
   CreateMockContractParameters,
@@ -125,21 +125,27 @@ export type MockRpc = {
   readonly actions: MockActions;
   /**
    * The transaction `mock.actions.getTransaction()` answers when mocked with
-   * `.returns(transaction)`, in viem's types, with the same defaults: the
-   * current block (as of this call, as `.returns()` fixes a static answer's
-   * as of its call) and fees, and the mock's chain. Its hash is zero unless
-   * given. For `toEqual` against what the app got, and for props.
+   * `.returns(transaction)` for a hash not on the chain, in viem's types,
+   * with the same defaults: the current block (as of this call, as
+   * `.returns()` fixes a static answer's as of its call) and fees, and the
+   * mock's chain. Its hash is zero unless given. For a transaction on the
+   * chain, compare with what the client answers. For `toEqual` against what
+   * the app got, and for props.
    */
   buildTransaction<const transaction extends MockTransaction = { type?: "eip1559" }>(
     transaction?: transaction,
   ): BuiltTransaction<transaction>;
   /**
    * The receipt `mock.actions.getTransactionReceipt()` answers when mocked
-   * with `.returns(receipt)`: the same defaults, logs placed the same way,
+   * with `.returns(receipt)` for a hash not on the chain: the same defaults,
    * in the current block unless given (as of this call, as `.returns()` fixes
    * a static answer's as of its call). Its hash is zero unless given
-   * (`transactionHash`). For `toEqual` against what the app got, and for props.
-   * Its addresses are lowercase, as nodes send them: compare them with viem's
+   * (`transactionHash`). `logs` takes their content (from `contract.events`),
+   * which the receipt places; a log that already has a position is refused.
+   * For a transaction on the chain, compare with what the client answers:
+   * a built receipt is a whole receipt, so returned over one it answers its
+   * own fields and logs. For `toEqual` against what the app got, and for props. Its addresses are
+   * lowercase, as nodes send them: compare them with viem's
    * `isAddressEqual`, not `toBe(contract.address)`.
    */
   buildReceipt(receipt?: MockReceipt): TransactionReceipt;
@@ -149,7 +155,7 @@ export type MockRpc = {
    * parses logs. The same encoding as a contract's `events`, in the current
    * block unless given, with other position fields zero. Its address is
    * lowercase, as nodes send it: compare with `isAddressEqual`, not `toBe`.
-   * Not for a receipt's logs, which the receipt places itself: use
+   * Not for a transaction's logs, which it places itself: use
    * `contract.events`, or `contractEvents({ abi, address })` for a contract
    * you don't mock.
    */

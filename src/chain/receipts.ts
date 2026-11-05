@@ -9,47 +9,50 @@ import {
   zeroHash,
 } from "viem";
 
-import { formatValue } from "../mocking/format.js";
-import { MockSetupError } from "../shared/errors.js";
 import { nodeAddress } from "../shared/values.js";
 import { blockHash } from "./blocks.js";
 
 /**
- * A log in a mocked receipt. Fields left out come from the receipt, or are
- * zero. `topics` takes any list of hashes, not only viem's non-empty tuple.
+ * A log a receipt places: its content. `topics` takes any list of hashes,
+ * not only viem's non-empty tuple.
  */
-export type MockLog = Partial<Omit<Log<bigint, number, false>, "topics">> & {
+type ReceiptLog = Partial<Pick<Log<bigint, number, false>, "address" | "data">> & {
   topics?: readonly Hex[];
 };
 
-/**
- * A mocked receipt: any receipt fields, with logs that may be partial too.
- * Its `logs` are legacy: for a receipt with these logs, add its transaction
- * instead, `mock.addTransaction({ hash, logs })`, whose receipt answers itself.
- */
-export type MockReceipt = Partial<Omit<TransactionReceipt, "logs">> & { logs?: MockLog[] };
+/** Any receipt fields but its logs, which go to `completeReceipt` to be placed. */
+export type ReceiptFields = Partial<Omit<TransactionReceipt, "logs">>;
 
 const zeroBloom = `0x${"00".repeat(256)}` as const;
 
 /**
  * A receipt for `hash` with `receipt`'s fields over useful defaults: `status`
- * is `"success"` (zero would mean reverted), the block is `blockNumber` (the
- * head when it's made: a static mock's is fixed at registration) unless
- * given, and each log's position, block (with its timestamp, as reth sends it),
- * and transaction come from the receipt. Everything else is zero. Addresses
- * are validated, and lowercase as nodes send them.
- * `hash` is `undefined` while it isn't known yet, e.g. at registration.
+ * is `"success"` (zero would mean reverted), the block is `blockNumber`
+ * unless given, and each of `logs` is placed by the receipt: its block (with
+ * its timestamp, as reth sends it), transaction and index, its index in the
+ * block counted after the logs of the block's earlier transactions
+ * (`logsBefore`), as a node counts them. Everything else is zero. Addresses are validated, and lowercase
+ * as nodes send them. `hash` is `undefined` while it isn't known yet, e.g.
+ * at registration.
  */
 export function completeReceipt(
-  receipt: MockReceipt,
+  receipt: ReceiptFields,
   {
     hash,
     blockNumber,
     timestampAt,
-  }: { hash: Hash | undefined; blockNumber: bigint; timestampAt: (number: bigint) => bigint },
+    logsBefore,
+    logs = [],
+  }: {
+    hash: Hash | undefined;
+    blockNumber: bigint;
+    timestampAt: (number: bigint) => bigint;
+    /** How many logs the chain's transactions before an index in a block have. */
+    logsBefore: (blockNumber: bigint, transactionIndex: number) => number;
+    logs?: readonly ReceiptLog[];
+  },
 ): TransactionReceipt {
-  const { logs = [], ...fields } = receipt;
-  const number = fields.blockNumber ?? blockNumber;
+  const number = receipt.blockNumber ?? blockNumber;
   const complete: Omit<TransactionReceipt, "logs"> = {
     blockHash: blockHash(number),
     blockNumber: number,
@@ -64,50 +67,27 @@ export function completeReceipt(
     transactionHash: hash ?? zeroHash,
     transactionIndex: 0,
     type: "eip1559",
-    ...fields,
+    ...receipt,
   };
   complete.from = nodeAddress(complete.from);
   if (complete.to) complete.to = nodeAddress(complete.to);
   if (complete.contractAddress) complete.contractAddress = nodeAddress(complete.contractAddress);
-  // Only a hash given now can be checked; a pinned request's arrives later.
-  const known = receipt.transactionHash ?? hash;
-  const blockTimestamp = timestampAt(complete.blockNumber);
-  logs.forEach((log, i) => {
-    assertInReceipt(i, "blockNumber", log.blockNumber, complete.blockNumber);
-    assertInReceipt(i, "blockHash", log.blockHash, complete.blockHash);
-    assertInReceipt(i, "blockTimestamp", log.blockTimestamp, blockTimestamp);
-    if (known !== undefined) assertInReceipt(i, "transactionHash", log.transactionHash, known);
-    assertInReceipt(i, "transactionIndex", log.transactionIndex, complete.transactionIndex);
-  });
+  const position = {
+    blockHash: complete.blockHash,
+    blockNumber: complete.blockNumber,
+    blockTimestamp: timestampAt(complete.blockNumber),
+    transactionHash: complete.transactionHash,
+    transactionIndex: complete.transactionIndex,
+  };
   return {
     ...complete,
-    logs: logs.map((log, logIndex) => placeLog(log, { ...complete, blockTimestamp, logIndex })),
+    logs: logs.map((log, i) =>
+      placeLog(log, {
+        ...position,
+        logIndex: logsBefore(complete.blockNumber, complete.transactionIndex) + i,
+      }),
+    ),
   };
-}
-
-/** Throws if receipt log `index` names a block or transaction other than the receipt's. */
-function assertInReceipt<value extends bigint | number | string>(
-  index: number,
-  field: string,
-  actual: value | null | undefined,
-  expected: value,
-) {
-  if (actual === undefined || actual === null) return;
-  const same =
-    typeof actual === "string" && typeof expected === "string"
-      ? actual.toLowerCase() === expected.toLowerCase()
-      : actual === expected;
-  if (!same)
-    throw new MockSetupError(
-      `Receipt log ${index} has ${field} ${formatValue(actual)}, but the receipt's is ` +
-        `${formatValue(expected)}.`,
-      {
-        metaMessages: [
-          "A receipt places its logs: pass only their content, e.g. from contract.events, " +
-            "or contractEvents({ abi, address }) for a contract you don't mock.",
-        ],
-      },
-    );
 }
 
 /**
@@ -120,33 +100,22 @@ type LogPosition = Pick<
 > & { blockTimestamp: bigint };
 
 /**
- * A complete log: `log`'s fields over `position`, with zeros for the rest.
- * Fields the log sets win, so a receipt's log can name its own position.
- * The address is validated, and lowercase as nodes send it.
+ * A complete log: `log`'s content at `position`, with zeros for content it
+ * leaves out. The address is validated, and lowercase as nodes send it.
  */
 export function placeLog(
-  log: MockLog,
+  log: ReceiptLog,
   position: LogPosition,
 ): Log<bigint, number, false> & { blockTimestamp: bigint } {
-  return Object.assign(
-    {
-      address: zeroAddress,
-      topics: [],
-      data: "0x",
-      blockHash: position.blockHash,
-      blockNumber: position.blockNumber,
-      blockTimestamp: position.blockTimestamp,
-      transactionHash: position.transactionHash,
-      transactionIndex: position.transactionIndex,
-      logIndex: position.logIndex,
-      removed: false,
-    } satisfies Log<bigint, number, false> & { blockTimestamp: bigint },
-    log,
-    log.address === undefined ? {} : { address: nodeAddress(log.address) },
+  return {
+    address: log.address === undefined ? zeroAddress : nodeAddress(log.address),
     // viem's tuple type only says "empty or not"; the hashes are the same.
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- same values, viem's narrower type
-    log.topics === undefined ? {} : { topics: [...log.topics] as Log["topics"] },
-  );
+    topics: [...(log.topics ?? [])] as Log["topics"],
+    data: log.data ?? "0x",
+    removed: false,
+    ...position,
+  };
 }
 
 /** A receipt in its JSON-RPC form, logs included. */

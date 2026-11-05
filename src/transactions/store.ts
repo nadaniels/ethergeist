@@ -1,7 +1,7 @@
 import { type Address, type Hash, type Hex, formatTransaction, getAddress } from "viem";
 
 import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
-import { completeReceipt, placeLog, toRpcReceipt } from "../chain/receipts.js";
+import { type ReceiptFields, completeReceipt, placeLog, toRpcReceipt } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { type TransactionType, encodeTransaction } from "../chain/transactions.js";
 import type { EmittedLog, MockEventLog } from "../logs/events.js";
@@ -67,6 +67,9 @@ type NewRecord = Pick<TransactionRecord, "origin" | "fields" | "receipt"> & {
   logs: readonly MockEventLog[];
 };
 
+/** Where a block mock answers its transactions: its number, hash and timestamp. */
+type BlockPlacement = { blockNumber: bigint; blockHash: Hash; blockTimestamp: bigint };
+
 /** The gas a transaction used: its receipt's, or else what it was sent with. */
 const gasUsedBy = ({ receipt, fields }: TransactionRecord) => receipt.gasUsed ?? fields.gas ?? 0n;
 
@@ -96,6 +99,11 @@ export function createTransactionStore({
     records.find((record) => record.hash.toLowerCase() === hash.toLowerCase());
   const inBlock = (number: bigint) =>
     records.filter((record) => record.position.blockNumber === number);
+  /** How many logs the transactions before `index` in block `number` have: a log's index counts across its block. */
+  const logsBefore = (number: bigint, index: number) =>
+    inBlock(number)
+      .filter((record) => record.position.index < index)
+      .reduce((count, record) => count + record.logs.length, 0);
   /** The record's position once it's on the chain; `undefined` while it waits. */
   const minedAt = ({ position }: TransactionRecord) =>
     position.blockNumber <= state.blockNumber ? position : undefined;
@@ -128,7 +136,7 @@ export function createTransactionStore({
                 "that one another hash.",
         ],
       });
-    const firstLogIndex = earlier.reduce((count, each) => count + each.logs.length, 0);
+    const firstLogIndex = logsBefore(number, index);
     // Frozen, topics too, so changing one throws instead of changing what the chain answers.
     const logs = record.logs.map((value, i) => {
       const log = placeLog(value, {
@@ -208,14 +216,22 @@ export function createTransactionStore({
     );
   }
 
-  /** A record's transaction in its JSON-RPC form: pending until its block is mined. */
-  function transactionOf(record: TransactionRecord) {
+  /**
+   * A record's transaction in its JSON-RPC form, pending until its block is
+   * mined, with `override`'s fields (a mock's) over it: `blockNumber: null`
+   * answers it pending.
+   */
+  function transactionOf(record: TransactionRecord, override: object = {}) {
     const mined = minedAt(record);
     return encodeTransaction(
       state,
-      mined === undefined
-        ? { ...record.fields, blockNumber: null }
-        : { ...record.fields, blockNumber: mined.blockNumber, transactionIndex: mined.index },
+      {
+        ...record.fields,
+        ...(mined === undefined || ("blockNumber" in override && override.blockNumber === null)
+          ? { blockNumber: null }
+          : { blockNumber: mined.blockNumber, transactionIndex: mined.index }),
+        ...override,
+      },
       record.hash,
     );
   }
@@ -276,6 +292,7 @@ export function createTransactionStore({
   }
 
   return {
+    logsBefore,
     add,
     addTransaction,
     whileWriting,
@@ -283,10 +300,12 @@ export function createTransactionStore({
     logsFor,
     nonceOf,
     /**
-     * The receipt for `hash` in its JSON-RPC form: `null` while its block
-     * isn't mined, and `undefined` for a hash not on the chain.
+     * The receipt for `hash` in its JSON-RPC form, with `override`'s fields
+     * (a mock's) over it, and `logs` (a mock's content) in place of its own:
+     * `null` while its block isn't mined, and `undefined` for a hash not on
+     * the chain.
      */
-    receiptFor(hash: Hash) {
+    receiptFor(hash: Hash, override: ReceiptFields = {}, logs?: readonly MockEventLog[]) {
       const record = find(hash);
       if (record === undefined) return undefined;
       const mined = minedAt(record);
@@ -306,9 +325,15 @@ export function createTransactionStore({
             cumulativeGasUsed: upToIt.reduce((sum, each) => sum + gasUsedBy(each), 0n),
             blockNumber: mined.blockNumber,
             transactionIndex: mined.index,
-            logs: [...record.logs],
+            ...override,
           },
-          { hash: record.hash, blockNumber: mined.blockNumber, timestampAt: state.timestampAt },
+          {
+            hash: record.hash,
+            blockNumber: mined.blockNumber,
+            timestampAt: state.timestampAt,
+            logsBefore,
+            logs: logs ?? record.logs,
+          },
         ),
       );
     },
@@ -322,15 +347,23 @@ export function createTransactionStore({
       const record = find(hash);
       return record !== undefined && minedAt(record) !== undefined ? record : undefined;
     },
-    /** The transaction for `hash` in its JSON-RPC form, or `undefined` for a hash not on the chain. */
-    transactionFor(hash: Hash) {
+    /**
+     * The transaction for `hash` in its JSON-RPC form, with `override`'s
+     * fields (a mock's) over it, or `undefined` for a hash not on the chain.
+     */
+    transactionFor(hash: Hash, override?: object) {
       const record = find(hash);
-      return record === undefined ? undefined : transactionOf(record);
+      return record === undefined ? undefined : transactionOf(record, override);
     },
-    /** Block `number`'s transactions, in order: their hashes, or with `full`, their JSON-RPC forms. */
-    transactionsIn(number: bigint, full: boolean) {
+    /**
+     * Block `number`'s transactions, in order: their hashes, or with `full`,
+     * their JSON-RPC forms, placed in `placement` (a block mock's) when given.
+     */
+    transactionsIn(number: bigint, full: boolean, placement?: BlockPlacement) {
       const listed = inBlock(number);
-      return full ? listed.map((record) => transactionOf(record)) : listed.map(({ hash }) => hash);
+      return full
+        ? listed.map((record) => transactionOf(record, placement))
+        : listed.map(({ hash }) => hash);
     },
     /** Every record, by block and index. */
     get transactions(): TransactionRecord[] {

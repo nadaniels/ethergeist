@@ -9,6 +9,7 @@ import {
   MockResolverError,
   createMockRpc,
   testAddress,
+  testLog,
 } from "../src/index.js";
 import { findCause, rejectionOf } from "./utils.js";
 
@@ -302,7 +303,7 @@ describe("formatHistory()", () => {
 
   test("blocks and receipts are summarized", async () => {
     const { mock, client } = setup();
-    mock.actions.getTransactionReceipt().returns({ logs: [{ address: USDC }] });
+    mock.actions.getTransactionReceipt().returns({ logs: [testLog("noise", { address: USDC })] });
 
     await client.getBlock();
     await client.getTransactionReceipt({ hash: zeroHash });

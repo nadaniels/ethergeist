@@ -98,10 +98,12 @@ describe("contract.events", () => {
     shapes.events.Paused({ account: alice });
   });
 
-  test("goes into a mocked receipt's logs", () => {
+  test("goes into a mocked receipt's logs, an added transaction's and a built receipt's", () => {
     mock.actions
       .getTransactionReceipt()
       .returns({ logs: [usdc.events.Transfer({ from: alice, to: bob })] });
+    mock.addTransaction({ logs: [usdc.events.Transfer({ from: alice, to: bob })] });
+    mock.buildReceipt({ logs: [usdc.events.Transfer({ from: alice, to: bob })] });
   });
 });
 
@@ -172,8 +174,8 @@ describe("emit", () => {
     expectTypeOf(mock.addTransaction().logs).toEqualTypeOf<
       readonly Readonly<Log<bigint, number, false>>[]
     >();
-    // Read-only, yet it goes wherever a log does, e.g. a mocked receipt.
-    mock.actions.getTransactionReceipt().returns({ logs: [emitted] });
+    // Read-only, yet it goes wherever a placed log does, e.g. a getLogs mock's answer.
+    mock.actions.getLogs().returns([emitted]);
   });
 
   test("history entries for getLogs carry the decoded filter", () => {

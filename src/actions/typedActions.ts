@@ -2,7 +2,6 @@ import type { Hex } from "viem";
 
 import type { MockBlock } from "../chain/blocks.js";
 import type { MockFeeHistory } from "../chain/fees.js";
-import type { MockReceipt } from "../chain/receipts.js";
 import type { MockTransaction } from "../chain/transactions.js";
 import type { EmittedLog } from "../logs/events.js";
 import type { LogsCall } from "../logs/filter.js";
@@ -18,7 +17,7 @@ import { getLogs, type LogsContext } from "./getLogs.js";
 import { getStorageAt } from "./getStorageAt.js";
 import { getTransaction } from "./getTransaction.js";
 import { getTransactionCount, type TransactionCountContext } from "./getTransactionCount.js";
-import { getTransactionReceipt } from "./getTransactionReceipt.js";
+import { type MockReceipt, getTransactionReceipt } from "./getTransactionReceipt.js";
 import { type MockSendTransactionAction, sendTransaction } from "./sendTransaction.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type {
@@ -94,33 +93,35 @@ export type MockActions = {
    */
   getBlock: MockAction<BlockCall, Partial<MockBlock> | null>;
   /**
-   * `eth_getTransactionReceipt`. A mock's fields go over defaults: `status` is
-   * `"success"`, the block is the current one, and logs get their index, block,
-   * and transaction from the receipt; the rest is zero. A static receipt is
-   * mined when it's registered, so it stays in that block as more are mined:
-   * for a hash pinned exactly that's on the chain (added or sent), its
-   * transaction's block and index, so register it after the transaction is
-   * added (and after its block is mined). A resolver's is in the block
-   * current when it answers. `null` answers "no
-   * such transaction". A mock is an override, for answers the chain
-   * shouldn't give (`null`, a reverted status): unmocked, the hash of a
-   * transaction on the chain answers its receipt (`null` while it's placed in a
-   * block not mined yet), and other hashes aren't answered.
-   * Its `logs` are legacy: for a receipt with these logs, add its transaction
-   * instead, `mock.addTransaction({ hash, logs })`.
+   * `eth_getTransactionReceipt`. Unmocked, the hash of a transaction on the
+   * chain (added or sent) answers its receipt, `null` while it's placed in a
+   * block not mined yet, and other hashes aren't answered. A mock's fields go
+   * over what the chain would answer at that request: the receipt of the
+   * hash's transaction once it's mined, and otherwise `status: "success"`
+   * with zeros, in the block current when a static one is registered (so it
+   * stays there as more are mined) or when a resolver's answers. `null`
+   * answers "no such transaction". `logs` takes their content
+   * (`contract.events`, `contractEvents()`, `testLog()`), placed in the
+   * receipt, in place of its logs on the chain; they answer this receipt
+   * only, so `getLogs` and watchers don't see them: for that, add the
+   * transaction, `mock.addTransaction({ hash, logs })`. The receipt's block
+   * and transaction place its logs, the chain's included. A reverted status
+   * with logs, its own or the chain's, is refused, as a reverted
+   * transaction has none.
    */
   getTransactionReceipt: MockAction<ReceiptCall, MockReceipt | null>;
   /**
-   * `eth_getTransactionByHash`. A mock's fields go over defaults: an
-   * `"eip1559"` transaction mined in the current block, at index 0, that paid
-   * the suggested fees (see `fees`), with a zero signature; the rest is zero.
-   * Like a receipt, a static one is mined when it's registered (where its
-   * transaction on the chain is, if it has one), a resolver's when it answers. Fields its `type` doesn't have throw, and
-   * `blockNumber: null` makes it pending. `null` answers "no such
-   * transaction". A mock is an override: unmocked, the hash of a transaction
-   * on the chain answers it (added or sent; pending while it's placed in a block
-   * not mined yet), and other hashes aren't answered.
-   * `mock.buildTransaction()` builds the same transaction.
+   * `eth_getTransactionByHash`. Unmocked, the hash of a transaction on the
+   * chain answers it (added or sent; pending while it's placed in a block
+   * not mined yet), and other hashes aren't answered. A mock's fields go
+   * over what the chain would answer: the hash's transaction on the chain,
+   * pending or mined, and for a hash the chain doesn't have, an `"eip1559"` transaction
+   * at index 0, that paid the suggested fees (see `fees`), with a zero
+   * signature and the rest zero, mined in the block current when a static
+   * one is registered or when a resolver's answers. Fields its `type`
+   * doesn't have throw, and `blockNumber: null` makes it pending. `null`
+   * answers "no such transaction". `mock.buildTransaction()` builds the
+   * transaction for a hash not on the chain.
    */
   getTransaction: MockAction<TransactionCall, MockTransaction | null>;
   /**

@@ -166,7 +166,7 @@ export type BuildLogParameters<
 /**
  * The log `address` emits for `eventName` with `args`, as a complete viem
  * log: the same encoding as a contract's `events`, and the same placement
- * as a mocked receipt's logs. The block is `chain`'s current one unless
+ * as an added transaction's logs. The block is `chain`'s current one unless
  * given, its hash and timestamp are the mock's generated ones, and other
  * position fields left out are zero.
  */
@@ -188,7 +188,7 @@ export function buildLog<const abi extends Abi, eventName extends ContractEventN
 
 /**
  * A contract's events, each building the log its args would emit at
- * `address`, without registering the contract: for a receipt's logs from a
+ * `address`, without registering the contract: for a transaction's logs from a
  * contract the app decodes but never calls, e.g.
  * `contractEvents({ abi, address }).Transfer({ from, to, value })`. The same
  * as a registered contract's `events`: indexed args are required, the rest

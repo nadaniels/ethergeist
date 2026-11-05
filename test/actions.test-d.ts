@@ -19,6 +19,7 @@ import {
   createMockRpc,
   zeroResult,
   testAddress,
+  testLog,
 } from "../src/index.js";
 
 const mock = createMockRpc();
@@ -95,8 +96,10 @@ describe("getBlock", () => {
 });
 
 describe("getTransactionReceipt", () => {
-  test("returns a partial viem receipt with partial logs, or null", () => {
+  test("returns a partial viem receipt with logs' content, or null", () => {
     mock.actions.getTransactionReceipt({ hash: "0x01" }).returns({ status: "reverted" });
+    mock.actions.getTransactionReceipt().returns({ logs: [testLog("noise")] });
+    // @ts-expect-error a receipt mock's logs are content, which it places
     mock.actions.getTransactionReceipt().returns({ logs: [{ address: alice, data: "0x" }] });
     mock.actions.getTransactionReceipt().returns(null);
     // @ts-expect-error not a receipt status

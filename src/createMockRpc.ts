@@ -71,7 +71,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     historyOnFailure: parameters.historyOnFailure,
   });
   const handleRequest = createRequestHandler({ state, recorder, faults, actions, dispatcher });
-  const builders = createBuilders(state);
+  const builders = createBuilders(state, transactions);
   const viemAdapter = createViemAdapter({ handle: handleRequest, chain: state.chain });
 
   return {

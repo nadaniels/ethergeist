@@ -134,11 +134,19 @@ everything, then mutate.
    call, encode and view answers, and what to answer when it isn't mocked.
    `call` is its decoded call's type and `rpc` its JSON-RPC answer's, so its
    members get them typed, without casts. If `encode` checks the answer against the call
-   (as receipts check their logs' placement), also give `pinnedCall`, so a
-   static answer that can't fit fails at `.returns()` instead of at request
-   time. If a static answer takes a default from the chain that a node would
-   never change, give `fixAtRegistration` (as receipts take the block they
-   were mined in).
+   (as a receipt refuses a reverted status over its transaction's own logs),
+   also give `pinnedCall`, so a static answer that can't fit fails at
+   `.returns()` instead of at request time. If a static answer takes a
+   default from the chain as it stands at registration, which a node would
+   never change, give `fixAtRegistration`: receipts and transactions keep
+   the head beside the value, as the block a hash not on the chain is
+   mined in. A mock that answers over the chain's own answer (a block, a
+   receipt, a transaction) follows the rules in `docs/notes.md` ("You don't
+   have to use the chain"): it answers one method, over what the chain
+   would answer at that request, its fields winning (methods may
+   disagree); its answer places its parts (a receipt its logs, a block its
+   transactions), and nothing else is derived; and each answer is one a
+   node could send, as an object.
    An action that changes the chain (a send) answers in two steps: `encode`
    checks the answer, as at registration, and `commit` places it on the
    chain once it's chosen, answering the JSON-RPC value; its `Definition`

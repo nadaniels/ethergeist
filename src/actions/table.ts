@@ -65,12 +65,13 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
   encode(value: unknown, call: call | undefined): answer;
   zero: unknown;
   /**
-   * Fixes what a static answer leaves to the chain at registration, as it
-   * stands then, e.g. a receipt's block: the one it was mined in. `call` is
-   * `pinnedCall`'s, when the pins settle it. A resolver's answer is made
-   * when it answers, so it's left to `encode`.
+   * What a static answer is kept as at registration, for what it leaves to
+   * the chain as it stands then: a receipt for a hash not on the chain is
+   * mined in the block current at registration. `encode` gets what it
+   * returns. A resolver's answer is made when it answers, so it's left to
+   * `encode`.
    */
-  fixAtRegistration?(value: unknown, call: call | undefined): unknown;
+  fixAtRegistration?(value: unknown): unknown;
   /** Normalizes pinned fields at registration, e.g. checksumming addresses. */
   pin?(pinned: unknown): unknown;
   /**
@@ -150,7 +151,7 @@ export function createTable(
     const builder = mocks.createBuilder(handler, definition.name, (value) => {
       const given = value === zeroResult ? definition.zero : value;
       const call = definition.pinnedCall?.(pinned);
-      const fixed = definition.fixAtRegistration?.(given, call) ?? given;
+      const fixed = definition.fixAtRegistration?.(given) ?? given;
       encode(fixed, call);
       return fixed;
     });

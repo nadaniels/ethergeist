@@ -1,6 +1,6 @@
 import { type Abi, type ContractEventName, formatTransaction, zeroHash } from "viem";
 
-import { type MockReceipt, completeReceipt } from "./chain/receipts.js";
+import { type MockReceipt, placedReceipt } from "./actions/getTransactionReceipt.js";
 import type { ChainState } from "./chain/state.js";
 import {
   encodeTransaction,
@@ -9,6 +9,7 @@ import {
 } from "./chain/transactions.js";
 import { type BuildLogParameters, buildLog } from "./logs/events.js";
 import { refuseUnencodable } from "./shared/errors.js";
+import type { TransactionStore } from "./transactions/store.js";
 
 /**
  * Builders of what the mock answers, in viem's types, with the same defaults
@@ -16,7 +17,10 @@ import { refuseUnencodable } from "./shared/errors.js";
  * block current when it's built, as a static answer is in the block current
  * at `.returns()`. For `toEqual` against what the app got, and for props.
  */
-export function createBuilders(state: ChainState) {
+export function createBuilders(
+  state: ChainState,
+  transactions: Pick<TransactionStore, "logsBefore">,
+) {
   return {
     /** The transaction `getTransaction` answers for `.returns(transaction)`; its hash is zero unless given. */
     buildTransaction: <const transaction extends MockTransaction = { type?: "eip1559" }>(
@@ -28,13 +32,18 @@ export function createBuilders(state: ChainState) {
           encodeTransaction(state, transaction ?? {}, transaction?.hash ?? zeroHash),
         ),
       ) as BuiltTransaction<transaction>,
-    /** The receipt `getTransactionReceipt` answers for `.returns(receipt)`; its hash is zero unless given. */
+    /**
+     * The receipt `getTransactionReceipt` answers for `.returns(receipt)` for
+     * a hash not on the chain, with `logs` placed in it; its hash is zero
+     * unless given.
+     */
     buildReceipt: (receipt: MockReceipt = {}) =>
       refuseUnencodable("buildReceipt()", () =>
-        completeReceipt(receipt, {
+        placedReceipt(receipt, {
           hash: receipt.transactionHash ?? zeroHash,
           blockNumber: state.blockNumber,
           timestampAt: state.timestampAt,
+          logsBefore: transactions.logsBefore,
         }),
       ),
     /** A finished log, in the current block unless given; see `buildLog`. */

@@ -166,11 +166,16 @@ export function refuseNonLogs(
 
 /**
  * Refuses logs on a reverted transaction, which emits none: for a write's
- * outcome and an added transaction alike.
+ * outcome, an added transaction and a receipt mock over one alike, with
+ * `metaMessages` for where the logs came from.
  */
-export function refuseRevertedLogs(status: unknown, logs: readonly unknown[]): void {
+export function refuseRevertedLogs(
+  status: unknown,
+  logs: readonly unknown[],
+  metaMessages?: string[],
+): void {
   if (status === "reverted" && logs.length > 0)
-    throw new MockSetupError("A reverted transaction has no logs.");
+    throw new MockSetupError("A reverted transaction has no logs.", { metaMessages });
 }
 
 /**

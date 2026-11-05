@@ -9,7 +9,7 @@ features land; tick them off as pages get written.
       what the test registered. Fast and deterministic, with no binary and no
       shared process.
 - [ ] What it isn't: nothing executes, and no answer is derived from another.
-      For example, a mocked receipt with a `Transfer` log doesn't change any
+      For example, an added transaction with a `Transfer` log doesn't change any
       balance; state a test wants to change is the test's (section 11).
 - [ ] When to use anvil (or an anvil fork) instead: tests that need real
       execution or real chain state.
@@ -48,7 +48,7 @@ features land; tick them off as pages get written.
       case-comparison and sorting bugs. Several at once:
       ``Array.from({ length: 3 }, (_, i) => testAddress(`user-${i + 1}`))``.
       The address belongs to a key derived from the label (signing later).
-      `testLog("noise")` is a log that matches no event, for a receipt's
+      `testLog("noise")` is a log that matches no event, for a transaction's
       noise; `testLog("noise", { address: USDC })` for an unknown event at a
       contract the code does know (any address).
 
@@ -345,13 +345,75 @@ features land; tick them off as pages get written.
   - Chains with their own fee logic in viem (Linea, Celo; HyperEVM's
     multiplier) send other requests, e.g. `linea_estimateGas`: mock those
     with `mock.method()`.
-- [ ] Receipts: the defaults (status `"success"`, block, log context), and
+- [ ] You don't have to use the chain: it holds only what the test
+      (`mock.addTransaction`, `contract.emit`) or the app's sends put there,
+      and every read can be mocked without it, a receipt with logs included
+      (`.returns({ logs })`). An empty chain answers only what's mocked
+      (`getLogs` answers `[]`). The rules, for every mock:
+  - **The chain answers from its records.** A record is what
+    `mock.addTransaction`, `contract.emit` and the app's sends put there;
+    receipts, transactions, blocks and `getLogs` agree because they read
+    the same record.
+  - **A mock answers one method, over what the chain would answer that
+    request: its fields win, the rest is the chain's.** For a block past
+    the head, a hash the chain doesn't have, or a receipt for one it
+    hasn't mined, "the chain's" is zeros, in the block current when a static mock was
+    registered or when a resolver answers. `null` and `fail` replace the
+    answer whole. A scalar or a list has no fields: the mock is the answer
+    (`getBalance`, `getTransactionCount`, `getLogs`). So the order of
+    registering a mock and adding its transaction doesn't matter: the
+    answer changes when the transaction is mined, as a node's does.
+  - **Methods may disagree.** A receipt mock's logs are that receipt's;
+    `getLogs` and watchers read the chain. For every method to agree, put
+    it on the chain: `mock.addTransaction({ hash, logs })`. For a hash
+    that's placed but not mined, a transaction mock answers over the
+    pending transaction (its real `from`), while a receipt mock answers
+    over zeros (a pending transaction has no receipt), so the two disagree
+    on `from` until it's mined.
+  - **An answer places its parts.** A receipt's `blockNumber`,
+    `blockHash`, `transactionHash` and `transactionIndex` place its logs,
+    with that block's timestamp, and their `logIndex` counts on from the
+    logs of the chain's transactions before it in that block, whether
+    they're the chain's logs or the mock's own. It's counted when the
+    receipt answers (or is built), so a transaction added before it later
+    shifts it. A mock's logs over a record may still share an index with
+    the block's later logs in `getLogs` (methods may disagree); for logs
+    every method agrees on, use `mock.addTransaction`. A
+    block's `number`, `hash` and `timestamp` place the transactions it
+    lists. That's within one answer: a `getBlock` mock's `timestamp` doesn't
+    move a receipt's logs, and `getTransaction` for a transaction it lists
+    still answers the chain's block. Nothing else is
+    derived: `gasUsed` doesn't change `cumulativeGasUsed`, and the bloom
+    stays zero.
+  - **Every answer is one a node could send, as an object:** a reverted
+    transaction has no logs, a pending transaction has no block, hash,
+    index or timestamp, and a log is placed once (mocks take a log's
+    content). Whether it's the right answer for the request is the test's
+    business: a receipt whose `transactionHash` isn't the one asked for is
+    allowed.
+  - A node's refusals don't run under a mock: a `getLogs`, `getBlock` or
+    `getFeeHistory` mock answers past the head, where the chain would
+    refuse or find nothing.
+- [ ] Receipts: the defaults (status `"success"`, block), and
       `.returns(null)` for "not found".
-  - A static receipt or transaction is mined at `.returns()`: it stays in
-    that block as `mine()` adds more, so confirmations count up
-    (`waitForTransactionReceipt({ confirmations: 2 })`, ethers `wait(2)`).
-    A resolver's is in the block current when it answers, and a builder's
-    when it's built.
+  - Over a transaction on the chain, a mock changes only what it names:
+    `.returns({ status: "reverted" })` keeps the sender, gas and block. A
+    reverted status over a transaction with logs is refused (a reverted
+    transaction has none): answer this receipt without them,
+    `{ status: "reverted", logs: [] }`, or add it reverted,
+    `mock.addTransaction({ …, status: "reverted" })`, so every method agrees.
+  - `logs` takes their content (`contract.events`, `contractEvents()`,
+    `testLog()`), placed in the receipt's block and transaction, indexed
+    after the logs of the chain's transactions before it in that block; a
+    log that already has a position is refused, and so
+    are logs on a reverted receipt. Over a transaction on the chain, they
+    replace its logs in that receipt only (`logs: []` is none); `getLogs`
+    still answers the chain's.
+  - A static receipt for a hash not mined yet, or a static transaction for
+    a hash not on the chain, is mined at `.returns()`: it stays in that block as `mine()` adds more, so
+    confirmations count up (`waitForTransactionReceipt({ confirmations: 2 })`,
+    ethers `wait(2)`). A resolver's is in the block current when it answers,
+    and a builder's when it's built.
 - [ ] Transactions: `mock.actions.getTransaction({ hash }).returns(fields)`,
       by hash only. Defaults: an `"eip1559"` transaction mined in the current
       block at index 0, with the block's timestamp, that paid the suggested
@@ -371,16 +433,17 @@ features land; tick them off as pages get written.
     mock: the current block, its timestamp and fees, and the chain. Where
     there's no mock (props, a parser's unit test), `createMockRpc()` needs
     no client or transport.
-  - Pitfall: a transaction and its receipt are separate mocks; pin both to
-    the same hash and keep their fields consistent yourself (the mock
-    doesn't sync them). `waitForTransactionReceipt` asks for the
+  - Pitfall: for a hash not on the chain, a transaction and its receipt are
+    separate mocks; pin both to the same hash and keep their fields
+    consistent yourself (the mock doesn't sync them), or add the
+    transaction, whose receipt and transaction agree, and mock over it. `waitForTransactionReceipt` asks for the
     transaction only while the receipt is missing, and
     `getTransactionConfirmations` whenever it's given a hash.
   - Lookups by block and index, or by sender and nonce, aren't typed yet:
     `mock.method()`.
 - [ ] Event logs for receipts: `contract.events.Transfer({ from, to, value })`
       builds a log's content (address, topics, data) with no position; the
-      receipt places it. Show:
+      transaction it goes in places it. Show:
   - Indexed args are required (filters match on them, so a zero would
     quietly miss); the rest may be left out, at any depth of a struct, and
     are zero-filled as in `.returns()`. Unnamed inputs take every arg, in
@@ -390,26 +453,28 @@ features land; tick them off as pages get written.
     aren't supported yet.
   - Overloaded events use the overload the args fit; "ambiguous" when
     several do.
-  - A receipt's log that names another block or transaction throws (e.g. a
-    `mock.buildLog()` result for another block).
-  - Legacy: a receipt mock's `logs`. For a receipt with these logs for a
-    hash the app has, add its transaction instead,
-    `mock.addTransaction({ hash, logs })`: its receipt, transaction and
-    block answer from it. Receipt and transaction mocks are for answers the
-    chain shouldn't give: `null`, a dropped transaction, a reverted status.
-    A static one pinned to an added hash takes that transaction's block and
-    index, as of registration: register it after the transaction is added,
-    and after its block is mined.
+  - A log that already has a position (e.g. a `mock.buildLog()` result) is
+    refused: it's placed once.
+  - For a receipt with logs for a hash the app has, mock its receipt with
+    `logs`, which answer that receipt only, or add its transaction,
+    `mock.addTransaction({ hash, logs })`, whose receipt, transaction,
+    block and `getLogs` answer from it. A transaction mock over one placed
+    in a block not mined yet answers over the pending transaction, which
+    has no block or index: to answer it mined, give `blockNumber` (and
+    `transactionIndex`, 0 otherwise).
   - `mock.buildLog({ abi, address, eventName, args, blockNumber, … })` for a
     complete viem log where no mock places it (`toEqual`, Storybook props,
-    a function that parses logs). Inside a mock, receipts and transactions place
-    logs themselves, so they take `contract.events` values. For a receipt's
+    a function that parses logs). Receipt mocks, added transactions and
+    writes place logs themselves, so they take `contract.events` values. For a receipt's
     logs from a contract the app decodes but never calls (an indexer, a
     receipt parser), `contractEvents({ abi, address })` builds the same logs
     without registering it, so it doesn't answer `getCode`, claim its
     address, or show in "Registered" lists; `addTransaction` takes them too. And
     `mock.buildReceipt(fields)` for the receipt `.returns(fields)` answers
-    (pass `transactionHash` to match the request's). Both default to the
+    for a hash not on the chain (pass `transactionHash` to match the
+    request's); its `logs` take content, placed in it. A built receipt is a
+    whole receipt: returned over a transaction on the chain, it answers its
+    own fields and logs. Both default to the
     mock's current block. Both share the mock's encoding and
     defaults, so `toEqual` against what the app got works.
 - [ ] Emitting logs and adding transactions: `contract.emit.Transfer(args,
@@ -447,9 +512,9 @@ features land; tick them off as pages get written.
     already has (one from a URL); a hash already on the chain is refused,
     since a transaction's receipt never grows.
   - Its receipt, transaction and block answer from it, from its fields or
-    their defaults. A mock for its hash answers first. A `getBlock` mock
-    still lists the block's added transactions, unless it sets
-    `transactions`.
+    their defaults. A receipt or transaction mock for its hash answers over
+    it. A `getBlock` mock still lists the block's added transactions,
+    placed in the block it answers, unless it sets `transactions`.
   - `contract.emit` returns the placed log, and `addTransaction` the record
     with its placed logs, which equal what `getLogs` and the receipt
     answer.
@@ -471,12 +536,11 @@ features land; tick them off as pages get written.
     it; `clearCalls()` and `historyLimit` keep them.
   - Logs carry `blockTimestamp` (reth sends it; some nodes don't), from the
     generated block: in `getLogs`, in receipts, and from `mock.buildLog()`,
-    so an emitted log equals the receipt's. A receipt log with another
-    block's timestamp is refused, like one with another block. A `getBlock`
-    mock with another timestamp doesn't change it.
+    so an emitted log equals the receipt's. A `getBlock` mock with another
+    timestamp doesn't change it.
   - Testing for a node that doesn't send it (older versions, some L2s and
     providers; viem types it optional): give a log `blockTimestamp:
-    undefined`, in a receipt's logs or a `getLogs` mock's answer, e.g.
+    undefined`, in a `getLogs` mock's answer, e.g.
     `{ ...log, blockTimestamp: undefined }`. The mock answers it without one.
 - [ ] `mock.actions.getLogs(pins)` for one request rather than the logs:
       faults, limits, and overrides. Show:
@@ -679,7 +743,7 @@ features land; tick them off as pages get written.
       an answer is reported ("without an answer", with how to give it one),
       and steps aside for any mock that has one. A call that throws changes
       nothing, so a rejected `.returns(value)` (a value that can't be
-      encoded, a receipt log placed elsewhere) leaves the mock registered
+      encoded, a reverted receipt over a transaction with logs) leaves the mock registered
       without an answer. App tests never see this beyond the throw itself.
       A test of a helper that registers mocks and is expected to throw
       (`expect(() => receiptFor(mock, bad)).toThrow()`) should use a mock of
