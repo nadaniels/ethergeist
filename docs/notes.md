@@ -637,6 +637,20 @@ features land; tick them off as pages get written.
     when it sent none, so pinning `value: 0n` matches those.
   - Answers are gas, a bigint: there's no `.returns()` without a value,
     since a node never estimates zero.
+  - `.reverts(spec)` reverts the estimate, as a contract's estimate
+    revert does (code 3 with the revert data, viem's
+    `ExecutionRevertedError`), so a client that estimates first (a local
+    account) throws before it sends: a test of "simulation fails, the
+    wallet isn't asked" for calldata to an address that isn't a
+    registered contract. A JSON-RPC account's send isn't estimated by
+    viem, and the mock's send doesn't ask estimate mocks, so it isn't
+    refused. Without an ABI it takes a reason, a panic code or raw data,
+    like a send's `.reverts()`; a custom error is
+    `{ data: encodeErrorResult(…) }`. A resolver's `revert(spec)` takes
+    the same forms and reverts the estimate too, e.g.
+    `.returns(({ value, revert }) => value > cap ? revert("too much") :
+    50_000n)`; a spec viem can't encode fails that request, as a
+    resolver's error does.
   - A registered contract owns its functions: its `estimateGas` mocks and
     defaults answer estimates of them first, and action mocks answer the
     rest, by the usual rules. So an args-less

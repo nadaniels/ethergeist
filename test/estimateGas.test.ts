@@ -5,6 +5,7 @@ import {
   HttpRequestError,
   FeeCapTooLowError,
   InsufficientFundsError,
+  IntegerOutOfRangeError,
   IntrinsicGasTooLowError,
   InvalidAddressError,
   RpcRequestError,
@@ -26,6 +27,7 @@ import {
   MockCheckError,
   type ContractDefaults,
   MockNotFoundError,
+  MockResolverError,
   MockSetupError,
   createMockRpc,
   testAddress,
@@ -61,6 +63,19 @@ function walletSetup() {
     transport: mock.transport({ retryCount: 0 }),
   });
   return { mock, client, wallet, account };
+}
+
+/** Each error in the chain viem throws, by class, with what it says of the node's error. */
+function errorChain(error: unknown): unknown[] {
+  const chain: unknown[] = [];
+  for (let cause: unknown = error; cause instanceof Error; cause = cause.cause)
+    chain.push({
+      name: cause.constructor.name,
+      ...("details" in cause && { details: cause.details }),
+      ...("code" in cause && { code: cause.code }),
+      ...("data" in cause && { data: cause.data }),
+    });
+  return chain;
 }
 
 /** The node error an estimate rejects with, after checking it isn't counted as unhandled. */
@@ -178,6 +193,127 @@ describe("estimateGas", () => {
       '"eth_estimateGas" has a typed mock: use mock.actions.estimateGas().',
       () => mock.method("eth_estimateGas"),
     );
+  });
+});
+
+describe("estimateGas reverts", () => {
+  test(".reverts() reverts it, as a node's estimate reverts, so a local account never sends", async () => {
+    const { mock, client, wallet } = walletSetup();
+    mock.actions.estimateGas({ to: bob }).reverts("paused");
+
+    const error = await refusal(
+      mock,
+      client.estimateGas({ account: alice, to: bob, data: "0x12" }),
+    );
+    expect(expectCause(error, ExecutionRevertedError).details).toBe("execution reverted: paused");
+    expect(mock.formatHistory()).toBe(
+      '#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, data: 0x12, blockNumber: 10n, blockTag: latest }) ✗ reverted: "paused"',
+    );
+
+    const sent = await rejectionOf(wallet.sendTransaction({ to: bob, data: "0x12" }));
+    expect(expectCause(sent, ExecutionRevertedError).details).toBe("execution reverted: paused");
+    expect(mock.transactions).toEqual([]);
+  });
+
+  test.each([
+    ["nothing, a bare revert", undefined],
+    ["a reason", "paused"],
+    ["a panic code", { panic: 0x11 }],
+    ["raw data", { data: "0xdeadbeef" }],
+  ] as const)(
+    "with %s, viem gives the app the error a contract's estimate revert gives, from .reverts() or a resolver",
+    async (_, spec) => {
+      const { mock, client } = setup();
+      const token = mock.contract({ abi: tokenAbi, address: testAddress("token") });
+      token.estimateGas.transfer().reverts(spec);
+      mock.actions.estimateGas({ to: bob }).reverts(spec);
+      mock.actions.estimateGas({ to: alice }).returns(({ revert }) => revert(spec));
+      const data = encodeFunctionData({ abi: tokenAbi, functionName: "transfer", args: [bob, 1n] });
+
+      const chainOf = async (to: Address) =>
+        errorChain(await refusal(mock, client.estimateGas({ account: alice, to, data })));
+
+      const contracts = await chainOf(token.address);
+      expect(await chainOf(bob)).toEqual(contracts);
+      expect(await chainOf(alice)).toEqual(contracts);
+    },
+  );
+
+  test("a resolver's revert reverts the estimate only when it's called", async () => {
+    const { mock, client } = setup();
+    mock.actions
+      .estimateGas()
+      .returns(({ value, revert }) => (value > 1n ? revert("too much") : 30_000n));
+
+    expect(await client.estimateGas({ account: alice, to: bob, value: 1n })).toBe(30_000n);
+    const error = await refusal(mock, client.estimateGas({ account: alice, to: bob, value: 2n }));
+    expect(expectCause(error, ExecutionRevertedError).details).toBe("execution reverted: too much");
+  });
+
+  test("a resolver's revert with a spec viem can't encode is a resolver error, as a contract estimate's is", async () => {
+    const { mock, client } = setup();
+    const token = mock.contract({ abi: tokenAbi, address: testAddress("token") });
+    token.estimateGas.transfer().returns(({ revert }) => revert({ panic: -1 }));
+    mock.actions.estimateGas({ to: bob }).returns(({ revert }) => revert({ panic: -1 }));
+    const data = encodeFunctionData({ abi: tokenAbi, functionName: "transfer", args: [bob, 1n] });
+
+    for (const to of [token.address, bob]) {
+      const error = await rejectionOf(client.estimateGas({ account: alice, to, data }));
+      expectCause(expectCause(error, MockResolverError), IntegerOutOfRangeError);
+    }
+    expect(mock.unhandled).toHaveLength(2);
+  });
+
+  test("it beats a send mock's implied estimate, but not a contract's own estimate mock", async () => {
+    const { mock, client } = setup();
+    const token = mock.contract({ abi: tokenAbi, address: testAddress("token") });
+    mock.actions.sendTransaction().returns();
+    mock.actions.estimateGas().reverts("simulation failed");
+    token.estimateGas.transfer().returns(65_000n);
+
+    const reverted = await refusal(
+      mock,
+      client.estimateGas({ account: alice, to: bob, data: "0x12" }),
+    );
+    expect(expectCause(reverted, ExecutionRevertedError).details).toBe(
+      "execution reverted: simulation failed",
+    );
+    const data = encodeFunctionData({ abi: tokenAbi, functionName: "transfer", args: [bob, 1n] });
+    expect(await client.estimateGas({ account: alice, to: token.address, data })).toBe(65_000n);
+  });
+
+  test("limits and pins apply as to any answer", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas().returns(30_000n);
+    mock.actions.estimateGas({ from: bob }).reverts();
+    mock.actions.estimateGas().once().reverts({ panic: 0x01 });
+
+    await refusal(mock, client.estimateGas({ account: alice, to: bob }));
+    expect(await client.estimateGas({ account: alice, to: bob })).toBe(30_000n);
+    await refusal(mock, client.estimateGas({ account: bob, to: alice }));
+    expect(
+      mock
+        .formatHistory()
+        .split("\n")
+        .map((line) => line.split(" ✗ ")[1] ?? "→"),
+    ).toEqual(["reverted: Panic(1n)", "→", "reverted (0x)"]);
+  });
+
+  test("a spec viem can't encode throws at registration, changing nothing", async () => {
+    const { mock, client } = setup();
+    const answered = mock.actions.estimateGas({ to: bob });
+    answered.returns(30_000n);
+    const unanswered = mock.actions.estimateGas();
+
+    for (const builder of [answered, unanswered])
+      expect(() => {
+        builder.reverts({ panic: -1 });
+      }).toThrow(IntegerOutOfRangeError);
+    // The answer it had stays, and one without an answer still has none.
+    expect(await client.estimateGas({ account: alice, to: bob })).toBe(30_000n);
+    expectThrows(MockCheckError, "estimateGas(*) without an answer", () => {
+      mock.assertAllUsed();
+    });
   });
 });
 

@@ -231,6 +231,20 @@ describe("getLogs", () => {
     mock.actions.estimateGas().fails("nonceTooLow");
     // @ts-expect-error an estimate reports too little gas as exceeding the allowance
     mock.actions.estimateGas().returns(({ fail }) => fail("intrinsicGasTooLow"));
+    mock.actions.estimateGas({ to: alice }).reverts();
+    mock.actions.estimateGas().reverts("paused");
+    mock.actions.estimateGas().once().reverts({ panic: 0x11 });
+    mock.actions.estimateGas().times(2).reverts({ data: "0xdeadbeef" });
+    // @ts-expect-error without an ABI, there are no custom errors
+    mock.actions.estimateGas().reverts({ errorName: "Paused" });
+    // @ts-expect-error raw data is hex
+    mock.actions.estimateGas().reverts({ data: "deadbeef" });
+    mock.actions.estimateGas().returns(({ value, revert }) => (value > 0n ? revert("paused") : 1n));
+    mock.actions.estimateGas().returns(({ revert }) => revert());
+    mock.actions.estimateGas().returns(({ revert }) => revert({ panic: 0x11 }));
+    mock.actions.estimateGas().returns(({ revert }) => revert({ data: "0xdeadbeef" }));
+    // @ts-expect-error without an ABI, there are no custom errors
+    mock.actions.estimateGas().returns(({ revert }) => revert({ errorName: "Paused" }));
     // @ts-expect-error a node doesn't refuse a balance read by name
     mock.actions.getBalance().fails("insufficientFunds");
   });

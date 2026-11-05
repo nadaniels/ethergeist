@@ -2,6 +2,8 @@ import { type Hex, numberToHex } from "viem";
 
 import { type ResolveBlock, transactionParam } from "../chain/params.js";
 import { sentType } from "../chain/transactions.js";
+import { createRevertError } from "../contracts/answers.js";
+import type { RevertFn, RevertSpec } from "../contracts/types.js";
 import { encodeGas, impliedGas } from "../mocking/gas.js";
 import type {
   EstimateErrorName,
@@ -22,13 +24,33 @@ import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext, EstimateGasCall, SendTransactionCall } from "./types.js";
 
 /**
- * What an estimate's resolver gets: the call, and `fail`, which also takes a
- * node's refusal by name, e.g. `fail("insufficientFunds")`.
+ * What an estimate's resolver gets: the call; `fail`, which also takes a
+ * node's refusal by name, e.g. `fail("insufficientFunds")`; and `revert`,
+ * which reverts the estimate, as `.reverts()` does. Without an ABI,
+ * `revert` takes a reason, a panic code or raw data.
  */
-export type EstimateGasContext = ActionContext<EstimateGasCall, MockNodeFault<EstimateErrorName>>;
+export type EstimateGasContext = ActionContext<
+  EstimateGasCall,
+  MockNodeFault<EstimateErrorName>
+> & {
+  /** Revert the estimate, e.g. `revert("paused")`: see `RevertSpec`. */
+  revert: RevertFn<readonly []>;
+};
 
-/** Like `MockActionBuilder`, for an estimate. */
-export type MockEstimateBuilder<context> = WithLimits<MockEstimateAnswers<context>>;
+/**
+ * Like `MockActionBuilder`, for an estimate: it also reverts, as a
+ * contract's estimate does.
+ */
+export type MockEstimateBuilder<context> = WithLimits<
+  MockEstimateAnswers<context> & {
+    /**
+     * Revert every matching estimate, as a node's does, so a client that
+     * estimates first throws before it sends. Without an ABI, it takes a
+     * reason, a panic code or raw data: see `RevertSpec`.
+     */
+    reverts(spec?: RevertSpec<readonly []>): void;
+  }
+>;
 
 /** `MockAction` for `estimateGas`. */
 export type MockEstimateGasAction = {
@@ -81,6 +103,24 @@ export const estimateGas = ({
   zero: undefined,
   encode: encodeGas,
   view: viewQuantity,
+  extendContext(context) {
+    Object.assign(context, {
+      revert(spec?: RevertSpec): never {
+        throw createRevertError([], spec);
+      },
+    });
+  },
+  extendBuilder(builder) {
+    Object.assign(builder, {
+      // Made at registration, so a spec viem can't encode throws here.
+      reverts(spec?: RevertSpec) {
+        const error = createRevertError([], spec);
+        builder.returns(() => {
+          throw error;
+        });
+      },
+    });
+  },
   // A registered contract's turn at an estimate of one of its functions.
   contractTurn(call) {
     const { to, data, from, value, blockNumber } = call;
