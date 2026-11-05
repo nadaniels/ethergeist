@@ -83,8 +83,11 @@ export function createChecks({
     const error = new MockCheckError(message, {
       metaMessages: recent?.split("\n"),
     });
-    // Not every engine has it (Node's types say it's always there).
-    if ("captureStackTrace" in Error) Error.captureStackTrace(error, check);
+    // Not every engine has it, and not every consumer has Node's types, which declare it.
+    const { captureStackTrace } = Error as {
+      captureStackTrace?: (target: object, constructor: typeof check) => void;
+    };
+    captureStackTrace?.(error, check);
     return error;
   }
 

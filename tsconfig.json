@@ -2,7 +2,7 @@
   "compilerOptions": {
     "module": "nodenext",
     "target": "esnext",
-    "types": [],
+    "types": ["node"],
     "noEmit": true,
 
     "noUncheckedIndexedAccess": true,

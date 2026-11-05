@@ -1,3 +1,4 @@
+import { spawnSync } from "node:child_process";
 import { readFileSync, readdirSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 
@@ -97,5 +98,20 @@ describe("architecture", () => {
       );
     });
     expect(messageOnly).toEqual([]);
+  });
+
+  test("src/ uses no Node APIs, so what's built from it runs in a browser", () => {
+    // tsconfig.build.json is src/ without its tests, and without Node's types.
+    const root = resolve(src, "..");
+    // Run through Node, so it doesn't depend on the shell shim in node_modules/.bin.
+    const tsc = join(root, "node_modules/typescript/bin/tsc");
+    const { error, stdout, status } = spawnSync(
+      process.execPath,
+      [tsc, "-p", join(root, "tsconfig.build.json")],
+      { encoding: "utf8" },
+    );
+    expect(error).toBeUndefined();
+    expect(stdout).toBe("");
+    expect(status).toBe(0);
   });
 });

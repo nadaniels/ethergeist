@@ -1,0 +1,9 @@
+{
+  // What ships: src/ without its colocated tests, and without Node's types,
+  // so code that reaches for Node's globals (process, Buffer, …) fails here:
+  // what's built from src/ runs in browsers too. The build uses this config.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "types": [] },
+  "include": ["src"],
+  "exclude": ["src/**/*.test.ts", "src/**/*.test-d.ts"]
+}
