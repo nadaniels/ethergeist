@@ -186,7 +186,8 @@ describe("historyLimit", () => {
     expectThrows(
       MockCheckError,
       "The mock couldn't answer 3 request(s) (the last 2 kept, past historyLimit):\n" +
-        '  - RPC method "eth_unmocked" is not mocked.',
+        '  - RPC method "eth_unmocked" is not mocked (×2).\n' +
+        '      Mock it with mock.method("eth_unmocked", …).returns(…).\n\n',
       () => {
         mock.assertNoUnhandled();
       },

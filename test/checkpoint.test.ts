@@ -544,7 +544,13 @@ describe("a transaction the last restore() or reset() removed", () => {
     expectThrows(
       MockCheckError,
       `The mock couldn't answer 2 request(s):\n  - No mock for getTransactionReceipt({ hash: ${hash} }).\n` +
-        `  - No mocked contract at ${USDC}.\n${removedFooter}`,
+        "      This transaction was on the chain until the last restore() or reset() removed it: " +
+        "a receipt wait from an earlier test may still be polling.\n" +
+        "      Mock it with mock.actions.getTransactionReceipt({ hash }).returns(…).\n" +
+        `  - No mocked contract at ${USDC}.\n` +
+        "      Call data: 0x313ce567\n" +
+        "      Register it with contract(), or mark it empty() for an address without code.\n" +
+        removedFooter,
       () => {
         mock.assertNoUnhandled();
       },
@@ -552,9 +558,21 @@ describe("a transaction the last restore() or reset() removed", () => {
     // And a read of a contract it removed, in this test's own restore.
     mock.clearCalls();
     await rejectionOf(read(DAI, "decimals"));
-    expectThrows(MockCheckError, `No mocked contract at ${DAI}.\n${removedFooter}`, () => {
-      baseline.restore({ assertNoUnhandled: true });
-    });
+    // The same list, its hints under each miss.
+    expectThrows(
+      MockCheckError,
+      `The mock couldn't answer 1 request(s):\n  - No mocked contract at ${DAI}.\n` +
+        "      Call data: 0x313ce567\n" +
+        "      Register it with contract(), or mark it empty() for an address without code.\n" +
+        "      A contract was registered at this address until the last restore() or reset() " +
+        "removed it.\n" +
+        "      If this test is in a nested describe, an afterEach in a parent describe that " +
+        "restores per test wipes its setup; keep the two describes siblings.\n" +
+        removedFooter,
+      () => {
+        baseline.restore({ assertNoUnhandled: true });
+      },
+    );
   });
 
   test("an estimate or a send to a contract it removed says so too", async () => {
@@ -613,7 +631,10 @@ describe("a transaction the last restore() or reset() removed", () => {
       thrownBy(() => {
         mock.assertNoUnhandled();
       }).shortMessage,
-    ).toBe(`The mock couldn't answer 1 request(s):\n  - No mock for decimals() on ${USDC}.`);
+    ).toBe(
+      `The mock couldn't answer 1 request(s):\n  - No mock for decimals() on ${USDC}.\n` +
+        '      No mocks registered for "decimals".',
+    );
   });
 });
 
@@ -622,7 +643,15 @@ describe("checkpoint()", () => {
     const { mock, read } = setup();
     await rejectionOf(read(USDC, "decimals"));
 
-    expectThrows(MockCheckError, "Can't checkpoint: 1 request(s)", () => mock.checkpoint());
+    expectThrows(
+      MockCheckError,
+      "Can't checkpoint: 1 request(s) since the last clear went unanswered. Fix the setup, or " +
+        "call clearCalls() first if they were intentional:\n" +
+        `  - No mocked contract at ${USDC}.\n` +
+        "      Call data: 0x313ce567\n" +
+        "      Register it with contract(), or mark it empty() for an address without code.\n\n",
+      () => mock.checkpoint(),
+    );
     mock.clearCalls();
     expect(() => mock.checkpoint()).not.toThrow();
   });

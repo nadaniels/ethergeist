@@ -142,7 +142,7 @@ describe("the mock's errors", () => {
     }).toThrow(MockCheckError);
     expectThrows(
       MockCheckError,
-      /^The mock couldn't answer 1 request\(s\):\n.*\n\nRequests so far:\n#1 eth_call[^]*[^\n]$/u,
+      /^The mock couldn't answer 1 request\(s\):\n.*\n {6}No mocks registered for "balanceOf"\.\n\nRequests so far:\n#1 eth_call[^]*[^\n]$/u,
       () => {
         mock.assertNoUnhandled();
       },

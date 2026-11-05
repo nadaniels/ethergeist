@@ -107,7 +107,7 @@ export function formatReceived(
       differs === undefined ? "matches; another mock answered it" : `${differs} didn't match`;
     return `\n      ${call}  ← ${why}`;
   });
-  if (received.length > 3) lines.push(`\n      …and ${received.length - 3} more`);
+  if (received.length > 3) lines.push(`\n      … ${received.length - 3} more`);
   const count = total === 1 ? "1 call" : `${total} calls`;
   const kept =
     received.length === total ? "" : ` (the last ${received.length} kept, past historyLimit)`;

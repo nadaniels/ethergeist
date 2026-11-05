@@ -114,6 +114,205 @@ describe("assertNoUnhandled()", () => {
   });
 });
 
+/** `assertNoUnhandled()`'s list: its short message, without the recent requests. */
+function unhandledList(mock: ReturnType<typeof setup>["mock"]): string {
+  try {
+    mock.assertNoUnhandled();
+  } catch (error) {
+    if (error instanceof MockCheckError) return error.shortMessage;
+    throw error;
+  }
+  return expect.unreachable("expected assertNoUnhandled() to throw");
+}
+
+describe("assertNoUnhandled(): what each miss shows", () => {
+  const vaultAbi = parseAbi(["function previewRedeem(uint256 shares) view returns (uint256)"]);
+
+  test("a contract near-miss lists what was registered, each with the arg it missed on", async () => {
+    const { mock, client } = setup();
+    const vault = mock.contract({ abi: vaultAbi, address: DAI, name: "Vault" });
+    vault.read.previewRedeem([2n * 10n ** 18n]).returns(1n);
+    vault.read.previewRedeem([5n]).returns(1n);
+
+    await rejectionOf(
+      client.readContract({
+        abi: vaultAbi,
+        address: DAI,
+        functionName: "previewRedeem",
+        args: [3_900_000n],
+      }),
+    );
+    expect(unhandledList(mock)).toBe(
+      "The mock couldn't answer 1 request(s):\n" +
+        `  - No mock for previewRedeem(3900000n) on Vault (${DAI}).\n` +
+        "      Registered:\n" +
+        "        previewRedeem(2000000000000000000n)  ← shares didn't match\n" +
+        "        previewRedeem(5n)  ← shares didn't match",
+    );
+  });
+
+  test("an action near-miss, and a repeated miss listed once with its count", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: bob }).returns(1n);
+
+    await rejectionOf(client.getBalance({ address: alice }));
+    await rejectionOf(client.getBalance({ address: alice }));
+    expect(unhandledList(mock)).toBe(
+      "The mock couldn't answer 2 request(s):\n" +
+        `  - No mock for getBalance({ address: ${alice}, blockNumber: 1n, blockTag: latest }) (×2).\n` +
+        "      Registered:\n" +
+        `        getBalance({ address: ${getAddress(bob)} })  ← address didn't match`,
+    );
+  });
+
+  test("misses group only when their hints match too, in the order first seen", async () => {
+    const { mock, client, balanceOf } = setup();
+    mock.actions.getBalance({ address: bob }).returns(1n);
+
+    await rejectionOf(client.getBalance({ address: alice }));
+    await rejectionOf(balanceOf(alice));
+    mock.actions.getBalance({ address: DAI }).returns(1n);
+    await rejectionOf(client.getBalance({ address: alice }));
+    await rejectionOf(balanceOf(alice));
+    const miss = `  - No mock for getBalance({ address: ${alice}, blockNumber: 1n, blockTag: latest }).`;
+    expect(unhandledList(mock)).toBe(
+      "The mock couldn't answer 4 request(s):\n" +
+        `${miss}\n` +
+        "      Registered:\n" +
+        `        getBalance({ address: ${getAddress(bob)} })  ← address didn't match\n` +
+        `  - No mocked contract at ${USDC} (×2).\n` +
+        `      Call data: 0x70a08231000000000000000000000000${alice.slice(2).toLowerCase()}\n` +
+        "      Register it with contract(), or mark it empty() for an address without code.\n" +
+        `${miss}\n` +
+        "      Registered:\n" +
+        `        getBalance({ address: ${getAddress(bob)} })  ← address didn't match\n` +
+        `        getBalance({ address: ${DAI} })  ← address didn't match`,
+    );
+  });
+
+  test("a raw method says how to mock it", async () => {
+    const { mock } = setup();
+
+    await rejectionOf(mock.request({ method: "eth_getProof", params: [alice, [], "latest"] }));
+    expect(unhandledList(mock)).toBe(
+      "The mock couldn't answer 1 request(s):\n" +
+        '  - RPC method "eth_getProof" is not mocked.\n' +
+        '      Mock it with mock.method("eth_getProof", …).returns(…).',
+    );
+  });
+
+  test("a long list of what was registered shows the first 3 and counts the rest", async () => {
+    const { mock, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    for (const name of ["a", "b", "c", "d", "e"])
+      usdc.read.balanceOf([testAddress(name)]).returns(1n);
+
+    await rejectionOf(balanceOf(alice));
+    const registered = ["a", "b", "c"].map(
+      (name) => `        balanceOf(${getAddress(testAddress(name))})  ← account didn't match\n`,
+    );
+    expect(unhandledList(mock)).toBe(
+      "The mock couldn't answer 1 request(s):\n" +
+        `  - No mock for balanceOf(${alice}) on ${USDC}.\n` +
+        "      Registered:\n" +
+        registered.join("") +
+        "        … 2 more",
+    );
+  });
+
+  test("misses that differ only past the cut are listed once: they read the same", async () => {
+    const { mock, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    for (const name of ["a", "b", "c"]) usdc.read.balanceOf([testAddress(name)]).returns(1n);
+    usdc.read
+      .balanceOf([testAddress("d")])
+      .once()
+      .returns(1n);
+
+    // The 4th mock's line changes once it's used up, past the 3 shown.
+    await rejectionOf(balanceOf(alice));
+    await balanceOf(testAddress("d"));
+    await rejectionOf(balanceOf(alice));
+    expect(unhandledList(mock)).toContain(`  - No mock for balanceOf(${alice}) on ${USDC} (×2).\n`);
+  });
+
+  test("an estimate's lists are cut each on its own; a list of 3 isn't cut", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    for (const name of ["a", "b", "c"])
+      usdc.estimateGas.transfer([testAddress(name), 1n]).returns(1n);
+    for (const name of ["a", "b", "c", "d"]) usdc.write.transfer([testAddress(name), 1n]);
+
+    await rejectionOf(
+      client.estimateContractGas({
+        abi: erc20Abi,
+        address: USDC,
+        functionName: "transfer",
+        args: [alice, 1n],
+        account: bob,
+      }),
+    );
+    const list = unhandledList(mock);
+    expect(list).toContain("      Registered:\n");
+    expect(list).toContain("      Write mocks, which imply the estimate of a send they match:\n");
+    expect(list.match(/recipient didn't match/gu)).toHaveLength(6);
+    expect(list.match(/… \d+ more/gu)).toEqual(["… 1 more"]);
+    expect(list.endsWith("        … 1 more")).toBe(true);
+  });
+
+  test("a resolver's cause's hints show whole: only the mock's own lists are cut", async () => {
+    const { mock, client, balanceOf } = setup();
+    mock
+      .contract({ abi: erc20Abi, address: USDC })
+      .read.balanceOf()
+      .returns(async () => {
+        // A resolver that reads another, unmocked contract: viem's error lists the call.
+        await client.call({ account: alice, to: DAI, data: "0x313ce567", value: 1n, gas: 1000n });
+        return 1n;
+      });
+
+    await rejectionOf(balanceOf(alice));
+    const list = unhandledList(mock);
+    expect(list).toContain('  - Mock resolver for "balanceOf" threw:');
+    expect(list).toMatch(/^ {8}data: +0x313ce567$/mu);
+    expect(list).toMatch(/^ {8}gas: +1000$/mu);
+    expect(list).not.toContain("more");
+  });
+
+  test("a grouped miss without a closing period gets its count at the end", async () => {
+    const { mock, balanceOf } = setup();
+    mock
+      .contract({ abi: erc20Abi, address: USDC })
+      .read.balanceOf()
+      .returns(() => {
+        throw new Error("fixture bug");
+      });
+
+    await rejectionOf(balanceOf(alice));
+    await rejectionOf(balanceOf(alice));
+    expect(unhandledList(mock)).toBe(
+      "The mock couldn't answer 2 request(s):\n" +
+        '  - Mock resolver for "balanceOf" threw: fixture bug (×2)',
+    );
+  });
+
+  test("a miss without hints is its line alone", async () => {
+    const { mock, balanceOf } = setup();
+    mock
+      .contract({ abi: erc20Abi, address: USDC })
+      .read.balanceOf()
+      .returns(() => {
+        throw new Error("fixture bug");
+      });
+
+    await rejectionOf(balanceOf(alice));
+    expect(unhandledList(mock)).toBe(
+      "The mock couldn't answer 1 request(s):\n" +
+        '  - Mock resolver for "balanceOf" threw: fixture bug',
+    );
+  });
+});
+
 describe("unencodable returns", () => {
   // OpenZeppelin's Ownable.
   const ownableAbi = parseAbi(["function owner() view returns (address)"]);
@@ -459,7 +658,7 @@ describe("assertAllUsed(): what the function received instead", () => {
     const message = unusedMessage(mock);
     expect(message).toContain("received 5 calls to balanceOf:");
     expect(message.match(/account didn't match/gu)).toHaveLength(3);
-    expect(message).toContain("      …and 2 more");
+    expect(message).toContain("      … 2 more");
   });
 
   test("unnamed inputs are numbered; other overloads' calls are left out", async () => {

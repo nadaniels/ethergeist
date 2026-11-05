@@ -3,6 +3,7 @@ import type { Recorder } from "../history/recorder.js";
 import type { UnhandledRequest } from "../history/types.js";
 import {
   MockCheckError,
+  MockNotFoundError,
   MockSetupError,
   nestedRestoreHint,
   removedContractNote,
@@ -38,8 +39,65 @@ function countOf(unhandled: RecordList<UnhandledRequest>): string {
   return `${unhandled.total} request(s)${shown}`;
 }
 
-const unhandledLines = (unhandled: RecordList<UnhandledRequest>) =>
-  unhandled.kept.map(({ error }) => `  - ${error.shortMessage}`).join("\n");
+/**
+ * The unhandled requests' list: each miss's short message, with its error's
+ * hints indented under it, so a test that never saw the error (the app kept
+ * it) still gets what was registered. Misses that read the same, hints as
+ * shown included, are listed once with `(×n)`, in the order first seen.
+ */
+function unhandledLines(unhandled: RecordList<UnhandledRequest>): string {
+  const groups = new Map<string, { message: string; hints: string[]; count: number }>();
+  for (const { error } of unhandled.kept) {
+    const message = error.shortMessage;
+    const lines = hintLinesOf(error.metaMessages ?? []);
+    // Only a miss's own lists are cut: a resolver's hints are its cause's,
+    // like viem's block of a call's fields, which a cut would leave partial.
+    const hints = error instanceof MockNotFoundError ? cutLists(lines) : lines;
+    const key = [message, ...hints].join("\n");
+    const group = groups.get(key);
+    if (group) group.count += 1;
+    else groups.set(key, { message, hints, count: 1 });
+  }
+  const lines: string[] = [];
+  for (const { message, hints, count } of groups.values())
+    lines.push(
+      `  - ${count === 1 ? message : withCount(message, count)}`,
+      ...hints.map((line) => `      ${line}`),
+    );
+  return lines.join("\n");
+}
+
+/** A miss's hints, a line each: blank lines dropped, so the list reads as one. */
+const hintLinesOf = (metaMessages: readonly string[]) =>
+  metaMessages.flatMap((message) => message.split("\n")).filter((line) => line.trim() !== "");
+
+/** How many lines of a list (a run of lines indented under a header, like "Registered:") show. */
+const listShown = 3;
+
+/** Hints with each list cut to `listShown` lines, then how many more it had. */
+function cutLists(lines: readonly string[]): string[] {
+  const cut: string[] = [];
+  let run = 0;
+  const endRun = () => {
+    if (run > listShown) cut.push(`  … ${run - listShown} more`);
+    run = 0;
+  };
+  for (const line of lines) {
+    if (/^\s/u.test(line)) {
+      run += 1;
+      if (run <= listShown) cut.push(line);
+    } else {
+      endRun();
+      cut.push(line);
+    }
+  }
+  endRun();
+  return cut;
+}
+
+/** A grouped miss's line with its count, before its closing period if it has one. */
+const withCount = (line: string, count: number) =>
+  line.endsWith(".") ? `${line.slice(0, -1)} (×${count}).` : `${line} (×${count})`;
 
 /** `assertAllUsed()`'s message, if any mock answered no call since the last clear. */
 function unusedFailure(list: readonly string[]): string[] {

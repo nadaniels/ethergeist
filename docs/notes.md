@@ -772,6 +772,25 @@ features land; tick them off as pages get written.
 - [ ] `assertNoUnhandled()` (catches errors the app swallowed) and
       `assertAllUsed()` (catches mocks that never answered: wrong args, or a
       call the app no longer makes).
+- [ ] What `assertNoUnhandled()`'s list shows (as do `restore()`'s check
+      and `checkpoint()`'s refusal): each miss with its error's hints
+      indented under it, so a test whose app kept the error (wagmi holds it
+      in query state) still sees what was registered and which arg missed.
+      Identical misses show once with `(×n)`, in the order first seen; a
+      list under a header ("Registered:") shows its first 3 lines and
+      `… n more`. Show an example:
+
+      ```
+      The mock couldn't answer 3 request(s):
+        - No mock for previewRedeem(3900000n) on Vault (0x6B17…).
+            Registered:
+              previewRedeem(2000000000000000000n)  ← shares didn't match
+              previewRedeem(5n)  ← shares didn't match
+        - No mock for getBalance({ address: 0xa41f…, … }) (×2).
+            Registered:
+              getBalance({ address: 0x4292… })  ← address didn't match
+      ```
+
 - [ ] What `assertAllUsed()` checks: every registration, args-less ones and
       `.fails()`/`.reverts()` overrides included, except contract `defaults`.
       Explain why: defaults are shared setup, answers many tests use but no
