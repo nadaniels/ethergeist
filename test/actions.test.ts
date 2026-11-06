@@ -995,6 +995,21 @@ describe("method()", () => {
     expect(mock.unhandled).toHaveLength(1);
   });
 
+  test("a miss shows the request's params, as the registered mocks show theirs", async () => {
+    const { mock } = setup();
+    mock.method("eth_getProof", [USDC]).returns({});
+
+    const error = expectCause(
+      await rejectionOf(mock.request({ method: "eth_getProof", params: [DAI, [], "latest"] })),
+      MockNotFoundError,
+    );
+    expect(error.shortMessage).toBe(`No mock for eth_getProof(${DAI}, [], latest).`);
+    expect(error.metaMessages).toEqual([
+      "Registered:",
+      `  eth_getProof(${USDC})  ← param 1 didn't match`,
+    ]);
+  });
+
   test("refuses methods that have a typed or built-in answer", () => {
     const { mock } = setup();
 

@@ -174,6 +174,9 @@ type Handler = MockHandler<ActionContext<object>>;
 const paramName = (key: PinnedKey) =>
   key === null ? "params" : typeof key === "number" ? `param ${key + 1}` : key;
 
+/** A call as messages show it: a raw method's by its params. */
+const shown = (call: object) => ("params" in call ? call.params : call);
+
 /**
  * A table answering `definition`'s action, with its mocks and the calls it
  * received, kept to `recordLimit`.
@@ -226,7 +229,7 @@ export function createTable(
       const mismatched = mismatches(handler.pinned, actualOf(handler.pinned, call));
       const [key] = mismatched;
       return {
-        call: formatMismatch(definition.name, "params" in call ? call.params : call, mismatched),
+        call: formatMismatch(definition.name, shown(call), mismatched),
         differs: key === undefined ? undefined : paramName(key),
       };
     });
@@ -299,7 +302,7 @@ export function createTable(
         return `  ${describeMock(definition.name, mock)}${reason}`;
       });
       const note = notFoundNote?.(call);
-      throw new MockNotFoundError(`No mock for ${formatCall(definition.name, call)}.`, {
+      throw new MockNotFoundError(`No mock for ${formatCall(definition.name, shown(call))}.`, {
         metaMessages: [
           ...(note === undefined ? [] : [note]),
           ...(registered.length > 0
