@@ -9,6 +9,12 @@ updates:
     groups:
       viem:
         patterns: ["viem", "ox"]
+    # A new viem major or an ox past 0.14 changes the peer ranges
+    ignore:
+      - dependency-name: viem
+        update-types: ["version-update:semver-major"]
+      - dependency-name: ox
+        update-types: ["version-update:semver-major", "version-update:semver-minor"]
   - package-ecosystem: github-actions
     directory: /
     schedule:
