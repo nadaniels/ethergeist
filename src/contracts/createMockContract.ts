@@ -119,14 +119,14 @@ export function createMockContract<const abi extends Abi>(
     /** How many calls each list keeps: the contract's, and each function's. */
     recordLimit?: RecordLimit;
     /** Runs a write's resolver, refusing the rpc's `addTransaction` in its body. */
-    whileWriting?: <result>(run: () => result) => result;
+    whileSending?: <result>(run: () => result) => result;
   } = {},
 ): InternalMockContract<abi> {
   const {
     onCall = () => {},
     addTransaction = () => ({ logs: [] }),
     recordLimit = unlimited,
-    whileWriting = <result>(run: () => result) => run(),
+    whileSending = <result>(run: () => result) => run(),
   } = hooks;
   const { abi, name, defaults = {} } = parameters;
   // Also validates the address at registration.
@@ -191,7 +191,7 @@ export function createMockContract<const abi extends Abi>(
     if (namespace === "write") {
       extendWriteBuilder(builder, {
         revertError: (spec?: RevertSpec) => createRevertError(abi, spec),
-        whileWriting,
+        whileSending,
       });
       return builder;
     }

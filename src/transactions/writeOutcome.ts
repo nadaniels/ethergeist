@@ -172,7 +172,7 @@ type WriteEngine = {
    * Runs a resolver, refusing `mock.addTransaction()` in it up to its first
    * `await`.
    */
-  whileWriting<result>(run: () => result): result;
+  whileSending<result>(run: () => result): result;
 };
 
 /**
@@ -199,7 +199,7 @@ export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void 
         },
       };
       try {
-        const outcome = await engine.whileWriting(() => resolver({ ...context, ...writeContext }));
+        const outcome = await engine.whileSending(() => resolver({ ...context, ...writeContext }));
         if (emitted.length === 0) return outcome;
         if (outcome === undefined) return { logs: emitted };
         const logs: unknown = isPlainObject(outcome) ? (outcome.logs ?? []) : undefined;

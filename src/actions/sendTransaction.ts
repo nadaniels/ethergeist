@@ -164,7 +164,7 @@ export function sendTransaction({
     extendBuilder(builder) {
       extendWriteBuilder(builder, {
         revertError: (spec?: RevertSpec) => createRevertError([], spec),
-        whileWriting: transactions.whileWriting,
+        whileSending: transactions.whileSending,
       });
     },
     // A registered contract's turn at a send of one of its functions.

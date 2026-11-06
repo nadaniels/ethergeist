@@ -196,21 +196,21 @@ export function createTransactionStore({
    * Whether a send mock's resolver is running, up to its first `await`:
    * adding a transaction is refused then.
    */
-  let writing = false;
+  let sending = false;
 
   /**
    * Runs a send mock's resolver, refusing `addTransaction` (and so
    * `contract.emit`) in it up to its first `await`: it would place a
-   * transaction of its own, mined in the middle of the send. Code elsewhere
+   * transaction of its own, mid-send. Code elsewhere
    * (a demo's ticker) can still add one while a resolver waits.
    */
-  function whileWriting<result>(run: () => result): result {
-    const outer = writing;
-    writing = true;
+  function whileSending<result>(run: () => result): result {
+    const outer = sending;
+    sending = true;
     try {
       return run();
     } finally {
-      writing = outer;
+      sending = outer;
     }
   }
 
@@ -220,7 +220,7 @@ export function createTransactionStore({
    * nonce left out is `from`'s next, as a send takes it.
    */
   function addTransaction(fields: AddTransactionParameters = {}): TransactionRecord {
-    if (writing)
+    if (sending)
       throw new MockSetupError(
         "mock.addTransaction() and contract.emit can't run while a send mock's resolver answers a send.",
         {
@@ -319,7 +319,7 @@ export function createTransactionStore({
     logsBefore,
     add,
     addTransaction,
-    whileWriting,
+    whileSending,
     mine,
     logsFor,
     nonceOf,
