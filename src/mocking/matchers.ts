@@ -4,7 +4,10 @@ import { isPlainObject } from "../shared/values.js";
 
 const matcherKey = Symbol("matcher");
 
-/** Internal: what a `match.*` call returns, typed as the value it stands for. */
+/**
+ * What a `match.*` call returns at runtime; its type is the value it stands
+ * for.
+ */
 export type Matcher =
   | { readonly [matcherKey]: true; readonly type: "any" }
   | {
@@ -23,22 +26,25 @@ export type Matcher =
  * Matchers for a mock's args or params, in place of exact values. Each is
  * typed as the value it stands in for, so args keep viem's types.
  *
- * Exact values rank above predicates (`where`), which rank above `any`: the
- * most specific matching mock wins, and ties go to the most recent. A
- * `partial` counts what its fields pin.
+ * The most specific matching mock wins: the one with the most exact values,
+ * then the most predicates (`where`). An `any` counts as neither, and a
+ * `partial` counts what its fields pin. A mock that pins nothing ranks below
+ * them all. Among mocks as specific, limited ones (`.once()`,
+ * `.times()`) go ahead of unlimited ones and answer oldest first; among
+ * unlimited ones, the most recent wins.
  */
 export const match = {
   /** Matches any value at this position. */
-  // The type parameter is only inferred from where the matcher is used.
   // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- typed by its position, like expect.any()
   any<value>(): value {
     return asValue({ [matcherKey]: true, type: "any" });
   },
   /**
-   * Matches when `predicate` returns `true`. It gets the decoded value, in
-   * viem's types; addresses arrive checksummed, so compare them with
-   * `isAddressEqual`, not `===`. Messages show `label`, the predicate's name
-   * (`where(isLarge)`), or its source, cut to 60 characters (`where((n) => n > 5n)`).
+   * Matches when `predicate` returns `true` for the decoded value, in viem's
+   * types. Addresses arrive checksummed: compare them with viem's
+   * `isAddressEqual()`, not `===`. Messages show `label`, or else the
+   * predicate's name, e.g. `where(isLarge)`. An unnamed one shows its
+   * source, cut to 60 characters, e.g. `where((n) => n > 5n)`.
    */
   where<value>(predicate: (value: value) => boolean, label?: string): value {
     return asValue({
@@ -52,7 +58,8 @@ export const match = {
   /**
    * Matches a struct on the fields given, ignoring the rest: at any depth, in
    * structs inside arrays, and with matchers as field values. A field that's
-   * an array still matches whole; use `where` for "contains" or "starts with".
+   * an array still matches whole; use `match.where()` for "contains" or
+   * "starts with".
    */
   partial<value extends object>(fields: PartialFields<NoInfer<value>>): value {
     return asValue(partialMatcher(fields));
@@ -65,7 +72,7 @@ export const match = {
  */
 type PartialFields<value> = value extends readonly unknown[] ? never : PartialStructs<value>;
 
-/** Internal: a `partial` matcher for `fields`, e.g. after normalizing them. */
+/** A `partial` matcher for `fields`, e.g. after normalizing them. */
 export function partialMatcher(fields: unknown): Matcher {
   if (!isPlainObject(fields))
     throw new MockSetupError(

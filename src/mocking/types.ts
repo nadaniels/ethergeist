@@ -1,13 +1,15 @@
 /**
- * A transport-level failure, thrown as the same error viem's `http` transport
- * would produce, so viem's retry rules apply as in production:
+ * A fault: a request that fails before a node answers it, or with a
+ * JSON-RPC error. The client gets the error it would get from a node
+ * failing that way, so its retry rules apply as in production:
  * - `{ status }`: an HTTP error response, e.g. `503` or `429`. `retryAfter`
- *   sets a `Retry-After` header in seconds, which viem waits for between retries.
+ *   sets a `Retry-After` header, in seconds, which viem waits for between
+ *   retries.
  * - `{ code, message, data }`: a JSON-RPC error response. Use viem's error
- *   classes for known codes, e.g. `{ code: LimitExceededRpcError.code }`; viem
- *   maps the code back to that class, so tests can assert on it by name.
- * - `"timeout"`: the request took too long.
- * - `"network"`: the request never got a response, like a failed fetch.
+ *   classes for known codes, e.g. `{ code: LimitExceededRpcError.code }`:
+ *   viem sorts the code into that class, so a test can assert on it by name.
+ * - `"timeout"`: the request takes too long.
+ * - `"network"`: the request gets no response, like a failed fetch.
  */
 export type MockFault =
   | { status: number; retryAfter?: number }
@@ -16,11 +18,12 @@ export type MockFault =
   | "network";
 
 /**
- * A node's refusal by name, with reth's code and message. viem tells these
- * apart by the message, as for a real node, so the app sees viem's class.
- * Each is available where a node can say it:
+ * A node's refusal by name, with a node's code and message. viem tells these
+ * apart by the message, as for any node, so the app sees viem's class. Each
+ * is available where a node can say it:
  * - `"insufficientFunds"`: the sender can't pay the value sent, viem's
- *   `InsufficientFundsError`. The message says the balance is 0.
+ *   `InsufficientFundsError`. With fee fields in the request, the message
+ *   gives the balance as 0.
  * - `"feeCapTooLow"`: `maxFeePerGas` is below the block's base fee, viem's
  *   `FeeCapTooLowError`.
  * - `"tipAboveFeeCap"`: `maxPriorityFeePerGas` is above `maxFeePerGas`,
@@ -65,7 +68,10 @@ export type SendErrorName =
   | "alreadyKnown";
 /** The names an estimate can be refused with: see `NodeErrorName`. */
 export type EstimateErrorName = TransactionErrorName | "gasExceedsAllowance";
-/** The names an `eth_call` (`simulate`) can be refused with: see `NodeErrorName`. */
+/**
+ * The names an `eth_call` (`simulate`) can be refused with: see
+ * `NodeErrorName`.
+ */
 export type SimulateErrorName = EstimateErrorName | "intrinsicGasTooLow";
 
 /**
@@ -74,33 +80,42 @@ export type SimulateErrorName = EstimateErrorName | "intrinsicGasTooLow";
  */
 export type MockNodeFault<name extends NodeErrorName = NodeErrorName> = MockFault | name;
 
-/** A mock's answers, and `.once()`/`.times()` to limit how often it gives them. */
+/**
+ * A mock's answers, with `.once()` and `.times()` to limit how often it gives
+ * them.
+ */
 export type WithLimits<answers> = answers & {
   /**
-   * Answer only the next matching call, then step aside for the next best
-   * mock. Limited mocks go ahead of unlimited ones as specific, oldest first,
-   * so `.once().fails("network")` beside `.returns(…)` fails once whichever
-   * is registered first. Retries use up answers too.
+   * Limits the mock to one answer: once it's given, the next best mock
+   * answers. Limited mocks go ahead of unlimited ones as specific, and
+   * answer oldest first, so `.once().fails("network")` beside
+   * `.returns(…)` fails once whichever is registered first. A retry is a
+   * request of its own, so it uses up an answer too.
    */
   once(): answers;
-  /** Like `.once()`, for the next `count` matching calls. */
+  /**
+   * Limits the mock to `count` answers, as `.once()` does to one. `count` is
+   * a positive integer.
+   */
   times(count: number): answers;
 };
 
 /**
- * How an estimate answers: with gas, or `.fails()`, which also takes a node's
- * refusal by name.
+ * How an estimate's mock answers: with gas, or `.fails()`, which also takes
+ * a node's refusal by name.
  */
 export type MockEstimateAnswers<context> = {
   /**
-   * Answer with this much gas. A value is required: a node never estimates
-   * zero gas, so there's no zero answer. Unmocked, a plain transfer to an
-   * address without code is estimated at the base 21000.
+   * Answers every matching call with `value` gas, or with what a resolver
+   * returns for each call, sync or async: a bigint, `0n` or more.
+   * `.returns()` without a value is refused: an estimate has no zero answer
+   * to default to.
    */
   returns(value: bigint | ((context: context) => bigint | Promise<bigint>)): void;
   /**
-   * Fail every matching request: a node's refusal by name, e.g.
-   * `"insufficientFunds"` (see `NodeErrorName`), or any `MockFault`.
+   * Fails every matching call: the request it's in fails with `fault`. See
+   * `MockFault` for the kinds. It also takes a node's refusal by name, e.g.
+   * `"insufficientFunds"` (see `NodeErrorName`).
    */
   fails(fault: MockNodeFault<EstimateErrorName>): void;
 };

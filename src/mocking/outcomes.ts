@@ -13,11 +13,16 @@ export type MockOutcome =
   | { type: "result"; value: unknown }
   /** Reverted, decoded against the contract's ABI where possible. */
   | { type: "revert"; data: Hex; errorName?: string; args?: readonly unknown[]; reason?: string }
-  /** Failed at the network level, by `failRequests()` or a mock's `.fails()`/`fail()`. */
+  /**
+   * Failed with a fault, or a node's refusal by name, from
+   * `mock.failRequests()` or a mock's `.fails()` or `fail()`: `source` says
+   * which.
+   */
   | { type: "fault"; fault: MockNodeFault; source: "failRequests" | "mock" }
   /**
-   * Refused with the JSON-RPC error a node gives for the same request, e.g. a
-   * `getLogs` block range past the head. An answer, not unhandled.
+   * Refused with the JSON-RPC error a node gives for the same request, e.g.
+   * an `eth_getLogs` block range past the head. It's an answer, not
+   * unhandled.
    */
   | { type: "rpcError"; code: number; message: string }
   /**
@@ -27,10 +32,16 @@ export type MockOutcome =
    */
   | { type: "unhandled"; error: MockError };
 
-/** A fault's outcome: the request failed at the transport, from a mock or `failRequests()`. */
+/**
+ * A fault's outcome: the request failed with a fault, from a mock or
+ * `mock.failRequests()`.
+ */
 export type FaultOutcome = Extract<MockOutcome, { type: "fault" }>;
 
-/** A revert's data, decoded against `abi` and the built-in errors where possible. */
+/**
+ * A revert's data, decoded against `abi` and the built-in errors where
+ * possible.
+ */
 function revertOutcome(abi: Abi, data: Hex): Extract<MockOutcome, { type: "revert" }> {
   try {
     const { errorName, args } = decodeErrorResult({ abi: [...abi, ...builtinErrors], data });
@@ -67,7 +78,10 @@ export function asMockError(error: unknown): MockError {
   return internal;
 }
 
-/** The outcome of an error thrown while answering, other than reverts and faults. */
+/**
+ * The outcome of an error thrown while answering, other than reverts and
+ * faults.
+ */
 export function errorOutcome(error: unknown): MockOutcome {
   if (error instanceof MockRpcError)
     return { type: "rpcError", code: error.code, message: error.shortMessage };

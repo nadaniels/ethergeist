@@ -5,26 +5,24 @@ import { BaseError, type Hex } from "viem";
 type MockErrorOptions = {
   /** Lines under the short message: how to fix it, what's registered. */
   metaMessages?: readonly string[] | undefined;
+  /** The error that caused it. */
   cause?: Error | undefined;
 };
 
 /**
- * The base of every error the mock raises itself, as opposed to viem's errors
- * for its answers (reverts, faults, a node's refusals), which it imitates.
+ * The base of every error the mock raises itself, as opposed to viem's
+ * errors for its answers (reverts, faults, a node's refusals), which it
+ * imitates.
  *
- * Each carries a numeric JSON-RPC `code` viem doesn't retry (without one,
- * viem retries the request with backoff, so a broken test fails slowly), and
- * the codes are stable: across a wire they're all a client gets.
- *
- * The message is the short message, then the `metaMessages` lines, with no
- * viem version line. `details` is always empty and `docsPath` unset, though
- * `BaseError` copies both from a cause: viem matches `details` against node
- * errors (a resolver's `Error("nonce too low")` would become
- * `NonceTooLowError`), and its wrappers prefer a cause's `docsPath` to their
- * own. Hints go in `metaMessages`, which viem's wrappers carry into theirs.
+ * Each has a stable numeric JSON-RPC `code` that viem doesn't retry, so a
+ * broken test fails at once instead of after retries. Its message is the
+ * short message, then the `metaMessages` lines, with no viem version line;
+ * `details` is empty and `docsPath` unset. viem's wrappers carry
+ * `metaMessages` into theirs.
  */
 export abstract class MockError extends BaseError {
   override name = "MockError";
+  /** The error's JSON-RPC code, one per class. */
   abstract readonly code: number;
 
   constructor(shortMessage: string, { metaMessages, cause }: MockErrorOptions = {}) {
@@ -34,27 +32,35 @@ export abstract class MockError extends BaseError {
       ...(cause && { cause }),
     });
     this.message = lines.length > 0 ? [shortMessage, "", ...lines].join("\n") : shortMessage;
+    // BaseError copies both from a cause. viem matches `details` against node
+    // errors, so a resolver's `Error("nonce too low")` would become
+    // `NonceTooLowError`: see "Clients and errors" in docs/architecture.md.
     this.details = "";
     this.docsPath = undefined;
   }
 }
 
 /**
- * The mock's API was called wrong: a bad value or option, a mock that's been
- * removed, or a static answer that doesn't fit the request it answers.
+ * Thrown when the mock's API is called wrong: a bad value or option, a
+ * removed mock, or a static answer that doesn't fit its request.
  */
 export class MockSetupError extends MockError {
   override name = "MockSetupError";
   readonly code = -32097;
 }
 
-/** A check failed: `assertNoUnhandled()`, `assertAllUsed()`, `checkpoint()` or `restore()`. */
+/**
+ * Thrown when a check fails: `assertNoUnhandled()`, `assertAllUsed()`,
+ * `checkpoint()`, or `restore()`'s checks.
+ */
 export class MockCheckError extends MockError {
   override name = "MockCheckError";
   readonly code = -32096;
 }
 
-/** The usual cause of setup a restore removed under a test: for metaMessages. */
+/**
+ * The usual cause of setup a restore removed under a test: for metaMessages.
+ */
 export const nestedRestoreHint =
   "The usual cause: an afterEach in a parent describe also runs after each test of a nested " +
   "one, and one that restores or resets per test wipes the nested describe's setup. Keep the " +
@@ -66,7 +72,10 @@ export const nestedRestoreHint =
  */
 export const removedContractNote =
   "A contract was registered at this address until the last restore() or reset() removed it.";
-/** After `removedContractNote` on a call: the layout that often causes it, as a condition. */
+/**
+ * After `removedContractNote` on a call: the layout that often causes it, as a
+ * condition.
+ */
 export const removedContractLayoutHint =
   "If this test is in a nested describe, an afterEach in a parent describe that restores per " +
   "test wipes its setup; keep the two describes siblings.";
@@ -78,17 +87,17 @@ export const removedTransactionNote =
 export const removedMockError = () =>
   new MockSetupError("This mock was removed by restore() or reset(); register a new one.");
 
-/** Thrown when a request reaches the mock with nothing registered to answer it. */
+/** Thrown when a request reaches the mock and nothing answers it. */
 export class MockNotFoundError extends MockError {
   override name = "MockNotFoundError";
   readonly code = -32099;
 }
 
 /**
- * `encode()`, where what it throws that isn't ours, viem's or ox's (the
- * engine's own `SyntaxError` from `BigInt("soon")` inside an encoder) is
- * refused as a setup error: `given` was given a value it can't encode. The
- * original is kept as the cause.
+ * What `encode()` returns, with anything it throws that isn't the mock's,
+ * viem's or ox's refused as a setup error: `given` was given a value it
+ * can't encode, e.g. the engine's `SyntaxError` from `BigInt("soon")` inside
+ * an encoder. The original is kept as the cause.
  */
 export function refuseUnencodable<value>(given: string, encode: () => value): value {
   try {
@@ -102,10 +111,16 @@ export function refuseUnencodable<value>(given: string, encode: () => value): va
   }
 }
 
-/** What was thrown, as an `Error` for a cause: a thrown non-Error becomes one with its text. */
+/**
+ * What was thrown, as an `Error` for a cause: a thrown non-Error becomes one
+ * with its text.
+ */
 const asError = (thrown: unknown) => (thrown instanceof Error ? thrown : new Error(String(thrown)));
 
-/** An error's one-line summary: a viem or ox error's short message, or its message. */
+/**
+ * An error's one-line summary: a viem or ox error's short message, or its
+ * message.
+ */
 export const summaryOf = (error: unknown) =>
   error instanceof Error
     ? "shortMessage" in error && typeof error.shortMessage === "string"
@@ -120,14 +135,18 @@ const metaMessagesOf = (error: Error) =>
     : undefined;
 
 /**
- * Thrown when a resolver throws anything other than a revert, or when a
- * `match.where()` predicate throws while matching. The cause's hints carry
- * over, so a mock's own error thrown inside a resolver keeps them.
+ * Thrown when a resolver throws, other than by `revert()` or `fail()`, or
+ * returns an answer that doesn't fit, or when a `match.where()` predicate
+ * throws while matching. The cause's hints carry over, so a mock's own error
+ * thrown inside a resolver keeps them.
  */
 export class MockResolverError extends MockError {
   override name = "MockResolverError";
   readonly code = -32098;
-  /** The matcher that threw, e.g. `where(isLarge)`; `undefined` when it was the resolver. */
+  /**
+   * The matcher that threw, e.g. `where(isLarge)`; `undefined` when it was the
+   * resolver.
+   */
   matcher: string | undefined;
 
   constructor(functionName: string, cause: unknown, { matcher }: { matcher?: string } = {}) {
@@ -142,8 +161,8 @@ export class MockResolverError extends MockError {
 }
 
 /**
- * Something the mock didn't anticipate went wrong while answering: a bug in
- * the mock. The cause is what was thrown, with its stack.
+ * Thrown when the mock fails unexpectedly while answering: a bug in the
+ * mock. Its cause is what was thrown, with its stack.
  */
 export class MockInternalError extends MockError {
   override name = "MockInternalError";
@@ -159,10 +178,10 @@ export class MockInternalError extends MockError {
 }
 
 /**
- * Internal: a mock's revert while answering: code 3 with the revert data. It doesn't
- * reach viem as is: the rpc converts it to the `RpcRequestError` a reth
- * node causes through viem's `http` transport, which viem decodes into a
- * `ContractFunctionRevertedError`.
+ * A mock's revert while answering, with code 3 and the revert data. It never
+ * reaches a client as is: an adapter turns it into its client's error, as
+ * `toViemError` makes the `RpcRequestError` a reth node's revert causes,
+ * which viem decodes into a `ContractFunctionRevertedError`.
  */
 export class MockRevertError extends BaseError {
   override name = "MockRevertError";
@@ -176,9 +195,9 @@ export class MockRevertError extends BaseError {
 }
 
 /**
- * Internal: a node's JSON-RPC error answer, e.g. reth's `-32602 "invalid
- * block range params"`. It's an answer, not a missing mock: the rpc converts
- * it to the `RpcRequestError` viem's `http` transport would throw.
+ * A node's JSON-RPC error answer, e.g. reth's `-32602 "invalid block range
+ * params"`. It's an answer, not a missing mock: an adapter turns it into its
+ * client's error, as `toViemError` makes an `RpcRequestError` of it.
  */
 export class MockRpcError extends BaseError {
   override name = "MockRpcError";
@@ -191,8 +210,9 @@ export class MockRpcError extends BaseError {
 }
 
 /**
- * A request's params a node can't parse, refused as invalid params (`-32602`).
- * The wording is the mock's own: no node's was captured for these.
+ * The refusal of a request's params a node can't parse: invalid params
+ * (`-32602`). The wording is the mock's own, as viem classifies these by
+ * code.
  */
 export const invalidParams = (message: string) =>
   new MockRpcError(-32602, `invalid params: ${message}`);
