@@ -11,19 +11,18 @@ import { testHash } from "../shared/testValues.js";
 import { type AddTransactionParameters, checkAddTransaction } from "./addTransaction.js";
 
 /**
- * A transaction on the mock's chain, as `mock.transactions` lists it: the
- * facts it was put there with, which its receipt, its transaction and its
- * block answer from. Frozen: once added, a record never changes; mining only
- * moves the head past it.
+ * A placed transaction, as `mock.transactions` lists it: the facts it was
+ * placed with, which its receipt, its transaction and its block answer
+ * from. Frozen: once placed, a record never changes, and mining only moves
+ * the head past it.
  */
 export type TransactionRecord = {
   /** Lowercase, as a node sends it, however it was given. */
   readonly hash: Hash;
   /**
-   * How it got on the chain: `"added"` by the mock's API
-   * (`mock.addTransaction()` or `contract.emit`), or
-   * `"sent"` over JSON-RPC (`eth_sendTransaction`, `eth_sendRawTransaction`
-   * or its Sync form), whoever sent it.
+   * How it was placed: `"added"` by the mock's API (`mock.addTransaction()`
+   * or `contract.emit`), or `"sent"` over JSON-RPC (`eth_sendTransaction`,
+   * `eth_sendRawTransaction` or its Sync form), whoever sent it.
    */
   readonly origin: "added" | "sent";
   /**
@@ -45,9 +44,10 @@ export type TransactionRecord = {
     maxPriorityFeePerGas?: bigint;
   }>;
   /**
-   * What its receipt says beyond its position and logs, where a write's
-   * outcome set it or it's a deploy's address. Left out, a success that
-   * used the gas it was sent with (none for an added one), at the price it paid.
+   * What its receipt says beyond its position and logs, where a send mock's
+   * outcome or `mock.addTransaction()` set it, or a deploy's address. Left
+   * out, a success that used the gas it was sent with (none for an added
+   * one), at the price it paid.
    */
   readonly receipt: Readonly<{
     status?: "success" | "reverted";
@@ -55,9 +55,15 @@ export type TransactionRecord = {
     effectiveGasPrice?: bigint;
     contractAddress?: Address;
   }>;
-  /** Its logs, placed in its block, with indexes counted across the block. */
+  /**
+   * Its logs, placed in its block, with indexes counted across the block and
+   * lowercase addresses: compare with `isAddressEqual()`, not `toBe()`.
+   */
   readonly logs: readonly EmittedLog[];
-  /** Its block and index in it; a record is on the chain once its block is mined. */
+  /**
+   * Its block and index in it; a record is on the chain once its block is
+   * mined.
+   */
   readonly position: Readonly<{ blockNumber: bigint; index: number }>;
 };
 
@@ -68,20 +74,24 @@ type NewRecord = Pick<TransactionRecord, "origin" | "fields" | "receipt"> & {
   logs: readonly MockEventLog[];
 };
 
-/** Where a block mock answers its transactions: its number, hash and timestamp. */
+/**
+ * Where a block mock answers its transactions: its number, hash and
+ * timestamp.
+ */
 type BlockPlacement = { blockNumber: bigint; blockHash: Hash; blockTimestamp: bigint };
 
 /** The gas a transaction used: its receipt's, or else what it was sent with. */
 const gasUsedBy = ({ receipt, fields }: TransactionRecord) => receipt.gasUsed ?? fields.gas ?? 0n;
 
+/** The chain's transactions: see `createTransactionStore`. */
 export type TransactionStore = ReturnType<typeof createTransactionStore>;
 
 /**
  * The chain's transactions, one record each, in blocks of `state`: what
- * `addTransaction` and sends put on the chain, and what receipts, transactions, blocks and
- * `eth_getLogs` answer from once a request doesn't match a mock. A record is
- * on the chain once its block is mined (at or below the head); placed in a
- * later block, it's waiting, as a pending transaction is.
+ * `addTransaction` and sends place, and what receipts, transactions, blocks
+ * and `eth_getLogs` answer from when unmocked. A record is on the chain once
+ * its block is mined (at or below the head); placed in a later block, it's
+ * waiting, as a pending transaction is.
  */
 export function createTransactionStore({
   state,
@@ -93,26 +103,36 @@ export function createTransactionStore({
 }) {
   /** In chain order: by block, and in a block by index. */
   let records: TransactionRecord[] = [];
-  /** Hashes the last `restore()` or `reset()` took off the chain, for hints. */
+  /**
+   * Hashes of the records the last `restore()` or `reset()` removed, for
+   * hints.
+   */
   let removed = new Set<string>();
 
-  // Hashes are lowercase wherever they come in (requests, `add`), so they compare as they are.
+  // Hashes are lowercase wherever they come in (requests, `add`), so they
+  // compare as they are.
   const find = (hash: Hash) => records.find((record) => record.hash === hash);
   const inBlock = (number: bigint) =>
     records.filter((record) => record.position.blockNumber === number);
-  /** How many logs the transactions before `index` in block `number` have: a log's index counts across its block. */
+  /**
+   * How many logs the transactions before `index` in block `number` have: a
+   * log's index counts across its block.
+   */
   const logsBefore = (number: bigint, index: number) =>
     inBlock(number)
       .filter((record) => record.position.index < index)
       .reduce((count, record) => count + record.logs.length, 0);
-  /** The record's position once it's on the chain; `undefined` while it waits. */
+  /**
+   * The record's position once it's on the chain; `undefined` while it
+   * waits.
+   */
   const minedAt = ({ position }: TransactionRecord) =>
     position.blockNumber <= state.blockNumber ? position : undefined;
 
   /**
-   * Puts a transaction on the chain: in `blockNumber`, after what's placed
-   * there, or left out, as a sent one is: in a newly mined block. Checks
-   * everything first, so a refused record changes nothing, mining included.
+   * Places a transaction in `blockNumber`, after what's placed there, or,
+   * left out, in a newly mined block, as a send is. Checks everything first,
+   * so a refused record changes nothing, mining included.
    */
   function add(record: NewRecord, { blockNumber }: { blockNumber?: bigint | undefined } = {}) {
     for (const log of record.logs)
@@ -126,7 +146,8 @@ export function createTransactionStore({
     const hash = record.hash ?? testHash(`tx:${state.chainId}:${number}:${index}`);
     if (find(hash) !== undefined)
       throw new MockSetupError(`Transaction ${hash} is already on the chain.`, {
-        // A hash the mock made collides only with one named after its chain id and position.
+        // A hash the mock made collides only with one named after its chain id
+        // and position.
         metaMessages: [
           record.hash === undefined
             ? `Name a hash other than one the mock makes, testHash("tx:<chainId>:<block>:<index>").`
@@ -138,7 +159,8 @@ export function createTransactionStore({
         ],
       });
     const firstLogIndex = logsBefore(number, index);
-    // Frozen, topics too, so changing one throws instead of changing what the chain answers.
+    // Frozen, topics too, so changing one throws instead of changing what the
+    // chain answers.
     const logs = record.logs.map((value, i) => {
       const log = placeLog(value, {
         blockHash: blockHash(number),
@@ -166,20 +188,25 @@ export function createTransactionStore({
     return added;
   }
 
-  /** Mines `blocks` blocks. A pending record would be placed in the first one here. */
+  /**
+   * Mines `blocks` blocks: all mining goes through here, `mock.mine()`'s
+   * too.
+   */
   function mine(blocks = 1) {
     state.mine(blocks);
   }
 
-  /** Whether a write's resolver is running its body, during which adding a transaction is refused. */
+  /**
+   * Whether a send mock's resolver is running, up to its first `await`:
+   * adding a transaction is refused then.
+   */
   let writing = false;
 
   /**
-   * Runs a write's resolver, refusing `addTransaction` (and so
-   * `contract.emit`) in its body: it would put a transaction of its own on
-   * the chain, mined in the middle of the send. Only up to its first
-   * `await`, so code elsewhere (a demo's ticker) can still add one while a
-   * resolver waits.
+   * Runs a send mock's resolver, refusing `addTransaction` (and so
+   * `contract.emit`) in it up to its first `await`: it would place a
+   * transaction of its own, mined in the middle of the send. Code elsewhere
+   * (a demo's ticker) can still add one while a resolver waits.
    */
   function whileWriting<result>(run: () => result): result {
     const outer = writing;
@@ -238,7 +265,7 @@ export function createTransactionStore({
   }
 
   /**
-   * The emitted logs a call asks for, sorted by block and log index. Errors
+   * The chain's logs a `getLogs` call asks for, by block and log index. Errors
    * are reth's for the same filter. A range never passes the head, so it
    * only finds records on the chain.
    */
@@ -276,7 +303,7 @@ export function createTransactionStore({
 
   /**
    * The nonce `address`'s next transaction would take: one past the highest
-   * of its transactions, or 0. At `"pending"`, over all of them; at a
+   * of its transactions, or `0`. At `"pending"`, over all of them; at a
    * block, over those mined at or before it. Sends count, and so do
    * transactions added with a `from`; one added without counts for no one.
    */
@@ -303,8 +330,8 @@ export function createTransactionStore({
     /**
      * The receipt for `hash` in its JSON-RPC form, with `override`'s fields
      * (a mock's) over it, and `logs` (a mock's content) in place of its own:
-     * `null` while its block isn't mined, and `undefined` for a hash not on
-     * the chain.
+     * `null` while its block isn't mined, and `undefined` for a hash with no
+     * placed transaction.
      */
     receiptFor(hash: Hash, override: ReceiptFields = {}, logs?: readonly MockEventLog[]) {
       const record = find(hash);
@@ -338,19 +365,26 @@ export function createTransactionStore({
         ),
       );
     },
-    /** Where the transaction with `hash` is, once its block is mined; `undefined` until then. */
+    /**
+     * Where the transaction with `hash` is, once its block is mined;
+     * `undefined` until then.
+     */
     minedAt: (hash: Hash) => {
       const record = find(hash);
       return record === undefined ? undefined : minedAt(record);
     },
-    /** The record for `hash` once its block is mined; `undefined` until then, or for a hash not on the chain. */
+    /**
+     * The record for `hash` once its block is mined; `undefined` while it
+     * waits, or for a hash with no placed transaction.
+     */
     minedRecord: (hash: Hash) => {
       const record = find(hash);
       return record !== undefined && minedAt(record) !== undefined ? record : undefined;
     },
     /**
      * The transaction for `hash` in its JSON-RPC form, with `override`'s
-     * fields (a mock's) over it, or `undefined` for a hash not on the chain.
+     * fields (a mock's) over it, pending while it waits, or `undefined` for a
+     * hash with no placed transaction.
      */
     transactionFor(hash: Hash, override?: object) {
       const record = find(hash);
@@ -374,7 +408,10 @@ export function createTransactionStore({
     get logs(): EmittedLog[] {
       return allLogs();
     },
-    /** Whether the last `restore()` or `reset()` took the transaction with `hash` off the chain. */
+    /**
+     * Whether the last `restore()` or `reset()` removed the transaction with
+     * `hash`.
+     */
     removedByLastRestore: (hash: string) => removed.has(hash),
     /** Saves the records; `restore()` puts them back, removing later ones. */
     snapshot() {

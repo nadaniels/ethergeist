@@ -5,10 +5,11 @@ import { type Matcher, isMatcher } from "./matchers.js";
 import type { PinnedKey } from "./types.js";
 
 /**
- * A call for messages, e.g. `balanceOf(0x…)` or `getBalance({ address: 0x… })`.
- * Positional args are listed; anything else is formatted as one value. With
- * nothing pinned (`undefined`), it's `name(*)`: any args. A call without
- * params, e.g. `getGasPrice`, is `name()`.
+ * A call for messages, e.g. `balanceOf(0x…)` or
+ * `getBalance({ address: 0x… })`. Positional args are listed; anything else
+ * is formatted as one value. With nothing pinned (`undefined`), it's
+ * `name(*)`: any args. A call without params, e.g. `getGasPrice`, is
+ * `name()`.
  */
 export function formatCall(name: string, args: unknown, options: FormatOptions = {}): string {
   if (args === undefined) return `${name}(*)`;
@@ -52,7 +53,8 @@ function formatLimit(limit: number | undefined, remaining: number | undefined): 
 
 /**
  * A received call for a near-miss message: the args (or fields) at
- * `mismatched` in full, the rest as `…`. With nothing mismatched, the whole call.
+ * `mismatched` in full, the rest as `…`. With nothing mismatched, the whole
+ * call.
  */
 export function formatMismatch(
   name: string,
@@ -72,28 +74,32 @@ export function formatMismatch(
   return formatCall(name, actual);
 }
 
-/** A call an unused mock's function received, and where it first differs from the mock. */
+/**
+ * A call an unused mock's function received, and where it first differs from
+ * the mock.
+ */
 export type ReceivedCall = { call: string; differs: string | undefined };
 
 /**
- * After a registered mock in a "No mock for" message: which of its args or
- * params didn't match the call, if one didn't. It can follow "used up" or
- * "without an answer": that mock wouldn't have matched either.
+ * What follows a registered mock in a "No mock for" message: which of its
+ * args or params didn't match the call, if one didn't. It can follow "used
+ * up" or "without an answer": that mock wouldn't have matched either.
  */
 export const formatMissReason = (differs: string | undefined) =>
   differs === undefined ? "" : `  ← ${differs} didn't match`;
 
 /**
- * For an unused mock without an answer, in place of the calls it received:
- * how to give it one. Matching calls aren't listed, since it had nothing to
- * answer them with. `answers` names its engine's, e.g. `.returns() or .fails()`.
+ * The line under an unused mock without an answer, in place of the calls it
+ * received: how to give it one. Matching calls aren't listed, since it had
+ * nothing to answer them with. `answers` names its engine's, e.g.
+ * `.returns() or .fails()`.
  */
 export const formatNoAnswer = (answers: string) =>
   `\n    give it one with ${answers}, or don't register it`;
 
 /**
- * Under an unused mock, for messages: the calls its function did receive (up
- * to 3) and where each first differs, or that it received none.
+ * The lines under an unused mock, for messages: the calls its function did
+ * receive (up to 3) and where each first differs, or that it received none.
  */
 export function formatReceived(
   name: string,
@@ -115,11 +121,17 @@ export function formatReceived(
 }
 
 type FormatOptions = {
-  /** Shorten long hex (addresses, hashes, data) to `0x1234…abcd`, for overviews. Errors keep it whole. */
+  /**
+   * Whether long hex (addresses, hashes, data) is shortened to `0x1234…abcd`,
+   * for overviews. Errors keep it whole.
+   */
   short?: boolean;
 };
 
-/** A value for messages: bigints as `5n`, arrays and structs spelled out. */
+/**
+ * A value for messages: bigints as `5n`, arrays and structs spelled out, and
+ * matchers as `formatMatcher` shows them.
+ */
 export function formatValue(value: unknown, options: FormatOptions = {}): string {
   if (isMatcher(value)) return formatMatcher(value, options);
   if (typeof value === "bigint") return `${value}n`;
@@ -139,8 +151,9 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
 }
 
 /**
- * A matcher for messages: `any`, `where(isLarge)` (or the predicate's
- * source, without a name), or a partial's fields followed by `…`.
+ * A matcher for messages: `any`, `where(isLarge)` by its label (the one
+ * given, or the predicate's name or source), or a partial's fields followed
+ * by `…`.
  */
 function formatMatcher(matcher: Matcher, options: FormatOptions): string {
   if (matcher.type === "any") return "any";

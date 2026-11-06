@@ -3,21 +3,25 @@ import { type FeeHistory, numberToHex, parseGwei } from "viem";
 import { MockSetupError } from "../shared/errors.js";
 
 /**
- * The fees generated blocks and fee requests answer with: every block's
- * `baseFeePerGas`, and the tip a node suggests (`eth_maxPriorityFeePerGas`).
- * `eth_gasPrice` is their sum, as reth suggests it.
+ * The fees generated blocks and fee requests answer with, as
+ * `createMockRpc()`'s `fees` and `mock.setFees()` take them. `eth_gasPrice`
+ * answers their sum, as reth suggests it.
  */
 export type MockFees = {
-  /** Defaults to 10 gwei. */
+  /** The blocks' base fee. Defaults to 10 gwei. */
   baseFeePerGas?: bigint;
-  /** Defaults to 1 gwei. */
+  /**
+   * The tip a node suggests, as `eth_maxPriorityFeePerGas` answers it.
+   * Defaults to 1 gwei.
+   */
   maxPriorityFeePerGas?: bigint;
 };
 
+/** `MockFees` with every fee set. */
 export type Fees = Required<MockFees>;
 
 // Whole gwei, and different, so a swapped or ignored fee shows: viem's
-// estimateFeesPerGas() gives 13 gwei (base × 1.2 + tip), eth_gasPrice 11.
+// `estimateFeesPerGas()` gives 13 gwei (base × 1.2 + tip), `eth_gasPrice` 11.
 const defaults: Fees = { baseFeePerGas: parseGwei("10"), maxPriorityFeePerGas: parseGwei("1") };
 
 /** A bigint option, checked: zero or more; `name` names it in the error. */
@@ -41,9 +45,15 @@ export function resolveFees(fees: MockFees = {}): Fees {
  */
 export const blobBaseFee = 1n;
 
-/** `eth_feeHistory`'s answer in viem's types, with the blob fields reth adds. */
+/**
+ * A fee history: `eth_feeHistory`'s answer in viem's types, with the blob
+ * fields reth adds. A `getFeeHistory` mock's fields go over the generated
+ * history.
+ */
 export type MockFeeHistory = Partial<FeeHistory> & {
+  /** Each block's blob base fee, and the next block's after them. */
   baseFeePerBlobGas?: bigint[];
+  /** Each block's blob gas used, as a ratio of its blob gas limit. */
   blobGasUsedRatio?: number[];
 };
 

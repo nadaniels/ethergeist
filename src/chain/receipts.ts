@@ -21,20 +21,25 @@ type ReceiptLog = Partial<Pick<Log<bigint, number, false>, "address" | "data">> 
   topics?: readonly Hex[];
 };
 
-/** Any receipt fields but its logs, which go to `completeReceipt` to be placed. */
+/**
+ * Any receipt fields but its logs, which go to `completeReceipt` to be
+ * placed.
+ */
 export type ReceiptFields = Partial<Omit<TransactionReceipt, "logs">>;
 
 const zeroBloom = `0x${"00".repeat(256)}` as const;
 
 /**
- * A receipt for `hash` with `receipt`'s fields over useful defaults: `status`
- * is `"success"` (zero would mean reverted), the block is `blockNumber`
- * unless given, and each of `logs` is placed by the receipt: its block (with
- * its timestamp, as reth sends it), transaction and index, its index in the
- * block counted after the logs of the block's earlier transactions
- * (`logsBefore`), as a node counts them. Everything else is zero. Addresses
- * and hashes are validated, and lowercase as nodes send them. `hash` is
- * `undefined` while it isn't known yet, e.g. at registration.
+ * A receipt for `hash`, `receipt`'s fields over defaults: `status: "success"`
+ * (zero would mean reverted), block `blockNumber` with its generated hash,
+ * an `"eip1559"` type, and zero or `null` for the rest. Addresses and hashes
+ * are validated, and lowercase as nodes send them. `hash` is `undefined`
+ * while it isn't known yet, e.g. at registration.
+ *
+ * Each of `logs` is placed by the receipt: its block (with its timestamp, as
+ * reth sends it), transaction and index. Its index in the block counts the
+ * logs of the block's earlier transactions (`logsBefore`), as a node counts
+ * them.
  */
 export function completeReceipt(
   receipt: ReceiptFields,
@@ -48,7 +53,10 @@ export function completeReceipt(
     hash: Hash | undefined;
     blockNumber: bigint;
     timestampAt: (number: bigint) => bigint;
-    /** How many logs the chain's transactions before an index in a block have. */
+    /**
+     * How many logs the chain's transactions before an index in a block
+     * have.
+     */
     logsBefore: (blockNumber: bigint, transactionIndex: number) => number;
     logs?: readonly ReceiptLog[];
   },
@@ -94,7 +102,7 @@ export function completeReceipt(
 }
 
 /**
- * Where a log sits on the chain: its block (with the block's timestamp, as
+ * Where a log is placed: its block (with the block's timestamp, as
  * reth sends it), transaction, and index in the block.
  */
 type LogPosition = Pick<
@@ -112,8 +120,7 @@ export function placeLog(
 ): Log<bigint, number, false> & { blockTimestamp: bigint } {
   return {
     address: log.address === undefined ? zeroAddress : nodeAddress(log.address),
-    // viem's tuple type only says "empty or not"; the hashes are the same.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- same values, viem's narrower type
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem's tuple only types whether it's empty, and the hashes are the same
     topics: [...(log.topics ?? [])] as Log["topics"],
     data: log.data ?? "0x",
     removed: false,
@@ -142,8 +149,7 @@ export function toRpcLog(log: Log<bigint, number, false>): Log<Hex, Hex, false> 
     transactionHash: nodeHash(log.transactionHash, "A log's transactionHash"),
   };
   return {
-    // ox types a log's topics as non-empty, but a LOG0 log has none; it passes them through.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- ox's type is narrower than its runtime
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- ox types topics as non-empty, but passes a LOG0 log's empty ones through
     ...OxLog.toRpc({ ...log, ...position } as OxLog.Log),
     ...(typeof blockTimestamp === "bigint" ? { blockTimestamp: numberToHex(blockTimestamp) } : {}),
   };

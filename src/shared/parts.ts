@@ -5,17 +5,26 @@
  * state is looked after by being a part.
  */
 export type Part = {
-  /** Saves what it holds now. Parts that only record (history) have nothing to save. */
+  /**
+   * Saves what it holds. A part that only records (history) has nothing to
+   * save.
+   */
   snapshot?(): PartSnapshot;
   /** Forgets what it recorded (calls, usage); what's registered stays. */
   clearCalls?(): void;
-  /** Mocks that never answered a call, formatted for messages; defaults aren't. */
+  /**
+   * Mocks that never answered a call, formatted for messages; a contract's
+   * `defaults` aren't listed.
+   */
   unusedMocks?(): string[];
 };
 
 /** What a part saved: `restore()` puts it back. */
 export type PartSnapshot = {
   restore(): void;
-  /** Mocks registered since the snapshot that haven't answered a call, except defaults. */
+  /**
+   * Mocks registered since the snapshot that haven't answered a call, except
+   * a contract's `defaults`.
+   */
   unusedSince?(): string[];
 };

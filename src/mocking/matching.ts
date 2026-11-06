@@ -7,13 +7,14 @@ import { type Matcher, isMatcher } from "./matchers.js";
 import type { PinnedKey } from "./types.js";
 
 /**
- * How narrowly a mock's pinned args or params constrain a call:
+ * How specific a mock's pinned args or params are:
  * `[exact values, predicates]`, compared in that order. `match.any()` counts
  * as neither, and `match.partial()` counts what its fields pin. Mocks with
  * nothing pinned match anything and rank below all others.
  */
 export type Specificity = readonly [exact: number, predicates: number];
 
+/** `pinned`'s specificity: see `Specificity`. */
 export function specificity(pinned: unknown): Specificity {
   if (pinned === undefined) return [-1, 0];
   const count = (value: unknown): Specificity => {
@@ -39,13 +40,14 @@ export function specificity(pinned: unknown): Specificity {
 }
 
 /**
- * The best candidate that matches, and the first key each one tried before
- * it differed on. Candidates are ranked by specificity; at equal specificity,
- * limited mocks (`.once()`, `.times(n)`) queue ahead of unlimited ones and are
- * used oldest first, while among unlimited ones the most recent wins.
- * Candidates are tried best first, each on its exact values before its
- * predicates, so a predicate runs only for a mock still in contention.
- * `differs` gives a candidate's first key that doesn't match, if any.
+ * The best candidate that matches, and for each one tried before it, the
+ * first key it differs on. Candidates are ranked by specificity; at equal
+ * specificity, limited mocks (`.once()`, `.times(count)`) queue ahead of
+ * unlimited ones and are used oldest first, while among unlimited ones the
+ * most recent wins. Candidates are tried best first, each on its exact
+ * values before its predicates, so a predicate runs only for a mock still
+ * in contention. `differs` gives a candidate's first key that doesn't
+ * match, if any.
  */
 export function bestMatch<candidate extends Rankable>(
   /** In registration order; only those that can answer. */
@@ -67,7 +69,8 @@ export function bestMatch<candidate extends Rankable>(
   const missed = new Map<candidate, PinnedKey>();
   try {
     for (const candidate of ranked) {
-      // Predicates run only when the exact values match (`null` is a mismatch too).
+      // Predicates run only when the exact values match (`null` is a mismatch
+      // too).
       const exact = differs(candidate, { predicates: false });
       const key = exact === undefined ? differs(candidate, {}) : exact;
       if (key === undefined) return { best: candidate, missed };
@@ -143,7 +146,10 @@ export function firstMismatch(
   return entries.find(([key, value]) => !isMatch(value, at(key), options))?.[0];
 }
 
-/** Whether `pinned` is args or params by key (an array or an object), not one matcher or value. */
+/**
+ * Whether `pinned` is args or params by key (an array or an object), not one
+ * matcher or value.
+ */
 const hasKeys = (pinned: unknown) =>
   Array.isArray(pinned) || (isPlainObject(pinned) && !isMatcher(pinned));
 
@@ -166,21 +172,27 @@ export function setLimit(mock: Limit, count: number): void {
   mock.remaining = count;
 }
 
+/** What `bestMatch` ranks a candidate by. */
 type Rankable = {
   specificity: Specificity;
   /** Answers left for a limited mock; `undefined` when unlimited. */
   remaining: number | undefined;
 };
 
+/** How matching treats `match.where()` predicates. */
 export type MatchOptions = {
-  /** Run `match.where()` predicates; with `false`, they match anything. Defaults to `true`. */
+  /**
+   * Whether `match.where()` predicates run; with `false`, they match
+   * anything. Defaults to `true`.
+   */
   predicates?: boolean;
 };
 
 /**
- * Deep equality where hex strings (addresses, bytes) compare case-insensitively
- * and equal integers match as either `number` or `bigint`. Objects match on the
- * fields `expected` has. `match.*` matchers in `expected` match as they say.
+ * Whether `actual` matches `expected`: deep equality where hex strings
+ * (addresses, bytes) compare case-insensitively and equal integers match as
+ * either `number` or `bigint`. Objects match on the fields `expected` has.
+ * `match.*` matchers in `expected` match as they say.
  *
  * @internal Exported for its unit test.
  */
@@ -208,8 +220,9 @@ export function isMatch(expected: unknown, actual: unknown, options: MatchOption
     );
   if (isPlainObject(expected) && isPlainObject(actual))
     return Object.entries(expected).every(([key, value]) => isMatch(value, actual[key], options));
-  // viem decodes integers up to 48 bits as numbers and wider ones as bigints. A
-  // value of the other kind that got past the types still means the same number.
+  // viem decodes integers up to 48 bits as numbers and wider ones as
+  // bigints. A value of the other kind that got past the types still means
+  // the same number.
   if (typeof expected === "bigint" && typeof actual === "number")
     return Number.isInteger(actual) && expected === BigInt(actual);
   if (typeof expected === "number" && typeof actual === "bigint")
@@ -217,7 +230,10 @@ export function isMatch(expected: unknown, actual: unknown, options: MatchOption
   return expected === actual;
 }
 
-/** Thrown from `isMatch` when a predicate throws; `bestMatch` reports it as unhandled. */
+/**
+ * Thrown from `isMatch` when a predicate throws. `bestMatch` turns it into a
+ * `MockResolverError` that names the matcher.
+ */
 class MatcherThrewError extends Error {
   /** The matcher for messages, e.g. `where(isLarge)`. */
   matcher: string;
@@ -239,7 +255,10 @@ export function findMatcher(value: unknown): Matcher | undefined {
   return undefined;
 }
 
-/** Throws if `value` holds a matcher anywhere: they go in args, not in answers. */
+/**
+ * Throws if `value` holds a matcher anywhere: matchers go in args and
+ * params, not in answers.
+ */
 export function assertNoMatchers(value: unknown, place = "return values"): void {
   const found = findMatcher(value);
   if (found)
@@ -262,13 +281,19 @@ export function assertNoRunnerMatchers(pinned: unknown): void {
     );
 }
 
-/** A Jest or Vitest matcher: both give theirs `asymmetricMatch`, and a name. */
+/**
+ * A Jest or Vitest matcher: both give theirs `asymmetricMatch`, and a name
+ * (`toAsymmetricMatcher`).
+ */
 type RunnerMatcher = { asymmetricMatch(other: unknown): boolean; toAsymmetricMatcher?(): string };
 
 const isRunnerMatcher = (value: object): value is RunnerMatcher =>
   "asymmetricMatch" in value && typeof value.asymmetricMatch === "function";
 
-/** A Jest or Vitest matcher in `value`, by its name (e.g. `Any<String>`), if any. */
+/**
+ * A Jest or Vitest matcher in `value`, by its name (e.g. `Any<String>`), if
+ * any.
+ */
 function findRunnerMatcher(value: unknown, seen: Set<object>): string | undefined {
   if (typeof value !== "object" || value === null || seen.has(value)) return undefined;
   seen.add(value);

@@ -12,19 +12,36 @@ import { formatValue } from "../mocking/format.js";
 import { MockRpcError, invalidParams } from "../shared/errors.js";
 import { isPlainObject, lowercase } from "../shared/values.js";
 
-/** A topic position in a filter: one hash, any of several, or `null` for any. */
+/**
+ * A topic position in a `getLogs` filter: one hash, any of several, or `null`
+ * for any.
+ */
 export type LogsTopic = Hash | Hash[] | null;
 
 /**
- * What a call to `getLogs` (or `getContractEvents`) asked for. Addresses are
- * checksummed, and topics and a block hash lowercase. A block range is resolved to numbers,
- * with tags as the current block; a `blockHash` query has no range.
+ * What a call to viem's `getLogs()` or `getContractEvents()` asked for: a
+ * block range, or a block hash.
  */
 export type LogsCall = {
+  /**
+   * The address it asked for logs from, or the addresses, checksummed; left
+   * out for any.
+   */
   address?: Address | Address[];
+  /**
+   * The topics it asked for, position by position, lowercase: see
+   * `LogsTopic`. `[]` for any.
+   */
   topics: LogsTopic[];
+  /**
+   * The range's first block, or the current block when the filter gives
+   * none. A tag resolves to the current block, or `0n` for `"earliest"`.
+   * Left out for a block hash.
+   */
   fromBlock?: bigint;
+  /** The range's last block, resolved as `fromBlock` is. */
   toBlock?: bigint;
+  /** The block it asked for by hash, lowercase, in place of a range. */
   blockHash?: Hash;
 };
 
@@ -61,7 +78,10 @@ export function decodeLogsCall([filter]: readonly unknown[], resolveBlock: Resol
   return call;
 }
 
-/** A filter's topic: one hash, any of several, or `null` for any; each hash is 32 bytes. */
+/**
+ * A filter's topic: one hash, any of several, or `null` for any; each hash is
+ * 32 bytes.
+ */
 function decodeTopic(topic: unknown): LogsTopic {
   if (topic === null) return null;
   return Array.isArray(topic) ? topic.map((each: unknown) => hashParam(each)) : hashParam(topic);
@@ -84,9 +104,9 @@ export function topicsMatch(filter: readonly LogsTopic[], topics: readonly Hash[
 }
 
 /**
- * A `getLogs` call for history: the address (a contract's name where it has
- * one), the event and the indexed args its topics ask for (decoded with the
- * registered contracts' ABIs, as hex otherwise), and the blocks.
+ * A `getLogs` call as history shows it: the address (a contract's name where
+ * it has one), the event and the indexed args its topics ask for (decoded
+ * with the registered contracts' ABIs, as hex otherwise), and the blocks.
  */
 export function describeLogsCall(
   call: LogsCall,
@@ -110,6 +130,11 @@ export function describeLogsCall(
   return `getLogs(${parts.join(", ")})`;
 }
 
+/**
+ * A filter's topics for history: the event and the indexed args they ask
+ * for when they ask for one known event, the events' names for several, and
+ * the hex otherwise.
+ */
 function describeTopics(topics: readonly LogsTopic[], contracts: readonly { abi: Abi }[]): string {
   const events = contracts.flatMap(({ abi }) =>
     abi.filter((item): item is AbiEvent => item.type === "event" && item.anonymous !== true),
@@ -133,7 +158,8 @@ function describeTopics(topics: readonly LogsTopic[], contracts: readonly { abi:
     const input = indexed[i];
     if (topic === null || input === undefined) return [];
     const values = [topic].flat().map((hash) => {
-      // Indexed strings, bytes, structs, and arrays are hashes; the rest decode.
+      // Indexed strings, bytes, structs, and arrays are hashes; the rest
+      // decode.
       if (input.type === "string" || input.type === "bytes" || input.type.endsWith("]"))
         return formatValue(hash, { short: true });
       const [value] = decodeAbiParameters([input], hash);

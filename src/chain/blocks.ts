@@ -15,11 +15,21 @@ import { nodeAddress } from "../shared/values.js";
 import type { Fees } from "./fees.js";
 import { nodeHash } from "./hashes.js";
 
-/** A block as `getBlock` returns it, with transaction hashes rather than objects. */
+/**
+ * A block as viem's `getBlock()` returns it, with transaction hashes rather
+ * than objects. A `getBlock` mock's fields go over the generated block.
+ */
 export type MockBlock = Block<bigint, false, "latest">;
 
+/**
+ * The chain's clock: its starting block's time, and the time between
+ * blocks.
+ */
 export type BlockClock = {
-  /** The block `startTimestamp` belongs to: the mock's starting block number. */
+  /**
+   * The block `startTimestamp` belongs to: the mock's starting block
+   * number.
+   */
   startBlock: bigint;
   /** Unix timestamp of `startBlock`, in seconds. */
   startTimestamp: bigint;
@@ -37,7 +47,10 @@ export function blockHash(number: bigint): Hash {
   return concat([hashMarker, numberToHex(number, { size: 30 })]);
 }
 
-/** The block number of a generated block hash, or `undefined` for any other hash. */
+/**
+ * The block number of a generated block hash, or `undefined` for any other
+ * hash.
+ */
 export function numberOfBlockHash(hash: Hash): bigint | undefined {
   if (size(hash) !== 32 || slice(hash, 0, 2).toLowerCase() !== hashMarker) return undefined;
   return hexToBigInt(slice(hash, 2));

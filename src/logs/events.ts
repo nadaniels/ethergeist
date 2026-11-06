@@ -33,31 +33,37 @@ import { MockSetupError, refuseUnencodable } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 
 /**
- * A log's content, encoded from an event and its args: who emitted it, its
- * topics, and its data. It has no position; the receipt, transaction or
- * `mock.buildLog` it goes to gives it one.
+ * A log's content: who emitted it, its topics and its data, from
+ * `contract.events`, `contractEvents()` or `testLog()`. It has no position:
+ * the send, transaction, receipt or `mock.buildLog()` it goes to places it.
  */
 export type MockEventLog = {
   /** The emitting contract, checksummed. */
   address: Address;
+  /**
+   * Its topics: an event's selector (none for an anonymous event), then its
+   * indexed args. `testLog()`'s one topic matches no event.
+   */
   topics: [Hex, ...Hex[]] | [];
+  /** Its data: an event's non-indexed args, ABI-encoded. */
   data: Hex;
 };
 
 /**
- * Where `mock.buildLog` puts a log, in a log's own field names: its block,
- * its transaction, and its place in them. Left out, the current block, a
- * zero hash, and index 0.
+ * Where `mock.buildLog()` places a log, in a log's own field names: its
+ * block, its transaction, and its place in them.
  */
 export type LogPlacement = {
+  /** Its block. Defaults to the current block. */
   blockNumber?: bigint;
-  /** Its transaction's hash. */
+  /** Its transaction's hash. Defaults to the zero hash. */
   transactionHash?: Hash;
-  /** Its transaction's index in the block. */
+  /** Its transaction's index in the block. Defaults to `0`. */
   transactionIndex?: number;
   /**
-   * Its index in the block, counted over every transaction's logs. Not
-   * counted for you: give it to match a block with other logs before it.
+   * Its index in the block, across every transaction's logs.
+   * `mock.buildLog()` doesn't count it: give it to match a block with other
+   * logs before it. Defaults to `0`.
    */
   logIndex?: number;
 };
@@ -77,21 +83,26 @@ const positionFields = [
   "logIndex",
 ] as const;
 
-/** Whether `log` already has a position on the chain (e.g. from `mock.buildLog()`): it's placed only once. */
+/**
+ * Whether `log` is already placed, e.g. by `mock.buildLog()`: a log is placed
+ * only once.
+ */
 export const isPlaced = (log: object) => positionFields.some((field) => field in log);
 
 const logsHint = "Logs come from contract.events, contractEvents() or testLog().";
 
-/** A log's content fields: a log from `events`, `contractEvents()` or `testLog()` has no others. */
+/**
+ * A log's content fields: content from `contract.events`, `contractEvents()`
+ * or `testLog()` has no others.
+ */
 const contentFields = new Set(["address", "topics", "data"]);
 
 /**
  * Refuses `log` unless it's a log's content, naming it `name` ("A send's
  * log 0"): an address, hex data, and at most four 32-byte topics, with no
- * other fields (the old `{ abi, eventName, args }` shape has some). A log
- * that isn't one would fail where it's placed, as the mock's bug, or place
- * an empty log. A log that's already placed is left to the caller, which
- * says who places it.
+ * other fields. Content that isn't one would fail where it's placed, as the
+ * mock's bug, or place an empty log. Placed logs are left to the caller,
+ * which says who places them.
  */
 function refuseNonLog(log: unknown, name: string): asserts log is MockEventLog {
   const refuse = (problem: string) =>
@@ -129,11 +140,18 @@ export function refuseNonLogs(
   });
 }
 
-/** An indexed input's value is required; a non-indexed one may be a partial struct. */
+/**
+ * An event input's value: an indexed one's in full, a non-indexed one's
+ * with its structs' fields optional.
+ */
 type EventInputValue<input extends AbiParameter> = input extends { indexed: true }
   ? AbiParameterToPrimitiveType<input>
   : PartialStructs<AbiParameterToPrimitiveType<input>>;
 
+/**
+ * An event's args from its inputs: by name when every input has one, with
+ * indexed ones required; otherwise every arg, in order.
+ */
 type EventInputsArgs<inputs extends readonly AbiParameter[]> =
   AllNamed<inputs> extends true
     ? {
@@ -152,11 +170,12 @@ type EventInputsArgs<inputs extends readonly AbiParameter[]> =
     : { readonly [index in keyof inputs]: EventInputValue<inputs[index]> };
 
 /**
- * An event's args, as `events.X()` and `contract.emit.X()` take them: indexed args
- * are required, since filters match on them and a zero would quietly miss.
- * The rest may be left out, at any depth of a struct, and are zero-filled,
- * as in `.returns()`. Events with unnamed inputs take every arg, in order.
- * For an overloaded event, the args of any of its overloads.
+ * An event's args, as `contract.events`, `contract.emit` and the events
+ * `contractEvents()` returns take them. Indexed args are required, since
+ * filters match on them and a zero would quietly miss. The rest may be left
+ * out, at any depth of a struct, and are filled with zeros, as in
+ * `.returns()`. An event with unnamed inputs takes every arg, in order. An
+ * overloaded event takes the args of any of its overloads.
  */
 export type EventArgs<
   abi extends Abi,
@@ -167,13 +186,19 @@ export type EventArgs<
 /** Whether every field of `value` may be left out. */
 type AllOptional<value> = Partial<value> extends value ? true : false;
 
-/** `args` as a parameter: optional when the event's args may all be left out. */
+/**
+ * `args` as a parameter: optional when the event's args may all be left
+ * out.
+ */
 export type EventArgsParameter<abi extends Abi, eventName extends ContractEventName<abi>> =
   AllOptional<EventArgs<abi, eventName>> extends true
     ? [args?: EventArgs<abi, eventName>]
     : [args: EventArgs<abi, eventName>];
 
-/** A contract's events by name, each building the log its args would emit. */
+/**
+ * A contract's events by name, each building the log content its args would
+ * emit: `contract.events`, and what `contractEvents()` returns.
+ */
 export type MockContractEvents<abi extends Abi> = {
   [eventName in ContractEventName<abi>]: (
     ...args: EventArgsParameter<abi, eventName>
@@ -181,8 +206,9 @@ export type MockContractEvents<abi extends Abi> = {
 };
 
 /**
- * A log a transaction placed on the chain, as `getLogs` answers it. Frozen: it's the mock's own
- * copy, so changing it throws; spread it to make a changed one.
+ * A placed log, as `mock.logs` lists it and a `getLogs` mock answers with
+ * it. The chain's are frozen: each is the mock's own copy, so changing it
+ * throws. Spread one to make a changed copy.
  */
 export type EmittedLog = Readonly<Log<bigint, number, false>>;
 
@@ -254,12 +280,12 @@ export function buildLog(
 }
 
 /**
- * A contract's events, each building the log its args would emit at
- * `address`, without registering the contract: for a transaction's logs from a
- * contract the app decodes but never calls, e.g.
+ * A contract's events, each building the log content its args would emit at
+ * `address`, without registering the contract. For a transaction's logs from
+ * a contract the app decodes but never calls, e.g.
  * `contractEvents({ abi, address }).Transfer({ from, to, value })`. The same
  * as a registered contract's `events`: indexed args are required, the rest
- * zero-filled. The address is validated now.
+ * filled with zeros. The address is validated at the call.
  */
 export function contractEvents<const abi extends Abi>({
   abi,
@@ -270,8 +296,7 @@ export function contractEvents<const abi extends Abi>({
 }): MockContractEvents<abi> {
   const emitter = getAddress(address);
   const names = new Set((abi as Abi).flatMap((item) => (item.type === "event" ? [item.name] : [])));
-  // Built from the ABI at runtime; `MockContractEvents<abi>` describes the same shape.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- runtime-built typed facade
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- built from the ABI at runtime, in the shape MockContractEvents<abi> describes
   return Object.fromEntries(
     [...names].map((eventName) => [
       eventName,
@@ -324,7 +349,10 @@ export function encodeEventLog(
   );
 }
 
-/** Encodes `event` with `args`, zero-filling non-indexed args that are left out. */
+/**
+ * Encodes `event` with `args`, filling non-indexed args that are left out
+ * with zeros.
+ */
 function encodeWith(event: AbiEvent, address: Address, args: unknown): MockEventLog {
   const { inputs, name } = event;
   const values = argValues(event, args);
@@ -334,7 +362,8 @@ function encodeWith(event: AbiEvent, address: Address, args: unknown): MockEvent
     const label = isNamed(input) ? input.name : `arg ${i + 1}`;
     if (values[i] === undefined)
       throw new MockSetupError(`Indexed arg "${label}" of event "${name}" is required.`);
-    // A struct's or array's topic is a hash of a special encoding, which viem doesn't encode.
+    // A struct's or array's topic is a hash of a special encoding, which viem
+    // doesn't encode.
     if (input.type === "tuple" || input.type.endsWith("]"))
       throw new MockSetupError(
         `Indexed arg "${label}" of event "${name}" is a ${input.type}; ` +
@@ -345,7 +374,8 @@ function encodeWith(event: AbiEvent, address: Address, args: unknown): MockEvent
   const indexed = inputs.flatMap((input, i) =>
     input.indexed === true ? [[input, values[i]] as const] : [],
   );
-  // Named inputs go by name; unnamed ones, viem takes as the indexed values in order.
+  // Named inputs go by name; unnamed ones, viem takes as the indexed values
+  // in order.
   const topicArgs: Record<string, unknown> | unknown[] = inputs.every((input) => isNamed(input))
     ? Object.fromEntries(indexed.map(([input, value]) => [input.name ?? "", value] as const))
     : indexed.map(([, value]) => value);
@@ -355,8 +385,7 @@ function encodeWith(event: AbiEvent, address: Address, args: unknown): MockEvent
   );
   return {
     address,
-    // Every indexed arg is given, so every topic is a single hash.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem types topics for filters
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every indexed arg is given, so each topic is one hash, not a filter's list
     topics: topics as MockEventLog["topics"],
     data: encodeAbiParameters(
       nonIndexed.map(([input]) => input),
@@ -365,7 +394,10 @@ function encodeWith(event: AbiEvent, address: Address, args: unknown): MockEvent
   };
 }
 
-/** `args` as one value per input of `event`, in order; `undefined` where left out. */
+/**
+ * `args` as one value per input of `event`, in order; `undefined` where left
+ * out.
+ */
 function argValues(event: AbiEvent, args: unknown): unknown[] {
   const { inputs, name } = event;
   if (inputs.every((input) => isNamed(input))) {

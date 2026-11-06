@@ -57,13 +57,17 @@ type MockTransactionOf<type extends MockTransactionType, pending extends boolean
  * A mocked transaction: any fields of viem's transaction of its `type`
  * (`"eip1559"` when left out), so fields the type doesn't have are type
  * errors. `blockNumber: null` makes it pending: its block hash and index are
- * `null` then, and it has no `blockTimestamp`.
+ * `null` then, and it has no `blockTimestamp`. A `getTransaction` mock
+ * answers with one, and `mock.buildTransaction()` completes one.
  */
 export type MockTransaction = {
   [type in MockTransactionType]: MockTransactionOf<type, false> | MockTransactionOf<type, true>;
 }[MockTransactionType];
 
-/** The viem transaction a `MockTransaction` completes to: its type, mined or pending. */
+/**
+ * The viem transaction a `MockTransaction` completes to: its type, mined or
+ * pending.
+ */
 export type BuiltTransaction<transaction extends MockTransaction = MockTransaction> =
   transaction extends unknown
     ? TransactionOf<
@@ -143,12 +147,15 @@ const typeHexes: Record<MockTransactionType, Hex> = {
   eip7702: "0x4",
 };
 
-/** What a transaction's defaults come from: the request, and the mock's chain, blocks and fees. */
+/**
+ * What a transaction's defaults come from: the request, and the mock's chain
+ * id, blocks and fees.
+ */
 type TransactionContext = {
   hash: Hash;
   /**
    * The current block, where a transaction without a `blockNumber` is mined;
-   * a static mock's is fixed at registration.
+   * a static answer's is fixed at registration.
    */
   blockNumber: bigint;
   chainId: number;
@@ -156,7 +163,10 @@ type TransactionContext = {
   timestampAt: (number: bigint) => bigint;
 };
 
-/** Throws unless `transaction`'s fields are its type's, and a pending one's block fields agree. */
+/**
+ * Throws unless `transaction`'s fields are its type's, and a pending one's
+ * block fields agree.
+ */
 function assertTransaction(transaction: TransactionFields): MockTransactionType {
   const type = transaction.type ?? "eip1559";
   const own = typeFields[type];
@@ -193,17 +203,21 @@ function assertTransaction(transaction: TransactionFields): MockTransactionType 
   return type;
 }
 
-/** A hex value as a JSON-RPC quantity, as reth sends signatures: no leading zeros. */
+/**
+ * A hex value as a JSON-RPC quantity, as reth sends signatures: no leading
+ * zeros.
+ */
 const quantityOf = (value: Hex | undefined) =>
   numberToHex(value === undefined ? 0n : hexToBigInt(value));
 
 /**
  * A transaction in its JSON-RPC form, in reth's field order: `transaction`'s
  * fields over defaults from `context`. A mined one is in the current block
- * unless given, at index 0, and paid the suggested fees: the tip, and a max
- * fee of the base fee plus the tip, so its effective `gasPrice` is the same.
- * The signature is zero, and the rest is zero or empty. Addresses and
- * hashes are validated, and lowercase as nodes send them.
+ * unless given, at index 0. Unless given, it paid the suggested fees: the
+ * tip, and a max fee of its block's base fee plus the tip, so its effective
+ * `gasPrice` is their sum. The signature is zero, and the rest is
+ * zero or empty. Addresses and hashes are validated, and lowercase as nodes
+ * send them.
  */
 function toRpcTransaction(
   transaction: TransactionFields,
@@ -217,7 +231,8 @@ function toRpcTransaction(
   const dynamic = type === "eip1559" || type === "eip4844" || type === "eip7702";
   const maxPriorityFeePerGas = transaction.maxPriorityFeePerGas ?? tip;
   const maxFeePerGas = transaction.maxFeePerGas ?? baseFeePerGas + maxPriorityFeePerGas;
-  // A mined transaction's effective price; a pending one's has no block yet, so its cap.
+  // A mined transaction's effective price; a pending one's has no block yet,
+  // so its cap.
   const tipPaid =
     maxPriorityFeePerGas < maxFeePerGas - baseFeePerGas
       ? maxPriorityFeePerGas
@@ -226,7 +241,8 @@ function toRpcTransaction(
     transaction.gasPrice ??
     (dynamic ? (pending ? maxFeePerGas : baseFeePerGas + tipPaid) : baseFeePerGas + tip);
   const yParity = transaction.yParity ?? 0;
-  // Legacy transactions sign the chain into `v` (EIP-155); the rest sign `yParity`.
+  // Legacy transactions sign the chain into `v` (EIP-155); the rest sign
+  // `yParity`.
   const v = transaction.v ?? (type === "legacy" ? BigInt(chainId) * 2n + 35n : BigInt(yParity));
 
   const rpc: Record<string, unknown> = {
@@ -293,7 +309,10 @@ export const encodeTransaction = (state: ChainState, transaction: TransactionFie
     timestampAt: state.timestampAt,
   });
 
-/** A transaction's fees, as a send has them: a legacy `gasPrice`, or EIP-1559's max fees. */
+/**
+ * A transaction's fees, as a send has them: a legacy `gasPrice`, or
+ * EIP-1559's max fees.
+ */
 type SentFees = {
   gasPrice?: bigint | undefined;
   maxFeePerGas?: bigint | undefined;
@@ -309,7 +328,10 @@ const typeNames: readonly MockTransactionType[] = [
   "eip7702",
 ];
 
-/** A request's type by its fields, as viem's `getTransactionType` reads them. */
+/**
+ * A request's type by its fields, as viem's `getTransactionType()` reads
+ * them.
+ */
 function typeByFields(request: Record<string, unknown>): MockTransactionType {
   if (request.authorizationList !== undefined) return "eip7702";
   if (request.blobVersionedHashes !== undefined || request.maxFeePerBlobGas !== undefined)
@@ -336,7 +358,8 @@ export function sentType(request: unknown, fees: SentFees): MockTransactionType 
         : undefined;
   if (named === undefined)
     throw invalidParams(`expected a transaction type; got ${formatValue(type)}`);
-  // A dynamic-fee transaction's `gasPrice` is its effective price, which a node works out.
+  // A dynamic-fee transaction's `gasPrice` is its effective price, which a
+  // node works out.
   const other =
     named === "legacy" || named === "eip2930"
       ? (["maxFeePerGas", "maxPriorityFeePerGas"] as const).find(

@@ -8,42 +8,65 @@ import { isPlainObject } from "../shared/values.js";
 import { refuseRevertedLogs } from "./writeOutcome.js";
 
 /**
- * A transaction the app didn't send, as `mock.addTransaction` takes it, in
- * a send's words: its call's fields, its write outcome's, and where it goes.
- * Every field may be left out: `mock.addTransaction()` adds a success from
- * and to the zero address, with no input, no value and no logs.
+ * What `mock.addTransaction()` takes: a transaction the app didn't send, in
+ * a send's words. Its fields are its call's, its outcome's, and where it
+ * goes. Every field may be left out: `mock.addTransaction()` adds a success
+ * from and to the zero address, with no input, value, gas used or logs.
  */
 export type AddTransactionParameters = {
-  /** Its sender. Left out, the zero address, and its nonce counts for no one. */
+  /**
+   * Its sender. Defaults to the zero address, and then its nonce counts for
+   * no one.
+   */
   from?: Address;
-  /** Who it calls. Left out, the zero address; deploys (`to: null`) aren't supported. */
+  /**
+   * Who it calls. Defaults to the zero address. A deploy (`to: null`) is
+   * refused.
+   */
   to?: Address;
+  /** Wei sent with it. Defaults to `0n`. */
   value?: bigint;
-  /** Its calldata, which the record and the transaction answer as `input`, as viem does. */
+  /**
+   * Its calldata, which its record and transaction hold as `input`, as viem
+   * names it.
+   */
   data?: Hex;
   /**
-   * Left out, `from`'s next, as a send takes it, so each transaction added
-   * from the same `from` takes the next; given, it's taken as given, as a
-   * replacement's. Either way it counts for `from`, as a send's does.
+   * Its nonce, which counts for `from` as a send's does. Given, it's taken
+   * as given, as a replacement's is. Defaults to `from`'s next, as a send
+   * takes it, so each transaction added from the same `from` takes the
+   * next; `0` without a `from`.
    */
   nonce?: number;
-  /** Its logs, from a contract's `events`, `contractEvents()` or `testLog()`: placed here. */
+  /**
+   * Its logs: content from `contract.events`, `contractEvents()` or
+   * `testLog()`, placed here, at any address but an `empty()` one's. A
+   * swap's logs from several contracts go in one transaction, e.g.
+   * `{ logs: [a, b] }`. A placed log is refused.
+   */
   logs?: readonly MockEventLog[];
-  /** Left out, a success. A reverted one has no logs: they're refused. */
+  /**
+   * Its receipt's status: with `"reverted"`, logs are refused, as a
+   * reverted transaction has none. Defaults to `"success"`.
+   */
   status?: "success" | "reverted";
+  /** Its receipt's `gasUsed`. Defaults to `0n`. */
   gasUsed?: bigint;
   /**
    * The block to place it in, after the transactions already there,
    * without mining: an earlier block for history, the current one to share
-   * a block, or a later one, which is on the chain once it's mined. A
+   * a block, or a later one, where it waits until that block is mined. A
    * watcher that has already polled the block misses it, as it misses
-   * anything added to a block it has read. Left out, a newly mined block.
+   * anything added to a block it has read. Defaults to a newly mined block,
+   * which moves the clock on: watchers and a waiting
+   * `waitForTransactionReceipt({ confirmations })` see it.
    */
   blockNumber?: bigint;
   /**
-   * Its hash, e.g. one the app reads from a URL, in any case: it goes on
-   * the chain lowercase, as a node sends it. Left out, one made from the
-   * chain id and its position. Refused if it's already on the chain.
+   * Its hash, e.g. one the app reads from a URL, in any case: its record
+   * holds it lowercase, as a node sends it. Refused if a placed transaction
+   * already has it. Defaults to one made from the chain id and its
+   * position, `testHash("tx:<chainId>:<block>:<index>")`.
    */
   hash?: Hash;
 };
@@ -68,7 +91,7 @@ const fieldsHint =
   "without blockNumber, it mines a new block.";
 
 /**
- * `mock.addTransaction`'s fields, checked, as the store's record takes them:
+ * `mock.addTransaction()`'s fields, checked, as the store's record takes them:
  * addresses checksummed, `data` as `input`, and the outcome as its receipt.
  * Placement is the store's: `hash` goes on the record, `blockNumber` to `add`.
  */

@@ -72,11 +72,11 @@ function transactionOf(params: unknown) {
 const nodeGasCap = 50_000_000n;
 
 /**
- * Reth's errors for each name, from the request's params: its transaction
- * (see `transactionOf`). The first three were captured from reth nodes for
- * Ethereum and Base, 2026-10-29; the rest are geth's messages without the
- * detail it adds (e.g. `: next nonce 5, tx nonce 3`), which viem's patterns
- * match either way.
+ * The error a node sends for each refusal name, from the request's params:
+ * its transaction (see `transactionOf`). The first three are reth's,
+ * captured from reth nodes for Ethereum and Base, 2026-10-29. The rest are
+ * geth's messages without the detail it adds (e.g.
+ * `: next nonce 5, tx nonce 3`), which viem's patterns match either way.
  */
 export const nodeErrors: Record<
   NodeErrorName,

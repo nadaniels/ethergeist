@@ -174,20 +174,11 @@ export type MockRpc = {
   buildLog(log: MockEventLog, placement?: LogPlacement): Log<bigint, number, false>;
   /**
    * Places a transaction the app didn't send, in a newly mined block unless
-   * `blockNumber` names one. Its fields are a send's, all optional (see
-   * `AddTransactionParameters`): `mock.addTransaction()` is a success from
-   * and to the zero address, with no input, value, gas or logs. Its logs are
-   * content from a contract's `events`, or `contractEvents()` or `testLog()`
-   * for another address not marked `empty()`. A swap's logs from several
-   * contracts go in one transaction, `{ logs: [a, b] }`. For one event,
+   * `blockNumber` names one, and returns its record, as `mock.transactions`
+   * lists it. Its fields are a send's, all optional: see
+   * `AddTransactionParameters`. Its receipt, transaction and block answer
+   * from it, unless a mock for its hash answers first. For one event,
    * `contract.emit.X(args)` is shorter.
-   *
-   * Its receipt, transaction and block answer from it, unless a mock for its
-   * hash answers first. The block it mines moves the clock on, and watchers
-   * and a waiting `waitForTransactionReceipt({ confirmations })` see it.
-   * Returns its record, as `mock.transactions` lists it, with `data` as
-   * `fields.input`. Its logs' addresses are lowercase, as nodes send them:
-   * compare with `isAddressEqual()`, not `toBe()`.
    */
   addTransaction(fields?: AddTransactionParameters): TransactionRecord;
   /**

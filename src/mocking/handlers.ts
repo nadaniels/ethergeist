@@ -27,17 +27,34 @@ import { zeroResult } from "./zeroResult.js";
 export type Handler<context = never, extra = unknown> = extra & {
   /** The args or params it pins, normalized; `undefined` matches any call. */
   pinned: unknown;
+  /** How specific its pins are, for ranking: see `Specificity`. */
   specificity: Specificity;
-  /** Static values are wrapped at registration; `undefined` until `.returns()` or another answer. */
+  /**
+   * How it answers: a resolver, or a static value wrapped in one at
+   * registration. `undefined` until `.returns()` or another answer.
+   */
   resolver: ((context: context) => unknown) | undefined;
-  /** Calls this handler answered since registration or the last `clearCalls()`. */
+  /**
+   * How many calls it answered since registration or the last
+   * `clearCalls()`.
+   */
   usedCount: number;
-  /** Registered from a contract's `defaults`: shared setup, which `assertAllUsed()` doesn't hold to any one test. */
+  /**
+   * Whether it's from a contract's `defaults`: shared setup, which
+   * `assertAllUsed()` doesn't hold to any one test.
+   */
   isDefault: boolean;
-  /** Set by `.once()`/`.times(n)`: answers in all, and how many are left. Kept by `clearCalls()`. */
+  /**
+   * How many answers `.once()` or `.times(count)` allow it in all, kept by
+   * `clearCalls()`; `undefined` when unlimited.
+   */
   limit: number | undefined;
+  /** How many of `limit`'s answers are left. */
   remaining: number | undefined;
-  /** Set when a `restore()` or `reset()` removes it, so its builder can't answer again. */
+  /**
+   * Whether a `restore()` or `reset()` removed it, so its builder throws if
+   * used again.
+   */
   removed: boolean;
 };
 
@@ -47,13 +64,19 @@ export type Handler<context = never, extra = unknown> = extra & {
  */
 export type FoundMock = Pick<Handler, "resolver" | "usedCount" | "remaining">;
 
-/** Counts an answer `handler` gave: it's used, and spends one of a limit's answers. */
+/**
+ * Counts an answer `handler` gave: it's used, and spends one of a limit's
+ * answers.
+ */
 export function countUse(handler: FoundMock): void {
   handler.usedCount += 1;
   if (handler.remaining !== undefined) handler.remaining -= 1;
 }
 
-/** What every builder has: its answers, and limits on how often it gives them. */
+/**
+ * What every builder has: its answers, and limits on how often it gives
+ * them.
+ */
 export type Builder = {
   returns(value?: unknown): void;
   fails(fault: MockNodeFault): void;
@@ -70,14 +93,17 @@ const isDeliberate = (error: unknown) => isAnswer(error) || error instanceof Moc
 
 /**
  * Whether `resolver` is one `.returns(value)` made for a static value,
- * marked `isStatic` as a write's `.reverts()` marks its resolver `revert`.
- * It's the mock's, not the user's, so a setup error encoding its value
- * throws at a request (a check that needs the call or the chain) isn't a
- * resolver error.
+ * marked `isStatic` as a send mock's `.reverts()` marks its resolver
+ * `revert`. It's the mock's, not the user's: a setup error from encoding its
+ * value at a request (a check that needs the call or the chain) is thrown as
+ * it is, not as a resolver error.
  */
 const isStatic = (resolver: object) => "isStatic" in resolver && resolver.isStatic === true;
 
-/** `fn` with a `calls` getter, as `mock.actions.x` and a contract's functions have. */
+/**
+ * `fn` with a `calls` getter, as `mock.actions.x` and a contract's functions
+ * have.
+ */
 export function withCalls<fn extends (...args: never[]) => unknown>(
   fn: fn,
   calls: () => unknown[],
@@ -93,6 +119,7 @@ export function withCalls<fn extends (...args: never[]) => unknown>(
 export function createHandlers<context, extra>() {
   const handlers: Handler<context, extra>[] = [];
 
+  /** Registers a mock pinning `pinned`, without an answer yet. */
   function register(
     pinned: unknown,
     extra: extra,
@@ -101,7 +128,10 @@ export function createHandlers<context, extra>() {
       ranked = specificity(pinned),
     }: {
       isDefault?: boolean;
-      /** Its specificity, when it pins more than `pinned` (a contract's `from` and `value`). */
+      /**
+       * Its specificity, when it pins more than `pinned` (a contract's `from`
+       * and `value`).
+       */
       ranked?: Specificity;
     } = {},
   ): Handler<context, extra> {
@@ -135,15 +165,17 @@ export function createHandlers<context, extra>() {
       returns(value: unknown = zeroResult) {
         if (handler.removed) throw removedMockError();
         if (typeof value === "function") {
-          // The types guarantee a resolver's signature; it can't be checked at runtime.
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- user-supplied function
+          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the types check a resolver's signature, which can't be checked at runtime
           handler.resolver = value as Handler<context>["resolver"];
           return;
         }
         const answer = refuseUnencodable(`.returns() for "${name}"`, () => prepare(value));
         handler.resolver = Object.assign(() => answer, { isStatic: true });
       },
-      // Named node errors are typed only where a node can refuse with them.
+      /**
+       * Fails every matching call with `fault`. Any node's refusal passes
+       * here: the names are typed only where a node can refuse with them.
+       */
       fails(fault: MockNodeFault) {
         checkFault(fault);
         builder.returns(() => fail(fault));
@@ -212,7 +244,8 @@ export function createHandlers<context, extra>() {
       return encode(await resolver(context));
     } catch (error) {
       if (isDeliberate(error)) throw error;
-      // Anything else a static value throws, like one changed since, is still a resolver error.
+      // Anything else a static value throws, like one changed since, is still
+      // a resolver error.
       if (error instanceof MockSetupError && isStatic(resolver)) throw error;
       throw new MockResolverError(name, error);
     }
@@ -235,6 +268,7 @@ export function createHandlers<context, extra>() {
     findAnswering,
     answerWith,
     unused,
+    /** Zeroes every mock's use count; limits keep what's left. */
     clearUsage() {
       for (const handler of handlers) handler.usedCount = 0;
     },

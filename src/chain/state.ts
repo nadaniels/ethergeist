@@ -8,7 +8,10 @@ import { type BlockClock, type MockBlock, generateBlock, numberOfBlockHash } fro
 import { type Fees, type MockFees, bigintOption, resolveFees } from "./fees.js";
 import { type BlockForm, hashParam, isBlockTag, quantityParam } from "./params.js";
 
-/** What the mock knows about its chain without any mocks: see `createChainState`. */
+/**
+ * What the mock knows about its chain without any mocks: see
+ * `createChainState`.
+ */
 export type ChainState = ReturnType<typeof createChainState>;
 
 /** A generated block's number, by its hash. */
@@ -49,7 +52,8 @@ export function createChainState(parameters: {
   timestamp?: bigint | undefined;
   fees?: MockFees | undefined;
 }) {
-  // A chain without a Multicall3 address can't multicall: viem throws, as without a mock.
+  // A chain without a Multicall3 address can't multicall: viem throws, as
+  // without a mock.
   const chain = parameters.chain ?? mainnet;
   const multicall3 = chain.contracts?.multicall3?.address;
   const initialBlockNumber = bigintOption(parameters.blockNumber ?? 1n, "blockNumber");
@@ -71,7 +75,8 @@ export function createChainState(parameters: {
    * method: a number or a tag (`earliest` is 0; every other tag is the
    * current block, as there are no reorgs), and where the form takes them,
    * a block hash or an EIP-1898 `{ blockNumber }` or `{ blockHash }` of a
-   * generated block. None is the current block; anything else is refused.
+   * generated block. No block param is the current block; anything else is
+   * refused.
    */
   function resolveBlock(block: unknown, form: BlockForm = "numberTagOrHash"): bigint {
     if (block === undefined) return blockNumber;
@@ -99,7 +104,10 @@ export function createChainState(parameters: {
     get blockNumber() {
       return blockNumber;
     },
-    /** Mines `blocks` blocks: a safe integer, 1 or more, so the head only moves forward. */
+    /**
+     * Mines `blocks` blocks: a safe integer, 1 or more, so the head only
+     * moves forward.
+     */
     mine(blocks = 1) {
       const given: unknown = blocks;
       if (!Number.isSafeInteger(given) || blocks < 1)
@@ -113,7 +121,10 @@ export function createChainState(parameters: {
     },
     /** Block `number`'s fees. */
     feesAt,
-    /** The fees of the current block on become `fees`, over the ones they replace. */
+    /**
+     * Changes the fees from the current block on to `fees`, over the ones
+     * they replace.
+     */
     setFees(fees: MockFees) {
       const changed = resolveFees({ ...feesAt(blockNumber), ...fees });
       feeChanges = [

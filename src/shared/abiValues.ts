@@ -3,9 +3,9 @@ import { type AbiEvent, type AbiFunction, type AbiParameter, parseAbi, zeroAddre
 import { isPlainObject } from "./values.js";
 
 /**
- * Struct objects at any depth may omit fields; omitted fields are filled with
- * Solidity zero values, as unset storage would read. Tuples (positional
- * multi-output returns, unnamed components) stay complete.
+ * `value` with its structs' fields optional, at any depth: a field left out
+ * is filled with its Solidity zero value, as unset storage reads. Tuples
+ * (positional multi-output returns, unnamed components) stay complete.
  */
 export type PartialStructs<value> = value extends readonly unknown[]
   ? { [index in keyof value]: PartialStructs<value[index]> }
@@ -13,6 +13,7 @@ export type PartialStructs<value> = value extends readonly unknown[]
     ? { [key in keyof value]?: PartialStructs<value[key]> }
     : value;
 
+/** Whether every one of `parameters` has a name: `true` or `false`. */
 export type AllNamed<parameters extends readonly AbiParameter[]> = false extends (
   parameters[number] extends { name: infer name extends string }
     ? name extends ""
@@ -23,6 +24,11 @@ export type AllNamed<parameters extends readonly AbiParameter[]> = false extends
   ? false
   : true;
 
+/**
+ * `value` with every struct field it leaves out, at any depth, filled with
+ * its Solidity zero value, as `parameter`'s type says. `undefined` is the
+ * type's zero.
+ */
 export function fillZeros(parameter: AbiParameter, value: unknown): unknown {
   if (value === undefined) return zeroValue(parameter);
 
@@ -44,6 +50,11 @@ export function fillZeros(parameter: AbiParameter, value: unknown): unknown {
   return value;
 }
 
+/**
+ * The Solidity zero value of `parameter`'s type: a fixed-size array of
+ * zeros, `[]` for a dynamic one, and a struct by name when every component
+ * has one, else by position.
+ */
 function zeroValue(parameter: AbiParameter): unknown {
   const element = arrayElement(parameter);
   if (element) {
@@ -64,11 +75,11 @@ function zeroValue(parameter: AbiParameter): unknown {
   if (parameter.type === "bytes") return "0x";
   const bytesSize = /^bytes(\d+)$/u.exec(parameter.type)?.[1];
   if (bytesSize) return `0x${"00".repeat(Number(bytesSize))}`;
-  // int<N> / uint<N>: the encoder takes bigint for every size.
+  // The rest are int<N> and uint<N>: the encoder takes a bigint at every size.
   return 0n;
 }
 
-/** The element parameter of an array type (`T[]`, `T[n]`), or undefined. */
+/** The element parameter of an array type (`T[]`, `T[n]`), or `undefined`. */
 export function arrayElement(parameter: AbiParameter): AbiParameter | undefined {
   const match = /^(.*)\[\d*\]$/u.exec(parameter.type);
   return match ? { ...parameter, type: match[1]! } : undefined;
@@ -80,8 +91,9 @@ export const builtinErrors = parseAbi(["error Error(string)", "error Panic(uint2
 /**
  * `items` without repeats: a function or event that's the same to the mock
  * as an earlier one, as when two standards' ABIs are spread together
- * (`[...erc4626Abi, ...erc20Abi]`). The same means the same types,
- * mutability and names, except a function's param names, since its args are
+ * (`[...erc4626Abi, ...erc20Abi]`). The same means the same name, types and
+ * param names, and a function's mutability or an event's `indexed` and
+ * `anonymous`. A function's input names don't count, since its args are
  * positional (`erc20Abi` names `transfer`'s `recipient` where others say
  * `to`). The first is kept; anything else stays an overload.
  */
@@ -106,7 +118,10 @@ export function withoutRepeats<item extends AbiFunction | AbiEvent>(
   });
 }
 
-/** What the mock reads of a param: its type, name, whether it's indexed, and its fields'. */
+/**
+ * What the mock reads of a param: its type, name, whether it's indexed, and
+ * its fields'.
+ */
 function shapeOf(parameter: AbiParameter | AbiEvent["inputs"][number]): object {
   return {
     type: parameter.type,

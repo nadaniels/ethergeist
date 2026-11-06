@@ -1,13 +1,16 @@
 /**
- * How many entries each record of requests keeps (`historyLimit`), and what
+ * How many entries each list of requests keeps (`historyLimit`), and what
  * to do each time one drops its oldest.
  */
 export type RecordLimit = { limit: number; onDrop: () => void };
 
-/** Keeps everything: for parts made outside a mock, e.g. in unit tests. */
+/**
+ * A limit that keeps everything, for parts made outside a mock, e.g. in unit
+ * tests.
+ */
 export const unlimited: RecordLimit = { limit: Infinity, onDrop() {} };
 
-/** A record of requests: see `createRecordList`. */
+/** A list of requests: see `createRecordList`. */
 export type RecordList<entry> = ReturnType<typeof createRecordList<entry>>;
 
 /**
@@ -15,8 +18,8 @@ export type RecordList<entry> = ReturnType<typeof createRecordList<entry>>;
  * all. Past the limit, adding one drops the oldest.
  */
 export function createRecordList<entry>({ limit, onDrop }: RecordLimit) {
-  // A ring once full: each entry overwrites the oldest, at `oldest`. (`shift()`
-  // copies the whole array each time once it's long.)
+  // A ring once full: each entry overwrites the oldest, at `oldest`, since
+  // `shift()` copies the whole array each time.
   const entries: entry[] = [];
   let oldest = 0;
   let dropped = 0;
@@ -36,6 +39,7 @@ export function createRecordList<entry>({ limit, onDrop }: RecordLimit) {
     get total() {
       return entries.length + dropped;
     },
+    /** Adds `entry`, dropping the oldest past the limit. */
     add(entry: entry) {
       if (entries.length < limit) {
         entries.push(entry);
@@ -46,6 +50,7 @@ export function createRecordList<entry>({ limit, onDrop }: RecordLimit) {
       dropped += 1;
       onDrop();
     },
+    /** Forgets every entry, and the count of those dropped. */
     clear() {
       entries.length = 0;
       oldest = 0;

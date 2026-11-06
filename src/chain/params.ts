@@ -50,7 +50,10 @@ export function quantityParam(value: unknown, what: string): bigint {
 export const optionalQuantity = (value: unknown, what: string) =>
   value === undefined ? undefined : quantityParam(value, what);
 
-/** A field of hex data that may be left out; refused as invalid params if it isn't hex. */
+/**
+ * A field of hex data that may be left out; refused as invalid params if it
+ * isn't hex.
+ */
 function optionalData(value: unknown, what: string): Hex | undefined {
   if (value === undefined) return undefined;
   if (!isHex(value))
@@ -65,15 +68,17 @@ const optionalAddress = (value: unknown) => (value === undefined ? undefined : a
  * `eth_sendTransaction` take it (the spec's `GenericTransaction`): addresses
  * checksummed, `to: null` (a creation) as left out, the spec's `input` or the
  * `data` clients send, and `value` as `0n` when it has none. Fields it leaves
- * out are `undefined`. A field that's malformed, `null` included (but for
- * `to`), is refused as invalid params, and so is a request that isn't an object.
+ * out are `undefined`. A field that's malformed, `null` included except for
+ * `to`, is refused as invalid params, and so is a request that isn't an
+ * object.
  */
 export function transactionParam(tx: unknown) {
   if (!isPlainObject(tx))
     throw invalidParams(`expected a transaction object; got ${formatValue(tx)}`);
   const { from, to, value, data, input, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } =
     tx;
-  // Both are checked, though `data` wins: a malformed field is refused, never skipped.
+  // Both are checked, though `data` wins: a malformed field is refused, never
+  // skipped.
   const [given, spec] = [optionalData(data, "`data`"), optionalData(input, "`input`")];
   return {
     from: optionalAddress(from),
@@ -119,7 +124,7 @@ export const isBlockTag = (value: unknown): value is BlockTag => blockTags.has(v
 /**
  * Like `quantityParam`, as a number; refused past `Number.MAX_SAFE_INTEGER`.
  * Nodes take some of these as u64 (a nonce), so the mock refuses a few a node
- * accepts: none a real app sends.
+ * accepts: none an app sends.
  */
 export function numberParam(value: unknown, what: string): number {
   const quantity = quantityParam(value, what);
