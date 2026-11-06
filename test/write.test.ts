@@ -48,7 +48,7 @@ const vaultAbi = parseAbi([
 /** The app's clients: a local account, which signs and sends raw bytes, or a node's (JSON-RPC) account. */
 function setup(account: "local" | "node" = "local") {
   const mock = createMockRpc({ blockNumber: 10n });
-  const client = mock.publicClient({}, { retryCount: 0 });
+  const client = mock.publicClient({ retryCount: 0 });
   const wallet = createWalletClient({
     account: account === "local" ? signer : alice,
     chain: mock.chain,
@@ -356,7 +356,7 @@ describe("the estimate a write mock implies", () => {
 
   test("an estimateGas mock, defaults.estimateGas or an estimate action mock answers first", async () => {
     const mock = createMockRpc({ blockNumber: 10n });
-    const client = mock.publicClient({}, { retryCount: 0 });
+    const client = mock.publicClient({ retryCount: 0 });
     const usdc = mock.contract({
       abi: erc20Abi,
       address: USDC,

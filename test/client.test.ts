@@ -58,13 +58,13 @@ describe("publicClient()", () => {
     expect(mock.history.filter((r) => r.method === "eth_call")).toHaveLength(1);
   });
 
-  test("transport options are a second argument, e.g. no retries", async () => {
+  test("retryCount goes to the transport, e.g. no retries", async () => {
     const mock = createMockRpc();
     mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().fails({ status: 503 });
     const ethCalls = () => mock.history.filter((r) => r.method === "eth_call");
 
     await mock
-      .publicClient(undefined, { retryCount: 0 })
+      .publicClient({ retryCount: 0 })
       .readContract(decimalsCall)
       .catch(() => {});
     expect(ethCalls()).toHaveLength(1);
@@ -76,8 +76,8 @@ describe("publicClient()", () => {
     expect(ethCalls()).toHaveLength(5);
   });
 
-  test("transport options merge over the transport's defaults, as client options do", () => {
-    const client = createMockRpc().publicClient({ cacheTime: 10 }, { retryCount: 2 });
+  test("retry options merge over the transport's defaults, beside the client's", () => {
+    const client = createMockRpc().publicClient({ cacheTime: 10, retryCount: 2 });
 
     expect(client.transport.retryCount).toBe(2);
     expect(client.transport.retryDelay).toBe(0);
@@ -85,11 +85,52 @@ describe("publicClient()", () => {
     expect(client.pollingInterval).toBe(50);
   });
 
+  test("retry options left undefined keep the defaults", () => {
+    const client = createMockRpc().publicClient({ retryCount: undefined, retryDelay: undefined });
+
+    expect(client.transport.retryCount).toBe(3);
+    expect(client.transport.retryDelay).toBe(0);
+  });
+
+  test("client options left undefined keep the defaults", async () => {
+    const mock = createMockRpc({ blockNumber: 10n });
+    const client = mock.publicClient({ cacheTime: undefined, pollingInterval: undefined });
+
+    expect(client.cacheTime).toBe(0);
+    expect(client.pollingInterval).toBe(50);
+    expect(await client.getBlockNumber()).toBe(10n);
+    mock.mine();
+    expect(await client.getBlockNumber()).toBe(11n);
+  });
+
+  test("key and name are the client's, not the transport's", () => {
+    const client = createMockRpc().publicClient({ key: "app", name: "App Client" });
+
+    expect([client.key, client.name]).toEqual(["app", "App Client"]);
+    expect([client.transport.key, client.transport.name]).toEqual(["custom", "Custom Provider"]);
+  });
+
+  test("retryDelay goes to the transport", () => {
+    expect(createMockRpc().publicClient({ retryDelay: 5 }).transport.retryDelay).toBe(5);
+  });
+
   test("defaults to mainnet", async () => {
     const mock = createMockRpc();
 
     expect(mock.chain.id).toBe(mainnet.id);
     expect(await mock.publicClient().getChainId()).toBe(mainnet.id);
+  });
+});
+
+describe("transport()", () => {
+  test("retries without waiting, unless retryDelay is given", () => {
+    const mock = createMockRpc();
+    const delayOf = (config?: Parameters<typeof mock.transport>[0]) =>
+      mock.transport(config)({}).config.retryDelay;
+
+    expect(delayOf()).toBe(0);
+    expect(delayOf({ retryDelay: undefined })).toBe(0);
+    expect(delayOf({ retryDelay: 5 })).toBe(5);
   });
 });
 

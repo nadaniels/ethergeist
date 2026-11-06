@@ -42,7 +42,7 @@ const signer = privateKeyToAccount(keccak256(toHex("signer")));
 
 function setup() {
   const mock = createMockRpc({ blockNumber: 10n });
-  const client = mock.publicClient({}, { retryCount: 0 });
+  const client = mock.publicClient({ retryCount: 0 });
   return { mock, client };
 }
 

@@ -37,7 +37,7 @@ const vaultAbi = parseAbi([
 
 function setup() {
   const mock = createMockRpc({ blockNumber: 10n });
-  const client = mock.publicClient({}, { retryCount: 0 });
+  const client = mock.publicClient({ retryCount: 0 });
   const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
   const vault = mock.contract({ abi: vaultAbi, address: VAULT, name: "Vault" });
   const walletOf = (account: typeof alice) =>
@@ -93,7 +93,7 @@ describe("pinning from", () => {
 
   test("its reason is braced, apart from an input named from", async () => {
     const mock = createMockRpc({ blockNumber: 10n });
-    const client = mock.publicClient({}, { retryCount: 0 });
+    const client = mock.publicClient({ retryCount: 0 });
     const abi = parseAbi(["function pull(address from, uint256 value) view returns (bool)"]);
     const token = mock.contract({ abi, address: USDC });
     token.read.pull([alice, 1n]).returns(true);

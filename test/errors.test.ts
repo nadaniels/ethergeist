@@ -106,7 +106,7 @@ describe("the mock's errors", () => {
 
     test("a static value changed after .returns() so it can't encode is a resolver error, not the mock's bug", async () => {
       const mock = createMockRpc();
-      const client = mock.publicClient({}, { retryCount: 0 });
+      const client = mock.publicClient({ retryCount: 0 });
       const abi = parseAbi(["function reserves() view returns ((uint256 a, uint256 b))"]);
       const pool = mock.contract({ abi, address: USDC });
       const reserves = { a: 1n, b: 2n };

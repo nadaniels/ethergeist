@@ -299,7 +299,7 @@ features land; tick them off as pages get written.
     succeed: the mock can't tell (nothing went wrong on its side), so say it
     plainly. `.once().fails()` tests recovery; to test the app seeing the
     error, use `.fails()` without a limit, or `retryCount: 0` on the
-    transport (`mock.publicClient({}, { retryCount: 0 })` or
+    transport (`mock.publicClient({ retryCount: 0 })` or
     `mock.transport({ retryCount: 0 })`). `formatHistory()` shows it as a
     fault, then a `(retry)`.
   - A retry finding nothing behind a used-up fault: the "not mocked" error

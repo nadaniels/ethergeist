@@ -12,11 +12,15 @@ import type { RpcRequest } from "../history/types.js";
 import type { RequestHandler } from "../rpc/requestHandler.js";
 import { toViemError } from "./errors.js";
 
-/** Public client options, minus the chain and transport, which come from the mock. */
+/**
+ * Public client options, minus the chain and transport, which come from the
+ * mock, plus the transport's retry options.
+ */
 export type MockPublicClientParameters = Omit<
   PublicClientConfig<CustomTransport, Chain>,
   "chain" | "transport"
->;
+> &
+  Pick<CustomTransportConfig, "retryCount" | "retryDelay">;
 
 /**
  * The mock for viem: its requests answered as viem's `http` transport would
@@ -40,23 +44,24 @@ export function createViemAdapter({ handle, chain }: { handle: RequestHandler; c
       let retryCount: number | undefined;
       const created = custom(
         { request: (args: RpcRequest) => request(args, retryCount) },
-        { retryDelay: 0, ...config },
+        { ...config, retryDelay: config?.retryDelay ?? 0 },
       )(params);
       retryCount = created.config.retryCount;
       return created;
     };
   }
 
-  function publicClient(
-    options: MockPublicClientParameters = {},
-    transportOptions?: CustomTransportConfig,
-  ): PublicClient<CustomTransport, Chain> {
+  function publicClient({
+    retryCount,
+    retryDelay,
+    ...options
+  }: MockPublicClientParameters = {}): PublicClient<CustomTransport, Chain> {
     return createPublicClient({
-      cacheTime: 0,
-      pollingInterval: 50,
       ...options,
+      cacheTime: options.cacheTime ?? 0,
+      pollingInterval: options.pollingInterval ?? 50,
       chain,
-      transport: transport(transportOptions),
+      transport: transport({ retryCount, retryDelay }),
     });
   }
 
