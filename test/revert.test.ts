@@ -253,6 +253,52 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
     },
   );
 
+  // A JSON-imported ABI is typed loosely, so its revert specs aren't checked against the error.
+  test.each(["read", "simulate", "estimateGas", "write"] as const)(
+    "%s: refuses an error's args that don't match its inputs, too few or too many",
+    (namespace) => {
+      const mock = createMockRpc();
+      const builder = builders[namespace](mock);
+
+      for (const [args, got] of [
+        [undefined, 0],
+        [[], 0],
+        [[1n, 2n], 2],
+      ] as const) {
+        const error = expectThrows(
+          MockSetupError,
+          `A revert of Failed takes 1 arg; got ${got}.`,
+          () => {
+            // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+            builder.reverts({ errorName: "Failed", args } as never);
+          },
+        );
+        expect(error.metaMessages).toEqual(["Failed(uint256 code)"]);
+      }
+    },
+  );
+
+  test("an error's arg count names each of its forms once, and named args as given", () => {
+    const failed = parseAbi(["error Failed(uint256 code)", "error Failed()"]);
+    // Combined ABIs often declare the same error twice.
+    const abi = [...tokenAbi, ...failed, ...failed];
+    const read = createMockRpc().contract({ abi, address: NFT }).read.ownerOf();
+
+    const twoArgs = expectThrows(
+      MockSetupError,
+      "A revert of Failed takes 0 or 1 args; got 2.",
+      () => {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+        read.reverts({ errorName: "Failed", args: [1n, 2n] } as never);
+      },
+    );
+    expect(twoArgs.metaMessages).toEqual(["Failed()", "Failed(uint256 code)"]);
+    expectThrows(MockSetupError, "A revert's args must be a list; got { code: 1n }.", () => {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+      read.reverts({ errorName: "Failed", args: { code: 1n } } as never);
+    });
+  });
+
   test("a resolver's revert() with a spec the types rule out throws the mock's error, sends too", async () => {
     const { mock, nft, ownerOf } = setup();
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out

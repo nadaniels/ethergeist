@@ -7,6 +7,7 @@ import {
   encodeErrorResult,
   isHex,
 } from "viem";
+import { formatAbiItem } from "viem/utils";
 
 import { formatValue } from "../mocking/format.js";
 import { encodeGas } from "../mocking/gas.js";
@@ -57,10 +58,11 @@ function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
 /**
  * The revert `spec` gives, its custom errors from `abi`. A spec the types
  * rule out is the mock's setup error: an untyped caller's `null` or `{}`,
- * data that isn't hex, a panic that isn't a number or bigint, or args or a
- * panic code that throw a native error as they encode, e.g. `1.5`. viem's
- * own refusals pass through, e.g. an error not on the ABI or a panic code
- * out of range.
+ * data that isn't hex, a panic that isn't a number or bigint, args that
+ * aren't a list or don't match the error's inputs in number (as a loosely
+ * typed ABI allows), or args or a panic code that throw a native error as
+ * they encode, e.g. `1.5`. viem's own refusals pass through, e.g. an error
+ * not on the ABI or a panic code out of range.
  */
 export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError {
   const given: unknown = spec;
@@ -87,7 +89,30 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
       return encodeErrorResult({ abi: builtinErrors, errorName: "Panic", args: [BigInt(panic)] });
     const { errorName, args } = given;
     if (typeof errorName !== "string") throw notARevert(given);
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem checks the args against the error
+    if (args !== undefined && !Array.isArray(args))
+      throw new MockSetupError(`A revert's args must be a list; got ${formatValue(args)}.`, {
+        metaMessages: ["List them in the error's input order, e.g. { errorName, args: [1n] }."],
+      });
+    // viem encodes no args at all for a missing or empty list, whatever the error takes.
+    const count = args === undefined ? 0 : args.length;
+    const errors = abi.filter(
+      (item): item is Extract<Abi[number], { type: "error" }> =>
+        item.type === "error" && item.name === errorName,
+    );
+    const counts = [...new Set(errors.map((error) => error.inputs.length))].toSorted(
+      (a, b) => a - b,
+    );
+    if (counts.length > 0 && !counts.includes(count)) {
+      throw new MockSetupError(
+        `A revert of ${errorName} takes ${counts.join(" or ")} arg${counts.join() === "1" ? "" : "s"}; got ${count}.`,
+        {
+          metaMessages: [
+            ...new Set(errors.map((error) => formatAbiItem(error, { includeName: true }))),
+          ].toSorted((a, b) => a.localeCompare(b)),
+        },
+      );
+    }
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the count matches the error's inputs; viem checks their types
     return encodeErrorResult({ abi, errorName, args: args as readonly unknown[] });
   };
   return new MockRevertError(refuseUnencodable("A revert", encode));
