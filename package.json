@@ -12,6 +12,7 @@
     "typecheck": "tsc",
     "knip": "knip && knip --production --strict",
     "mutate": "stryker run",
+    "smoke": "vpx scripts/smoke.ts",
     "prepare": "vp config"
   },
   "devDependencies": {

@@ -132,13 +132,16 @@ The mock's errors:
    `mock.addTransaction()`, and `MockPublicClientParameters` for
    `mock.publicClient()`.
 6. **`index.ts` exports every type a consumer's inferred declarations can
-   end up naming**, used or not, since they can't import from `src/` once
-   the package has an `exports` map: a type a public signature names, and
-   one a file-local alias inside a public type uses (TypeScript writes the
-   local alias out, naming what's in it). The check is a declaration-emit
-   probe: a consumer compiled with `declaration: true`, whose output has
-   no `import("…/src/…")`. To keep a helper internal, spell it out in the
-   file-local alias that uses it, as `NamedOutputs` in
+   end up naming**, used or not: a type a public signature names, and one
+   a file-local alias inside a public type uses (TypeScript writes the
+   local alias out, naming what's in it). A consumer's declarations can
+   only name what the package exports. For anything else, TypeScript
+   writes the type out in full, which makes declarations unreadable, or
+   fails where it can't (a `unique symbol`, a recursive type).
+   `vp run smoke` checks it by compiling a consumer against `src/` with
+   `declaration: true` and failing on a name its declarations take from a
+   file that `index.ts` doesn't export. To keep a helper internal, spell
+   it out in the file-local alias that uses it, as `NamedOutputs` in
    `contracts/types.ts` spells out "all named".
 
 ## Tests

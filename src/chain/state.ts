@@ -52,7 +52,7 @@ export function createChainState(parameters: {
   timestamp?: bigint | undefined;
   fees?: MockFees | undefined;
 }) {
-  const chain = parameters.chain ?? mainnet;
+  const chain: Chain = parameters.chain ?? mainnet;
   const multicall3 = chain.contracts?.multicall3?.address;
   const initialBlockNumber = bigintOption(parameters.blockNumber ?? 1n, "blockNumber");
   let blockNumber = initialBlockNumber;
