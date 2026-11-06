@@ -115,7 +115,6 @@ export function checkAddTransaction(fields: AddTransactionParameters) {
   const { value, data, nonce, logs = [], status, gasUsed, blockNumber, hash } = fields;
   if (fields.to === null)
     throw new MockSetupError("mock.addTransaction() doesn't deploy: to can't be null.");
-  // getAddress validates them, with viem's error.
   const from = fields.from === undefined ? undefined : getAddress(fields.from);
   const to = fields.to === undefined ? undefined : getAddress(fields.to);
   for (const [name, amount] of Object.entries({ value, gasUsed }))

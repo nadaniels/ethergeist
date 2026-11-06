@@ -37,9 +37,6 @@ export type BlockClock = {
   blockTime: number;
 };
 
-// Generated hashes are a marker plus the block number, so a hash maps back to
-// its block without a lookup table. They aren't keccak hashes, but nothing
-// reads a block hash as anything other than an identifier.
 const hashMarker = "0xb10c";
 
 /** The hash of generated block `number`. */
@@ -109,7 +106,6 @@ export function toRpcBlock({ withdrawals, ...block }: MockBlock) {
       ...(block.hash !== null && { hash: nodeHash(block.hash, "A block's hash") }),
       parentHash: nodeHash(block.parentHash, "A block's parentHash"),
       uncles: block.uncles.map((hash) => nodeHash(hash, "A block's uncle")),
-      // Full transactions are objects, which keep theirs.
       transactions: block.transactions.map((each) =>
         typeof each === "string" ? nodeHash(each, "A block's transaction") : each,
       ),

@@ -63,8 +63,6 @@ export const typedActions = {
     methods: ["eth_sendTransaction", "eth_sendRawTransaction", "eth_sendRawTransactionSync"],
   },
 } satisfies {
-  // Each action decodes to its call type in `ActionCalls`, and every action
-  // has one.
   [name in keyof ActionCalls]: {
     define: (context: ActionsContext) => Definition<ActionCalls[name]>;
     methods: readonly string[];

@@ -231,18 +231,16 @@ function toRpcTransaction(
   const dynamic = type === "eip1559" || type === "eip4844" || type === "eip7702";
   const maxPriorityFeePerGas = transaction.maxPriorityFeePerGas ?? tip;
   const maxFeePerGas = transaction.maxFeePerGas ?? baseFeePerGas + maxPriorityFeePerGas;
-  // A mined transaction's effective price; a pending one's has no block yet,
-  // so its cap.
   const tipPaid =
     maxPriorityFeePerGas < maxFeePerGas - baseFeePerGas
       ? maxPriorityFeePerGas
       : maxFeePerGas - baseFeePerGas;
+  // A mined transaction's effective price; a pending one's has no block yet,
+  // so its cap.
   const gasPrice =
     transaction.gasPrice ??
     (dynamic ? (pending ? maxFeePerGas : baseFeePerGas + tipPaid) : baseFeePerGas + tip);
   const yParity = transaction.yParity ?? 0;
-  // Legacy transactions sign the chain into `v` (EIP-155); the rest sign
-  // `yParity`.
   const v = transaction.v ?? (type === "legacy" ? BigInt(chainId) * 2n + 35n : BigInt(yParity));
 
   const rpc: Record<string, unknown> = {
@@ -358,8 +356,6 @@ export function sentType(request: unknown, fees: SentFees): MockTransactionType 
         : undefined;
   if (named === undefined)
     throw invalidParams(`expected a transaction type; got ${formatValue(type)}`);
-  // A dynamic-fee transaction's `gasPrice` is its effective price, which a
-  // node works out.
   const other =
     named === "legacy" || named === "eip2930"
       ? (["maxFeePerGas", "maxPriorityFeePerGas"] as const).find(
@@ -392,7 +388,6 @@ export async function decodeRawTransaction(serialized: unknown) {
   } catch {
     throw refused();
   }
-  // viem parses a type for every transaction it can parse.
   const { to, value = 0n, data, nonce = 0, gas = 0n, type = "legacy" } = parsed;
   const { gasPrice, maxFeePerGas, maxPriorityFeePerGas } = parsed;
   return {

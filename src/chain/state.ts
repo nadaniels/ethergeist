@@ -52,8 +52,6 @@ export function createChainState(parameters: {
   timestamp?: bigint | undefined;
   fees?: MockFees | undefined;
 }) {
-  // A chain without a Multicall3 address can't multicall: viem throws, as
-  // without a mock.
   const chain = parameters.chain ?? mainnet;
   const multicall3 = chain.contracts?.multicall3?.address;
   const initialBlockNumber = bigintOption(parameters.blockNumber ?? 1n, "blockNumber");

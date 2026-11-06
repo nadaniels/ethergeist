@@ -53,9 +53,7 @@ function transactionOf(params: unknown) {
     try {
       const { value, gas } = parseTransaction(tx);
       return { value: value ?? 0n, gas, paysFees: true };
-    } catch {
-      // No transaction: see above.
-    }
+    } catch {}
   const fields = isPlainObject(tx) ? tx : {};
   return {
     value: optionalQuantity(fields.value, "a value") ?? 0n,

@@ -20,8 +20,6 @@ export type MockFees = {
 /** `MockFees` with every fee set. */
 export type Fees = Required<MockFees>;
 
-// Whole gwei, and different, so a swapped or ignored fee shows: viem's
-// `estimateFeesPerGas()` gives 13 gwei (base × 1.2 + tip), `eth_gasPrice` 11.
 const defaults: Fees = { baseFeePerGas: parseGwei("10"), maxPriorityFeePerGas: parseGwei("1") };
 
 /** A bigint option, checked: zero or more; `name` names it in the error. */

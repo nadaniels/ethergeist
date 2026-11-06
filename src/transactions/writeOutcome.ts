@@ -203,7 +203,6 @@ export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void 
         if (emitted.length === 0) return outcome;
         if (outcome === undefined) return { logs: emitted };
         const logs: unknown = isPlainObject(outcome) ? (outcome.logs ?? []) : undefined;
-        // Anything else isn't an outcome, which encodeWriteOutcome says.
         if (!isPlainObject(outcome) || !Array.isArray(logs)) return outcome;
         const returned: unknown[] = logs;
         return { ...outcome, logs: [...emitted, ...returned] };

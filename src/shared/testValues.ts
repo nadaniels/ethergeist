@@ -1,7 +1,6 @@
 import { type Address, type Hash, keccak256, toHex } from "viem";
 import { privateKeyToAddress } from "viem/accounts";
 
-// Cached: deriving an address from a key is slow, and labels repeat.
 const addresses = new Map<string, Address>();
 
 /**

@@ -61,7 +61,6 @@ export function formatMismatch(
   actual: unknown,
   mismatched: readonly PinnedKey[],
 ): string {
-  // Nothing in particular, or all of it (`null`): the whole call.
   if (mismatched.length === 0 || mismatched.includes(null)) return formatCall(name, actual);
   if (Array.isArray(actual))
     return `${name}(${actual.map((v: unknown, i) => (mismatched.includes(i) ? formatValue(v) : "…")).join(", ")})`;

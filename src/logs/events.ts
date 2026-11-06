@@ -321,7 +321,6 @@ export function encodeEventLog(
   );
   const [only] = overloads;
   if (only === undefined) throw new MockSetupError(`No event "${eventName}" on this ABI.`);
-  // Checksummed, which also validates it.
   const emitter = getAddress(address);
   if (overloads.length === 1)
     return refuseUnencodable(`Event "${eventName}"`, () => encodeWith(only, emitter, args));
@@ -362,8 +361,6 @@ function encodeWith(event: AbiEvent, address: Address, args: unknown): MockEvent
     const label = isNamed(input) ? input.name : `arg ${i + 1}`;
     if (values[i] === undefined)
       throw new MockSetupError(`Indexed arg "${label}" of event "${name}" is required.`);
-    // A struct's or array's topic is a hash of a special encoding, which viem
-    // doesn't encode.
     if (input.type === "tuple" || input.type.endsWith("]"))
       throw new MockSetupError(
         `Indexed arg "${label}" of event "${name}" is a ${input.type}; ` +
@@ -374,8 +371,6 @@ function encodeWith(event: AbiEvent, address: Address, args: unknown): MockEvent
   const indexed = inputs.flatMap((input, i) =>
     input.indexed === true ? [[input, values[i]] as const] : [],
   );
-  // Named inputs go by name; unnamed ones, viem takes as the indexed values
-  // in order.
   const topicArgs: Record<string, unknown> | unknown[] = inputs.every((input) => isNamed(input))
     ? Object.fromEntries(indexed.map(([input, value]) => [input.name ?? "", value] as const))
     : indexed.map(([, value]) => value);

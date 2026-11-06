@@ -244,8 +244,6 @@ export function createHandlers<context, extra>() {
       return encode(await resolver(context));
     } catch (error) {
       if (isDeliberate(error)) throw error;
-      // Anything else a static value throws, like one changed since, is still
-      // a resolver error.
       if (error instanceof MockSetupError && isStatic(resolver)) throw error;
       throw new MockResolverError(name, error);
     }

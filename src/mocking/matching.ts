@@ -131,8 +131,6 @@ export function firstMismatch(
   options: MatchOptions = {},
 ): PinnedKey | undefined {
   if (pinned === undefined) return undefined;
-  // A matcher pinned in place of the whole params: a `partial` by its fields,
-  // as `isMatch` checks it, and any other as a whole.
   if (isMatcher(pinned) && pinned.type === "partial")
     return firstMismatch(pinned.fields, actual, options);
   if (!hasKeys(pinned)) return isMatch(pinned, actual, options) ? undefined : null;

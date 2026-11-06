@@ -54,7 +54,6 @@ export function decodeLogsCall([filter]: readonly unknown[], resolveBlock: Resol
     throw invalidParams(`expected a filter object; got ${formatValue(filter)}`);
   const fields = filter ?? {};
   const call: LogsCall = { topics: [] };
-  // `null` is any address, and no topics any topics, as the spec has them.
   const { address, topics } = fields;
   if (Array.isArray(address)) call.address = address.map((each: unknown) => addressParam(each));
   else if (address !== undefined && address !== null) call.address = addressParam(address);
@@ -143,7 +142,6 @@ function describeTopics(topics: readonly LogsTopic[], contracts: readonly { abi:
   const [first, ...rest] = topics;
   const selectors = first === null || first === undefined ? [] : [first].flat();
   const matched = selectors.map((selector) => eventFor(selector));
-  // Indexed args decode only when the topics ask for one known event.
   const [event] = matched;
   if (
     selectors.length === 0 ||
@@ -158,8 +156,6 @@ function describeTopics(topics: readonly LogsTopic[], contracts: readonly { abi:
     const input = indexed[i];
     if (topic === null || input === undefined) return [];
     const values = [topic].flat().map((hash) => {
-      // Indexed strings, bytes, structs, and arrays are hashes; the rest
-      // decode.
       if (input.type === "string" || input.type === "bytes" || input.type.endsWith("]"))
         return formatValue(hash, { short: true });
       const [value] = decodeAbiParameters([input], hash);

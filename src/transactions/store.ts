@@ -146,8 +146,6 @@ export function createTransactionStore({
     const hash = record.hash ?? testHash(`tx:${state.chainId}:${number}:${index}`);
     if (find(hash) !== undefined)
       throw new MockSetupError(`Transaction ${hash} is already on the chain.`, {
-        // A hash the mock made collides only with one named after its chain id
-        // and position.
         metaMessages: [
           record.hash === undefined
             ? `Name a hash other than one the mock makes, testHash("tx:<chainId>:<block>:<index>").`
@@ -159,8 +157,6 @@ export function createTransactionStore({
         ],
       });
     const firstLogIndex = logsBefore(number, index);
-    // Frozen, topics too, so changing one throws instead of changing what the
-    // chain answers.
     const logs = record.logs.map((value, i) => {
       const log = placeLog(value, {
         blockHash: blockHash(number),

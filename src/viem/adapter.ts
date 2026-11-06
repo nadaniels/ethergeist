@@ -42,8 +42,8 @@ export function createViemAdapter({ handle, chain }: { handle: RequestHandler; c
   }
 
   function transport(config?: CustomTransportConfig): CustomTransport {
-    // Each transport tells its requests its resolved `retryCount` (its own,
-    // a fallback transport's, or viem's default), for the retry hint.
+    // `retryCount` is set once `custom()` has resolved it (its own, a fallback
+    // transport's, or viem's default), and read only when a request runs.
     return (params) => {
       let retryCount: number | undefined;
       const created = custom(
