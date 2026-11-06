@@ -11,10 +11,10 @@ import {
 } from "../transactions/addTransaction.js";
 import type { MockCall, MockContract, MockNamespace, MockTaggedCall } from "./types.js";
 
-/** Puts a transaction on the rpc's chain: its `addTransaction`. */
+/** Places a transaction: `mock.addTransaction()`. */
 export type AddTransaction = (fields: AddTransactionParameters) => { logs: readonly unknown[] };
 
-/** `contract.emit`'s options: `addTransaction`'s placement. */
+/** `contract.emit`'s options: `mock.addTransaction()`'s placement. */
 const emitOptionNames = new Set(["blockNumber", "hash"]);
 const emitOptionsHint =
   "Its options are blockNumber and hash; without blockNumber, it mines a new block.";
@@ -52,12 +52,15 @@ export function createContractApi<const abi extends Abi>({
   calls: () => readonly MockTaggedCall[];
   /** The calls a namespace's function received, every overload's. */
   callsTo: (namespace: MockNamespace, functionName: string) => MockCall[];
-  /** Puts a transaction on the rpc's chain. */
+  /** Places a transaction: `mock.addTransaction()`. */
   addTransaction: AddTransaction;
   /** Throws if the contract was removed. */
   assertAttached: () => void;
 }): MockContract<abi> {
-  // Overloads share one entry, as in viem's `getContract`.
+  /**
+   * A namespace's functions by name, each registering its mocks. Overloads
+   * share one entry, as in viem's `getContract()`.
+   */
   function buildNamespace(namespace: MockNamespace) {
     const entries: Record<string, unknown> = {};
     for (const { name: functionName } of functionsIn[namespace]) {
@@ -68,8 +71,9 @@ export function createContractApi<const abi extends Abi>({
         () => callsTo(namespace, functionName),
       );
     }
-    // Untyped callers reaching for the other namespace's functions get a pointer
-    // to the right one instead of "is not a function". Hidden from Object.keys.
+    // An untyped caller reaching for the other namespace's functions gets a
+    // pointer to the right one, not "is not a function". Hidden from
+    // `Object.keys`.
     for (const { name: functionName } of functionsIn[namespace === "read" ? "simulate" : "read"]) {
       if (functionName in entries) continue;
       Object.defineProperty(entries, functionName, {
@@ -83,8 +87,7 @@ export function createContractApi<const abi extends Abi>({
 
   const events = (abi as Abi).flatMap((item) => (item.type === "event" ? [item.name] : []));
 
-  // Built from the ABI at runtime; `MockContract<abi>` describes the same shape.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- runtime-built typed facade
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- built from the ABI at runtime, in the shape MockContract<abi> describes
   return {
     address,
     name,
@@ -113,7 +116,6 @@ export function createContractApi<const abi extends Abi>({
             throw new MockSetupError(`contract.emit has no option ${unknown}.`, {
               metaMessages: [unknown === "transactionHash" ? transactionHashHint : emitOptionsHint],
             });
-          // Its options are addTransaction's own, checked there.
           return addTransaction({ ...options, logs: [log] }).logs[0];
         },
       ]),

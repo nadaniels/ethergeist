@@ -10,14 +10,20 @@ import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext } from "./types.js";
 
 /**
- * What a `getLogs` resolver gets: the filter, `fail`, and `logs`, what the
- * chain's logs would answer. Reading `logs` for a filter a node would refuse
- * (a range past the head) throws that refusal.
+ * What a `getLogs` resolver gets: the call's fields (its filter), `fail`,
+ * and `logs`.
  */
-export type LogsContext = ActionContext<LogsCall> & { readonly logs: EmittedLog[] };
+export type LogsContext = ActionContext<LogsCall> & {
+  /**
+   * The chain's logs the call asks for, as `getLogs` answers unmocked.
+   * Reading it for a filter a node would refuse, e.g. a range past the head,
+   * throws that refusal.
+   */
+  readonly logs: EmittedLog[];
+};
 
 /**
- * `eth_getLogs`: unmocked, the chain's logs the filter matches, at any
+ * `eth_getLogs`. Unmocked, the chain's logs the filter matches, at any
  * address, as a node filters them.
  */
 export const getLogs = ({
@@ -50,8 +56,9 @@ const placedFields = {
 } as const;
 
 /**
- * Logs a `getLogs` mock answered with, in JSON-RPC form. They must be placed
- * (from `mock.logs` or `mock.buildLog()`): content alone has no block or transaction.
+ * Logs a `getLogs` mock answered with, in JSON-RPC form. They must be placed,
+ * e.g. from `mock.logs` or `mock.buildLog()`: content alone has no block or
+ * transaction.
  */
 function toRpcLogs(value: unknown): RpcLog[] {
   if (!Array.isArray(value))
@@ -64,7 +71,7 @@ function toRpcLogs(value: unknown): RpcLog[] {
       throw new MockSetupError(
         `getLogs answers placed logs, e.g. from mock.logs or mock.buildLog(); log ${i} has no position.`,
       );
-    // Left out for a node that doesn't send it; anything else would be dropped.
+    // `toRpcLog` would silently drop a value that isn't a bigint.
     const { blockTimestamp } = log;
     if (blockTimestamp !== undefined && typeof blockTimestamp !== "bigint")
       throw new MockSetupError(

@@ -58,7 +58,6 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
       abiItem: undefined,
       call: undefined,
     };
-    // A real node answers a call to an address without code with empty data.
     if (registry.isEmpty(target)) {
       report.call({ ...unknown, outcome: { type: "result", value: "0x" } }, context);
       return Promise.resolve("0x");
@@ -77,13 +76,17 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
   }
 
   return {
-    /** Answers an `eth_call` request; `report` hears each contract call and batch. */
+    /**
+     * Answers an `eth_call` request; `report` hears each contract call and
+     * batch.
+     */
     call(params: unknown, report: Reporter): Promise<Hex> {
       const list: readonly unknown[] = Array.isArray(params) ? params : [];
       const [given, block] = list;
       const { to, from, value, data } = transactionParam(given);
       if (!data) throw new MockNotFoundError("eth_call without `data` is not supported.");
-      // A `to` of `null` is a creation, as the spec allows: unsupported, not malformed.
+      // A `to` of `null` is a creation, as the spec allows: unsupported, not
+      // malformed.
       if (!to)
         throw new MockNotFoundError("eth_call without `to` is not supported.", {
           metaMessages: [

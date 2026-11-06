@@ -2,7 +2,7 @@ import { decodeAddressAtBlock, encodeQuantity, pinAddress, viewQuantity } from "
 import type { ActionsContext, Definition } from "./table.js";
 import type { BalanceCall } from "./types.js";
 
-/** `eth_getBalance`: unmocked addresses aren't answered. */
+/** `eth_getBalance`. Unmocked, it isn't answered. */
 export const getBalance = ({ state }: ActionsContext): Definition<BalanceCall> => ({
   name: "getBalance",
   hint: "mock.actions.getBalance({ address }).returns(…)",

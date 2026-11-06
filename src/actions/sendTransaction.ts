@@ -21,10 +21,8 @@ import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext, SendTransactionCall } from "./types.js";
 
 /**
- * What a send's resolver gets: the call; `fail`, which also takes a node's
- * refusal by name, e.g. `fail("insufficientFunds")`; and `emit` and
- * `revert`, which answer the transaction as it's mined. Without an ABI,
- * `revert` takes a reason, a panic code or raw data.
+ * What a `sendTransaction` resolver gets: the call's fields, `fail`, and
+ * `emit` and `revert`, which answer the transaction as it's mined.
  */
 export type SendTransactionContext = ActionContext<
   SendTransactionCall,
@@ -32,37 +30,64 @@ export type SendTransactionContext = ActionContext<
 > & {
   /**
    * Adds a log, or logs, to the transaction, placed when it's mined, as
-   * `.emits()` does. Use it rather than `mock.addTransaction()` or
-   * `contract.emit`, which would put a transaction of their own on the
-   * chain, and are refused in this resolver up to its first `await` (after
-   * it, they would still place that separate transaction).
+   * `.emits()` does. `mock.addTransaction()` and `contract.emit` would
+   * place a separate transaction: they're refused in this resolver up to its
+   * first `await`, and after it they place one.
    */
   emit: (logs: MockEventLog | readonly MockEventLog[]) => void;
   /**
-   * Mine the transaction reverted, e.g. `revert("paused")`, dropping what
-   * it emitted. A resolver runs only at the send, so the estimate doesn't
-   * revert: see `.reverts()` for that.
+   * Mines the transaction reverted, e.g. `revert("paused")`, dropping what
+   * it emitted. Without an ABI, it takes a reason, a panic code, raw data or
+   * nothing: see `RevertSpec`. A resolver runs only at the send, so the
+   * estimate doesn't revert: see `.reverts()` for that.
    */
   revert: RevertFn<readonly []>;
 };
 
 /**
- * Like `MockActionBuilder`, for a send: it answers with what the chain did
- * (see `MockWriteAnswers`). Without an ABI, `.reverts()` takes a reason,
- * a panic code or raw data.
+ * A send mock, as `mock.actions.sendTransaction()` returns it: it answers
+ * with what the chain did, as `MockWriteAnswers` says, and `.once()` or
+ * `.times()` limit it (see `WithLimits`). Without an ABI, `.reverts()`
+ * takes a reason, a panic code, raw data or nothing.
  */
 export type MockSendTransactionBuilder = WithLimits<
   MockWriteAnswers<SendTransactionContext, RevertSpec<readonly []>>
 >;
 
-/** `MockAction` for `sendTransaction`. */
+/**
+ * Like `MockAction`, for `sendTransaction`, with `MockSendTransactionBuilder`'s
+ * answers.
+ *
+ * An answered send is mined in a new block, which its receipt,
+ * transaction, block and logs answer from (see `mock.transactions`); a
+ * reverted one is mined too. A send refused with `.fails()` or `fail()`,
+ * or not answered, leaves the chain as it was. A mock without `.reverts()`
+ * also answers the transaction's estimate when no estimate mock does,
+ * without running it or using it up: 100,000 gas, or 21,000 for a plain
+ * transfer to an address without code.
+ *
+ * The Sync method answers with the chain's receipt, not a
+ * `getTransactionReceipt` mock's; the send is mined at once, so its
+ * timeout never passes. A raw send's sender is recovered from its
+ * signature, and its hash is its bytes' `keccak256`: the same bytes again
+ * answer the same hash or receipt, without a second transaction. An
+ * `eth_sendTransaction` without a nonce takes the sender's next, counting
+ * waiting transactions, as `getTransactionCount` at `"pending"` does; one
+ * without gas is sent with 100,000 gas.
+ */
 export type MockSendTransactionAction = {
   (params?: Partial<SendTransactionCall>): MockSendTransactionBuilder;
-  /** Every send the mock has received, in order (the last `historyLimit`). */
+  /**
+   * Every call to this action the mock received, in order: the last
+   * `historyLimit` of them.
+   */
   readonly calls: SendTransactionCall[];
 };
 
-/** `eth_sendTransaction` takes a transaction, with its sender. */
+/**
+ * The call an `eth_sendTransaction` asks for: a transaction with its
+ * sender, refused as invalid params without one.
+ */
 function decodeSendTransaction([tx]: readonly unknown[]): SendTransactionCall {
   const fields = transactionParam(tx);
   if (fields.from === undefined) throw invalidParams("expected a transaction with a sender (from)");
@@ -71,12 +96,11 @@ function decodeSendTransaction([tx]: readonly unknown[]): SendTransactionCall {
 
 /**
  * `eth_sendTransaction`, `eth_sendRawTransaction` and
- * `eth_sendRawTransactionSync`: a send, answered with its hash once its
- * transaction is on the chain, mined in a new block (see `commit`), or with
- * its receipt for the Sync method, the chain's, as `eth_getTransactionReceipt`
- * answers it unmocked. Every send is mined as it's answered, so the Sync method never
- * times out. Unmocked, a plain transfer to an address without code
- * succeeds, as on a node.
+ * `eth_sendRawTransactionSync`. A send is mined in a new block as it's
+ * answered (see `commit`), so the Sync method never times out. It's
+ * answered with its hash, or for the Sync method with the chain's receipt,
+ * as `eth_getTransactionReceipt` answers it unmocked. Unmocked, a plain
+ * transfer to an address without code succeeds, as on a node.
  */
 export function sendTransaction({
   state,
@@ -88,9 +112,9 @@ export function sendTransaction({
   MockWriteOutcome
 > {
   /**
-   * The contract a send calls one of the functions of, if `to` is a
-   * registered contract and it has data, with the call's context: its
-   * `write` mocks answer it first.
+   * The registered contract at a send's `to`, with the send's data and its
+   * call's context, when the send has data: the contract's `write` mocks
+   * answer it first.
    */
   const contractCall = ({ from, to, data, value }: SendTransactionCall) => {
     if (to === null || data === undefined) return undefined;
@@ -103,7 +127,10 @@ export function sendTransaction({
     };
     return contract && { contract, data, context };
   };
-  // A raw send's hash is its bytes'; an `eth_sendTransaction`'s is made where it's mined.
+  /**
+   * Each raw send's hash, from its bytes, and whether it's the Sync method.
+   * An `eth_sendTransaction` has none: `add` makes its hash.
+   */
   const rawSends = new WeakMap<SendTransactionCall, { hash: Hash; sync: boolean }>();
   /**
    * A raw send's hash, if its transaction is already mined. The same bytes
@@ -116,13 +143,11 @@ export function sendTransaction({
     return hash !== undefined && transactions.minedAt(hash) !== undefined ? hash : undefined;
   };
   /**
-   * A send's answer: its hash, or the Sync method's receipt, the chain's
-   * for its record (not a receipt mock's: the app asked for none). A send
-   * is mined as it's answered, so it has one; pending mode (077) adds the
-   * wait and EIP-7966's timeout.
+   * A send's answer: its hash, or for the Sync method the chain's receipt for
+   * its record, not a receipt mock's (the app asked for none). A send is
+   * mined as it's answered, so it has one.
    */
   const answerFor = (call: SendTransactionCall, hash: Hash) =>
-    // The hash is a mined record's: `sentBefore`'s, or one `add` just mined.
     rawSends.get(call)?.sync === true ? transactions.receiptFor(hash)! : hash;
   return {
     name: "sendTransaction",
@@ -147,7 +172,6 @@ export function sendTransaction({
       return call;
     },
     pin: pinTransaction,
-    // A pinned `to` settles whether a static outcome may have a contractAddress.
     pinnedCall: (pinned) =>
       isPlainObject(pinned) && typeof pinned.to === "string"
         ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encode reads only `to`
@@ -167,7 +191,6 @@ export function sendTransaction({
         whileSending: transactions.whileSending,
       });
     },
-    // A registered contract's turn at a send of one of its functions.
     contractTurn(call) {
       const called = contractCall(call);
       return called && called.contract.write(called.data, called.context);
@@ -176,14 +199,14 @@ export function sendTransaction({
       const called = contractCall(call);
       return called && called.contract.writeMock(called.data, called.context);
     },
-    // A plain transfer to an address without code runs nothing, so it succeeds.
     fallback: (call) => (isPlainTransfer(registry, call) ? {} : undefined),
     /**
-     * Places the send's transaction on the chain, mined in a new block, and
-     * answers its hash (`answerFor`). The same bytes sent twice at once are
-     * one transaction too: the second is answered as the first. A nonce left
-     * out is the sender's next on the chain (`nonceOf`), as a wallet fills
-     * it, not a `getTransactionCount` mock's; gas left out is `impliedGas`.
+     * Mines the send's transaction in a new block and answers it
+     * (`answerFor`). The same bytes sent twice at once are one transaction
+     * too: the second is answered as the first. A nonce left out is the
+     * sender's next, waiting transactions included (`nonceOf`), as a wallet
+     * fills it, not a `getTransactionCount` mock's. Gas left out is
+     * `impliedGas`.
      */
     commit(outcome, call) {
       const repeated = sentBefore(call);
@@ -213,7 +236,6 @@ export function sendTransaction({
       });
       return answerFor(call, placed.hash);
     },
-    // The Sync method's receipt as viem returns it.
     view: (rpc) => (typeof rpc === "string" ? rpc : formatTransactionReceipt(rpc)),
   };
 }

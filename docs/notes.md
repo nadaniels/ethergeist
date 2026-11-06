@@ -485,8 +485,10 @@ features land; tick them off as pages get written.
     for a hash not on the chain (pass `transactionHash` to match the
     request's); its `logs` take content, placed in it. A built receipt is a
     whole receipt: returned over a transaction on the chain, it answers its
-    own fields and logs. Both default to the
-    mock's current block. Both share the mock's encoding and
+    own fields, and no logs. One built with logs is refused at `.returns()`
+    (a resolver's throws at the request), since its logs are placed and a
+    receipt mock places its own. Both default to the mock's current block.
+    Both share the mock's encoding and
     defaults, so `toEqual` against what the app got works.
 - [ ] Emitting logs and adding transactions: `contract.emit.Transfer(args,
       options)` for one event, or `mock.addTransaction({ logs, … })` for

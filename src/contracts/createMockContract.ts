@@ -50,6 +50,7 @@ import type {
 } from "./types.js";
 
 type Context = ResolverContext<Abi, readonly unknown[]>;
+
 /**
  * What a contract's mock adds to the engine's: which function it's for, in
  * which namespace, and the `from` and `value` it pins beside its args.
@@ -71,54 +72,98 @@ type Handler = MockHandler<Context, ContractFunction>;
 export type ContractTurn<answer = unknown> = {
   /** Answers with the best matching mock; `undefined` when none matches. */
   answer(): Promise<answer> | undefined;
-  /** The error for the call when nothing else answers it either; built only then. */
+  /**
+   * The error for the call when nothing else answers it either; built only
+   * then.
+   */
   miss(): MockNotFoundError;
   /**
    * Records `error` as the contract's outcome, a revert decoded by its ABI,
    * when the call is refused before its turn (see `Definition.refuse`).
    */
   refused(error: unknown): void;
-  /** The call, in its namespace, for history; its outcome is the contract's, once it answers. */
+  /**
+   * The call, in its namespace, for history: its outcome is the contract's
+   * when the call is refused, its mock fails, or it answers with a `view`,
+   * and otherwise the request's.
+   */
   record: MockCallRecord;
 };
 
-/** Internal: the public contract API plus the hooks the rpc calls. */
+/**
+ * A mocked contract as the mock holds it: its public API, and the hooks that
+ * `eth_call` dispatch, the actions and the registry call.
+ */
 export type InternalMockContract<abi extends Abi = Abi> = {
+  /** Its public API, as `mock.contract()` returns it. */
   contract: MockContract<abi>;
   /** The contract for messages: its name and address, or just the address. */
   label: string;
-  /** Whether this contract is registered at `address`, which must be checksummed. */
+  /**
+   * Whether this contract is registered at `address`, which must be
+   * checksummed.
+   */
   matches(address: Address): boolean;
-  /** Answers a call; `report` hears the decoded call and its outcome, however it ends. */
+  /**
+   * Answers an `eth_call` of `data`; `report` hears the decoded call and its
+   * outcome, however it ends.
+   */
   resolve(data: Hex, context: CallContext, report: (record: MockCallRecord) => void): Promise<Hex>;
-  /** Prepares the contract's turn at an estimate of `data`: see `ContractTurn`. */
+  /**
+   * Prepares the contract's turn at an estimate of `data`: see
+   * `ContractTurn`.
+   */
   estimate(data: Hex, context: CallContext): ContractTurn<Hex>;
-  /** Prepares the contract's turn at a send of `data`, answering what the chain did. */
+  /**
+   * Prepares the contract's turn at a send of `data`, answering what the
+   * chain did.
+   */
   write(data: Hex, context: CallContext): ContractTurn<MockWriteOutcome>;
   /**
-   * The write mock that would answer a send of `data` now, if any, found
+   * The `write` mock that would answer a send of `data` now, if any, found
    * without answering or recording it: nothing runs, and no use is counted.
    */
   writeMock(data: Hex, context: CallContext): FoundMock | undefined;
+  /** Clears its calls, every function's, and its mocks' use counts. */
   clearCalls(): void;
-  /** Mocks other than defaults that haven't answered a call, formatted for messages. */
+  /**
+   * Mocks other than defaults that haven't answered a call, formatted for
+   * messages.
+   */
   unusedMocks(): string[];
-  /** Saves the registered mocks and their answers, to put back or compare against. */
+  /**
+   * Saves the registered mocks and their answers, to put back or compare
+   * against.
+   */
   snapshot(): Required<PartSnapshot>;
-  /** Marks the contract removed: registering on it, or answering its mocks, throws. */
+  /**
+   * Marks the contract removed: registering on it, or answering its mocks,
+   * throws.
+   */
   detach(): void;
 };
 
+/**
+ * A mocked contract at `parameters.address`, with its `defaults` registered:
+ * see `InternalMockContract`. Throws for a malformed address, or a default
+ * that doesn't fit its namespace's functions.
+ */
 export function createMockContract<const abi extends Abi>(
   parameters: CreateMockContractParameters<abi>,
   hooks: {
-    /** Called with every decoded call, tagged, so the rpc can keep a log across contracts. */
+    /**
+     * Called with every decoded call, tagged, so `mock.calls` lists them
+     * across contracts.
+     */
     onCall?: (call: MockTaggedCall) => void;
-    /** Puts a transaction on the rpc's chain. */
+    /** Places a transaction: `mock.addTransaction()`. */
     addTransaction?: AddTransaction;
     /** How many calls each list keeps: the contract's, and each function's. */
     recordLimit?: RecordLimit;
-    /** Runs a write's resolver, refusing the rpc's `addTransaction` in its body. */
+    /**
+     * Runs a `write` mock's resolver, refusing `mock.addTransaction()` in
+     * it.
+     */
     whileSending?: <result>(run: () => result) => result;
   } = {},
 ): InternalMockContract<abi> {
@@ -129,19 +174,25 @@ export function createMockContract<const abi extends Abi>(
     whileSending = <result>(run: () => result) => run(),
   } = hooks;
   const { abi, name, defaults = {} } = parameters;
-  // Also validates the address at registration.
   const address = getAddress(parameters.address);
   const label = formatContract(address, name);
   const mocks = createHandlers<Context, ContractFunction>();
-  // Every namespace's calls, tagged, as `contract.calls` and `mock.calls` hold them.
+  /**
+   * Every namespace's calls, tagged, as `contract.calls` and `mock.calls`
+   * hold them.
+   */
   const calls = createRecordList<MockTaggedCall>(recordLimit);
-  // Each function's calls in a list of its own, by namespace and selector, so
-  // a busy function can't push a quiet one's out. Unused mocks find theirs by
-  // selector; a function's `.calls` merges its overloads' in the order received.
+  /**
+   * Each function's calls in a list of its own, by namespace and selector,
+   * so a busy function can't push a quiet one's out. Unused mocks find
+   * theirs by selector; a function's `.calls` merges its overloads' in the
+   * order received.
+   */
   const callsBySelector = new Map<
     `${MockNamespace}:${Hex}`,
     { functionName: string; list: RecordList<MockCall> }
   >();
+  /** Each call's place in the order received, for merging overloads' lists. */
   const order = new WeakMap<MockCall, number>();
   let received = 0;
   let detached = false;
@@ -152,9 +203,8 @@ export function createMockContract<const abi extends Abi>(
         `The contract at ${label} was removed by restore() or reset(); register it again.`,
       );
   }
-  // Handed to every resolver. RevertFn's generic signature only narrows what
-  // callers may pass; createRevertError accepts every RevertSpec.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- generic signature, non-generic implementation
+  /** Handed to every resolver. */
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the generic only narrows what callers pass; createRevertError takes any RevertSpec
   const revert = ((spec?: RevertSpec) => {
     throw createRevertError(abi, spec);
   }) as RevertFn<Abi>;
@@ -162,12 +212,19 @@ export function createMockContract<const abi extends Abi>(
   const { functionsIn, functionsBySelector, notInNamespaceError, findFunction } =
     createFunctions(abi);
 
+  /**
+   * Registers a mock of `functionName` in `namespace`, pinning `args` and
+   * `given`'s `from` and `value`, and returns its builder.
+   */
   function register(
     namespace: MockNamespace,
     functionName: string,
     args: readonly unknown[] | undefined,
     given?: unknown,
-    /** For defaults: registered on a given overload, and exempt from `assertAllUsed()`. */
+    /**
+     * For defaults: registered on a given overload, and exempt from
+     * `assertAllUsed()`.
+     */
     asDefault?: { abiItem: AbiFunction },
   ) {
     assertAttached();
@@ -180,7 +237,8 @@ export function createMockContract<const abi extends Abi>(
     const handler = mocks.register(
       pinned,
       { namespace, abiItem, selector: toFunctionSelector(abiItem), pins },
-      // Pins count like args: `transfer([bob, 5n], { from })` beats `transfer([bob, 5n])`.
+      // Pins count like args: `transfer([bob, 5n], { from })` beats
+      // `transfer([bob, 5n])`.
       { isDefault, ranked: specificity(pins === undefined ? pinned : [pinned ?? [], pins]) },
     );
     const builder = mocks.createBuilder(handler, abiItem.name, (value) => {
@@ -197,7 +255,7 @@ export function createMockContract<const abi extends Abi>(
     }
     return Object.assign(builder, {
       reverts(spec?: RevertSpec) {
-        // Built now, so a bad spec fails here, changing nothing, as a write's does.
+        // Built now, so a bad spec throws here and changes nothing.
         const error = createRevertError(abi, spec);
         builder.returns(() => {
           throw error;
@@ -206,7 +264,6 @@ export function createMockContract<const abi extends Abi>(
     });
   }
 
-  // A default is keyed by name, so it answers every overload of that name.
   for (const namespace of ["read", "simulate", "estimateGas", "write"] as const)
     for (const [functionName, resolver] of Object.entries(defaults[namespace] ?? {})) {
       const overloads = functionsIn[namespace].filter((abiItem) => abiItem.name === functionName);
@@ -243,7 +300,6 @@ export function createMockContract<const abi extends Abi>(
     });
     try {
       const { selector, abiItem, call } = decode(data, context);
-      // An `eth_call` is answered in its function's namespace.
       const namespace = functionsIn.read.includes(abiItem) ? "read" : "simulate";
       decoded = { namespace, selector, abiItem, call };
       receive(decoded);
@@ -262,9 +318,9 @@ export function createMockContract<const abi extends Abi>(
 
   /**
    * Prepares the contract's turn at an action's call of `data` in
-   * `namespace`: see `ContractTurn`. `encode` checks a mock's answer; `view`
-   * is it in the record, or, left out, the record takes the request's
-   * answer, as a write's takes its send's hash.
+   * `namespace`: see `ContractTurn`. `encode` checks a mock's answer, and
+   * `view` makes it the record's value. Without `view`, the record takes the
+   * request's answer, as a `write` record takes its send's hash.
    */
   function turn<answer>(
     namespace: "estimateGas" | "write",
@@ -312,11 +368,12 @@ export function createMockContract<const abi extends Abi>(
       },
       miss() {
         const registered = { registered: candidates(decoded), missed: matchOnce().missed };
-        // An estimate without `from` is no send's, so write mocks never had a turn at it.
+        // Only an estimate with `from` is a send's, which `write` mocks imply.
         if (namespace !== "estimateGas" || call.from === undefined)
           return missError(call, namespace, label, registered);
-        // The write mocks that would have implied the estimate, had one matched:
-        // matched again for their reasons, so their predicates run a second time.
+        // The `write` mocks that would have implied the estimate, had one
+        // matched: matched again for their reasons, so their predicates run a
+        // second time.
         const writes = { ...decoded, namespace: "write" as const };
         const { missed: writesMissed } = match(writes);
         return missError(call, namespace, label, registered, {
@@ -328,12 +385,16 @@ export function createMockContract<const abi extends Abi>(
     };
   }
 
+  /** See `InternalMockContract.writeMock`. */
   function writeMock(data: Hex, context: CallContext) {
     const decoded = decodeIn("write", data, context);
     return decoded instanceof MockNotFoundError ? undefined : match(decoded).handler;
   }
 
-  /** A call of `data` in `namespace`, or why none of the contract's functions takes it. */
+  /**
+   * A call of `data` in `namespace`, or why none of the contract's functions
+   * takes it.
+   */
   function decodeIn(
     namespace: MockNamespace,
     data: Hex,
@@ -347,31 +408,37 @@ export function createMockContract<const abi extends Abi>(
     }
   }
 
-  /** A call to one of the contract's functions, decoded, and the namespace it's answered in. */
+  /**
+   * A call to one of the contract's functions, decoded, and the namespace
+   * it's answered in.
+   */
   type Decoded = { namespace: MockNamespace; selector: Hex; abiItem: AbiFunction; call: MockCall };
 
-  /** Decodes a call to one of the contract's functions; throws if none has its selector. */
+  /**
+   * Decodes a call to one of the contract's functions; throws if none has
+   * its selector, or its function can't decode it.
+   */
   function decode(data: Hex, context: CallContext): Omit<Decoded, "namespace"> {
     const selector = slice(data, 0, 4);
     const abiItem = functionsBySelector.get(selector);
     if (abiItem)
       try {
-        // Typed by `Abi`, as viem leaves `args` out for a function without inputs.
         const { args = [] } = decodeFunctionData<Abi>({ abi: [abiItem], data });
         return {
           selector,
           abiItem,
           call: { ...context, address, functionName: abiItem.name, args },
         };
-      } catch {
-        // Data its selector's function can't decode is no call of it.
-      }
+      } catch {}
     throw new MockNotFoundError(
       `No function with selector ${selector} on mocked contract ${label}.`,
     );
   }
 
-  /** Records a call: in its function's list, and tagged in the contract's and the rpc's. */
+  /**
+   * Records a call: in its function's list, and tagged in the contract's and
+   * `mock.calls`.
+   */
   function receive({ namespace, selector, call }: Decoded) {
     received += 1;
     order.set(call, received);
@@ -381,7 +448,10 @@ export function createMockContract<const abi extends Abi>(
     onCall(tagged);
   }
 
-  /** The calls in `namespace` to the function with `selector`, made on its first. */
+  /**
+   * The list of calls in `namespace` to the function with `selector`, made on
+   * its first.
+   */
   function functionCalls(
     namespace: MockNamespace,
     selector: Hex,
@@ -395,7 +465,10 @@ export function createMockContract<const abi extends Abi>(
     return list;
   }
 
-  /** The calls a namespace's function received, every overload's, in the order received. */
+  /**
+   * The calls a namespace's function received, every overload's, in the
+   * order received.
+   */
   function callsTo(namespace: MockNamespace, functionName: string): MockCall[] {
     const lists = [...callsBySelector]
       .filter(
@@ -412,9 +485,10 @@ export function createMockContract<const abi extends Abi>(
       (handler) => handler.namespace === namespace && handler.selector === selector,
     );
 
-  // The most specific matching handler wins; among equally specific ones,
-  // the most recently registered wins, so per-test mocks override defaults.
-  // A handler matches on its args, then on its `from` and `value`.
+  /**
+   * The handler that answers `decoded`, matched on its args, then its `from`
+   * and `value` (see `findAnswering`), and what each candidate missed on.
+   */
   function match(decoded: Decoded) {
     const { call } = decoded;
     return mocks.findAnswering(
@@ -440,7 +514,10 @@ export function createMockContract<const abi extends Abi>(
       call.functionName,
     );
 
-  /** Unused mocks, each with its contract and the calls its function received instead. */
+  /**
+   * Unused mocks, each with its contract and the calls its function received
+   * instead.
+   */
   const describeUnused = (list: Handler[]) =>
     list.map((handler) => {
       const functionList = callsBySelector.get(`${handler.namespace}:${handler.selector}`)?.list;

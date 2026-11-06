@@ -24,7 +24,10 @@ import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject, lowercase } from "../shared/values.js";
 import type { AddressAtBlockCall, SendTransactionCall } from "./types.js";
 
-/** Encodes a bigint answer as a JSON-RPC quantity; `what` names it in the error. */
+/**
+ * Encodes a bigint answer as a JSON-RPC quantity; `what` names it in the
+ * error.
+ */
 export function encodeQuantity(what: string) {
   return (value: unknown) => {
     if (typeof value !== "bigint")
@@ -36,7 +39,10 @@ export function encodeQuantity(what: string) {
 /** A JSON-RPC quantity as viem's action returns it. */
 export const viewQuantity = (rpc: unknown) => (isHex(rpc) ? hexToBigInt(rpc) : rpc);
 
-/** Checksums a pinned `address` (or each of several), which also validates it at registration. */
+/**
+ * Checksums a pinned `address`, or each of several, which also validates it
+ * at registration.
+ */
 export function pinAddress(pinned: unknown) {
   if (!isPlainObject(pinned)) return pinned;
   const { address } = pinned;
@@ -49,7 +55,10 @@ export function pinAddress(pinned: unknown) {
   return pinned;
 }
 
-/** Checksums a pinned `from` and `to`, which also validates them at registration. */
+/**
+ * Checksums a pinned `from` and `to`, which also validates them at
+ * registration.
+ */
 export function pinTransaction(pinned: unknown) {
   if (!isPlainObject(pinned)) return pinned;
   const { from, to } = pinned;
@@ -61,10 +70,10 @@ export function pinTransaction(pinned: unknown) {
 }
 
 /**
- * An `eth_sendTransaction`'s call from its request's fields
- * (`transactionParam`), its sender and its type: `to` is `null` for a deploy,
- * and empty `data` is left out. An estimate's send is one too, as send mocks
- * are matched against it.
+ * An `eth_sendTransaction`'s call, from its request's fields
+ * (`transactionParam`), its sender and its type: `to` is `null` for a
+ * deploy, and empty `data` is left out. An estimate's send is one too, since
+ * send mocks are matched against it.
  */
 export function sendCall(
   fields: ReturnType<typeof transactionParam>,
@@ -94,7 +103,8 @@ export const withoutUndefined = (fields: object) =>
 /**
  * Whether a transaction is a plain transfer to an address without code: no
  * data, to an address the mock knows has none, or doesn't know. A node runs
- * nothing for one: it estimates the base 21000 gas, and the transfer succeeds.
+ * nothing for one. It estimates the base 21,000 gas, and the transfer
+ * succeeds.
  */
 export function isPlainTransfer(
   registry: Registry,
@@ -122,7 +132,10 @@ export function blockAt(
   };
 }
 
-/** An address and a block, as `eth_getBalance` and its kind take them; see `AddressAtBlockCall`. */
+/**
+ * The call for an address and a block, as `eth_getBalance` and its kind take
+ * them: see `AddressAtBlockCall`.
+ */
 export function decodeAddressAtBlock(
   [address, block]: readonly unknown[],
   resolveBlock: ResolveBlock,
@@ -154,15 +167,16 @@ class Registered {
 
 /**
  * Keeps the head at registration beside a static receipt or transaction,
- * which a node never moves: for a hash not on the chain, it's the block the
- * answer is mined in. The value is held as given, not copied.
+ * which a node never moves: where the chain has no transaction to answer
+ * from, it's the block the answer is mined in. The value is held as given,
+ * not copied.
  */
 export const registeredAt = (state: ChainState) => (value: unknown) =>
   new Registered(value, state.blockNumber);
 
 /**
  * An answer and the block a static one was registered in; `undefined` for a
- * resolver's, which is made in the block current when it answers.
+ * resolver's, which is made at the request.
  */
 export const unwrapRegistered = (
   answer: unknown,

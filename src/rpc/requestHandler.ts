@@ -17,9 +17,9 @@ import type { Faults } from "./faults.js";
 export type RequestHandler = (request: RpcRequest, retryCount?: number) => Promise<unknown>;
 
 /**
- * The mock's request pipeline: record the request, fail it if a
- * `failRequests()` fault applies, answer it (built-ins, `eth_call`, then
- * actions and raw methods), and record how it ended.
+ * The mock's request pipeline: it records the request, fails it if a
+ * `failRequests()` fault applies, answers it (built-ins, `eth_call`, then
+ * actions and raw methods), and records how it ended.
  */
 export function createRequestHandler({
   state,
@@ -36,18 +36,17 @@ export function createRequestHandler({
 }): RequestHandler {
   /**
    * Answers a request, recording it. `retryCount` is the transport's, when it
-   * came through one, for the retry hint. Throws the mock's own errors: a
-   * fault (`MockFailure`), a revert, a node's refusal (`MockRpcError`), or
-   * what it couldn't answer; adapters turn them into their client's errors.
+   * came through one, for the retry hint. Throws answers (a fault, a revert
+   * or a node's refusal, as `isAnswer` names them), or the mock's own errors
+   * for what it couldn't answer. An adapter turns the answers into its
+   * client's errors, as `toViemError` does for viem.
    */
   async function handle(given: RpcRequest, retryCount?: number): Promise<unknown> {
     const { method, params } = given;
-    // For `unhandled`: only `method` and `params`, without `params` when the request had none.
+    // `unhandled` lists only `method` and `params`, and no `params` if none.
     const request: RpcRequest = params === undefined ? { method } : { method, params };
     const historyEntry = recorder.start(request);
 
-    // The most recent fault wins, like mocks. A fault is a deliberate answer, so
-    // it isn't recorded as unhandled.
     const fault = faults.applyTo(method);
     if (fault !== undefined) {
       recorder.settle(historyEntry, { type: "fault", fault, source: "failRequests" });
@@ -59,7 +58,7 @@ export function createRequestHandler({
       answered = await answer(request, historyEntry);
     } catch (caught) {
       // Anything that isn't an answer or one of the mock's errors is a bug in
-      // the mock: thrown as is, viem would retry it with backoff.
+      // the mock, wrapped: thrown as is, viem would retry it with backoff.
       const error = withRetryHint(
         isAnswer(caught) ? caught : asMockError(caught),
         historyEntry,
@@ -73,7 +72,7 @@ export function createRequestHandler({
       recorder.settle(historyEntry, outcome);
       throw error;
     }
-    // Outside the try: a `debug` function that throws here is the user's, not the answer's.
+    // Outside the try: a throw here is `debug`'s, not the answer's.
     recorder.settle(historyEntry, { type: "result", value: answered.value });
     return answered.rpc;
   }
@@ -86,7 +85,6 @@ export function createRequestHandler({
     const rpc = await answerRpc(request, historyEntry, (outcome) => {
       actionOutcome = outcome;
     });
-    // An action's table knows its value in viem's types; for the rest, decode the answer.
     const value =
       actionOutcome?.type === "result" ? actionOutcome.value : valueOf(historyEntry, rpc);
     return { rpc, value };
@@ -120,7 +118,10 @@ export function createRequestHandler({
     }
   }
 
-  /** A "not mocked" error, explained when it's viem retrying past a limited mock's fault. */
+  /**
+   * A "not mocked" error, explained when it's viem retrying past a limited
+   * mock's fault.
+   */
   function withRetryHint(
     error: unknown,
     historyEntry: MockHistoryEntry,

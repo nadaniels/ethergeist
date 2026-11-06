@@ -5,7 +5,7 @@ import { encodeQuantity, viewQuantity } from "./decode.js";
 import type { Definition } from "./table.js";
 import type { EmptyCall } from "./types.js";
 
-/** `eth_blobBaseFee`: unmocked, 1 wei, the protocol's minimum. */
+/** `eth_blobBaseFee`. Unmocked, 1 wei, the protocol's minimum. */
 export const getBlobBaseFee = (): Definition<EmptyCall> => ({
   name: "getBlobBaseFee",
   hint: "mock.actions.getBlobBaseFee().returns(…)",

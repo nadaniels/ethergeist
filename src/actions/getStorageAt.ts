@@ -7,7 +7,10 @@ import { decodeAddressAtBlock, pinAddress } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { StorageCall } from "./types.js";
 
-/** A storage slot or value as 32 bytes, lowercase; `what` names it in the error. */
+/**
+ * A storage slot or value as 32 bytes, lowercase; `what` names it in the
+ * error.
+ */
 function toWord(value: unknown, what: string): Hex {
   if (!isHex(value))
     throw new MockSetupError(`${what} must be hex of up to 32 bytes; got ${formatValue(value)}.`);
@@ -18,7 +21,10 @@ function toWord(value: unknown, what: string): Hex {
   return pad(lowercase(value), { size: 32 });
 }
 
-/** A storage slot param as 32 bytes; refused as invalid params if it isn't hex of up to 32 bytes. */
+/**
+ * A storage slot param as 32 bytes, lowercase; refused as invalid params if
+ * it isn't hex of up to 32 bytes.
+ */
 function slotParam(value: unknown): Hex {
   if (!isHex(value) || size(value) > 32)
     throw invalidParams(`expected a storage slot of up to 32 bytes; got ${formatValue(value)}`);
@@ -35,7 +41,10 @@ function pinStorage(pinned: unknown) {
   return { ...pinnedAddress, slot: toWord(pinnedAddress.slot, "A storage slot") };
 }
 
-/** `eth_getStorageAt`: slots and values as 32 bytes; unmocked, an `empty()` address's storage is zero. */
+/**
+ * `eth_getStorageAt`, with slots and values as 32 bytes. Unmocked, an
+ * `empty()` address's storage is zero, and other addresses aren't answered.
+ */
 export const getStorageAt = ({ state, registry }: ActionsContext): Definition<StorageCall> => ({
   name: "getStorageAt",
   hint: "mock.actions.getStorageAt({ address, slot }).returns(…), or mock.empty(address)",
@@ -49,7 +58,6 @@ export const getStorageAt = ({ state, registry }: ActionsContext): Definition<St
   pin: pinStorage,
   zero: "0x",
   encode: (value) => toWord(value, "A storage value"),
-  // An address without code has no storage: every slot reads as zero.
   fallback: (call) =>
     registry.codeAt(call.address) === "0x" ? pad("0x", { size: 32 }) : undefined,
 });

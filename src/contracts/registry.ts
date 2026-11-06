@@ -24,7 +24,11 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
 
   const contractAt = (address: Address) => contracts.find((contract) => contract.matches(address));
 
-  /** Code at an address the mock knows without a mock: placeholder code for contracts, none for empty. */
+  /**
+   * The code at `address` without a mock: placeholder code (`0xfe`) for a
+   * registered contract or Multicall3, `0x` for an address marked empty, and
+   * `undefined` for one the mock doesn't know.
+   */
   function codeAt(address: Address): Hex | undefined {
     if (address === multicallAddress || contractAt(address)) return "0xfe";
     if (emptyAddresses.has(address)) return "0x";
@@ -39,7 +43,10 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
     isContract: (address: Address) => contractAt(address) !== undefined,
     isEmpty: (address: Address) => emptyAddresses.has(address),
     codeAt,
-    /** Throws if `address` (any casing) is already registered, as a contract or empty. */
+    /**
+     * Throws if `address` (any casing) is already registered, as a contract
+     * or empty.
+     */
     assertUnregistered(address: Address) {
       const checksummed = getAddress(address);
       const existing = contractAt(checksummed);
@@ -63,7 +70,10 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
       for (const contract of contracts) contract.clearCalls();
     },
     unusedMocks: () => contracts.flatMap((contract) => contract.unusedMocks()),
-    /** Whether the last `restore()` or `reset()` removed a contract at `address`, checksummed. */
+    /**
+     * Whether the last `restore()` or `reset()` removed a contract at
+     * `address`, checksummed.
+     */
     removedByLastRestore: (address: Address) => removed.has(address),
     /**
      * Saves the contracts, their mocks, and the empty addresses. `restore()`

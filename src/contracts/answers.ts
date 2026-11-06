@@ -18,8 +18,9 @@ import { isPlainObject } from "../shared/values.js";
 import type { MockNamespace, RevertSpec } from "./types.js";
 
 /**
- * Turns what a resolver returned into the value viem's encoder expects: named
- * outputs become a tuple in ABI order, and omitted struct fields get zero values.
+ * A function mock's answer as viem's encoder takes it: named outputs become a
+ * tuple in ABI order, omitted struct fields get zero values, and
+ * `zeroResult` is every output's zero.
  */
 function normalizeResult(outputs: readonly AbiParameter[], value: unknown): unknown {
   if (value === zeroResult) return normalizeResult(outputs, outputs.length > 1 ? [] : undefined);
@@ -31,7 +32,10 @@ function normalizeResult(outputs: readonly AbiParameter[], value: unknown): unkn
   return value;
 }
 
-/** Answers a contract call `eth_call`'s way, or an estimate as gas, as a JSON-RPC quantity. */
+/**
+ * A contract mock's answer as JSON-RPC: a call's return data, as `eth_call`
+ * answers it, or an estimate's gas as a quantity.
+ */
 export function encodeAnswer(
   { namespace, abiItem }: { namespace: MockNamespace; abiItem: AbiFunction },
   value: unknown,
@@ -45,19 +49,18 @@ function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
   return encodeFunctionResult({
     abi: [abiItem],
     functionName: abiItem.name,
-    // viem types `result` as a tuple for a non-literal AbiFunction, but it
-    // takes a bare value for single-output functions at runtime.
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem's type is narrower than its runtime
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem types result as a tuple, but takes a bare value for a single output
     result: normalizeResult(abiItem.outputs, value) as readonly unknown[] | undefined,
   });
 }
 
 /**
  * The revert `spec` gives, its custom errors from `abi`. A spec the types
- * rule out (an untyped caller's `null`, `{}`, data that isn't hex, args or
- * a panic code that don't encode) is the mock's setup error; viem's own
- * refusals, an error not on the ABI or a panic code out of range, pass
- * through.
+ * rule out is the mock's setup error: an untyped caller's `null` or `{}`,
+ * data that isn't hex, a panic that isn't a number or bigint, or args or a
+ * panic code that throw a native error as they encode, e.g. `1.5`. viem's
+ * own refusals pass through, e.g. an error not on the ABI or a panic code
+ * out of range.
  */
 export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError {
   const given: unknown = spec;
@@ -87,7 +90,6 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem checks the args against the error
     return encodeErrorResult({ abi, errorName, args: args as readonly unknown[] });
   };
-  // BigInt() and viem's encoder throw native errors for values they can't take (1.5, bad args).
   return new MockRevertError(refuseUnencodable("A revert", encode));
 }
 

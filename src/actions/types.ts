@@ -84,52 +84,76 @@ export type FeeHistoryCall = {
 export type TransactionCountCall = AddressAtBlockCall;
 /**
  * What a call to `estimateGas` asked for: the transaction, and the block it's
- * estimated at. `from` is the sender, and `value` is `0n` when the request
- * has none. Other fields are left out when the request has none.
- * `blockNumber` and `blockTag` are as in `AddressAtBlockCall`.
+ * estimated at. A field the request has none of is left out.
  */
 export type EstimateGasCall = {
+  /** The sender. */
   from?: Address;
+  /** The recipient; left out for a deploy. */
   to?: Address;
+  /** Wei sent; `0n` when the request has none. */
   value: bigint;
+  /** The calldata. */
   data?: Hex;
+  /** The gas limit asked for. */
   gas?: bigint;
+  /** A legacy or EIP-2930 transaction's gas price. */
   gasPrice?: bigint;
+  /** An EIP-1559 transaction's fee cap. */
   maxFeePerGas?: bigint;
+  /** An EIP-1559 transaction's tip. */
   maxPriorityFeePerGas?: bigint;
+  /** The nonce asked for. */
   nonce?: number;
+  /** As in `AddressAtBlockCall`. */
   blockNumber: bigint;
+  /** As in `AddressAtBlockCall`. */
   blockTag?: BlockTag;
 };
 /**
  * What a send asked for: the transaction, from `eth_sendTransaction`'s
- * request or a raw send's signed bytes. `from` is the sender: the
- * request's, or the signer recovered from a raw send's signature. `to` is
- * `null` for a deploy; `value` is `0n` when it has none, and `data` is left
- * out when it's empty. A raw send has its nonce and gas; other fields are
- * left out when the request has none. `type` is the request's, or else as
- * viem's `getTransactionType()` reads its fields, e.g. `"legacy"` with a
- * `gasPrice`, `"eip2930"` with an `accessList` too, `"eip1559"` without.
+ * request or a raw send's signed bytes. A raw send has its nonce and gas;
+ * other fields the request has none of are left out.
  */
 export type SendTransactionCall = {
+  /**
+   * The sender: the request's, or the signer a raw send's signature
+   * recovers.
+   */
   from: Address;
+  /** The recipient; `null` for a deploy. */
   to: Address | null;
+  /** Wei sent; `0n` when it has none. */
   value: bigint;
+  /** The calldata; left out when it's empty. */
   data?: Hex;
+  /** The nonce asked for. */
   nonce?: number;
+  /** The gas limit asked for. */
   gas?: bigint;
+  /** A legacy or EIP-2930 transaction's gas price. */
   gasPrice?: bigint;
+  /** An EIP-1559 transaction's fee cap. */
   maxFeePerGas?: bigint;
+  /** An EIP-1559 transaction's tip. */
   maxPriorityFeePerGas?: bigint;
+  /**
+   * The request's type, or else as viem's `getTransactionType()` reads its
+   * fields, e.g. `"legacy"` with a `gasPrice`, `"eip2930"` with an
+   * `accessList` too, `"eip1559"` without.
+   */
   type: MockTransactionType;
 };
 /** What a call to an action without params asked for: nothing. */
 export type EmptyCall = Record<string, never>;
-/**
- * What a call to `getStorageAt` asked for; see `AddressAtBlockCall`. `slot`
- * is 32 bytes, lowercase, however the request wrote it (e.g. `"0x0"`).
- */
-export type StorageCall = AddressAtBlockCall & { slot: Hex };
+/** What a call to `getStorageAt` asked for; see `AddressAtBlockCall`. */
+export type StorageCall = AddressAtBlockCall & {
+  /**
+   * The slot, as 32 bytes, lowercase, however the request wrote it (e.g.
+   * `"0x0"`).
+   */
+  slot: Hex;
+};
 /** What a call to `getTransactionReceipt` asked for: a transaction's hash. */
 export type ReceiptCall = {
   /** The transaction's hash, lowercase, however the request wrote it. */

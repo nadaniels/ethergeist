@@ -5,15 +5,18 @@ import { MockFailure, isNodeErrorName } from "../mocking/faults.js";
 import type { MockNodeFault } from "../mocking/types.js";
 import { MockRevertError, MockRpcError } from "../shared/errors.js";
 
-/** There is no real endpoint; viem's errors require a URL, so faults report this one. */
+/**
+ * The URL viem's errors name, since they require one: the mock has no
+ * endpoint.
+ */
 const url = "mock://viem-transport-mock";
 
 /**
  * A revert as viem's `http` transport reports it from a reth node: an
  * `RpcRequestError` with code 3, the node's message for the revert data, and
- * the data itself, left out when it's empty. Other nodes word the message
- * differently, but viem builds the same classes and decoded revert from them. viem reads the
- * reason and the data from it, as in production.
+ * the data itself, left out when it's empty. viem reads the reason and the
+ * data from it, as in production. Other nodes word the message differently,
+ * but viem builds the same classes and decoded revert from them.
  */
 function createRevertRpcError(
   revert: MockRevertError,
@@ -30,6 +33,11 @@ function createRevertRpcError(
   });
 }
 
+/**
+ * A fault as viem's `http` transport reports it: a node's refusal or a
+ * JSON-RPC error as an `RpcRequestError`, a timeout as a `TimeoutError`, and
+ * an HTTP status or no response as an `HttpRequestError`.
+ */
 function createFaultError(
   fault: MockNodeFault,
   request: { method: string; params?: unknown },
@@ -61,16 +69,15 @@ function createFaultError(
 }
 
 /**
- * `error`, as viem's `http` transport would throw it for `request`: the
- * mock's faults, reverts, and node refusals become viem's errors, so its
- * retry rules and error classes apply as in production. Anything else (what
- * the mock couldn't answer) is thrown as is.
+ * `error`, thrown while answering `request`, as viem's error: a fault
+ * (`MockFailure`), a revert or a node's refusal becomes what viem's `http`
+ * transport throws for a node failing that way, so viem's retry rules and
+ * error classes apply as in production. Anything else, what the mock
+ * couldn't answer, is returned as is.
  */
 export function toViemError(error: unknown, request: { method: string; params?: unknown }) {
   const body = request.params === undefined ? { method: request.method } : request;
-  // A mock's `.fails()` or `fail()`, or a `failRequests()` fault.
   if (error instanceof MockFailure) return createFaultError(error.fault, body);
-  // A revert reaches viem the way a node's would, and so does a node's refusal.
   if (error instanceof MockRevertError) return createRevertRpcError(error, body);
   if (error instanceof MockRpcError)
     return createFaultError({ code: error.code, message: error.shortMessage }, body);

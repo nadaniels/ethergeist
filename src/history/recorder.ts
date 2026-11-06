@@ -24,15 +24,22 @@ import { isPlainObject } from "../shared/values.js";
 import { type FormatContext, type HistoryView, formatEntry } from "./format.js";
 import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./types.js";
 
+/**
+ * How a request that threw `error` ended, for history: a revert as the
+ * contract's record decoded it, with the contract's ABI, or else as
+ * `failureOutcome` gives it.
+ */
 export function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
-  // A contract's record already decoded a revert against the contract's ABI.
   const record =
     entry.type === "call" ? entry.call : entry.type === "action" ? entry.contract : undefined;
   if (error instanceof MockRevertError && record?.outcome.type === "revert") return record.outcome;
   return failureOutcome(error);
 }
 
-/** Where contract calls report their records: the entry's call, or its batch's slots. */
+/**
+ * Where contract calls report their records: the entry's call, or its
+ * batch's slots.
+ */
 export function reporterFor(entry: MockHistoryEntry): Reporter {
   if (entry.type === "multicall")
     return {
@@ -44,7 +51,6 @@ export function reporterFor(entry: MockHistoryEntry): Reporter {
       },
     };
   return {
-    // Only a multicall's request is a batch.
     batch() {},
     call(record) {
       if (entry.type === "call") entry.call = record;
@@ -52,7 +58,11 @@ export function reporterFor(entry: MockHistoryEntry): Reporter {
   };
 }
 
-/** The answer in viem's types, for history. */
+/**
+ * A request's answer in viem's types, for history: a built-in's number, a
+ * contract call's decoded result, or a multicall's decoded results. Any
+ * other answer stays as JSON-RPC: an action's value comes from its table.
+ */
 export function valueOf(entry: MockHistoryEntry, rpc: unknown): unknown {
   if (entry.type === "builtIn" && isHex(rpc))
     return entry.method === "eth_chainId" ? hexToNumber(rpc) : hexToBigInt(rpc);
@@ -90,10 +100,13 @@ export function createRecorder({
   const history = createRecordList<MockHistoryEntry>(recordLimit);
   const calls = createRecordList<MockTaggedCall>(recordLimit);
   const unhandled = createRecordList<UnhandledRequest>(recordLimit);
-  // Kept beside the entries, not in them, so they stay as users see them.
-  // A number is good until the next clear, which starts them over.
+  /**
+   * Each entry's number, kept beside it, not in it, so entries stay as users
+   * see them. A number holds until the next clear, which starts them over.
+   */
   const numbers = new WeakMap<MockHistoryEntry, { number: number; clears: number }>();
   let clears = 0;
+  /** The fault each retry retries. */
   const retries = new WeakMap<MockHistoryEntry, FaultOutcome>();
   /** The last request received, to tell whether the next one retries it. */
   let last: MockHistoryEntry | undefined;
@@ -119,7 +132,10 @@ export function createRecorder({
         ? undefined
         : debug;
 
-  /** A history entry for a request, typed by what it asks for; details fill in as it's answered. */
+  /**
+   * A history entry for a request, typed by what it asks for; details fill
+   * in as it's answered.
+   */
   function entryFor(method: string, params: unknown): MockHistoryEntry {
     const base = { method, params, outcome: { type: "pending" } as const };
     if (method === "eth_chainId" || method === "eth_blockNumber")
@@ -144,10 +160,14 @@ export function createRecorder({
     unhandled,
     /** The history, for formatting: see `HistoryView`. */
     view,
-    /** Records a request as received, and returns its history entry. */
+    /**
+     * Records a request as received, marked a retry if it repeats one that
+     * just faulted, and returns its history entry.
+     */
     start(request: RpcRequest): MockHistoryEntry {
       const entry = entryFor(request.method, request.params);
-      // viem retries only once the attempt before has failed, so its outcome is known by now.
+      // viem retries only once the attempt before has failed, so its outcome
+      // is known by now.
       const fault = last === undefined ? undefined : retriedFault(last, entry);
       if (fault) retries.set(entry, fault);
       last = entry;
@@ -176,7 +196,10 @@ export function createRecorder({
         });
       }
     },
-    /** Records a request the mock couldn't answer, for `unhandled` and `assertNoUnhandled()`. */
+    /**
+     * Records a request the mock couldn't answer, for `unhandled` and
+     * `assertNoUnhandled()`.
+     */
     markUnhandled(request: RpcRequest, error: MockError) {
       unhandled.add({ ...request, error });
     },
@@ -194,7 +217,10 @@ export function createRecorder({
   };
 }
 
-/** The fault `entry` retries: `previous`'s, if it faulted and `entry` is the same request. */
+/**
+ * The fault `entry` retries: `previous`'s, if it faulted and `entry` is the
+ * same request.
+ */
 function retriedFault(
   previous: MockHistoryEntry,
   entry: MockHistoryEntry,

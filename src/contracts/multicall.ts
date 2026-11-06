@@ -13,9 +13,11 @@ import type { CallContext } from "./types.js";
 type Dispatch = (to: Address, data: Hex, context: CallContext) => Promise<Hex>;
 
 /**
- * Answers an `aggregate3` call by sending each sub-call through `dispatch`, as
- * the real contract would. Reverts become `success: false` when the sub-call
- * allows failure; missing mocks and resolver errors still fail the request.
+ * Answers an `aggregate3` call by sending each sub-call through `dispatch`,
+ * as the contract would. A revert is `success: false` when the sub-call
+ * allows failure, and otherwise reverts the whole call, as Multicall3 does.
+ * Any other error, like a missing mock, a resolver's error or a fault, fails
+ * the request.
  */
 export async function resolveMulticall(
   data: Hex,
@@ -39,12 +41,10 @@ export async function resolveMulticall(
       { metaMessages: [`Call data: ${data.slice(0, 10)}…`] },
     );
 
-  // Sequential, like the real contract: each sub-call finishes before the next
-  // starts, so async resolvers never interleave and history keeps batch order.
   const results: { success: boolean; returnData: Hex }[] = [];
   for (const [index, { target, allowFailure, callData }] of decoded.args[0].entries()) {
     try {
-      // oxlint-disable-next-line eslint/no-await-in-loop -- sub-calls run in order on-chain
+      // oxlint-disable-next-line eslint/no-await-in-loop -- sub-calls run in order on-chain, so resolvers never interleave and history keeps batch order
       const returnData = await dispatch(target, callData, {
         ...context,
         from: address,

@@ -5,7 +5,11 @@ import { decodeAddressAtBlock, pinAddress } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { CodeCall } from "./types.js";
 
-/** `eth_getCode`: unmocked, what the registry knows, contracts' placeholder code and empty addresses'. */
+/**
+ * `eth_getCode`. Unmocked, a registered contract and Multicall3 answer with
+ * placeholder code, an `empty()` address with `0x`, and other addresses
+ * aren't answered.
+ */
 export const getCode = ({ state, registry }: ActionsContext): Definition<CodeCall> => ({
   name: "getCode",
   hint: "mock.actions.getCode({ address }).returns(…), or mock.empty(address)",

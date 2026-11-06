@@ -30,7 +30,7 @@ const refusedMethods = new Set([
   "wallet_sendCalls",
 ]);
 
-/** Methods answered outside `mock.method()`, with where to mock them instead. */
+/** Methods answered outside `mock.method()`, with where to mock them. */
 const builtIns = new Map([
   ["eth_chainId", "it's the chain's id; pass `chain` to createMockRpc()"],
   ["eth_blockNumber", "pass `blockNumber` to createMockRpc() and advance it with mine()"],
@@ -64,8 +64,10 @@ export function createMethods(
         decode: (rawParams) => ({ method: name, params: rawParams }),
         zero: null,
         encode: (value) => value,
-        // Pinned params are a prefix: pin the leading ones, leave the rest open.
-        // One matcher in place of them all is matched against all the params.
+        /**
+         * Pinned params are a prefix of the request's: the rest are open. One
+         * matcher in place of them all is matched against all the params.
+         */
         actual: (pinned, call) =>
           Array.isArray(pinned) ? pinned.map((_, i) => call.params[i]) : call.params,
       };
@@ -82,7 +84,10 @@ export function createMethods(
     /** Whether `name` is refused as unsupported when it isn't mocked. */
     isRefused: (name: string) => refusedMethods.has(name),
     tables: () => [...raw.values()],
-    /** Saves every method's mocks; `restore()` removes methods first mocked since. */
+    /**
+     * Saves every method's mocks; `restore()` removes methods first mocked
+     * since.
+     */
     snapshot(): Required<PartSnapshot> {
       const saved = new Map([...raw].map(([name, table]) => [name, table.snapshot()]));
       return {

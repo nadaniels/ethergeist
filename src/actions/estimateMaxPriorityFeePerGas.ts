@@ -4,7 +4,10 @@ import { encodeQuantity, viewQuantity } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { EmptyCall } from "./types.js";
 
-/** `eth_maxPriorityFeePerGas`, the tip a node suggests: unmocked, the current block's. */
+/**
+ * `eth_maxPriorityFeePerGas`, the tip a node suggests. Unmocked, the current
+ * block's.
+ */
 export const estimateMaxPriorityFeePerGas = ({ state }: ActionsContext): Definition<EmptyCall> => ({
   name: "estimateMaxPriorityFeePerGas",
   hint: "mock.actions.estimateMaxPriorityFeePerGas().returns(…), or `fees` in createMockRpc()",

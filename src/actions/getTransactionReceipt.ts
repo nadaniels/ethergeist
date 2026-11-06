@@ -11,19 +11,25 @@ import type { ActionsContext, Definition } from "./table.js";
 import type { ReceiptCall } from "./types.js";
 
 /**
- * A mocked receipt: any receipt fields, and its logs' content (from
- * `contract.events`, `contractEvents()` or `testLog()`), which the receipt
- * places in its block and transaction, in place of any its transaction has
- * on the chain. They answer this receipt only: `getLogs` and watchers don't
- * see them. To have them seen, put the transaction on the chain:
- * `mock.addTransaction({ hash, logs })`.
+ * A mocked receipt: any receipt fields, in viem's types, and its logs'
+ * content (see `logs`).
  */
-export type MockReceipt = ReceiptFields & { logs?: readonly MockEventLog[] };
+export type MockReceipt = ReceiptFields & {
+  /**
+   * Its logs' content, from `contract.events`, `contractEvents()` or
+   * `testLog()`, in place of any its transaction has. The receipt places
+   * them in its block and transaction. They answer this receipt only:
+   * viem's `getLogs()` and watchers don't see them. To have them seen, place
+   * the transaction with `mock.addTransaction({ hash, logs })`. A reverted
+   * receipt with logs is refused: its own, or its mined transaction's.
+   */
+  logs?: readonly MockEventLog[];
+};
 
 /**
- * A receipt for a hash not on the chain, with `receipt`'s fields over zeros
- * and its logs' content placed in it: logs that aren't content, already
- * placed, or on a reverted receipt are refused.
+ * A receipt for a hash with no mined transaction, with `receipt`'s fields
+ * over zeros and its logs' content placed in it. Logs that aren't content,
+ * are already placed, or are on a reverted receipt are refused.
  */
 export function placedReceipt(
   receipt: MockReceipt,
@@ -40,7 +46,10 @@ export function placedReceipt(
   return completeReceipt(fields, { ...context, logs });
 }
 
-/** Refuses `logs` unless they're content a receipt can place: logs, not placed yet. */
+/**
+ * Refuses `logs` unless they're content a receipt can place: logs, not
+ * placed yet.
+ */
 function checkContentLogs(logs: unknown): asserts logs is readonly MockEventLog[] {
   refuseNonLogs(logs, "A receipt's");
   if (logs.some((log) => isPlaced(log)))
@@ -56,13 +65,13 @@ function checkContentLogs(logs: unknown): asserts logs is readonly MockEventLog[
 }
 
 /**
- * `eth_getTransactionReceipt`: a mock's fields over what the chain would
- * answer: the receipt of its transaction once it's mined, and otherwise a
- * successful receipt with zeros and the mock's logs, in the block current
- * when it's registered for a static one (a node never moves it), and when
- * it answers for a resolver's. Unmocked, the receipt of a transaction on the
- * chain: `null` while it's placed in a block not mined yet, as for a
- * pending one.
+ * `eth_getTransactionReceipt`. Unmocked, it answers with a placed
+ * transaction's receipt, or `null` while it's waiting, as for a pending one,
+ * and other hashes aren't answered. A mock's fields go over what the chain
+ * would answer: the transaction's receipt once it's mined, and otherwise a
+ * successful receipt with zeros and the mock's logs. That one is in a block
+ * a node never moves: the block current at registration for a static
+ * answer, or at the request for a resolver.
  */
 export const getTransactionReceipt = ({
   state,
@@ -71,7 +80,6 @@ export const getTransactionReceipt = ({
   name: "getTransactionReceipt",
   hint: "mock.actions.getTransactionReceipt({ hash }).returns(…)",
   decode: ([hash]) => ({ hash: hashParam(hash) }),
-  // A reverted status over a pinned hash mined with logs is refused at registration.
   pinnedCall: pinnedHash,
   zero: {},
   fixAtRegistration: registeredAt(state),
@@ -97,7 +105,6 @@ export const getTransactionReceipt = ({
         'receipt without them, { status: "reverted", logs: [] }, or add it reverted, ' +
         'mock.addTransaction({ …, status: "reverted" }), so every method agrees.',
     ]);
-    // Mined, so it has one.
     return transactions.receiptFor(record.hash, fields, logs)!;
   },
   fallback: (call) => transactions.receiptFor(call.hash),

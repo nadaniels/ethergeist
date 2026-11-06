@@ -1,10 +1,16 @@
 import type { Part } from "../shared/parts.js";
 
-/** A checkpoint on the stack: a snapshot of every part, and whether it can still be restored. */
+/**
+ * A checkpoint on the stack: a snapshot of every part, and whether it can
+ * still be restored.
+ */
 type Checkpoint = {
   /** What made it invalid, once something has: see `createCheckpoints`. */
   readonly invalidatedBy: "restore" | "reset" | undefined;
-  /** Restores every part, then clears what they recorded. */
+  /**
+   * Restores every part, then clears what they recorded. Every checkpoint
+   * added after it becomes invalid.
+   */
   restore(): void;
   /** Mocks registered since that never answered a call, except defaults. */
   unusedSince(): string[];
@@ -14,19 +20,24 @@ type Checkpoint = {
 export type Checkpoints = ReturnType<typeof createCheckpoints>;
 
 /**
- * Checkpoints, and what they do to each other. Each holds a snapshot of every
- * part. They nest as a stack: restoring one invalidates every one added after
- * it, whose state is gone. `reset()` restores the mock as it was created, saved here before
- * anything was registered, and invalidates every checkpoint.
+ * Checkpoints, and what they do to each other. Each holds a snapshot of
+ * every part. They nest as a stack: restoring one invalidates every one
+ * added after it, whose state is gone. `reset()` restores the mock as it was
+ * created, saved here before anything was registered, and invalidates every
+ * checkpoint.
  */
 export function createCheckpoints(parts: readonly Part[]) {
   const stack: { invalidatedBy: "restore" | "reset" | undefined }[] = [];
 
+  /** Clears what every part recorded. */
   function clearCalls() {
     for (const part of parts) part.clearCalls?.();
   }
 
-  /** Every part's snapshot, restored together. Not a checkpoint: it isn't on the stack. */
+  /**
+   * Every part's snapshot, restored together. Not a checkpoint: it isn't on
+   * the stack.
+   */
   function snapshot() {
     const saved = parts.map((part) => part.snapshot?.());
     return {

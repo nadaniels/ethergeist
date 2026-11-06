@@ -9,12 +9,12 @@ import type { ActionsContext, Definition } from "./table.js";
 import type { TransactionCall } from "./types.js";
 
 /**
- * `eth_getTransactionByHash`: a mock's fields over what the chain would
- * answer: its transaction on the chain, pending (`blockNumber: null`) while
- * it's placed in a block not mined yet, and for a hash the chain doesn't
- * have, the defaults `encodeTransaction` gives, mined in the block current
- * when it's registered for a static one, and when it answers for a
- * resolver's. Unmocked, the transaction on the chain.
+ * `eth_getTransactionByHash`. Unmocked, it answers with a placed
+ * transaction, pending (`blockNumber: null`) while it's waiting, and other
+ * hashes aren't answered. A mock's fields go over what the chain would
+ * answer: the placed transaction, or for a hash with no placed transaction,
+ * `encodeTransaction`'s defaults. That one is mined in the block current at
+ * registration for a static answer, or at the request for a resolver.
  */
 export const getTransaction = ({
   state,

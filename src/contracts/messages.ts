@@ -26,14 +26,18 @@ type Mock = {
   resolver: unknown;
 };
 
-/** A namespace's mocks for a call's function, and the arg each one `missed` on. */
+/**
+ * A namespace's mocks for a call's function, and the arg or pin each one
+ * `missed` on.
+ */
 type Candidates = { registered: readonly Mock[]; missed: ReadonlyMap<Mock, PinnedKey> };
 
 /**
  * The error for a call no mock answers, on the contract `label`: its `own`
  * namespace's mocks for its function, each with the arg it missed on, or that
- * there are none. An estimate's also lists its function's `writes`, which
- * imply the estimate of a send they match (only for an estimate with `from`).
+ * there are none. An estimate's also lists its function's `write` mocks
+ * (`writes`), which imply the estimate of a send they match, for an estimate
+ * with `from`.
  */
 export function missError(
   call: MockCall,
@@ -58,7 +62,6 @@ export function missError(
     estimateGas: `No estimateGas mocks registered for ${name}; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
     write: `No write mocks registered for ${name}; a simulate mock doesn't answer sends.`,
   }[namespace];
-  // The call's `from` and `value`, where a mock pins them, to read its reason against.
   const pinned = [...own.registered, ...(writes?.registered ?? [])].flatMap((mock) =>
     Object.keys(mock.pins ?? {}),
   );
@@ -72,7 +75,10 @@ export function missError(
   );
 }
 
-/** An unused mock on the contract `label`, with the `calls` its function received instead. */
+/**
+ * An unused mock on the contract `label`, with the `calls` its function
+ * received instead.
+ */
 export function unusedLine(
   mock: Mock,
   label: string,
@@ -106,7 +112,10 @@ function received(mock: Mock, call: MockCall): ReceivedCall {
   };
 }
 
-/** A call's `from` and `value` among `keys`, after its args, e.g. ` { from: 0x… }`; empty for none. */
+/**
+ * A call's `from` and `value` among `keys`, after its args, e.g.
+ * ` { from: 0x… }`; empty for none.
+ */
 function formatPins(call: MockCall, keys: readonly PinnedKey[]): string {
   const shown = Object.entries({ from: call.from, value: call.value }).filter(([key]) =>
     keys.includes(key),
@@ -121,7 +130,6 @@ function formatPins(call: MockCall, keys: readonly PinnedKey[]): string {
  */
 function argName(mock: Mock, index: PinnedKey): string {
   if (index === null) return "args";
-  // Args are pinned as an array, so a key that's a string is a pin's.
   if (typeof index === "string") return `{ ${index} }`;
   const inputName = mock.abiItem.inputs[index]?.name;
   return inputName === undefined || inputName === "" ? `arg ${index + 1}` : inputName;

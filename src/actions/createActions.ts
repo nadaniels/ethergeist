@@ -19,10 +19,12 @@ export type Actions = ReturnType<typeof createActions>;
 export function createActions(chain: Omit<ActionsContext, "mockFor">, recordLimit: RecordLimit) {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
   const names = Object.keys(typedActions) as ActionName[];
-  // A miss for what the last restore removed: a hash lookup's transaction,
-  // or the contract an estimate or send is to. Keyed on the call's `hash`
-  // and `to`, which only those actions have; a new action that uses either
-  // name for something else gets the note too.
+  /**
+   * The note for a miss on what the last restore removed: a hash lookup's
+   * transaction, or the contract an estimate or send is to. It's keyed on the
+   * call's `hash` and `to`, which only those actions have, so a new action
+   * that names something else `hash` or `to` gets the note too.
+   */
   const removedNote = (call: object) =>
     "hash" in call &&
     typeof call.hash === "string" &&
@@ -48,8 +50,7 @@ export function createActions(chain: Omit<ActionsContext, "mockFor">, recordLimi
   );
   const methods = createMethods((method) => typedMethods.get(method), recordLimit);
 
-  // Built at runtime from the tables; `MockActions` describes the same shape.
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- runtime-built typed facade
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- built from the tables at runtime, in the shape MockActions describes
   const actions = Object.fromEntries(
     names.map((name) => {
       const table = typed[name];
@@ -68,7 +69,11 @@ export function createActions(chain: Omit<ActionsContext, "mockFor">, recordLimi
   return {
     actions,
     method: methods.method,
-    /** Answers a request with a typed or raw mock, or returns `undefined` if none applies. */
+    /**
+     * Answers a request with a typed or raw mock, or returns `undefined` if
+     * none applies. A method the mock doesn't support is refused unless it's
+     * mocked.
+     */
     answer(
       name: string,
       params: unknown,
@@ -76,23 +81,28 @@ export function createActions(chain: Omit<ActionsContext, "mockFor">, recordLimi
     ): Promise<unknown> | undefined {
       const action = typedMethods.get(name);
       const table = action === undefined ? methods.tableFor(name) : typed[action];
-      // Refused as unsupported; clients fall back to other methods.
       if (table === undefined && methods.isRefused(name))
         return Promise.reject(
           new MockRpcError(-32601, `the method ${name} does not exist/is not available`),
         );
-      // A typed action's method is the spec's; a raw method's params are the user's own.
+      // A raw method's params stay as sent, trailing nulls included: it isn't
+      // the spec's.
       const given = action === undefined ? params : withoutTrailingNulls(params);
-      // JSON-RPC params are an array for every method viem sends.
       return table?.answer(name, Array.isArray(given) ? given : [], report);
     },
-    /** The typed action answering `method`, if any: history records those as actions. */
+    /**
+     * The typed action answering `method`, if any: history records those as
+     * actions.
+     */
     actionFor: (rpcMethod: string) => typedMethods.get(rpcMethod),
     clearCalls() {
       for (const table of tables()) table.clearCalls();
     },
     unusedMocks: () => tables().flatMap((table) => table.unusedMocks()),
-    /** Saves every table's mocks, typed and raw, to put back or compare against. */
+    /**
+     * Saves every table's mocks, typed and raw, to put back or compare
+     * against.
+     */
     snapshot(): Required<PartSnapshot> {
       const typedSaved = Object.values(typed).map((table) => table.snapshot());
       const rawSaved = methods.snapshot();

@@ -2,21 +2,33 @@ import { checkFault } from "../mocking/faults.js";
 import type { MockFault } from "../mocking/types.js";
 import { MockSetupError } from "../shared/errors.js";
 
+/** What `mock.failRequests()` takes besides its fault. */
 export type FailRequestsOptions = {
-  /** Only fail requests for these JSON-RPC methods. Defaults to every method. */
+  /**
+   * The JSON-RPC method, or methods, whose requests it fails, e.g.
+   * `"eth_call"`. Defaults to every method, `eth_chainId` and
+   * `eth_blockNumber` included.
+   */
   method?: string | readonly string[];
-  /** Only fail this many requests, then answer normally. Defaults to every request. */
+  /**
+   * How many requests it fails before they're answered again, a whole number
+   * `1` or more. Defaults to every request until it's cleared.
+   */
   times?: number;
 };
 
-/** Returned by `failRequests()`, to inspect or stop the fault. */
+/** A `mock.failRequests()` fault's handle, to read its count or stop it. */
 export type MockFaultHandle = {
-  /** How many requests this fault has failed. */
+  /** How many requests the fault has failed. */
   readonly count: number;
   /** Stops failing requests. */
   clear(): void;
 };
 
+/**
+ * A `failRequests()` fault as it's held: its methods, how many requests it
+ * has left to fail, and how many it failed.
+ */
 type ActiveFault = {
   fault: MockFault;
   methods: readonly string[] | undefined;
@@ -45,12 +57,13 @@ function appliesTo(active: ActiveFault, method: string): boolean {
 export type Faults = ReturnType<typeof createFaults>;
 
 /**
- * `failRequests()`' faults. The most recent one that applies fails a request,
- * as the most recent mock answers one.
+ * `failRequests()`' faults. The most recent one that applies fails a
+ * request: one for its method, with requests left to fail.
  */
 export function createFaults() {
   const faults: ActiveFault[] = [];
   return {
+    /** Adds a fault, checked first, and returns its handle. */
     add(fault: MockFault, options: FailRequestsOptions = {}): MockFaultHandle {
       const active = createActiveFault(fault, options);
       faults.push(active);
@@ -63,7 +76,10 @@ export function createFaults() {
         },
       };
     },
-    /** Applies the fault that fails a request for `method`, if any, counting the use. */
+    /**
+     * Applies the fault that fails a request for `method`, if any, counting
+     * the use.
+     */
     applyTo(method: string): MockFault | undefined {
       const active = faults.findLast((each) => appliesTo(each, method));
       if (!active) return undefined;

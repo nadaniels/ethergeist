@@ -15,15 +15,27 @@ import { isPlainObject } from "../shared/values.js";
 import type { TransactionRecord } from "../transactions/store.js";
 import type { MockHistoryEntry } from "./types.js";
 
+/** What `mock.formatHistory()` takes. */
 export type FormatHistoryOptions = {
-  /** Include `eth_chainId` and `eth_blockNumber`. Defaults to `true`. */
+  /**
+   * Whether to include `eth_chainId` and `eth_blockNumber`. Defaults to
+   * `true`.
+   */
   builtIns?: boolean;
 };
 
-/** Internal: what formatting needs from the rpc, e.g. ABIs to name a filter's events. */
+/**
+ * What formatting needs from the rest of the mock: the registered contracts,
+ * to name a filter's events, and the chain's transactions, to show where a
+ * send's went.
+ */
 export type FormatContext = {
+  /** A `getLogs` call, its events named by the registered contracts' ABIs. */
   describeLogs?: (call: LogsCall) => string;
-  /** The transaction with `hash` once it's mined, to show where a send's went. */
+  /**
+   * The transaction with `hash` once it's mined, to show where a send's
+   * went.
+   */
   minedTransaction?: (hash: Hash) => TransactionRecord | undefined;
 };
 
@@ -39,11 +51,18 @@ export type HistoryView = {
    * dropped; `undefined` for one received before the last clear.
    */
   numberOf(entry: MockHistoryEntry): number | undefined;
-  /** The fault `entry` retries, if it's a retry: the same request, right after a fault. */
+  /**
+   * The fault `entry` retries, if it's a retry: the same request, right
+   * after a fault.
+   */
   faultRetried(entry: MockHistoryEntry): FaultOutcome | undefined;
 };
 
-/** One line per entry (plus one per multicall sub-call), numbered from 1. */
+/**
+ * The history as text: one line per entry, plus one per multicall sub-call,
+ * numbered from 1 since the last clear. A first line says how many older
+ * entries were dropped, if any.
+ */
 export function formatHistory(
   view: HistoryView,
   { builtIns = true }: FormatHistoryOptions = {},
@@ -68,7 +87,6 @@ export function formatRecent(
   const requests = view.entries.filter((entry) => entry.type !== "builtIn");
   const shown = requests.slice(-count);
   if (shown.length === 0)
-    // A poller's built-ins can push out everything else.
     return view.dropped === 0
       ? undefined
       : `Requests so far: only built-ins kept (${droppedNote(view.dropped)}).`;
@@ -95,8 +113,8 @@ const droppedNote = (dropped: number) =>
   `${dropped} older ${dropped === 1 ? "request" : "requests"} dropped, past historyLimit`;
 
 /**
- * For a request a mock didn't answer, retrying `fault`: explains that it's
- * viem retrying after a limited mock's fault used up its answers.
+ * The hint for a request no mock answered that retries `fault`: it's viem
+ * retrying after a limited mock's fault used up its answers.
  * `retryCount` is the transport's, when known. A `fallback()` transport does
  * the retrying itself and gives its transports `retryCount: 0`, so a retry
  * through one of those shows the default.
@@ -124,7 +142,7 @@ export function formatEntry(
   context: FormatContext = {},
 ): string {
   const retry = view.faultRetried(entry) ? "(retry) " : "";
-  // Received before the last clear: still worth a line, just without a number.
+  // An entry from before the last clear has no number, so it shows `–`.
   const head = `#${view.numberOf(entry) ?? "–"} ${entry.method} ${retry}`;
 
   if (entry.type === "call")
@@ -145,14 +163,12 @@ export function formatEntry(
   if (entry.type === "action" && entry.action === "getLogs" && entry.call !== undefined)
     return `${head}${context.describeLogs?.(entry.call) ?? formatCall("getLogs", entry.call, { short: true })} ${formatOutcome(entry.outcome, entry.action)}`;
   if (entry.type === "action") {
-    // A contract's function by the namespace it's answered in: `write USDC.transfer(…)`.
     const what = entry.contract?.call
       ? `${entry.contract.namespace ?? entry.action} ${formatLabel(entry.contract)}`
       : formatCall(entry.action, entry.call, { short: true });
     const mined = entry.action === "sendTransaction" ? minedNote(entry.outcome, context) : "";
     return `${head}${what} ${formatOutcome(entry.outcome, entry.action)}${mined}`;
   }
-  // "method" and "builtIn": the raw method and params.
   return `${head.trimEnd()}${formatParams(entry.params)} ${formatOutcome(entry.outcome)}`;
 }
 
@@ -172,7 +188,10 @@ function minedNote(outcome: MockOutcome, { minedTransaction }: FormatContext): s
   return ` (${block}, ${logs} ${logs === 1 ? "log" : "logs"})`;
 }
 
-/** How a send's transaction was mined: the receipt the Sync method answered, or its record. */
+/**
+ * How a send's transaction was mined: the receipt the Sync method answered,
+ * or its record.
+ */
 function minedAs(value: unknown, minedTransaction: FormatContext["minedTransaction"]) {
   if (isReceipt(value)) return value;
   const record = isHex(value) ? minedTransaction?.(value) : undefined;
@@ -191,7 +210,10 @@ const isReceipt = (
 ): value is { transactionHash: unknown; blockNumber: unknown; status: unknown; logs: unknown[] } =>
   isPlainObject(value) && "transactionHash" in value && Array.isArray(value.logs);
 
-/** A contract call as `USDC.transfer(…)`, or the contract alone when it didn't decode. */
+/**
+ * A contract call as `USDC.transfer(…)`, or the contract alone when it
+ * didn't decode.
+ */
 function formatLabel({ address, name, call }: MockCallRecord): string {
   const label = name ?? formatValue(address, { short: true });
   return call ? `${label}.${formatCall(call.functionName, call.args, { short: true })}` : label;
@@ -207,7 +229,8 @@ function formatRecord(record: MockCallRecord): string {
 
 /**
  * A contract call's result: `(no outputs)`, or, when two or more outputs are
- * all named, an object keyed by name (the value stays a tuple, as viem returns it).
+ * all named, an object keyed by name. The value stays a tuple, as viem
+ * returns it.
  */
 function formatResult({ outputs }: AbiFunction, value: unknown): string {
   if (outputs.length === 0) return "(no outputs)";
@@ -224,7 +247,8 @@ function formatParams(params: unknown): string {
 }
 
 /**
- * How a request or call ended, for history: `✓` and its value, or `✗` and why.
+ * How a request or call ended, for history: `→` and its value, `✗` and
+ * why, or `… pending`.
  * @internal Exported for its unit test.
  */
 export function formatOutcome(outcome: MockOutcome, action?: string): string {
@@ -239,7 +263,6 @@ export function formatOutcome(outcome: MockOutcome, action?: string): string {
   if (outcome.type === "fault")
     return `✗ fault: ${formatFault(outcome.fault)}${outcome.source === "failRequests" ? " (failRequests)" : ""}`;
   if (outcome.type === "rpcError") return `✗ rpc error ${outcome.code}: ${outcome.message}`;
-  // "unhandled"
   const { error } = outcome;
   if (error instanceof MockNotFoundError) return "✗ not mocked";
   if (error instanceof MockResolverError) {
@@ -250,7 +273,10 @@ export function formatOutcome(outcome: MockOutcome, action?: string): string {
   return `✗ ${error.shortMessage}`;
 }
 
-/** Blocks and receipts are long; history shows what identifies them. */
+/**
+ * An answer for history: what identifies a block, a receipt, a transaction
+ * or a list of logs, which are long, and any other value shortened.
+ */
 function summarize(value: unknown, action: string | undefined): string {
   if (action === "getBlock" && isPlainObject(value))
     return `block ${formatValue(value.number)}, timestamp ${formatValue(value.timestamp)}`;
@@ -263,7 +289,6 @@ function summarize(value: unknown, action: string | undefined): string {
       value.blockNumber === null ? "pending" : `block ${formatValue(value.blockNumber)}`;
     return `${String(value.type)}, ${where}`;
   }
-  // The Sync method's receipt, by its hash: `minedNote` says how it was mined.
   if (action === "sendTransaction" && isReceipt(value))
     return formatValue(value.transactionHash, { short: true });
   if (action === "getLogs" && Array.isArray(value))

@@ -7,16 +7,23 @@ import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext, TransactionCountCall } from "./types.js";
 
 /**
- * What a `getTransactionCount` resolver gets: the call, `fail`, and
- * `count`, what the chain's transactions would answer: the address's next
- * nonce. A starting nonce is `({ count }) => Math.max(7, count)`, as the
- * count already includes sends from 7 on.
+ * What a `getTransactionCount` resolver gets: the call's fields, `fail`, and
+ * `count`.
  */
 export type TransactionCountContext = ActionContext<TransactionCountCall> & {
+  /**
+   * The chain's count for the call, as `getTransactionCount` answers
+   * unmocked: the address's next nonce at the block. A starting nonce that
+   * counts up is `({ count }) => Math.max(7, count)`: once the app sends
+   * nonce 7, `count` passes it.
+   */
   readonly count: number;
 };
 
-/** `eth_getTransactionCount`, an account's nonce: unmocked, its transactions' count (`nonceOf`). */
+/**
+ * `eth_getTransactionCount`, an account's nonce. Unmocked, its transactions'
+ * count (`nonceOf`).
+ */
 export const getTransactionCount = ({
   state,
   transactions,

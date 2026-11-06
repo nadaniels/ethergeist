@@ -19,9 +19,9 @@ import { isPlainObject } from "../shared/values.js";
 import type { MockCall, MockNamespace } from "./types.js";
 
 /**
- * A contract's functions by namespace, as its mocks find them: views and pure
- * functions under `read`, writes under `simulate`, `estimateGas` and `write`,
- * by name and overload, or by selector.
+ * A contract's functions by namespace, as its mocks find them: view and pure
+ * functions under `read`, nonpayable and payable ones under `simulate`,
+ * `estimateGas` and `write`, by name and overload, or by selector.
  */
 export function createFunctions(abi: Abi) {
   const functionsOf = (mutabilities: readonly string[]) =>
@@ -45,7 +45,10 @@ export function createFunctions(abi: Abi) {
     ]),
   );
 
-  /** For a name that isn't in `namespace`: says where it is instead, if anywhere. */
+  /**
+   * The error for a name that isn't in `namespace`, saying where it is
+   * instead, if anywhere.
+   */
   function notInNamespaceError(namespace: MockNamespace, functionName: string) {
     const other = namespace === "read" ? "simulate" : "read";
     const elsewhere = functionsIn[other].find((abiItem) => abiItem.name === functionName);
@@ -62,8 +65,8 @@ export function createFunctions(abi: Abi) {
    * never binds across namespaces. viem's `getAbiItem` tells overloads apart by
    * their args' values, and silently picks the first when none fits. Matchers
    * fit no type, so with matchers, overloads are told apart by the exact args
-   * alone. Args holding a matcher anywhere are skipped whole: a `match.partial`
-   * could rule overloads out field by field, but doesn't yet.
+   * alone. Args holding a matcher anywhere are skipped whole: a
+   * `match.partial()` could rule overloads out field by field, but doesn't.
    */
   function findFunction(
     namespace: MockNamespace,
@@ -71,7 +74,6 @@ export function createFunctions(abi: Abi) {
     args: readonly unknown[] | undefined,
   ): AbiFunction {
     const overloads = functionsIn[namespace].filter((abiItem) => abiItem.name === functionName);
-    // viem would pick the first overload; "any args" can't say which one.
     if (args === undefined && overloads.length > 1)
       throw new MockSetupError(
         `Ambiguous overload for ${functionName}(*): pin args to choose one, e.g. [match.any()].`,
@@ -203,7 +205,10 @@ export function pinCall(abiItem: AbiFunction, pins: unknown): Pins | undefined {
   return Object.keys(pinned).length === 0 ? undefined : pinned;
 }
 
-/** Whether `call` lacks the `from` that `pins` pins: then it doesn't match, and no predicate runs. */
+/**
+ * Whether `call` lacks the `from` that `pins` pins: then it doesn't match,
+ * and no predicate runs.
+ */
 const lacksFrom = (pins: Pins, call: MockCall) =>
   pins.from !== undefined && call.from === undefined;
 

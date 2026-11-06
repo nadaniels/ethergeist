@@ -23,11 +23,11 @@ import type { CreateMockRpcParameters, MockRpc } from "./types.js";
 import { createViemAdapter } from "./viem/adapter.js";
 
 /**
- * A mock JSON-RPC node: contracts, actions, and raw methods answer its
- * requests, in viem's types. See `MockRpc` for what it does.
+ * A mock JSON-RPC node for viem: contracts, actions and raw methods mocked on
+ * it answer its requests, in viem's types, over a chain of its own. See
+ * `MockRpc` for what it does, and `CreateMockRpcParameters` for its options.
  */
 export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc {
-  // Checked first, so a bad limit throws before anything is made.
   const recordLimit = createRecordLimit(parameters.historyLimit);
   const state = createChainState(parameters);
   const registry = createRegistry(state);
@@ -35,8 +35,6 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
   const faults = createFaults();
 
   const actions = createActions({ state, registry, transactions }, recordLimit);
-  // History names a getLogs filter's events with the registered contracts' ABIs,
-  // and shows where a send's transaction is.
   const formatContext: FormatContext = {
     describeLogs: (call) =>
       describeLogsCall(
@@ -53,7 +51,6 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     recordLimit,
   });
   const dispatcher = createDispatch({ state, registry });
-  // Saved first, before anything is registered: reset() restores it.
   const checkpoints = createCheckpoints([
     state,
     registry,

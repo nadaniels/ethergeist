@@ -9,7 +9,11 @@ import { blockAt } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { BlockCall } from "./types.js";
 
-/** `eth_getBlockByNumber` takes a number or tag; `eth_getBlockByHash` a hash. */
+/**
+ * The call an `eth_getBlockByNumber` (a number or tag) or
+ * `eth_getBlockByHash` (a hash) asks for. A hash that isn't a generated
+ * block's takes the current block's number.
+ */
 function decodeBlock(
   [block, includeTransactions]: readonly unknown[],
   rpcMethod: string,
@@ -27,19 +31,27 @@ function decodeBlock(
   return { ...blockAt(block, state.resolveBlock, "numberOrTag"), includeTransactions: include };
 }
 
-/** A block in its JSON-RPC form, with its transactions' hashes or the transactions. */
+/**
+ * A block in its JSON-RPC form, with its transactions' hashes or the
+ * transactions.
+ */
 type RpcBlockAnswer = Omit<ReturnType<typeof toRpcBlock>, "transactions"> & {
   transactions: readonly unknown[];
 };
 
-/** Whether the chain has the block `call` asks for: generated ones up to the current one, by their own hashes. */
+/**
+ * Whether the chain has the block `call` asks for: a generated one up to the
+ * current block, by number or by its own hash.
+ */
 const onChain = ({ blockNumber, blockHash }: BlockCall, state: ChainState) =>
   (blockHash === undefined || numberOfBlockHash(blockHash) !== undefined) &&
   blockNumber <= state.blockNumber;
 
 /**
- * `eth_getBlockByNumber` and `eth_getBlockByHash`: unmocked, generated blocks
- * up to the current one, listing the chain's transactions in them.
+ * `eth_getBlockByNumber` and `eth_getBlockByHash`. Unmocked, generated
+ * blocks up to the current one, listing the chain's transactions in them. A
+ * mock's fields go over the generated block, and over its transactions
+ * unless it sets its own; the block it answers places them.
  */
 export const getBlock = ({
   state,
@@ -55,13 +67,9 @@ export const getBlock = ({
       throw new MockSetupError(`A block must be an object or null; got ${typeof value}.`);
     const generated = state.generateBlock(call?.blockNumber ?? state.blockNumber);
     const blockHash = call?.blockHash;
-    // A pinned, unknown hash is the block's own hash.
     const base = blockHash === undefined ? generated : { ...generated, hash: blockHash };
     const rpc = toRpcBlock({ ...base, ...value });
-    // A mock's fields go over the chain's block, its transactions too, unless it sets its own;
-    // the block it answers places them.
     if (value.transactions !== undefined || call === undefined || !onChain(call, state)) return rpc;
-    // A pending block (only through a cast) has no number or hash to place them with.
     const placement =
       rpc.number === null || rpc.hash === null
         ? undefined

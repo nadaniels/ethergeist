@@ -1,11 +1,11 @@
 import { MockSetupError } from "../shared/errors.js";
 import type { RecordLimit } from "../shared/records.js";
 
-/** How many entries each record keeps when `historyLimit` isn't given. */
+/** How many entries each list keeps when `historyLimit` isn't given. */
 const defaultHistoryLimit = 1000;
 
 /**
- * Each record's limit, from `createMockRpc()`'s `historyLimit`. Left out, it's
+ * Each list's limit, from `createMockRpc()`'s `historyLimit`. Left out, it's
  * `defaultHistoryLimit`, and the first entry dropped warns once, so a test
  * that counted on every request hears about it. Throws on anything but a
  * positive whole number or `Infinity`.

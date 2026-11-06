@@ -11,7 +11,10 @@ import type { FeeHistoryCall } from "./types.js";
 const isList = (value: unknown, type: string) =>
   Array.isArray(value) && value.every((each) => typeof each === type);
 
-/** Throws unless `history`'s fields have viem's types: bigints, and numbers for ratios. */
+/**
+ * Throws unless `history`'s fields are a fee history's, in viem's types:
+ * bigints, and numbers for ratios.
+ */
 function assertFeeHistory(history: Record<string, unknown>) {
   const kinds: Record<string, "bigints" | "numbers" | "bigint" | "rewards"> = {
     baseFeePerGas: "bigints",
@@ -51,7 +54,7 @@ const bigints = (list: unknown) =>
     ? list.map((value: unknown) => (isHex(value) ? hexToBigInt(value) : value))
     : list;
 
-/** A JSON-RPC fee history as viem's `getFeeHistory` returns it. */
+/** A JSON-RPC fee history as viem's `getFeeHistory()` returns it. */
 function viewFeeHistory(rpc: unknown) {
   if (!isPlainObject(rpc)) return rpc;
   return {
@@ -66,7 +69,10 @@ function viewFeeHistory(rpc: unknown) {
 const isNumberList = (value: unknown): value is number[] =>
   Array.isArray(value) && value.every((each) => typeof each === "number");
 
-/** `eth_feeHistory` takes a count (hex, or a number), the newest block, and maybe percentiles. */
+/**
+ * The call an `eth_feeHistory` asks for: a block count, the newest block,
+ * and maybe reward percentiles.
+ */
 function decodeFeeHistory(
   [count, newest, percentiles]: readonly unknown[],
   resolveBlock: ResolveBlock,
@@ -81,7 +87,11 @@ function decodeFeeHistory(
   };
 }
 
-/** `eth_feeHistory`: unmocked, the generated blocks' history, as reth answers it for empty blocks. */
+/**
+ * `eth_feeHistory`. Unmocked, the generated blocks' history, as reth answers
+ * it for empty blocks, and reth's refusals. A mock's fields go over that
+ * history.
+ */
 export const getFeeHistory = ({ state }: ActionsContext): Definition<FeeHistoryCall> => {
   const feeHistoryOf = ({ blockCount, blockNumber: newest, rewardPercentiles }: FeeHistoryCall) =>
     feeHistory(

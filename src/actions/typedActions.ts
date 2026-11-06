@@ -191,8 +191,9 @@ export type MockActions = {
    * these mocks answer the rest.
    *
    * Unmocked, a plain transfer, with no data, to an address without code is
-   * 21,000 gas, as a node estimates it. A send mock that would answer the
-   * transaction implies 100,000 gas, and anything else isn't answered.
+   * 21,000 gas, as a node estimates it, even with a send mock. Otherwise, a
+   * send mock that would answer the transaction implies 100,000 gas, and
+   * anything else isn't answered.
    * `.fails()` takes a node's refusal by name, e.g. `"insufficientFunds"`.
    */
   estimateGas: MockEstimateGasAction;
@@ -206,24 +207,11 @@ export type MockActions = {
    * an address without code succeeds, as on a node, and anything else isn't
    * answered.
    *
-   * An answered send is mined in a new block, which its receipt,
-   * transaction, block and logs answer from (see `mock.transactions`); a
-   * reverted one is mined too. A send refused with `.fails()` or `fail()`,
-   * or not answered, leaves the chain as it was. A mock answers with what
-   * the chain did: see `MockWriteAnswers`. `.fails()` takes a node's refusal
-   * by name, e.g. `"nonceTooLow"`, and a resolver also gets `emit` and
-   * `revert` (see `SendTransactionContext`). A mock without `.reverts()`
-   * also answers the transaction's estimate with 100,000 gas when no
-   * estimate mock does, without running it or using it up.
-   *
-   * The Sync method answers with the chain's receipt, not a
-   * `getTransactionReceipt` mock's; the send is mined at once, so its
-   * timeout never passes. A raw send's sender is recovered from its
-   * signature, and its hash is its bytes' `keccak256`: the same bytes again
-   * answer the same hash or receipt, without a second transaction. An
-   * `eth_sendTransaction` without a nonce takes the sender's next, counting
-   * waiting transactions, as `getTransactionCount` at `"pending"` does; one
-   * without gas is sent with 100,000 gas.
+   * A mock answers with what the chain did: see `MockWriteAnswers`.
+   * `.fails()` takes a node's refusal by name, e.g. `"nonceTooLow"`, and a
+   * resolver also gets `emit` and `revert` (see `SendTransactionContext`).
+   * For how a send is mined, its estimate, and raw sends, see
+   * `MockSendTransactionAction`.
    */
   sendTransaction: MockSendTransactionAction;
 };

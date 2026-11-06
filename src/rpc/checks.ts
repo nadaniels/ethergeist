@@ -13,9 +13,9 @@ import type { RecordList } from "../shared/records.js";
 import type { Checkpoints } from "./checkpoints.js";
 
 /**
- * `assertNoUnhandled()`'s message, if any request went unanswered; it ends
- * with a line when one missed what the last restore removed, which a request
- * from an earlier test still asks for.
+ * `assertNoUnhandled()`'s message, if any request went unanswered. It ends
+ * with a line when one missed what the last restore removed, which a
+ * request from an earlier test still asks for.
  */
 function unhandledFailure(unhandled: RecordList<UnhandledRequest>): string[] {
   if (unhandled.total === 0) return [];
@@ -32,7 +32,10 @@ function unhandledFailure(unhandled: RecordList<UnhandledRequest>): string[] {
   ];
 }
 
-/** How many requests went unanswered, and how many of them are listed if not all. */
+/**
+ * How many requests went unanswered, and how many of them are listed if not
+ * all.
+ */
 function countOf(unhandled: RecordList<UnhandledRequest>): string {
   const shown =
     unhandled.dropped === 0 ? "" : ` (the last ${unhandled.kept.length} kept, past historyLimit)`;
@@ -67,11 +70,17 @@ function unhandledLines(unhandled: RecordList<UnhandledRequest>): string {
   return lines.join("\n");
 }
 
-/** A miss's hints, a line each: blank lines dropped, so the list reads as one. */
+/**
+ * A miss's hints, a line each: blank lines dropped, so the list reads as
+ * one.
+ */
 const hintLinesOf = (metaMessages: readonly string[]) =>
   metaMessages.flatMap((message) => message.split("\n")).filter((line) => line.trim() !== "");
 
-/** How many lines of a list (a run of lines indented under a header, like "Registered:") show. */
+/**
+ * How many lines of a list show: a run of lines indented under a header,
+ * like "Registered:".
+ */
 const listShown = 3;
 
 /** Hints with each list cut to `listShown` lines, then how many more it had. */
@@ -95,11 +104,17 @@ function cutLists(lines: readonly string[]): string[] {
   return cut;
 }
 
-/** A grouped miss's line with its count, before its closing period if it has one. */
+/**
+ * A grouped miss's line with its count, before its closing period if it has
+ * one.
+ */
 const withCount = (line: string, count: number) =>
   line.endsWith(".") ? `${line.slice(0, -1)} (×${count}).` : `${line} (×${count})`;
 
-/** `assertAllUsed()`'s message, if any mock answered no call since the last clear. */
+/**
+ * `assertAllUsed()`'s message, if any mock answered no call since the last
+ * clear.
+ */
 function unusedFailure(list: readonly string[]): string[] {
   if (list.length === 0) return [];
   const lines = list.map((mock) => `  - ${mock}`);
@@ -108,8 +123,9 @@ function unusedFailure(list: readonly string[]): string[] {
 
 /**
  * The mock's own checks: `assertNoUnhandled()`, `assertAllUsed()`, and
- * `checkpoint()`, whose `restore()` can run both. A failed check's error ends
- * with the most recent requests (`historyOnFailure` of them).
+ * `checkpoint()`, whose `restore()` can run both. A failed check's error
+ * ends with the most recent requests: `historyOnFailure` of them. Throws if
+ * `historyOnFailure` is neither `false` nor a whole number.
  */
 export function createChecks({
   recorder,
@@ -141,7 +157,7 @@ export function createChecks({
     const error = new MockCheckError(message, {
       metaMessages: recent?.split("\n"),
     });
-    // Not every engine has it, and not every consumer has Node's types, which declare it.
+    // Missing in some engines, and typed only by Node's types.
     const { captureStackTrace } = Error as {
       captureStackTrace?: (target: object, constructor: typeof check) => void;
     };
@@ -183,13 +199,13 @@ export function createChecks({
           },
         );
       }
-      // Checked first, because restoring clears what they look at; thrown
-      // last, so a failed check can't leave the next test unrestored.
+      // Checked, and the error built, first: restoring clears what they read
+      // and the history the error shows. Thrown last, so a failed check can't
+      // leave the next test unrestored.
       const failures = [
         ...(options.assertNoUnhandled === true ? unhandledFailure(recorder.unhandled) : []),
         ...(options.assertAllUsed === true ? unusedFailure(saved.unusedSince()) : []),
       ];
-      // Built now: restoring clears the history it shows.
       const failed = failures.length > 0 ? checkFailed(restore, failures.join("\n\n")) : undefined;
 
       saved.restore();
@@ -203,68 +219,57 @@ export function createChecks({
 }
 
 /**
- * A saved baseline: what was registered when `mock.checkpoint()` was called.
+ * A saved baseline of the mock, from `mock.checkpoint()`, to `restore()` to.
+ * In a suite, register shared setup, call `mock.checkpoint()` in
+ * `beforeAll`, and call
+ * `restore({ assertNoUnhandled: true, assertAllUsed: true })` in `afterEach`.
  *
- * Notes for the docs (to expand when writing them):
- * - Typical use: register shared contracts and mocks at module scope, call
- *   `checkpoint()` in `beforeAll`, and in `afterEach` call
- *   `restore({ assertNoUnhandled: true, assertAllUsed: true })`. Passing the
- *   checks to `restore()` matters: it checks, restores, then throws, so a
- *   failing check can't skip the restore. Vitest skips the remaining
- *   `afterEach` hooks when one throws, so a separate assertion hook that
- *   fails would leave every later test running on this test's mocks.
- * - `assertAllUsed` in `restore()` checks only mocks registered since the
- *   checkpoint: shared setup can register more than any one test uses.
- * - Nesting: checkpoints form a stack. Restoring one invalidates every
- *   checkpoint taken after it, and `reset()` invalidates all of them.
- * - Restore at one level only per test. An `afterEach` applies to nested
- *   describes too, and vitest runs them innermost first, so an outer
- *   per-test restore runs after a nested suite's restore, wipes that suite's
- *   setup, and invalidates its checkpoints (its next `restore()` throws).
- *   Keep describes that restore an outer checkpoint per test as siblings of
- *   describes with their own suite setup, not parents of them.
- * - A describe with its own suite setup needs a checkpoint on each side of
- *   it, so later describes don't inherit it: `outer = checkpoint()`, setup,
- *   `suite = checkpoint()`; then `suite.restore()` per test and
- *   `outer.restore()` in `afterAll`.
- * - `checkpoint()` throws if requests since the last clear went unanswered.
- *   A test that deliberately triggers a missing mock, in a file that doesn't
- *   restore per test, needs a `clearCalls()` before a later checkpoint.
- * - Only registrations and the mock's own state are restored, not state a
- *   resolver closes over (counters, prices, external fixtures).
- * - History is cleared, not rolled back: `history`, `calls`, `unhandled`,
- *   per-function and per-action `.calls`, and usage counts. A checkpoint
- *   taken mid-test therefore also drops that test's earlier history.
- * - Concurrency: one mock shared by concurrent tests is unsafe with or
- *   without checkpoints, since one test's restore (or overrides, `mine()`,
- *   history) affects the others. Use one mock per concurrent test, e.g. a
- *   setup factory or vitest fixtures; checkpoints are for serial suites.
- * - Requests still in flight at restore time (fire-and-forget calls from
- *   the previous test) land in the next test's history and `unhandled`.
+ * Checkpoints nest as a stack: restoring one invalidates every checkpoint
+ * taken after it, and `mock.reset()` invalidates them all. Restore at one
+ * level per test. Vitest runs an outer `afterEach` after a nested describe's
+ * own, so an outer per-test restore wipes the nested describe's suite setup
+ * and invalidates its checkpoints. Keep describes that restore an outer
+ * checkpoint per test beside describes with their own suite setup, not
+ * around them. A describe with its own suite setup takes a checkpoint on
+ * each side of it: `outer = mock.checkpoint()`, its setup, then
+ * `suite = mock.checkpoint()`, with `suite.restore()` after each test and
+ * `outer.restore()` in `afterAll`.
+ *
+ * `restore()` puts back the mock's own state, not state a resolver closes
+ * over. History is cleared, not rolled back, so restoring a checkpoint taken
+ * mid-test drops that test's earlier history too. A request still in flight
+ * at a restore lands in the next test's history and `unhandled`. One mock
+ * shared by concurrent tests is unsafe, checkpoints or not: use one mock per
+ * concurrent test, e.g. from a fixture.
  */
 export type MockCheckpoint = {
   /**
-   * Undoes every registration made since the checkpoint and returns the
-   * mock's own state (block number, fees, batch ids, faults' counts) to what it
-   * was, then clears history. Can be called repeatedly, e.g. after each test.
-   * Throws if the checkpoint is no longer valid, or, after restoring, if a
-   * check in `options` fails.
+   * Undoes every registration and answer made since the checkpoint, and puts
+   * the chain, fees, faults and batch ids back as they were, then clears the
+   * lists of requests and calls, and usage. Can be called again, e.g. after
+   * each test. Throws if the checkpoint is no longer valid, or, after
+   * restoring, if a check in `options` fails.
    */
   restore(options?: RestoreOptions): void;
 };
 
 /**
- * Checks `restore()` runs on the test that's ending. They're checked before
- * restoring (which clears what they look at) and thrown after, so a failing
- * check can't leave the next test running on this one's mocks.
+ * The checks `restore()` runs on the test that's ending. They're checked
+ * before restoring, which clears what they read, and thrown after, so a
+ * failing check can't leave the next test running on this one's mocks. A
+ * check in an `afterEach` of its own can: Vitest skips the remaining
+ * `afterEach` hooks once one throws.
  */
 export type RestoreOptions = {
-  /** Throw, like `assertNoUnhandled()`, if any request went unanswered. */
+  /**
+   * Whether to throw, as `assertNoUnhandled()` does, if any request since the
+   * last clear went unanswered.
+   */
   assertNoUnhandled?: boolean;
   /**
-   * Throw, like `assertAllUsed()`, if a mock registered since the checkpoint
-   * never answered a call. Baseline mocks aren't checked: shared setup can
-   * register more than any one test uses.
+   * Whether to throw, as `assertAllUsed()` does, if a mock registered since
+   * the checkpoint never answered a call. Mocks from before it aren't
+   * checked: shared setup can register more than any one test uses.
    */
   assertAllUsed?: boolean;
 };
