@@ -33,6 +33,7 @@ import { mkdir, writeFile } from "node:fs/promises";
 import { parseArgs } from "node:util";
 
 import {
+  type Chain,
   type PublicClient,
   createPublicClient,
   http,
@@ -264,9 +265,8 @@ const pause = async () => {
 
 /** A folder name for a node: its chain's name and its client, e.g. `ethereum-reth`. */
 function defaultName(chainId: number, client: string): string {
-  const chain = Object.values(chains).find(
-    (each) => typeof each === "object" && "id" in each && each.id === chainId,
-  );
+  const known: readonly object[] = Object.values(chains);
+  const chain = known.find((each): each is Chain => "id" in each && each.id === chainId);
   const chainName = chain === undefined ? `chain-${chainId}` : chain.name;
   // e.g. "reth/v2.8.0-05ba481/x86_64-unknown-linux-gnu" or "Geth/v1.17.4-stable/…"
   const clientName = client.split("/")[0] ?? client;

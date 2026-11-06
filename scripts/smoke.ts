@@ -1,17 +1,23 @@
 /**
- * Checks the package's declarations the way a consumer reads them. It builds
- * the package as it ships (`vp pack` with `tsconfig.build.json`) into a
- * temporary directory, then:
+ * Checks the package the way a consumer gets it. It packs the tarball
+ * (`pnpm pack`, which builds it with `vp pack`), then:
  *
- * - fails on any error emitting the declarations;
- * - fails on a relative import left in them: the bundled declarations are
- *   one file, so it would point at a file that isn't shipped;
- * - type-checks `smoke-consumer.ts` against them under TypeScript 5, without
- *   `skipLibCheck`, with the oldest viem and ox it supports and with the
- *   repo's own, so a type or module missing from an older viem or ox fails;
- * - and emits the consumer's own declarations, which fails where a type the
+ * - fails on a file in the tarball outside `dist/`, the LICENSE, the README
+ *   and `package.json`, so colocated tests never ship;
+ * - installs the tarball into two consumers, one with the oldest viem and ox
+ *   its peer ranges allow and one with the repo's viem and the ox it
+ *   depends on;
+ * - type-checks `smoke-consumer.ts` in each consumer, without
+ *   `skipLibCheck`, under TypeScript 5.8.2, the latest TypeScript 5 and 6,
+ *   and the repo's own, with `nodenext` and `bundler` resolution, so a type
+ *   or module missing from an older viem, ox or TypeScript fails, as does an
+ *   import of a file that isn't shipped;
+ * - emits the consumer's own declarations, which fails where a type the
  *   consumer infers can't be written with what the package exports, such
- *   as an unexported `unique symbol`.
+ *   as an unexported `unique symbol`;
+ * - runs `smoke-runtime.ts` in each consumer under Node;
+ * - and bundles it for a browser, failing on a Node module the bundle
+ *   imports, and runs the bundle without Node's globals.
  *
  * A type alias the package doesn't export reads fine there: TypeScript
  * writes it out in full. So it also compiles the consumer against `src/`,
@@ -24,21 +30,14 @@
  * temporary directory when it's done.
  */
 import { execFileSync } from "node:child_process";
-import {
-  cpSync,
-  mkdirSync,
-  mkdtempSync,
-  readFileSync,
-  readdirSync,
-  rmSync,
-  writeFileSync,
-} from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
+import { isBuiltin } from "node:module";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
+import { Rolldown } from "vite-plus/pack";
+
 const root = join(import.meta.dirname, "..");
-const typescript = "5";
-const floor = { viem: "2.50.3", ox: "0.14.22" };
 const consumerOptions = {
   module: "nodenext",
   target: "esnext",
@@ -48,33 +47,29 @@ const consumerOptions = {
   declaration: true,
   emitDeclarationOnly: true,
 };
+const shipped = /^package\/(?:dist\/[^/]+\.(?:js|d\.ts)|LICENSE|README\.md|package\.json)$/u;
 
-/** A package's `name` or `version`, from its `package.json` in `directory`. */
-function manifestField(directory: string, field: "name" | "version"): string {
-  const path = join(directory, "package.json");
-  const manifest: unknown = JSON.parse(readFileSync(path, "utf8"));
-  const value: unknown =
-    typeof manifest === "object" && manifest !== null ? Reflect.get(manifest, field) : undefined;
-  if (typeof value !== "string") throw new Error(`${path} has no ${field}.`);
+/** The string at `path` in the `package.json` in `directory`. */
+function manifestField(directory: string, ...path: string[]): string {
+  const file = join(directory, "package.json");
+  let value: unknown = JSON.parse(readFileSync(file, "utf8"));
+  for (const key of path)
+    value = typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
+  if (typeof value !== "string") throw new Error(`${file} has no ${path.join(".")}.`);
   return value;
+}
+
+/** The oldest version the package's peer range for `peer` allows. */
+function oldestPeer(peer: string): string {
+  const range = manifestField(root, "peerDependencies", peer);
+  const oldest = /^(?:\^|~|>=)?(\d+\.\d+\.\d+)$/u.exec(range)?.[1];
+  if (oldest === undefined) throw new Error(`Can't read the oldest ${peer} in "${range}".`);
+  return oldest;
 }
 
 function run(command: string, args: string[], cwd: string): void {
   console.log(`\n$ ${command} ${args.join(" ")}`);
   execFileSync(command, args, { cwd, stdio: "inherit" });
-}
-
-/** The relative imports in the declaration files under `directory`. */
-function relativeImports(directory: string): string[] {
-  return readdirSync(directory, { recursive: true, encoding: "utf8" })
-    .filter((file) => /\.d\.[cm]?ts$/u.test(file))
-    .flatMap((file) =>
-      [
-        ...readFileSync(join(directory, file), "utf8").matchAll(
-          /(?:from|import\(?)\s*"(\.[^"]*)"/gu,
-        ),
-      ].map((found) => `${file}: ${found[1]}`),
-    );
 }
 
 /**
@@ -114,45 +109,48 @@ function unexportedImports(directory: string): string[] {
   ];
 }
 
-function failOnRelativeImports(directory: string): void {
-  const found = relativeImports(directory);
-  if (found.length > 0)
-    throw new Error(`Declarations import files that aren't shipped:\n  ${found.join("\n  ")}`);
+/** The files in the tarball at `tarball` that shouldn't ship. */
+function unshippedFiles(tarball: string): string[] {
+  return execFileSync("tar", ["-tzf", tarball], { encoding: "utf8" })
+    .split("\n")
+    .filter((file) => file !== "" && !shipped.test(file));
+}
+
+/** `script` from `scripts/`, importing the package by name instead of `../src/index.js`. */
+function asConsumer(script: string, name: string): string {
+  const source = readFileSync(join(import.meta.dirname, script), "utf8");
+  const fromSource = '"../src/index.js"';
+  if (!source.includes(fromSource)) throw new Error(`${script} must import ${fromSource}.`);
+  return source.replaceAll(fromSource, JSON.stringify(name));
 }
 
 /**
- * A consumer with `versions` installed and the built package in its
- * `node_modules`, under the package's name.
+ * A consumer with the tarball, `versions` of viem and ox, and each of
+ * `typescripts` (as `typescript-<version>`) installed.
  */
-function createConsumer(directory: string, built: string, versions: typeof floor): void {
+function createConsumer(
+  directory: string,
+  tarball: string,
+  versions: { viem: string; ox: string },
+  typescripts: string[],
+): void {
   mkdirSync(directory);
   writeFileSync(join(directory, "package.json"), JSON.stringify({ private: true, type: "module" }));
   run(
     "pnpm",
-    ["add", `viem@${versions.viem}`, `ox@${versions.ox}`, `typescript@${typescript}`],
+    [
+      "add",
+      tarball,
+      `viem@${versions.viem}`,
+      `ox@${versions.ox}`,
+      ...typescripts.map((version) => `typescript-${version}@npm:typescript@${version}`),
+    ],
     directory,
   );
 
   const name = manifestField(root, "name");
-  const installed = join(directory, "node_modules", name);
-  cpSync(built, installed, { recursive: true });
-  writeFileSync(
-    join(installed, "package.json"),
-    JSON.stringify({
-      name,
-      type: "module",
-      exports: { ".": { types: "./index.d.mts", default: "./index.mjs" } },
-    }),
-  );
-
-  const consumer = readFileSync(join(import.meta.dirname, "smoke-consumer.ts"), "utf8");
-  const fromSource = '"../src/index.js"';
-  if (!consumer.includes(fromSource))
-    throw new Error(`smoke-consumer.ts must import ${fromSource}.`);
-  writeFileSync(
-    join(directory, "consumer.ts"),
-    consumer.replaceAll(fromSource, JSON.stringify(name)),
-  );
+  writeFileSync(join(directory, "consumer.ts"), asConsumer("smoke-consumer.ts", name));
+  writeFileSync(join(directory, "runtime.js"), asConsumer("smoke-runtime.ts", name));
   writeFileSync(
     join(directory, "tsconfig.json"),
     JSON.stringify({
@@ -162,31 +160,78 @@ function createConsumer(directory: string, built: string, versions: typeof floor
   );
 }
 
+/**
+ * Bundles the consumer's `runtime.js` for a browser into `browser.js`, and
+ * runs it in Node without Node's globals.
+ */
+async function runInBrowserBundle(directory: string): Promise<void> {
+  console.log("\nBundling runtime.js for a browser");
+  const { output } = await Rolldown.build({
+    input: join(directory, "runtime.js"),
+    cwd: directory,
+    platform: "browser",
+    write: false,
+    logLevel: "silent",
+    output: { format: "esm", codeSplitting: false },
+  });
+  const [bundle] = output;
+  const nodeImports = [...bundle.imports, ...bundle.dynamicImports].filter((id) => isBuiltin(id));
+  if (nodeImports.length > 0)
+    throw new Error(`The browser bundle imports Node's ${nodeImports.join(", ")}.`);
+  writeFileSync(join(directory, "browser.js"), bundle.code);
+
+  const withoutNodeGlobals =
+    "for (const name of ['process', 'Buffer', 'global', 'setImmediate', 'clearImmediate']) delete globalThis[name];";
+  run(
+    process.execPath,
+    ["--import", `data:text/javascript,${encodeURIComponent(withoutNodeGlobals)}`, "browser.js"],
+    directory,
+  );
+}
+
 // Ctrl-C stops only the command running, which fails, so the temporary directory is still removed.
 process.on("SIGINT", () => undefined);
 const temporary = mkdtempSync(join(tmpdir(), "smoke-"));
 try {
-  const built = join(temporary, "package");
-  run(
-    "vp",
-    ["pack", "src/index.ts", "--dts", "--tsconfig", "tsconfig.build.json", "--out-dir", built],
-    root,
-  );
-  failOnRelativeImports(built);
+  run("pnpm", ["pack", "--pack-destination", temporary], root);
+  const tarballName = readdirSync(temporary).find((file) => file.endsWith(".tgz"));
+  if (tarballName === undefined) throw new Error(`pnpm pack left no tarball in ${temporary}.`);
+  const tarball = join(temporary, tarballName);
+  const unshipped = unshippedFiles(tarball);
+  if (unshipped.length > 0)
+    throw new Error(`The tarball has files that shouldn't ship:\n  ${unshipped.join("\n  ")}`);
 
   const targets = {
-    floor,
+    floor: { viem: oldestPeer("viem"), ox: oldestPeer("ox") },
     current: {
       viem: manifestField(join(root, "node_modules", "viem"), "version"),
-      ox: manifestField(join(root, "node_modules", "ox"), "version"),
+      ox: manifestField(join(root, "node_modules", "viem"), "dependencies", "ox"),
     },
   };
+  const typescripts = [
+    // The oldest that reads viem's and ox's declarations under nodenext without skipLibCheck.
+    "5.8.2",
+    "5",
+    "6",
+    manifestField(join(root, "node_modules", "typescript"), "version"),
+  ];
   for (const [label, versions] of Object.entries(targets)) {
     console.log(`\nConsumer at ${label}: viem ${versions.viem}, ox ${versions.ox}`);
     const consumer = join(temporary, label);
-    createConsumer(consumer, built, versions);
-    run(join(consumer, "node_modules", ".bin", "tsc"), ["-p", consumer], consumer);
+    createConsumer(consumer, tarball, versions, typescripts);
+
+    for (const typescript of typescripts) {
+      const tsc = join(consumer, "node_modules", `typescript-${typescript}`, "bin", "tsc");
+      run(process.execPath, [tsc, "-p", consumer], consumer);
+      run(
+        process.execPath,
+        [tsc, "-p", consumer, "--module", "esnext", "--moduleResolution", "bundler"],
+        consumer,
+      );
+    }
+    run(process.execPath, ["runtime.js"], consumer);
   }
+  await runInBrowserBundle(join(temporary, "current"));
 
   const source = join(temporary, "source");
   mkdirSync(source);
@@ -195,7 +240,7 @@ try {
     throw new Error(
       `Declarations name types index.ts doesn't export:\n  ${unexported.join("\n  ")}`,
     );
-  console.log("\nThe declarations build and type-check at every version.");
+  console.log("\nThe package installs, type-checks and runs at every version.");
 } catch (error) {
   console.error(`\n${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;

@@ -1,41 +1,67 @@
 {
-  "name": "viem-transport-mock",
-  "version": "1.0.0",
-  "description": "",
-  "keywords": [],
-  "license": "ISC",
-  "author": "",
+  "name": "ethergeist",
+  "version": "0.1.0",
+  "description": "A mock Ethereum node for viem: mock contracts and JSON-RPC actions behind a viem transport, for tests and demos.",
+  "keywords": [
+    "ethereum",
+    "evm",
+    "json-rpc",
+    "mock",
+    "test",
+    "testing",
+    "transport",
+    "viem",
+    "web3"
+  ],
+  "homepage": "https://github.com/nadaniels/ethergeist#readme",
+  "bugs": "https://github.com/nadaniels/ethergeist/issues",
+  "license": "MIT",
+  "author": "Nathan Daniels",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/nadaniels/ethergeist.git"
+  },
+  "files": [
+    "dist"
+  ],
   "type": "module",
-  "main": "./src/index.ts",
+  "sideEffects": false,
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "default": "./dist/index.js"
+    },
+    "./package.json": "./package.json"
+  },
   "scripts": {
     "test": "vp test run --typecheck",
     "typecheck": "tsc",
     "knip": "knip && knip --production --strict",
     "mutate": "stryker run",
     "smoke": "vpx scripts/smoke.ts",
-    "prepare": "vp config"
+    "prepare": "vp config",
+    "prepack": "vp pack"
   },
   "devDependencies": {
+    "@arethetypeswrong/core": "^0.18.5",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
-    "@types/node": "^26.6.5",
+    "@types/node": "^26.6.6",
     "knip": "^6.44.1",
-    "ox": "0.14.59",
+    "ox": "^0.14.59",
+    "publint": "^0.3.25",
     "typescript": "^7.0.2",
-    "viem": "^2.57.12",
+    "viem": "^2.57.16",
     "vite-plus": "catalog:",
     "vitest": "catalog:"
   },
   "peerDependencies": {
-    "ox": "^0.14.0",
-    "viem": "^2.0.0"
+    "ox": "^0.14.22",
+    "viem": "^2.50.3"
   },
-  "devEngines": {
-    "packageManager": {
-      "name": "pnpm",
-      "version": "12.15.0",
-      "onFail": "download"
-    }
+  "engines": {
+    "node": ">=22.12"
   },
-  "packageManager": "pnpm@12.15.0"
+  "packageManager": "pnpm@12.18.0"
 }

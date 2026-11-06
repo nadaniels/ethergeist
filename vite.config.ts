@@ -1,6 +1,18 @@
 import { defineConfig } from "vite-plus";
 
 export default defineConfig({
+  pack: {
+    entry: "src/index.ts",
+    format: "esm",
+    platform: "neutral",
+    tsconfig: "tsconfig.build.json",
+    dts: true,
+    minify: false,
+    sourcemap: false,
+    publint: true,
+    attw: { profile: "esm-only", level: "error" },
+    outputOptions: { comments: { jsdoc: false } },
+  },
   test: {
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     typecheck: { include: ["src/**/*.test-d.ts", "test/**/*.test-d.ts"] },

@@ -5,6 +5,7 @@ import {
   type Abi,
   type Hex,
   type Transport,
+  BaseError,
   createPublicClient,
   encodeErrorResult,
   erc20Abi,
@@ -506,6 +507,13 @@ const namedErrors = [
 ] as const;
 const noRetries = { retryCount: 0, retryDelay: 0 };
 
+/** Whether the viem installed is older than `major.minor.patch`. */
+function viemBefore(...version: [number, number, number]): boolean {
+  const installed = new BaseError("").version.split(".").map(Number);
+  const differs = version.findIndex((part, i) => part !== installed[i]);
+  return differs !== -1 && (installed[differs] ?? 0) < version[differs]!;
+}
+
 /** An estimate of the fixtures' transfer through `transport`, with `fields` over it. */
 function estimate(transport: Transport, fields: object) {
   const client = createPublicClient({ chain: mainnet, transport });
@@ -533,13 +541,16 @@ describe("named node errors match reth's exactly", () => {
     const realError = await rejectionOf(estimate(http(url, noRetries), fields));
     const mockError = await mockedRefusal(name, fields);
 
-    // The one difference on purpose: reth's "EVM error: OutOfFunds" without
-    // fees is the balance check's wording, which viem before 2.57.12 doesn't
-    // name. Its code and the errors viem gives the app still match.
+    // The one difference on purpose: the mock answers reth's "EVM error:
+    // OutOfFunds" without fees with the balance check's wording. viem before
+    // 2.57.12 names only the mock's wording, adding an InsufficientFundsError.
     if (fixture === "estimate-gas-insufficient-funds") {
       const classes = (error: unknown) =>
         layers(error).map((layer) => ({ name: layer.name, code: layer.code }));
-      expect(classes(mockError)).toEqual(classes(realError));
+      const expected = classes(realError);
+      if (viemBefore(2, 57, 12))
+        expected.splice(1, 0, { name: "InsufficientFundsError", code: undefined });
+      expect(classes(mockError)).toEqual(expected);
       expect(layers(mockError, { details: true }).map((layer) => layer.details)).toContain(
         "insufficient funds for gas * price + value: have 0 want 1",
       );

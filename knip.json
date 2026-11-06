@@ -1,8 +1,9 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["scripts/*.ts"],
+  "entry": ["src/index.ts!", "scripts/*.ts"],
   "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts", "test/**/*.ts"],
   "include": ["nsExports", "nsTypes"],
+  "ignoreDependencies": ["@arethetypeswrong/core", "publint"],
   "tags": ["-lintignore"],
   "treatConfigHintsAsErrors": true
 }

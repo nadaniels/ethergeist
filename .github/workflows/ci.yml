@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches-ignore: ["release/**"]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  check:
+    name: Check, test and smoke (Node ${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ["22", "24", "26"]
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version: ${{ matrix.node }}
+          cache: true
+      - run: vp check
+      - run: vp run knip
+      - run: vp run test
+      - run: vp run smoke
+
+  floor:
+    name: Test at the oldest viem and ox
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: voidzero-dev/setup-vp@cab1ab9eaff52d4857875f4f2c016e36af8f2c76 # v1.22.0
+        with:
+          node-version: "26"
+          cache: true
+      - name: Install the oldest viem and ox the peer ranges allow
+        run: |
+          oldest() { node -p "require('./package.json').peerDependencies['$1'].replace(/^(\^|~|>=)/, '')"; }
+          pnpm add --save-dev "viem@$(oldest viem)" "ox@$(oldest ox)"
+      - run: vp run test
