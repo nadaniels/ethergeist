@@ -13,7 +13,12 @@ import type {
   AbiParameterToPrimitiveType,
 } from "viem";
 
-import type { EmittedLog, EventArgsParameter, MockContractEvents } from "../logs/events.js";
+import type {
+  EmittedLog,
+  EventArgsParameter,
+  MockContractEvents,
+  MockEventLog,
+} from "../logs/events.js";
 import type { MockOutcome } from "../mocking/outcomes.js";
 import type {
   SimulateErrorName,
@@ -27,11 +32,7 @@ import type {
 import type { zeroResult } from "../mocking/zeroResult.js";
 import type { PartialStructs } from "../shared/abiValues.js";
 import type { AddTransactionParameters } from "../transactions/addTransaction.js";
-import type {
-  MockWriteAnswers,
-  WriteContext,
-  MockWriteOutcome,
-} from "../transactions/writeOutcome.js";
+import type { MockWriteAnswers, MockWriteOutcome } from "../transactions/writeOutcome.js";
 
 /**
  * A contract's events by name, each emitting its log as a transaction of
@@ -247,19 +248,30 @@ export type MockEstimateGasFunction<
 
 /**
  * What a contract write's resolver gets, whole: the call, whose `from` is
- * the sender, `fail`, and `WriteContext`'s `emit`; its `revert` mines the
- * transaction reverted (see `WriteContext`).
+ * the sender; `fail`; and `emit` and `revert`, which answer the
+ * transaction as it's mined.
  */
 export type WriteResolverContext<abi extends Abi, args> = ResolverContext<
   abi,
   args,
   MockNodeFault<SendErrorName>
-> &
-  WriteContext & {
-    from: Address;
-    /** Mine the transaction reverted, e.g. `revert("paused")`: see `WriteContext`. */
-    revert: RevertFn<abi>;
-  };
+> & {
+  from: Address;
+  /**
+   * Adds a log, or logs, to the transaction, placed when it's mined, as
+   * `.emits()` does. Use it rather than `mock.addTransaction()` or
+   * `contract.emit`, which would put a transaction of their own on the
+   * chain, and are refused in this resolver up to its first `await` (after
+   * it, they would still place that separate transaction).
+   */
+  emit: (logs: MockEventLog | readonly MockEventLog[]) => void;
+  /**
+   * Mine the transaction reverted, e.g. `revert("paused")`, dropping what
+   * it emitted. A resolver runs only at the send, so the estimate doesn't
+   * revert: see `.reverts()` for that.
+   */
+  revert: RevertFn<abi>;
+};
 
 /**
  * How a contract's write answers: with what the chain did (see

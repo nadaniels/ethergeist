@@ -112,8 +112,4 @@ export { testAddress, testHash } from "./shared/testValues.js";
 export { testLog } from "./logs/testLog.js";
 export type { AddTransactionParameters } from "./transactions/addTransaction.js";
 export type { TransactionRecord } from "./transactions/store.js";
-export type {
-  MockWriteAnswers,
-  MockWriteOutcome,
-  WriteContext,
-} from "./transactions/writeOutcome.js";
+export type { MockWriteAnswers, MockWriteOutcome } from "./transactions/writeOutcome.js";

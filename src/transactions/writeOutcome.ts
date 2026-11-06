@@ -29,25 +29,6 @@ export type MockWriteOutcome = {
 };
 
 /**
- * The `emit` part of every write resolver's context: a contract write's
- * (`WriteResolverContext`) and a send's (`SendTransactionContext`) both
- * include it, beside their call, `fail` and `revert`. It's not a whole
- * context: type a resolver with one of those. A write's `revert(spec)` mines
- * it reverted, dropping what it emitted: a resolver runs only at the send,
- * so its estimate doesn't revert (see `.reverts()`).
- */
-export type WriteContext = {
-  /**
-   * Adds a log, or logs, to the transaction, placed when it's mined, as
-   * `.emits()` does. Use it rather than `mock.addTransaction()` or `contract.emit`,
-   * which would put a transaction of their own on the chain, and are
-   * refused in a write's resolver up to its first `await` (after it, they
-   * would still place that separate transaction).
-   */
-  emit: (logs: MockEventLog | readonly MockEventLog[]) => void;
-};
-
-/**
  * How a write mock answers: with what the chain did, or the node's refusal.
  * `revertSpec` is what `.reverts()` takes.
  */
@@ -177,7 +158,7 @@ type WriteEngine = {
 
 /**
  * Gives a write mock's builder `.emits()` and `.reverts()`, and its
- * resolvers `emit` and `revert` (see `WriteContext`).
+ * resolvers `emit` and `revert` (see `WriteResolverContext`).
  */
 export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void {
   const returns = builder.returns.bind(builder);
@@ -186,11 +167,11 @@ export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void 
     (resolver: (context: object) => unknown) =>
     async (context: object): Promise<unknown> => {
       const emitted: MockEventLog[] = [];
-      const writeContext: WriteContext & { revert: (spec?: unknown) => never } = {
-        emit(logs) {
+      const writeContext = {
+        emit(logs: MockEventLog | readonly MockEventLog[]) {
           emitted.push(...[logs].flat());
         },
-        revert(spec) {
+        revert(spec?: unknown): never {
           throw engine.revertError(spec);
         },
       };

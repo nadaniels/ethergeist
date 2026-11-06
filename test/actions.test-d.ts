@@ -14,6 +14,7 @@ import {
   type EstimateGasCall,
   type LogsCall,
   type LogsContext,
+  type MockEventLog,
   type RpcValue,
   type SendTransactionCall,
   type StorageCall,
@@ -277,6 +278,14 @@ describe("getLogs", () => {
     mock.actions.sendTransaction().returns(({ fail }) => fail("gasExceedsAllowance"));
     // A resolver may return nothing, for a success.
     mock.actions.sendTransaction().returns(() => {});
+    mock.actions.sendTransaction().returns(({ emit, revert }) => {
+      expectTypeOf(emit).toEqualTypeOf<(logs: MockEventLog | readonly MockEventLog[]) => void>();
+      emit(testLog("noise"));
+      emit([testLog("a"), testLog("b")]);
+      // @ts-expect-error not a log: no address, topics or data
+      emit({ logIndex: 0 });
+      revert("paused");
+    });
     expectTypeOf(mock.actions.sendTransaction.calls).toEqualTypeOf<SendTransactionCall[]>();
     // @ts-expect-error a write answers with its outcome, not an ABI value
     mock.actions.sendTransaction().returns(true);

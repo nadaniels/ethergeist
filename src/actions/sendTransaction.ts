@@ -5,13 +5,13 @@ import type { toRpcReceipt } from "../chain/receipts.js";
 import { decodeRawTransaction, sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
 import type { CallContext, RevertFn, RevertSpec } from "../contracts/types.js";
+import type { MockEventLog } from "../logs/events.js";
 import { impliedGas } from "../mocking/gas.js";
 import type { MockNodeFault, SendErrorName, WithLimits } from "../mocking/types.js";
 import { invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import {
   type MockWriteAnswers,
-  type WriteContext,
   type MockWriteOutcome,
   encodeWriteOutcome,
   extendWriteBuilder,
@@ -23,18 +23,28 @@ import type { ActionContext, SendTransactionCall } from "./types.js";
 /**
  * What a send's resolver gets: the call; `fail`, which also takes a node's
  * refusal by name, e.g. `fail("insufficientFunds")`; and `emit` and
- * `revert`, which answer the transaction as it's mined (see
- * `WriteContext`). Without an ABI, `revert` takes a reason, a panic
- * code or raw data.
+ * `revert`, which answer the transaction as it's mined. Without an ABI,
+ * `revert` takes a reason, a panic code or raw data.
  */
 export type SendTransactionContext = ActionContext<
   SendTransactionCall,
   MockNodeFault<SendErrorName>
-> &
-  WriteContext & {
-    /** Mine the transaction reverted, e.g. `revert("paused")`: see `WriteContext`. */
-    revert: RevertFn<readonly []>;
-  };
+> & {
+  /**
+   * Adds a log, or logs, to the transaction, placed when it's mined, as
+   * `.emits()` does. Use it rather than `mock.addTransaction()` or
+   * `contract.emit`, which would put a transaction of their own on the
+   * chain, and are refused in this resolver up to its first `await` (after
+   * it, they would still place that separate transaction).
+   */
+  emit: (logs: MockEventLog | readonly MockEventLog[]) => void;
+  /**
+   * Mine the transaction reverted, e.g. `revert("paused")`, dropping what
+   * it emitted. A resolver runs only at the send, so the estimate doesn't
+   * revert: see `.reverts()` for that.
+   */
+  revert: RevertFn<readonly []>;
+};
 
 /**
  * Like `MockActionBuilder`, for a send: it answers with what the chain did

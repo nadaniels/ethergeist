@@ -4,6 +4,7 @@ import { describe, expectTypeOf, test } from "vite-plus/test";
 import {
   type CreateMockContractParameters,
   type MockBatch,
+  type MockEventLog,
   type ContractDefaults,
   type MockNamespace,
   type MockRpc,
@@ -354,7 +355,10 @@ describe("write", () => {
     token.write.transfer().returns(({ args, from, emit, revert }) => {
       expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
       expectTypeOf(from).toEqualTypeOf<Address>();
+      expectTypeOf(emit).toEqualTypeOf<(logs: MockEventLog | readonly MockEventLog[]) => void>();
       emit(token.events.Transfer({ from, to: args[0], value: args[1] }));
+      // @ts-expect-error not a log: no address, topics or data
+      emit({ logIndex: 0 });
       if (args[1] > 5n) revert({ errorName: "Paused", args: [from] });
     });
     token.write.transfer().returns(() => Promise.resolve({ logs: [] }));
