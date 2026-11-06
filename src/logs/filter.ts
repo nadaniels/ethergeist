@@ -156,10 +156,16 @@ function describeTopics(topics: readonly LogsTopic[], contracts: readonly { abi:
     const input = indexed[i];
     if (topic === null || input === undefined) return [];
     const values = [topic].flat().map((hash) => {
-      if (input.type === "string" || input.type === "bytes" || input.type.endsWith("]"))
-        return formatValue(hash, { short: true });
-      const [value] = decodeAbiParameters([input], hash);
-      return formatValue(value, { short: true });
+      const hex = formatValue(hash, { short: true });
+      if (["string", "bytes", "tuple"].includes(input.type) || input.type.endsWith("]")) return hex;
+      // Any 32 bytes pass the params check; one the type can't hold (a bool past 1,
+      // a hash for a uint8) shows as sent rather than failing the request.
+      try {
+        const [value] = decodeAbiParameters([input], hash);
+        return formatValue(value, { short: true });
+      } catch {
+        return hex;
+      }
     });
     return values.length === 0 ? [] : [`${input.name ?? `arg ${i + 1}`}: ${values.join(" | ")}`];
   });

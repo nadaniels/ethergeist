@@ -9,6 +9,7 @@ import {
   pad,
   parseAbiItem,
   parseGwei,
+  toEventSelector,
   zeroAddress,
 } from "viem";
 import { describe, expect, test } from "vite-plus/test";
@@ -575,6 +576,42 @@ describe("history", () => {
       "#2 eth_getLogs getLogs([USDC, DAI], Approval | Transfer, blocks 1–10) → 1 log",
       "#3 eth_getLogs getLogs(USDC, blocks 8–7) ✗ rpc error -32602: invalid block range params",
     ]);
+  });
+
+  test("shows an indexed arg's topic as hex when it's a hash or doesn't fit the type", async () => {
+    const { mock, client } = setup();
+    const uint = { name: "a", type: "uint256" } as const;
+    const cases = [
+      // Solidity hashes these: the topic is the value's hash.
+      ["string", { type: "string" }],
+      ["bytes", { type: "bytes" }],
+      ["a fixed array", { type: "uint256[2]" }],
+      ["a one-field struct", { type: "tuple", components: [uint] }],
+      ["a two-field struct", { type: "tuple", components: [uint, { ...uint, name: "b" }] }],
+      ["an array of structs", { type: "tuple[]", components: [uint] }],
+      // Value types a hash doesn't fit: a bool past 1, a small int past 2^53, a function.
+      ["a bool", { type: "bool" }],
+      ["a uint8", { type: "uint8" }],
+      ["a function", { type: "function" }],
+    ] as const;
+    const abi = cases.map(([, input], i) => ({
+      type: "event" as const,
+      name: `E${i}`,
+      inputs: [{ ...input, name: "x", indexed: true }],
+    }));
+    mock.contract({ abi, address: alice, name: "Args" });
+    const hash = testHash("arg");
+
+    for (const event of abi)
+      await client.request({
+        method: "eth_getLogs",
+        params: [{ address: alice, topics: [toEventSelector(event), hash] }],
+      });
+    expect(mock.formatHistory({ builtIns: false }).split("\n")).toEqual(
+      cases.map(
+        (_, i) => `#${i + 1} eth_getLogs getLogs(Args, E${i}(x: 0x62c6…22f8), block 10) → 0 logs`,
+      ),
+    );
   });
 
   test("shows an address with no contract name as hex", async () => {
