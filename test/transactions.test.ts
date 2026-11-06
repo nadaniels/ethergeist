@@ -6,6 +6,7 @@ import {
   parseGwei,
   zeroAddress,
 } from "viem";
+import { base, mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
@@ -294,6 +295,17 @@ describe("getTransaction", () => {
 });
 
 describe("mock.addTransaction", () => {
+  test("makes a hash from the chain id and the position, so two chains' hashes differ", () => {
+    const onMainnet = createMockRpc({ chain: mainnet, blockNumber: 10n });
+    const onBase = createMockRpc({ chain: base, blockNumber: 10n });
+
+    const first = onMainnet.addTransaction();
+    const second = onBase.addTransaction();
+
+    expect(first.hash).toBe(testHash("tx:1:11:0"));
+    expect(second.hash).toBe(testHash("tx:8453:11:0"));
+  });
+
   test("with no fields, places a success from and to the zero address in a newly mined block", async () => {
     const { mock, client } = setup();
 
@@ -301,7 +313,7 @@ describe("mock.addTransaction", () => {
 
     expect(mock.blockNumber).toBe(11n);
     expect(record).toEqual({
-      hash: testHash("tx:11:0"),
+      hash: testHash("tx:1:11:0"),
       origin: "added",
       fields: {},
       receipt: {},

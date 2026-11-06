@@ -77,7 +77,7 @@ describe("emit", () => {
       blockTimestamp: block.timestamp,
       logIndex: 0,
       transactionIndex: 0,
-      transactionHash: testHash("tx:11:0"),
+      transactionHash: testHash("tx:1:11:0"),
       removed: false,
     });
   });
@@ -156,12 +156,12 @@ describe("emit", () => {
 
   test("refuses a sent emit whose made-up hash was named earlier, saying so", () => {
     const { mock, usdc } = setup();
-    usdc.emit.Transfer({ from: alice, to: bob }, { hash: testHash("tx:12:0") });
+    usdc.emit.Transfer({ from: alice, to: bob }, { hash: testHash("tx:1:12:0") });
 
     expectThrows(
       MockSetupError,
-      `Transaction ${testHash("tx:12:0")} is already on the chain.\n\n` +
-        'Name a hash other than one the mock makes, testHash("tx:<block>:<index>").',
+      `Transaction ${testHash("tx:1:12:0")} is already on the chain.\n\n` +
+        'Name a hash other than one the mock makes, testHash("tx:<chainId>:<block>:<index>").',
       () => usdc.emit.Transfer({ from: bob, to: alice }),
     );
     expect(mock.blockNumber).toBe(11n);

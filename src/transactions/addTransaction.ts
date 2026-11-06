@@ -42,8 +42,8 @@ export type AddTransactionParameters = {
   blockNumber?: bigint;
   /**
    * Its hash, e.g. one the app reads from a URL, in any case: it goes on
-   * the chain lowercase, as a node sends it. Left out, one made from its
-   * position. Refused if it's already on the chain.
+   * the chain lowercase, as a node sends it. Left out, one made from the
+   * chain id and its position. Refused if it's already on the chain.
    */
   hash?: Hash;
 };

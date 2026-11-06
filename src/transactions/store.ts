@@ -63,7 +63,7 @@ export type TransactionRecord = {
 
 /** What `add` takes: a record's facts, which it places. */
 type NewRecord = Pick<TransactionRecord, "origin" | "fields" | "receipt"> & {
-  /** Lowercase; left out, one the mock makes from its position. */
+  /** Lowercase; left out, one the mock makes from its chain id and position. */
   hash?: Hash | undefined;
   logs: readonly MockEventLog[];
 };
@@ -123,13 +123,13 @@ export function createTransactionStore({
     const number = blockNumber ?? state.blockNumber + 1n;
     const earlier = inBlock(number);
     const index = earlier.length;
-    const hash = record.hash ?? testHash(`tx:${number}:${index}`);
+    const hash = record.hash ?? testHash(`tx:${state.chainId}:${number}:${index}`);
     if (find(hash) !== undefined)
       throw new MockSetupError(`Transaction ${hash} is already on the chain.`, {
-        // A hash the mock made collides only with one named after its position.
+        // A hash the mock made collides only with one named after its chain id and position.
         metaMessages: [
           record.hash === undefined
-            ? `Name a hash other than one the mock makes, testHash("tx:<block>:<index>").`
+            ? `Name a hash other than one the mock makes, testHash("tx:<chainId>:<block>:<index>").`
             : record.origin === "added"
               ? "Give each added transaction its own hash; one transaction's logs go in one " +
                 "call, as mock.addTransaction({ logs: [a, b] })."

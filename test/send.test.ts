@@ -308,7 +308,7 @@ describe("eth_sendTransaction (node account)", () => {
       "eth_chainId",
       "eth_sendTransaction",
     ]);
-    expect(hash).toBe(testHash("tx:11:0"));
+    expect(hash).toBe(testHash("tx:1:11:0"));
     expect(mock.actions.sendTransaction.calls).toEqual([
       { from: alice, to: bob, value: 5n, type: "eip1559" },
     ]);

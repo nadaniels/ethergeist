@@ -1246,12 +1246,12 @@ describe("writes in history", () => {
 
     expect(mock.formatHistory({ builtIns: false })).toBe(
       [
-        "#2 eth_sendTransaction write USDC.transfer(0x4292…207f, 5n) → 0x0878…d725 (mined in block 11n, reverted)",
-        "#4 eth_sendTransaction write USDC.transfer(0x4292…207f, 6n) → 0xd6c0…f47e (mined in block 12n, reverted)",
+        "#2 eth_sendTransaction write USDC.transfer(0x4292…207f, 5n) → 0x340f…155f (mined in block 11n, reverted)",
+        "#4 eth_sendTransaction write USDC.transfer(0x4292…207f, 6n) → 0x7bff…b2a9 (mined in block 12n, reverted)",
         "#6 eth_sendTransaction write USDC.transfer(0x4292…207f, 7n) ✗ fault: nonceTooLow",
         // viem tries the wallet's method after a node's refusal.
         "#7 wallet_sendTransaction({ data: 0xa905…0007, from: 0xa41f…2D9e, to: 0x99d9…bfC7 }) ✗ rpc error -32601: the method wallet_sendTransaction does not exist/is not available",
-        "#9 eth_sendTransaction write USDC.transfer(0x4292…207f, 8n) → 0x025c…b8e9 (mined in block 13n, 0 logs)",
+        "#9 eth_sendTransaction write USDC.transfer(0x4292…207f, 8n) → 0x3b1a…6563 (mined in block 13n, 0 logs)",
         "#11 eth_sendTransaction write USDC.transfer(0x4292…207f, 9n) ✗ not mocked",
       ].join("\n"),
     );
@@ -1263,7 +1263,7 @@ describe("writes in history", () => {
     await wallet.sendTransaction({ to: bob, value: 1n });
 
     expect(mock.formatHistory({ builtIns: false })).toBe(
-      "#2 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, type: eip1559 }) → 0x0878…d725 (mined in block 11n, 0 logs)",
+      "#2 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, type: eip1559 }) → 0x340f…155f (mined in block 11n, 0 logs)",
     );
   });
 
@@ -1281,7 +1281,7 @@ describe("writes in history", () => {
     expect(mock.formatHistory({ builtIns: false })).toBe(
       [
         "(2 older requests dropped, past historyLimit)",
-        "#4 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, type: eip1559 }) → 0xd6c0…f47e (mined in block 12n, 0 logs)",
+        "#4 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, type: eip1559 }) → 0x7bff…b2a9 (mined in block 12n, 0 logs)",
       ].join("\n"),
     );
     mock.clearCalls();
