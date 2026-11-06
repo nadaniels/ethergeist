@@ -533,7 +533,18 @@ describe("named node errors match reth's exactly", () => {
     const realError = await rejectionOf(estimate(http(url, noRetries), fields));
     const mockError = await mockedRefusal(name, fields);
 
-    expect(layers(mockError, { details: true })).toEqual(layers(realError, { details: true }));
+    // The one difference on purpose: reth's "EVM error: OutOfFunds" without
+    // fees is the balance check's wording, which viem before 2.57.12 doesn't
+    // name. Its code and the errors viem gives the app still match.
+    if (fixture === "estimate-gas-insufficient-funds") {
+      const classes = (error: unknown) =>
+        layers(error).map((layer) => ({ name: layer.name, code: layer.code }));
+      expect(classes(mockError)).toEqual(classes(realError));
+      expect(layers(mockError, { details: true }).map((layer) => layer.details)).toContain(
+        "insufficient funds for gas * price + value: have 0 want 1",
+      );
+    } else
+      expect(layers(mockError, { details: true })).toEqual(layers(realError, { details: true }));
   });
 
   test.each(nodes)("%s: a plain transfer is estimated at 21000, as unmocked", async (node) => {

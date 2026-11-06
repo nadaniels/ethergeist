@@ -52,13 +52,12 @@ function transactionOf(params: unknown) {
   if (isHex(tx))
     try {
       const { value, gas } = parseTransaction(tx);
-      return { value: value ?? 0n, gas, paysFees: true };
+      return { value: value ?? 0n, gas };
     } catch {}
   const fields = isPlainObject(tx) ? tx : {};
   return {
     value: optionalQuantity(fields.value, "a value") ?? 0n,
     gas: optionalQuantity(fields.gas, "a gas limit"),
-    paysFees: "gasPrice" in fields || "maxFeePerGas" in fields,
   };
 }
 
@@ -80,16 +79,12 @@ export const nodeErrors: Record<
   NodeErrorName,
   (params: unknown) => { code: number; message: string }
 > = {
-  // Reth checks the balance against the value alone. With fee fields it
-  // reports that check; without them, the EVM's.
-  insufficientFunds(params) {
-    const tx = transactionOf(params);
-    if (!tx.paysFees) return { code: -32003, message: "EVM error: OutOfFunds" };
-    return {
-      code: -32003,
-      message: `insufficient funds for gas * price + value: have 0 want ${tx.value}`,
-    };
-  },
+  // Without fee fields reth sends "EVM error: OutOfFunds", which viem before
+  // 2.57.12 doesn't name; the balance check's wording, every viem does.
+  insufficientFunds: (params) => ({
+    code: -32003,
+    message: `insufficient funds for gas * price + value: have 0 want ${transactionOf(params).value}`,
+  }),
   feeCapTooLow: () => ({ code: -32000, message: "max fee per gas less than block base fee" }),
   tipAboveFeeCap: () => ({
     code: -32003,

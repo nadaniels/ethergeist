@@ -414,7 +414,7 @@ describe("a fault that isn't one", () => {
     );
     expect(expectCause(send, RpcRequestError)).toMatchObject({
       code: -32003,
-      details: "EVM error: OutOfFunds",
+      details: "insufficient funds for gas * price + value: have 0 want 0",
     });
     expect(
       mock.formatHistory().match(/✗ fault: insufficientFunds \(failRequests\)/gu),

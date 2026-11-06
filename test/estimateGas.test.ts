@@ -369,7 +369,8 @@ describe("estimateGas unmocked", () => {
 });
 
 describe("named node errors", () => {
-  test('"insufficientFunds" without fees is the EVM\'s error, which viem names', async () => {
+  // Reth sends "EVM error: OutOfFunds" here, which viem only names from 2.57.12.
+  test('"insufficientFunds" without fees is the balance check too, which every viem names', async () => {
     const { mock, client } = setup();
     mock.actions.estimateGas({ from: alice }).fails("insufficientFunds");
 
@@ -378,7 +379,7 @@ describe("named node errors", () => {
     expectCause(error, InsufficientFundsError);
     expect(expectCause(error, RpcRequestError)).toMatchObject({
       code: -32003,
-      details: "EVM error: OutOfFunds",
+      details: "insufficient funds for gas * price + value: have 0 want 1",
     });
   });
 

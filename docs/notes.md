@@ -264,11 +264,12 @@ features land; tick them off as pages get written.
   - Replacement underpriced, underpriced and exceeds block gas limit stay
     `.fails({ code: -32000, message })`: viem shows them as a generic
     `InvalidInputRpcError`, so a name adds nothing.
-  - `"insufficientFunds"` words it as reth does: `EVM error: OutOfFunds`
-    for a request without fees, and `insufficient funds for gas * price +
-    value: have 0 want <value>` for one with them (a local account's
-    always has them). The balance it reports is always 0: it doesn't read
-    `getBalance` mocks. viem names both the same.
+  - `"insufficientFunds"` is reth's balance check, `insufficient funds for
+    gas * price + value: have 0 want <value>`, with or without fees. Reth
+    sends `EVM error: OutOfFunds` for a request without fees, which viem
+    names `InsufficientFundsError` only from 2.57.12; the balance check's
+    wording, every viem does. The balance it reports is always 0: it
+    doesn't read `getBalance` mocks.
   - Not on reads or other actions, where no node says them. For anything
     else a node says, `fails({ code, message })`.
   - Assert the class, e.g. `err.walk((e) => e instanceof
