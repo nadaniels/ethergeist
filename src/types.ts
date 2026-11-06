@@ -218,10 +218,10 @@ export type MockRpc = {
   /**
    * Mines `blocks` blocks (one if left out), moving the head and the clock
    * on: transactions placed in them are mined, and watchers and
-   * `waitForTransactionReceipt` see them. A count is a bigint, `1n` or
+   * `waitForTransactionReceipt` see them. A count is an integer, `1` or
    * more: the head never moves back.
    */
-  mine(blocks?: bigint): void;
+  mine(blocks?: number): void;
   /**
    * Changes the fees from the current block on, e.g. for a fee spike:
    * blocks, `eth_gasPrice`, `eth_maxPriorityFeePerGas`, and fee histories

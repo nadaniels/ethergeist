@@ -123,6 +123,8 @@ type FormatOptions = {
 export function formatValue(value: unknown, options: FormatOptions = {}): string {
   if (isMatcher(value)) return formatMatcher(value, options);
   if (typeof value === "bigint") return `${value}n`;
+  // JSON.stringify writes NaN and the infinities as null.
+  if (typeof value === "number") return String(value);
   if (Array.isArray(value))
     return `[${value.map((v: unknown) => formatValue(v, options)).join(", ")}]`;
   if (isPlainObject(value))

@@ -167,7 +167,7 @@ export function createTransactionStore({
   }
 
   /** Mines `blocks` blocks. A pending record would be placed in the first one here. */
-  function mine(blocks = 1n) {
+  function mine(blocks = 1) {
     state.mine(blocks);
   }
 

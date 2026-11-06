@@ -656,7 +656,7 @@ describe("the transaction an emit makes", () => {
   test("stays in its block after mine()", async () => {
     const { mock, client, usdc } = setup();
     const { transactionHash: hash } = usdc.emit.Transfer({ from: alice, to: bob });
-    mock.mine(2n);
+    mock.mine(2);
 
     expect((await client.getTransactionReceipt({ hash })).blockNumber).toBe(11n);
     expect((await client.getTransaction({ hash })).blockNumber).toBe(11n);

@@ -99,13 +99,17 @@ export function createChainState(parameters: {
     get blockNumber() {
       return blockNumber;
     },
-    /** Mines `blocks` blocks: a bigint, 1n or more, so the head only moves forward. */
-    mine(blocks = 1n) {
-      if (typeof blocks !== "bigint" || blocks < 1n)
+    /** Mines `blocks` blocks: a safe integer, 1 or more, so the head only moves forward. */
+    mine(blocks = 1) {
+      const given: unknown = blocks;
+      if (!Number.isSafeInteger(given) || blocks < 1)
         throw new MockSetupError(
-          `mock.mine() takes a count of blocks, a bigint of 1n or more; got ${formatValue(blocks)}.`,
+          `mock.mine() takes a count of blocks, an integer of 1 or more; got ${formatValue(given)}.`,
+          typeof given === "bigint"
+            ? { metaMessages: [`Counts are numbers: mock.mine(${given}).`] }
+            : undefined,
         );
-      blockNumber += blocks;
+      blockNumber += BigInt(blocks);
     },
     /** Block `number`'s fees. */
     feesAt,

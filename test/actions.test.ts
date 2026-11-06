@@ -327,7 +327,7 @@ describe("getBlock", () => {
     const mock = createMockRpc({ chain: base, blockNumber: 100n, timestamp: 2_000n });
     const client = mock.publicClient();
 
-    mock.mine(10n);
+    mock.mine(10);
     const block = await client.getBlock();
     expect(block.number).toBe(110n);
     // Base's blockTime is 2s.
@@ -335,7 +335,7 @@ describe("getBlock", () => {
 
     // Timestamps are whole seconds, even when blockTime isn't.
     const fractional = createMockRpc({ chain: { ...base, blockTime: 1_700 }, timestamp: 0n });
-    fractional.mine(5n);
+    fractional.mine(5);
     // 5 blocks of 1.7s is 8.5s.
     expect((await fractional.publicClient().getBlock()).timestamp).toBe(8n);
   });

@@ -118,7 +118,7 @@ describe("getFeeHistory", () => {
 
   test("the count stops at block 0, and at 1024 blocks", async () => {
     const { mock, client } = setup();
-    mock.mine(2000n);
+    mock.mine(2000);
 
     const early = await client.getFeeHistory({
       blockCount: 20,

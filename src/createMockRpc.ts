@@ -116,7 +116,7 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     get blockNumber() {
       return state.blockNumber;
     },
-    mine(blocks = 1n) {
+    mine(blocks = 1) {
       transactions.mine(blocks);
     },
     setFees(fees: MockFees) {

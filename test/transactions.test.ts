@@ -410,7 +410,7 @@ describe("mock.addTransaction", () => {
 
     expect(await client.getTransactionCount({ address: alice, blockTag: "pending" })).toBe(1);
     expect(await client.getTransactionCount({ address: alice })).toBe(0);
-    mock.mine(2n);
+    mock.mine(2);
     expect(await client.getTransactionCount({ address: alice })).toBe(1);
   });
 
@@ -791,7 +791,7 @@ describe("receipt and transaction mocks over the chain", () => {
     mock.addTransaction({ blockNumber: 11n, logs: [testLog("a")] });
     mock.addTransaction({ blockNumber: 12n, logs: [testLog("b"), testLog("c")] });
     mock.addTransaction({ hash, blockNumber: 11n, logs: [log] });
-    mock.mine(2n);
+    mock.mine(2);
 
     expect((await client.getTransactionReceipt({ hash })).logs[0]?.logIndex).toBe(1);
     // Moved to block 12 after its two transactions' logs: index 2.
@@ -811,7 +811,7 @@ describe("receipt and transaction mocks over the chain", () => {
     mock.actions.getTransactionReceipt({ hash }).returns({ logs: [testLog("own")] });
 
     expect((await client.getTransactionReceipt({ hash })).logs[0]?.blockNumber).toBe(10n);
-    mock.mine(2n);
+    mock.mine(2);
     const { logs } = await client.getTransactionReceipt({ hash });
     expect(logs.map((each) => [each.topics, each.blockNumber])).toEqual([
       [testLog("own").topics, 12n],

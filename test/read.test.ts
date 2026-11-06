@@ -33,7 +33,7 @@ describe("block number", () => {
   test("returns the configured block and advances with mine()", async () => {
     const { mock, client } = setup({ blockNumber: 100n });
     expect(await client.getBlockNumber()).toBe(100n);
-    mock.mine(5n);
+    mock.mine(5);
     expect(await client.getBlockNumber()).toBe(105n);
   });
 

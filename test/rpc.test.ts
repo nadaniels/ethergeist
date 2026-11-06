@@ -204,27 +204,48 @@ describe("mine()", () => {
 
     mock.mine();
     expect(mock.blockNumber).toBe(101n);
-    mock.mine(3n);
+    mock.mine(3);
     expect(mock.blockNumber).toBe(104n);
     expect(await client.getBlockNumber()).toBe(104n);
   });
 
   test.each([
-    ["a number", 2, "got 2."],
-    ["zero, which would mine nothing", 0n, "got 0n."],
-    ["a negative count, which would move the head back", -1n, "got -1n."],
+    ["a bigint", 2n, "got 2n."],
+    ["zero, which would mine nothing", 0, "got 0."],
+    ["a non-integer number", 1.5, "got 1.5."],
+    ["a negative count, which would move the head back", -1, "got -1."],
+    ["NaN", Number.NaN, "got NaN."],
+    ["Infinity", Infinity, "got Infinity."],
+    ["a count past 2^53, which a number can't hold exactly", 2 ** 53, "got 9007199254740992."],
   ])("refuses %s, changing nothing", (_, blocks, got) => {
     const { mock } = setup();
 
     expectThrows(
       MockSetupError,
-      `mock.mine() takes a count of blocks, a bigint of 1n or more; ${got}`,
+      `mock.mine() takes a count of blocks, an integer of 1 or more; ${got}`,
       () => {
-        // @ts-expect-error -- some aren't bigints
+        // @ts-expect-error -- some aren't numbers
         mock.mine(blocks);
       },
     );
     expect(mock.blockNumber).toBe(100n);
+  });
+
+  test("a bigint's refusal says to pass a number", () => {
+    const { mock } = setup();
+
+    const error = expectThrows(MockSetupError, "got 2n.", () => {
+      // @ts-expect-error -- a count is a number
+      mock.mine(2n);
+    });
+    expect(error.metaMessages).toEqual(["Counts are numbers: mock.mine(2)."]);
+  });
+
+  test("mines the largest count a number holds exactly", () => {
+    const { mock } = setup();
+
+    mock.mine(Number.MAX_SAFE_INTEGER);
+    expect(mock.blockNumber).toBe(100n + BigInt(Number.MAX_SAFE_INTEGER));
   });
 });
 
@@ -233,7 +254,7 @@ describe("clearCalls()", () => {
     const { mock, decimals } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });
     usdc.read.decimals().returns(6);
-    mock.mine(5n);
+    mock.mine(5);
     await decimals(USDC);
 
     mock.clearCalls();
@@ -252,7 +273,7 @@ describe("reset()", () => {
   test("removes contracts and history and restores the starting block", async () => {
     const { mock, client, decimals } = setup();
     mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
-    mock.mine(5n);
+    mock.mine(5);
     await decimals(USDC);
 
     mock.reset();

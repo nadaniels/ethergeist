@@ -197,7 +197,7 @@ describe("restore()", () => {
     };
     const baseline = mock.checkpoint();
 
-    mock.mine(5n);
+    mock.mine(5);
     const first = await batchId();
     baseline.restore();
     expect(mock.blockNumber).toBe(10n);
@@ -212,7 +212,7 @@ describe("restore()", () => {
     mock.mine();
     const baseline = mock.checkpoint();
 
-    mock.mine(2n);
+    mock.mine(2);
     receipt.returns({ status: "reverted" });
     expect(await client.getTransactionReceipt({ hash })).toMatchObject({ blockNumber: 13n });
     baseline.restore();
