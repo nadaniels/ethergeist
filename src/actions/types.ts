@@ -7,27 +7,48 @@ import type { zeroResult } from "../mocking/zeroResult.js";
 
 /**
  * What a call about an address at a block asked for. A tag resolves to the
- * mock's block number and is kept, so `"pending"` can be pinned apart from
- * `"latest"`; no block is `"latest"`, and a block number has no tag.
+ * current block, or `0n` for `"earliest"`, and is kept, so `"pending"` can
+ * be pinned apart from `"latest"`. No block is `"latest"`, and a block
+ * number or hash has no tag.
  */
-export type AddressAtBlockCall = { address: Address; blockNumber: bigint; blockTag?: BlockTag };
+export type AddressAtBlockCall = {
+  /** The address asked about, checksummed. */
+  address: Address;
+  /** The block asked about, as a number. */
+  blockNumber: bigint;
+  /**
+   * The block's tag: the request's, or `"latest"` when it gave no block;
+   * left out for a block number or hash.
+   */
+  blockTag?: BlockTag;
+};
 /** What a call to `getBalance` asked for; see `AddressAtBlockCall`. */
 export type BalanceCall = AddressAtBlockCall;
 /** What a call to `getCode` asked for; see `AddressAtBlockCall`. */
 export type CodeCall = AddressAtBlockCall;
 /**
  * What a call to `getBlock` asked for. `blockNumber` is always set: a tag
- * resolves to the mock's block number, and a generated block's hash to its
- * number. An unknown hash (one a mock pins) uses the mock's block number.
+ * resolves to the current block, or `0n` for `"earliest"`, and a generated
+ * block's hash to its number. An unknown hash, one a mock pins, uses the
+ * current block.
  */
 export type BlockCall = {
+  /** The block asked for, as a number. */
   blockNumber: bigint;
-  /** Lowercase, however the request wrote it. */
+  /** The hash asked for, lowercase, however the request wrote it. */
   blockHash?: Hash;
+  /**
+   * The block's tag: the request's, or `"latest"` when it gave no block;
+   * left out for a block number, and for `eth_getBlockByHash`.
+   */
   blockTag?: BlockTag;
+  /** Whether the request asked for whole transactions, not their hashes. */
   includeTransactions: boolean;
 };
-/** A JSON value, as JSON-RPC carries it: quantities are hex strings, not bigints. */
+/**
+ * A JSON value, as JSON-RPC carries it: quantities are hex strings, not
+ * bigints.
+ */
 export type RpcValue =
   | string
   | number
@@ -37,14 +58,23 @@ export type RpcValue =
   | { readonly [key: string]: RpcValue };
 
 /**
- * What a call to `getFeeHistory` asked for. `blockNumber` is the newest
- * block: a tag resolves to the mock's block number. `rewardPercentiles` is
- * left out when the request has none.
+ * What a call to `getFeeHistory` asked for: a number of blocks, up to the
+ * newest one.
  */
 export type FeeHistoryCall = {
+  /** How many blocks the history covers. */
   blockCount: number;
+  /**
+   * The newest block, as a number: a tag resolves to the current block, or
+   * `0n` for `"earliest"`.
+   */
   blockNumber: bigint;
+  /**
+   * The newest block's tag: the request's, or `"latest"` when it gave no
+   * block; left out for a block number.
+   */
   blockTag?: BlockTag;
+  /** The reward percentiles asked for; left out when the request has none. */
   rewardPercentiles?: readonly number[];
 };
 /**
@@ -54,9 +84,9 @@ export type FeeHistoryCall = {
 export type TransactionCountCall = AddressAtBlockCall;
 /**
  * What a call to `estimateGas` asked for: the transaction, and the block it's
- * estimated at. `from` is the sender; `value` is `0n` when the request has
- * none. Other fields are left out when the request has none.
- * A tag resolves to the mock's block number and is kept; no block is `"latest"`.
+ * estimated at. `from` is the sender, and `value` is `0n` when the request
+ * has none. Other fields are left out when the request has none.
+ * `blockNumber` and `blockTag` are as in `AddressAtBlockCall`.
  */
 export type EstimateGasCall = {
   from?: Address;
@@ -72,13 +102,13 @@ export type EstimateGasCall = {
   blockTag?: BlockTag;
 };
 /**
- * What a send asked for (`eth_sendTransaction`, or `eth_sendRawTransaction`'s
- * signed bytes): the transaction. `from` is the sender: the request's, or
- * the signer, recovered from a raw send's signature. `to` is
+ * What a send asked for: the transaction, from `eth_sendTransaction`'s
+ * request or a raw send's signed bytes. `from` is the sender: the
+ * request's, or the signer recovered from a raw send's signature. `to` is
  * `null` for a deploy; `value` is `0n` when it has none, and `data` is left
  * out when it's empty. A raw send has its nonce and gas; other fields are
- * left out when the request has none. `type` is the request's, or else
- * as viem's `getTransactionType` reads its fields: e.g. `"legacy"` with a
+ * left out when the request has none. `type` is the request's, or else as
+ * viem's `getTransactionType()` reads its fields, e.g. `"legacy"` with a
  * `gasPrice`, `"eip2930"` with an `accessList` too, `"eip1559"` without.
  */
 export type SendTransactionCall = {
@@ -100,14 +130,25 @@ export type EmptyCall = Record<string, never>;
  * is 32 bytes, lowercase, however the request wrote it (e.g. `"0x0"`).
  */
 export type StorageCall = AddressAtBlockCall & { slot: Hex };
-/** What a call to `getTransactionReceipt` asked for: its hash, lowercase, however the request wrote it. */
-export type ReceiptCall = { hash: Hash };
-/** What a call to `getTransaction` asked for: a transaction by its hash, lowercase, however the request wrote it. */
-export type TransactionCall = { hash: Hash };
-/** A raw JSON-RPC request answered by `mock.method()`. */
-export type MethodCall = { method: string; params: readonly RpcValue[] };
+/** What a call to `getTransactionReceipt` asked for: a transaction's hash. */
+export type ReceiptCall = {
+  /** The transaction's hash, lowercase, however the request wrote it. */
+  hash: Hash;
+};
+/** What a call to `getTransaction` asked for: a transaction's hash. */
+export type TransactionCall = {
+  /** The transaction's hash, lowercase, however the request wrote it. */
+  hash: Hash;
+};
+/** What a raw method's request asked for, as a `mock.method()` mock sees it. */
+export type MethodCall = {
+  /** The JSON-RPC method. */
+  method: string;
+  /** The request's params, as sent. */
+  params: readonly RpcValue[];
+};
 
-/** Each typed action's decoded call. */
+/** Each typed action's decoded call, by the action's name. */
 export type ActionCalls = {
   getBalance: BalanceCall;
   getCode: CodeCall;
@@ -126,49 +167,67 @@ export type ActionCalls = {
 };
 
 /**
- * What an action's resolver gets: the call, and `fail`. `fault` is what
- * `fail` takes: a `MockFault`, or also a node's refusal by name
- * (`MockNodeFault`) where a node can refuse.
+ * What an action's resolver gets: the call's fields, and `fail`. The `fault`
+ * parameter is what `fail` takes, a `MockFault`, or also a node's refusal by
+ * name (`MockNodeFault`) where a node can refuse.
  */
 export type ActionContext<call, fault = MockFault> = call & {
   /**
-   * Fail the whole JSON-RPC request with a transport-level fault, e.g.
-   * `fail({ status: 503 })`. See `MockFault` for the kinds. Where a node can
-   * refuse (estimates, sends), it also takes the refusal by name, e.g.
+   * Fails the request this call is in with a fault, e.g.
+   * `fail({ status: 503 })`: see `MockFault` for the kinds. Where a node can
+   * refuse (estimates, sends), it also takes a node's refusal by name, e.g.
    * `fail("insufficientFunds")`.
    */
   fail: (fault: fault) => never;
 };
 
-/** What an action mock answers with: a value in viem's types, or `zeroResult` for its zero. */
+/**
+ * What an action's mock answers with: a value in viem's types, or
+ * `zeroResult` for the action's zero.
+ */
 type ActionValue<value> = value | typeof zeroResult;
 
-/** How a mock answers: `.returns()` or `.fails()`. */
+/** How an action's mock answers: `.returns()` or `.fails()`. */
 export type MockActionAnswers<call, value, context = ActionContext<call>> = {
-  /** With no argument, answers with the zero value, like `.returns(zeroResult)`. */
+  /**
+   * Answers every matching call with the action's zero, as
+   * `.returns(zeroResult)` does.
+   */
   returns(): void;
+  /**
+   * Answers every matching call with `value`, in viem's types, or with what
+   * a resolver returns for each call, sync or async.
+   */
   returns(
     value:
       | ActionValue<value>
       | ((context: context) => ActionValue<value> | Promise<ActionValue<value>>),
   ): void;
-  /** Fail every matching request at the network level. See `MockFault` for the kinds. */
+  /**
+   * Fails every matching call: the request it's in fails with `fault`. See
+   * `MockFault` for the kinds.
+   */
   fails(fault: MockFault): void;
 };
 
+/**
+ * An action's mock, as registering it returns it: `.returns()` or `.fails()`
+ * to answer, and `.once()` or `.times()` to limit it (see `WithLimits`).
+ */
 export type MockActionBuilder<call, value, context = ActionContext<call>> = WithLimits<
   MockActionAnswers<call, value, context>
 >;
 
 /**
- * Mirrors the viem action of the same name, but registers a mock. Pin any of
- * the call's fields to narrow it; with none, it answers every call.
+ * Mirrors the viem action of the same name, but registers a mock. Its params
+ * pin the call's fields, as values or matchers; with none, it answers every
+ * call.
  */
 export type MockAction<call, value, context = ActionContext<call>> = {
   (params?: Partial<call>): MockActionBuilder<call, value, context>;
   /**
-   * Every call to this action the mock has received, in order (the last
-   * `historyLimit`).
+   * Every call to this action the mock received, in order: the last
+   * `historyLimit` of them.
    */
   readonly calls: call[];
 };
@@ -177,10 +236,15 @@ export type MockAction<call, value, context = ActionContext<call>> = {
 export type MockActionWithoutParams<value> = {
   (): MockActionBuilder<EmptyCall, value, ActionContext<object>>;
   /**
-   * Every call to this action the mock has received, in order (the last
-   * `historyLimit`).
+   * Every call to this action the mock received, in order: the last
+   * `historyLimit` of them.
    */
   readonly calls: EmptyCall[];
 };
 
+/**
+ * A raw method's mock, as `mock.method()` returns it. It answers with a raw
+ * JSON-RPC value (`RpcValue`), and `.returns()` without one answers `null`.
+ * A resolver gets the request's `method` and `params`.
+ */
 export type MockMethodBuilder = MockActionBuilder<MethodCall, RpcValue>;

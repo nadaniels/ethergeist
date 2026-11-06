@@ -29,91 +29,99 @@ import type { AddTransactionParameters } from "./transactions/addTransaction.js"
 import type { TransactionRecord } from "./transactions/store.js";
 import type { MockPublicClientParameters } from "./viem/adapter.js";
 
+/** What `createMockRpc()` takes. Every option is optional. */
 export type CreateMockRpcParameters = {
   /**
    * The chain the mock stands in for: its id answers `eth_chainId`, and
-   * `aggregate3` calls to its Multicall3 (`contracts.multicall3`) are decoded.
-   * Without one, viem can't multicall on it, as without a mock. `publicClient()`
-   * uses it. Defaults to viem's `mainnet`; for any other id or Multicall3
-   * address, use a viem chain or `defineChain`.
+   * `aggregate3` calls to its Multicall3 (`contracts.multicall3`) are
+   * decoded. Without a Multicall3 address, viem can't multicall on it, as
+   * without a mock. `mock.publicClient()` uses it. Defaults to viem's
+   * `mainnet`; for any other id or Multicall3 address, use a viem chain or
+   * `defineChain()`.
    */
   chain?: Chain;
-  /** Block number the mock starts at. Defaults to 1n. */
+  /** The block number the mock starts at. Defaults to `1n`. */
   blockNumber?: bigint;
   /**
-   * Unix timestamp, in seconds, of the starting block. Later and earlier blocks
-   * are `chain.blockTime` apart (12s if the chain doesn't say). Defaults to
-   * 1_700_000_000n, so runs are deterministic.
+   * The starting block's Unix timestamp, in seconds. Other blocks are
+   * `chain.blockTime` apart, or 12 seconds if the chain doesn't say.
+   * Defaults to `1_700_000_000n`, so runs are deterministic.
    */
   timestamp?: bigint;
   /**
-   * The fees generated blocks and fee requests answer with: `baseFeePerGas`
-   * is every block's, `maxPriorityFeePerGas` answers `eth_maxPriorityFeePerGas`,
-   * and their sum `eth_gasPrice`, as reth suggests. Defaults to 10 gwei and
-   * 1 gwei, so viem's `estimateFeesPerGas()` gives a `maxFeePerGas` of 13 gwei.
-   * `mock.actions` mocks answer over them.
+   * The fees generated blocks and fee requests answer with. `baseFeePerGas`
+   * is every block's, `maxPriorityFeePerGas` answers
+   * `eth_maxPriorityFeePerGas`, and their sum answers `eth_gasPrice`, as reth
+   * suggests. Defaults to 10 gwei and 1 gwei, so viem's
+   * `estimateFeesPerGas()` gives a `maxFeePerGas` of 13 gwei. `mock.actions`
+   * mocks answer over them, and `mock.setFees()` changes them.
    */
   fees?: MockFees;
   /**
-   * Log each request as it's answered, one line per request (see
-   * `formatHistory()`). `true` logs with `console.log`; a function receives
-   * the line and the history entry, to send to any logger, e.g.
-   * `(line) => logger.debug(line)`. Useful when a test times out before it
-   * could print the history. Entries hold bigints, which `JSON.stringify`
-   * rejects, so pass loggers the line or chosen fields.
+   * Logs each request as it's answered, one line each, as `formatHistory()`
+   * formats it. `true` logs with `console.log`; a function gets the line and
+   * the history entry, e.g. `(line) => logger.debug(line)`. For a test that
+   * times out before it can print the history. Entries hold bigints, which
+   * `JSON.stringify` rejects: pass a logger the line or chosen fields.
    */
   debug?: boolean | ((line: string, entry: MockHistoryEntry) => void);
   /**
-   * How many of the most recent requests to append to the errors of the
-   * mock's own checks (`assertNoUnhandled()`, `assertAllUsed()`, `restore()`'s
-   * checks, `checkpoint()`), formatted like `formatHistory()` without
-   * built-ins. `false` (or `0`) leaves them out. Defaults to 10.
+   * How many of the most recent requests a failed check's error shows, as
+   * `formatHistory()` formats them without built-ins. The checks are
+   * `assertNoUnhandled()`, `assertAllUsed()`, `checkpoint()` and
+   * `restore()`'s. `false` or `0` leaves them out. Defaults to `10`.
    */
   historyOnFailure?: number | false;
   /**
-   * How many entries each record of requests keeps: `history`, `calls`,
-   * `unhandled`, each action's `.calls`, and each contract's and function's
-   * `.calls`. The limit is per list, not in all. Past it, the
-   * oldest are dropped; history keeps its numbering and says how many were
-   * dropped, and checks count every request. Defaults to 1000, warning
-   * once the first time one's dropped, so a test that counted on every
-   * request hears about it. Long-running pages need a limit: a demo polling
-   * every 50ms makes about 68k requests an hour. The limit counts entries,
-   * not bytes: a single read keeps about 3 KB per request across its
-   * records, and a 10-call multicall about 21 KB, since one entry carries
-   * the whole batch; so about 3 MB and 21 MB at the default. Pass a number
-   * to choose without the warning, or `Infinity` to keep everything.
-   * Registered mocks and the chain's transactions (`mock.transactions`,
-   * `mock.logs`) aren't records; they grow only as code adds to them.
+   * How many entries each list of requests keeps: `history`, `calls`,
+   * `unhandled`, and each action's, contract's and function's `.calls`, each
+   * on its own. Past it, the oldest are dropped; `history` keeps its
+   * numbering and says how many were dropped, and checks count every
+   * request. Defaults to `1000`, warning the first time an entry is dropped;
+   * a number set here doesn't warn, and `Infinity` keeps everything.
+   *
+   * A long-running page needs a limit: polling every 50ms makes about 68,000
+   * requests an hour. A read keeps about 3 KB across the lists, and a 10-call
+   * multicall about 21 KB. Registered mocks and the chain (`mock.transactions`,
+   * `mock.logs`) aren't lists of requests, and aren't limited.
    */
   historyLimit?: number;
 };
 
-/** A mock JSON-RPC node, answering viem through `transport()`; see `createMockRpc`. */
+/**
+ * The mock: a stand-in JSON-RPC node, which answers viem through
+ * `mock.transport()` and `mock.publicClient()`. `createMockRpc()` makes one.
+ */
 export type MockRpc = {
-  /** Answers a JSON-RPC request directly, as `transport()` does for viem. */
+  /**
+   * Answers a JSON-RPC request directly, without a client or its retries.
+   * It throws viem's errors, the ones `mock.transport()` hands a client: a
+   * fault, a revert or a node's refusal is an `HttpRequestError`,
+   * `RpcRequestError` or `TimeoutError`, not yet sorted into viem's classes
+   * by code. A request the mock can't answer throws a `MockError`.
+   */
   request(rpcRequest: RpcRequest): Promise<unknown>;
   /**
-   * A viem transport backed by this mock. Retries keep viem's `retryCount` but
-   * default to `retryDelay: 0`, so faulted requests retry without waiting.
+   * A viem transport backed by the mock. `config` is viem's `custom()`
+   * transport's: `retryCount` keeps viem's default, and `retryDelay`
+   * defaults to `0`, so a faulted request retries without waiting.
    */
   transport(config?: CustomTransportConfig): CustomTransport;
   /**
-   * A viem public client on this mock, with test-friendly defaults: the mock's
-   * chain, `cacheTime: 0` so `mine()` shows up immediately, and
-   * `pollingInterval: 50` so watchers and `waitForTransactionReceipt` notice
-   * new blocks quickly (viem's default is up to 4s). Options override them.
-   * `retryCount` and `retryDelay` go to the transport, as `transport(config)`
-   * takes them: `publicClient({ retryCount: 0 })` so a fault reaches the app
-   * without retries. For any other transport option, build the client
-   * yourself, keeping `cacheTime: 0` so a cached block number doesn't hide
-   * `mine()` or `restore()`:
-   * `createPublicClient({ chain: mock.chain, transport: mock.transport(config), cacheTime: 0, pollingInterval: 50 })`.
+   * A viem public client on the mock, with defaults for tests: `mock.chain`,
+   * `cacheTime: 0` so `mine()` shows at once, and `pollingInterval: 50` so
+   * watchers and `waitForTransactionReceipt()` see new blocks quickly (viem's
+   * default is up to 4s). Options override them. `retryCount` and
+   * `retryDelay` go to the transport, e.g. `publicClient({ retryCount: 0 })`
+   * so a fault reaches the app without retries. For any other transport
+   * option, create the client on `mock.transport(config)` with
+   * `cacheTime: 0`, so a cached block number doesn't hide `mine()` or
+   * `restore()`.
    */
   publicClient(options?: MockPublicClientParameters): PublicClient<CustomTransport, Chain>;
   /**
    * Registers a mocked contract. Each address takes one registration; for a
-   * proxy or extended contract, combine the ABIs (`abi: [...a, ...b]`).
+   * proxy or extended contract, combine the ABIs, e.g. `abi: [...a, ...b]`.
    */
   contract<const abi extends Abi>(parameters: CreateMockContractParameters<abi>): MockContract<abi>;
   /**
@@ -123,102 +131,118 @@ export type MockRpc = {
    */
   readonly actions: MockActions;
   /**
-   * The transaction `mock.actions.getTransaction()` answers when mocked with
-   * `.returns(transaction)` for a hash not on the chain, in viem's types,
-   * with the same defaults: the current block (as of this call, as
-   * `.returns()` fixes a static answer's as of its call) and fees, and the
-   * mock's chain. Its hash is zero unless given. For a transaction on the
-   * chain, compare with what the client answers. For `toEqual` against what
-   * the app got, and for props.
+   * The transaction a `mock.actions.getTransaction()` mock answers with
+   * `.returns(transaction)` for a hash with no placed transaction, in viem's
+   * types. It takes the same defaults: the fees, `mock.chain`, and the
+   * current block as of this call, as `.returns()` fixes a static answer's
+   * at registration. Its hash is zero unless given. For `toEqual` against
+   * what the app got, and for props. For a placed transaction, compare with
+   * what the client returns.
    */
   buildTransaction<const transaction extends MockTransaction = { type?: "eip1559" }>(
     transaction?: transaction,
   ): BuiltTransaction<transaction>;
   /**
-   * The receipt `mock.actions.getTransactionReceipt()` answers when mocked
-   * with `.returns(receipt)` for a hash not on the chain: the same defaults,
-   * in the current block unless given (as of this call, as `.returns()` fixes
-   * a static answer's as of its call). Its hash is zero unless given
-   * (`transactionHash`). `logs` takes their content (from `contract.events`),
-   * which the receipt places; a log that already has a position is refused.
-   * For a transaction on the chain, compare with what the client answers:
-   * a built receipt is a whole receipt, so returned over one it answers its
-   * own fields and logs. For `toEqual` against what the app got, and for props. Its addresses are
-   * lowercase, as nodes send them: compare them with viem's
-   * `isAddressEqual`, not `toBe(contract.address)`.
+   * The receipt a `mock.actions.getTransactionReceipt()` mock answers with
+   * `.returns(receipt)` for a hash not on the chain. It takes the same
+   * defaults: the fees, `mock.chain`, and the current block as of this call
+   * unless given, as `.returns()` fixes a static answer's at registration.
+   * Its hash is zero unless given (`transactionHash`). `logs` takes their
+   * content, e.g. from `contract.events`, which the receipt places; a placed
+   * log is refused. For `toEqual` against what the app got, and for props.
+   *
+   * Its addresses are lowercase, as nodes send them: compare them with
+   * viem's `isAddressEqual()`, not `toBe(contract.address)`. A built receipt
+   * is a whole receipt, so returned over a transaction on the chain, it
+   * answers its own fields and logs. For a transaction on the chain, compare
+   * with what the client returns.
    */
   buildReceipt(receipt?: MockReceipt): TransactionReceipt;
   /**
-   * A log's content, from a contract's `events`, `contractEvents()` or
-   * `testLog()`, placed as a complete viem log, for where no mock places
-   * it: `toEqual`, props, a function that parses logs, a `getLogs` mock's
-   * answer. In the current block unless `placement` says otherwise (see
-   * `LogPlacement`), with other position fields zero: the chain doesn't
-   * count it, so give `logIndex` to match a block with other logs. Its
-   * address is lowercase, as nodes send it: compare with `isAddressEqual`,
-   * not `toBe`. Content already placed is refused, and what it returns
-   * isn't for a transaction's logs, which place their content themselves.
+   * A log's content placed as a complete viem log, for where no mock places
+   * it: `toEqual`, props, a function that parses logs, or a `getLogs` mock's
+   * answer. The content is from a contract's `events`, `contractEvents()` or
+   * `testLog()`. It's in the current block unless `placement` says
+   * otherwise (see `LogPlacement`), with other position fields zero. The
+   * chain doesn't count it, so give `logIndex` to match a block with other
+   * logs. Placed content is refused.
+   *
+   * Its address is lowercase, as nodes send it: compare with
+   * `isAddressEqual()`, not `toBe()`. A transaction's logs aren't built
+   * here: a transaction places its logs' content itself.
    */
   buildLog(log: MockEventLog, placement?: LogPlacement): Log<bigint, number, false>;
   /**
-   * Puts a transaction the app didn't send on the chain, mining a new block
-   * for it unless `blockNumber` names one. Mined, it moves the clock and a
-   * pending `waitForTransactionReceipt({ confirmations })` on a block, and
-   * watchers see it. Its fields are a send's, all optional (see
+   * Places a transaction the app didn't send, in a newly mined block unless
+   * `blockNumber` names one. Its fields are a send's, all optional (see
    * `AddTransactionParameters`): `mock.addTransaction()` is a success from
-   * and to the zero address, with no input, value, gas or logs. Its logs
-   * are values from a contract's `events`, or `contractEvents()` or
-   * `testLog()` for any other address (not one marked `empty()`): a swap's
-   * logs from several contracts go in one transaction, `{ logs: [a, b] }`.
-   * Its receipt, transaction and block answer from it, unless a mock for
-   * its hash answers first. Returns its record, as `mock.transactions`
-   * lists it, with `data` as `fields.input`; its logs' addresses are
-   * lowercase, as nodes send them: compare with `isAddressEqual`, not `toBe`.
-   * For one event, `contract.emit.X(args)` is shorter.
+   * and to the zero address, with no input, value, gas or logs. Its logs are
+   * content from a contract's `events`, or `contractEvents()` or `testLog()`
+   * for another address not marked `empty()`. A swap's logs from several
+   * contracts go in one transaction, `{ logs: [a, b] }`. For one event,
+   * `contract.emit.X(args)` is shorter.
+   *
+   * Its receipt, transaction and block answer from it, unless a mock for its
+   * hash answers first. The block it mines moves the clock on, and watchers
+   * and a waiting `waitForTransactionReceipt({ confirmations })` see it.
+   * Returns its record, as `mock.transactions` lists it, with `data` as
+   * `fields.input`. Its logs' addresses are lowercase, as nodes send them:
+   * compare with `isAddressEqual()`, not `toBe()`.
    */
   addTransaction(fields?: AddTransactionParameters): TransactionRecord;
   /**
-   * Every log on the chain, by block and log index, as `getLogs` would answer
-   * them, with lowercase addresses: compare with `isAddressEqual`, not `toBe`.
-   * Logs in blocks not mined yet are listed, though `getLogs` doesn't find them.
+   * Every placed log, by block and log index, with lowercase addresses:
+   * compare with `isAddressEqual()`, not `toBe()`. Logs placed in a block
+   * not mined yet are listed too, though `eth_getLogs` doesn't find them
+   * until it's mined.
    */
   readonly logs: EmittedLog[];
   /**
-   * The chain's transactions, by block and index: what `addTransaction` and sends put on it.
-   * State, like registered mocks: `checkpoint()` and `reset()` restore it,
-   * `clearCalls()` and `historyLimit` leave it.
+   * The chain's transactions, by block and index: what
+   * `mock.addTransaction()` and sends placed, waiting ones included. They're
+   * state, like registered mocks: `restore()` and `reset()` put them back,
+   * and `clearCalls()` and `historyLimit` leave them.
    */
   readonly transactions: TransactionRecord[];
   /**
-   * Mocks a JSON-RPC method that has no typed mock, answering with raw JSON-RPC
-   * values. Pinned `params` match a prefix of the request's params.
+   * Mocks a JSON-RPC method that has no typed mock, answering with raw
+   * JSON-RPC values. Pinned `params` match a prefix of the request's params.
+   * `eth_chainId`, `eth_blockNumber` and `eth_call` are refused. A method
+   * with a typed mock is refused, naming its action, as a method that gets
+   * a typed mock in a later version will be. The likely ones are
+   * `eth_simulateV1`, the wallet methods and
+   * `eth_getTransactionByBlock*AndIndex`.
    */
   method(name: string, params?: readonly unknown[]): MockMethodBuilder;
   /**
-   * Fails requests at the transport, with the error viem's `http` transport
-   * would throw, until cleared or `times` runs out. See `MockFault` for kinds.
-   * To fail calls to one contract function instead, use `.fails()` on its mock.
+   * Fails requests with `fault` until it's cleared or `times` runs out: see
+   * `MockFault` for the kinds. To fail calls to one contract function, use
+   * `.fails()` on its mock.
    */
   failRequests(fault: MockFault, options?: FailRequestsOptions): MockFaultHandle;
   /**
    * Marks an address as having no code: calls to it succeed with empty data,
-   * as on a real node. viem's `readContract` and `multicall` then fail with a
+   * as on a node. viem's `readContract()` and `multicall()` then fail with a
    * `ContractFunctionExecutionError` caused by `ContractFunctionZeroDataError`.
    */
   empty(address: Address): void;
-  /** The chain clients should use: the one given to `createMockRpc()`, or `mainnet`. */
+  /**
+   * The viem `Chain` every client on the mock should use: `createMockRpc()`'s
+   * `chain`, or `mainnet`.
+   */
   readonly chain: Chain;
   /**
-   * The current block, the chain's head: `createMockRpc()`'s `blockNumber`
-   * until `mine()`, a send or `addTransaction()` (without a `blockNumber`)
-   * mines a block, and `restore()` and `reset()` move it back. `eth_blockNumber` answers it, and a transaction
-   * placed in a later block is waiting until it's mined.
+   * The current block, the chain's head. It starts at `createMockRpc()`'s
+   * `blockNumber`, moves on when `mine()`, a send, or `mock.addTransaction()`
+   * without a `blockNumber` mines a block, and moves back on `restore()` and
+   * `reset()`. `eth_blockNumber` answers it, and a transaction placed in a
+   * later block is waiting until it's mined.
    */
   readonly blockNumber: bigint;
   /**
    * Mines `blocks` blocks (one if left out), moving the head and the clock
    * on: transactions placed in them are mined, and watchers and
-   * `waitForTransactionReceipt` see them. A count is an integer, `1` or
+   * `waitForTransactionReceipt()` see them. A count is an integer, `1` or
    * more: the head never moves back.
    */
   mine(blocks?: number): void;
@@ -231,64 +255,68 @@ export type MockRpc = {
   setFees(fees: MockFees): void;
   /**
    * Every decoded contract call, across all contracts and namespaces, in the
-   * order received (the last `historyLimit`), multicall sub-calls included.
-   * Each is a copy tagged with its `namespace`, e.g.
+   * order received, multicall sub-calls included: the last `historyLimit` of
+   * them. Each is a copy tagged with its `namespace`, e.g.
    * `mock.calls.filter((call) => call.namespace === "estimateGas")`.
    */
   readonly calls: MockTaggedCall[];
   /**
-   * Every request the mock received (the last `historyLimit`), in order,
-   * with how it was answered: decoded contract calls (each multicall
-   * sub-call too), actions, and raw methods, each with a result in viem's
-   * types, a revert, a fault, or "unhandled". Retries are separate entries;
-   * in-flight ones are "pending".
+   * Every request the mock received, in order, with how it was answered:
+   * the last `historyLimit` of them. Each is a contract call, a multicall
+   * with its sub-calls, an action, a raw method or a built-in, and its
+   * outcome is a result in viem's types, a revert, a fault, a node's
+   * refusal, or unhandled (see `MockOutcome`). Retries are separate entries,
+   * and one still in flight is pending.
    */
   readonly history: MockHistoryEntry[];
   /**
-   * The history as text, one line per request (and per multicall sub-call),
+   * The history as text, one line per request and per multicall sub-call,
    * for `console.log` while debugging. `builtIns: false` leaves out
    * `eth_chainId` and `eth_blockNumber`.
    */
   formatHistory(options?: FormatHistoryOptions): string;
   /**
-   * Requests the mock couldn't answer, even if the code under test swallowed
-   * the error (the last `historyLimit`).
+   * Requests the mock couldn't answer, even those whose error the app
+   * swallowed: the last `historyLimit` of them.
    */
   readonly unhandled: UnhandledRequest[];
   /**
-   * Throws if any request went unanswered: a missing mock or a resolver that
-   * threw. Catches errors the code under test swallowed. Reverts are answers.
+   * Throws if any request went unanswered, e.g. for a missing mock or a
+   * resolver that threw (see `UnhandledRequest`). It catches errors the app
+   * swallowed. Reverts, faults and a node's refusals are answers.
    */
   assertNoUnhandled(): void;
   /**
-   * Throws if a mock never answered a call: its args are wrong and a broader
-   * mock answered instead, the app no longer makes the call it stands for, or
-   * it was registered without an answer (no `.returns()`, `.reverts()` or
-   * `.fails()`), so it never could. Contract `defaults` aren't checked: they're shared setup, answers for
-   * the whole suite that any one test may not use. For other shared setup
-   * (actions, `method`, narrowed mocks), take a checkpoint after registering
-   * it and use `restore({ assertAllUsed: true })`, which checks only what
-   * was registered since.
+   * Throws if a mock never answered a call: its pins are wrong and a broader
+   * mock answered instead, the app doesn't make the call it stands for, or
+   * it was registered without an answer (`.returns()`, `.reverts()` or
+   * `.fails()`), so it never could. A contract's `defaults` aren't checked:
+   * they're shared setup for the whole suite, which one test may not use.
+   *
+   * For other shared setup (actions, `mock.method()`, pinned mocks), take a
+   * checkpoint after registering it and use `restore({ assertAllUsed: true })`,
+   * which checks only what was registered since.
    */
   assertAllUsed(): void;
   /**
-   * Clears call and request history and usage (what `assertAllUsed()` reads),
-   * like Vitest's `mockClear()`. Not a per-test reset: registrations and the
-   * chain (blocks, transactions, nonces) stay. For that, `checkpoint()` and
-   * `restore()`.
+   * Clears the lists of requests and calls, and usage (what
+   * `assertAllUsed()` reads), like Vitest's `mockClear()`. Registrations and
+   * the chain (blocks, transactions, nonces) stay, so it isn't a per-test
+   * reset: for that, use `checkpoint()` and `restore()`.
    */
   clearCalls(): void;
   /**
-   * Saves what's registered now as a baseline to `restore()` to, e.g. after
-   * each test, so shared setup can be registered once. Throws if requests
-   * since the last clear went unanswered: a broken setup isn't a baseline.
-   * See `MockCheckpoint` for nesting and caveats.
+   * Saves the mock's registrations, chain and faults, as a baseline to
+   * `restore()` to, e.g. after each test, so shared setup is registered
+   * once. Throws if requests since the last clear went unanswered: a broken
+   * setup isn't a baseline. See `MockCheckpoint` for nesting and caveats.
    */
   checkpoint(): MockCheckpoint;
   /**
-   * Returns the mock to its initial state: no contracts, no history, and the
-   * starting block number. Handles from before the reset throw if used to
-   * register, and every checkpoint becomes invalid.
+   * Returns the mock to the state it was created in: no registrations, no
+   * history, no transactions or faults, and the starting block and fees.
+   * Handles from before the reset throw if used to register, and every
+   * checkpoint becomes invalid.
    */
   reset(): void;
 };

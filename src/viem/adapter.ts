@@ -13,8 +13,9 @@ import type { RequestHandler } from "../rpc/requestHandler.js";
 import { toViemError } from "./errors.js";
 
 /**
- * Public client options, minus the chain and transport, which come from the
- * mock, plus the transport's retry options.
+ * What `mock.publicClient()` takes: viem's public client options, without
+ * `chain` and `transport`, which come from the mock, and with the
+ * transport's `retryCount` and `retryDelay`.
  */
 export type MockPublicClientParameters = Omit<
   PublicClientConfig<CustomTransport, Chain>,
@@ -23,12 +24,15 @@ export type MockPublicClientParameters = Omit<
   Pick<CustomTransportConfig, "retryCount" | "retryDelay">;
 
 /**
- * The mock for viem: its requests answered as viem's `http` transport would
- * answer them, a transport over them, and a public client on the mock's
- * chain. `handle` answers a request with the mock's own errors.
+ * The mock's adapter for viem: `request`, which throws the mock's answers as
+ * viem's errors (see `toViemError`), a transport over it, and a public
+ * client on `chain`. `handle` throws the mock's own errors.
  */
 export function createViemAdapter({ handle, chain }: { handle: RequestHandler; chain: Chain }) {
-  /** Answers a request as viem's `http` transport would; `retryCount` is the transport's. */
+  /**
+   * Answers a request, throwing viem's errors (see `toViemError`).
+   * `retryCount` is the transport's, for the retry hint.
+   */
   async function request(rpcRequest: RpcRequest, retryCount?: number): Promise<unknown> {
     try {
       return await handle(rpcRequest, retryCount);

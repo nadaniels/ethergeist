@@ -63,75 +63,77 @@ export const typedActions = {
     methods: ["eth_sendTransaction", "eth_sendRawTransaction", "eth_sendRawTransactionSync"],
   },
 } satisfies {
-  // Each action decodes to its call type in `ActionCalls`, and every action has one.
+  // Each action decodes to its call type in `ActionCalls`, and every action
+  // has one.
   [name in keyof ActionCalls]: {
     define: (context: ActionsContext) => Definition<ActionCalls[name]>;
     methods: readonly string[];
   };
 };
 
-/** A typed action's name, e.g. `getBalance`. */
+/** A typed action's name, e.g. `"getBalance"`. */
 export type ActionName = keyof typeof typedActions;
 
-/** Mocks for viem's public actions, answered with values in viem's own types. */
+/** Mocks for viem's public actions, answering with values in viem's types. */
 export type MockActions = {
-  /** `eth_getBalance`. Unmocked addresses aren't answered. */
+  /** `eth_getBalance`. Unmocked, it isn't answered. */
   getBalance: MockAction<BalanceCall, bigint>;
   /**
-   * `eth_getCode`. Unmocked, a registered contract (and Multicall3) answers
-   * with placeholder code, `0xfe`, and an `empty()` address with `0x`.
+   * `eth_getCode`. Unmocked, a registered contract and Multicall3 answer with
+   * placeholder code, `0xfe`, an `empty()` address with `0x`, and other
+   * addresses aren't answered.
    */
   getCode: MockAction<CodeCall, Hex>;
   /**
    * `eth_getBlockByNumber` and `eth_getBlockByHash`. Unmocked, blocks up to the
    * current one are generated: number, hash, parent hash, a timestamp that
    * follows the chain's `blockTime`, the base fee (see `fees`), and the
-   * transactions in it (emitted or sent), with everything else zero. A
-   * mock's fields are merged over the generated block, its transactions too
-   * unless the mock sets `transactions` (a block past the head, or a hash
-   * only the mock knows, lists none); `null` answers "no such block".
+   * transactions placed in it, with everything else zero; others aren't
+   * answered. A mock's fields go over the generated block, its transactions
+   * too unless the mock sets `transactions`. A block past the head, or a
+   * hash only the mock knows, lists none. `null` answers "no such block".
    */
   getBlock: MockAction<BlockCall, Partial<MockBlock> | null>;
   /**
-   * `eth_getTransactionReceipt`. Unmocked, the hash of a transaction on the
-   * chain (added or sent) answers its receipt, `null` while it's placed in a
-   * block not mined yet, and other hashes aren't answered. A mock's fields go
-   * over what the chain would answer at that request: the receipt of the
-   * hash's transaction once it's mined, and otherwise `status: "success"`
-   * with zeros, in the block current when a static one is registered (so it
-   * stays there as more are mined) or when a resolver's answers. `null`
-   * answers "no such transaction". `logs` takes their content
-   * (`contract.events`, `contractEvents()`, `testLog()`), placed in the
-   * receipt, in place of its logs on the chain; they answer this receipt
-   * only, so `getLogs` and watchers don't see them: for that, add the
-   * transaction, `mock.addTransaction({ hash, logs })`. The receipt's block
-   * and transaction place its logs, the chain's included. A reverted status
-   * with logs, its own or the chain's, is refused, as a reverted
-   * transaction has none.
+   * `eth_getTransactionReceipt`. Unmocked, a placed transaction's hash
+   * answers its receipt, or `null` while it's waiting, and other hashes
+   * aren't answered. A mock's fields go over what the chain would answer at
+   * that request: the transaction's receipt once it's mined, and otherwise
+   * `status: "success"` with zeros, in the block current at registration
+   * for a static answer, or at the request for a resolver. `null` answers
+   * "no such transaction".
+   *
+   * `logs` takes their content, e.g. from `contract.events`, in place of the
+   * transaction's logs on the chain; the receipt's block and transaction
+   * place them, and the chain's logs too. They answer this receipt only: for
+   * viem's `getLogs()` and watchers to see them, use
+   * `mock.addTransaction({ hash, logs })`. A reverted status with logs, its
+   * own or the chain's, is refused, as a reverted transaction has none.
    */
   getTransactionReceipt: MockAction<ReceiptCall, MockReceipt | null>;
   /**
-   * `eth_getTransactionByHash`. Unmocked, the hash of a transaction on the
-   * chain answers it (added or sent; pending while it's placed in a block
-   * not mined yet), and other hashes aren't answered. A mock's fields go
-   * over what the chain would answer: the hash's transaction on the chain,
-   * pending or mined, and for a hash the chain doesn't have, an `"eip1559"` transaction
-   * at index 0, that paid the suggested fees (see `fees`), with a zero
-   * signature and the rest zero, mined in the block current when a static
-   * one is registered or when a resolver's answers. Fields its `type`
-   * doesn't have throw, and `blockNumber: null` makes it pending. `null`
-   * answers "no such transaction". `mock.buildTransaction()` builds the
-   * transaction for a hash not on the chain.
+   * `eth_getTransactionByHash`. Unmocked, a placed transaction's hash
+   * answers it, pending while it's waiting, and other hashes aren't
+   * answered. A mock's fields go over what the chain would answer: the
+   * hash's transaction, pending or mined, or for a hash the chain doesn't
+   * have, an `"eip1559"` transaction at index 0 that paid the suggested fees
+   * (see `fees`), with a zero signature and the rest zero. That one is mined
+   * in the block current at registration for a static answer, or at the
+   * request for a resolver.
+   *
+   * Fields its `type` doesn't have throw, and `blockNumber: null` makes it
+   * pending. `null` answers "no such transaction". `mock.buildTransaction()`
+   * builds the transaction for a hash the chain doesn't have.
    */
   getTransaction: MockAction<TransactionCall, MockTransaction | null>;
   /**
-   * `eth_getLogs`, for `getLogs` and `getContractEvents`. Unmocked, it's
-   * answered from the chain's logs (from `mock.addTransaction()`,
-   * `contract.emit` and sends), filtered as a node filters them, at any
-   * address: `[]` where nothing was emitted. A mock answers
-   * first, with placed logs (from `mock.logs` or `mock.buildLog()`), or fails,
-   * e.g. for a provider's block range cap; its resolver gets the emitted logs
-   * the filter matches as `logs`.
+   * `eth_getLogs`, for viem's `getLogs()` and `getContractEvents()`.
+   * Unmocked, the chain's logs answer it, from `mock.addTransaction()`,
+   * `contract.emit` and sends, filtered as a node filters them, at any
+   * address: `[]` where nothing was emitted. A mock answers first, with
+   * placed logs (from `mock.logs` or `mock.buildLog()`), or fails, e.g. for
+   * a provider's block range cap. Its resolver gets the chain's logs the
+   * filter matches as `logs`.
    */
   getLogs: MockAction<LogsCall, readonly EmittedLog[], LogsContext>;
   /**
@@ -140,10 +142,10 @@ export type MockActions = {
    */
   getGasPrice: MockActionWithoutParams<bigint>;
   /**
-   * `eth_maxPriorityFeePerGas`, the tip a node suggests. Unmocked, `fees`'
-   * `maxPriorityFeePerGas`. viem's `estimateMaxPriorityFeePerGas()` and
-   * `estimateFeesPerGas()` don't fail when it fails: they fall back to
-   * `eth_gasPrice` minus the base fee.
+   * `eth_maxPriorityFeePerGas`, the tip a node suggests. Unmocked, the
+   * current block's `maxPriorityFeePerGas` (see `fees`). viem's
+   * `estimateMaxPriorityFeePerGas()` and `estimateFeesPerGas()` don't fail
+   * when it fails: they fall back to `eth_gasPrice` minus the base fee.
    */
   estimateMaxPriorityFeePerGas: MockActionWithoutParams<bigint>;
   /**
@@ -154,20 +156,21 @@ export type MockActions = {
   /**
    * `eth_feeHistory`. Unmocked, the generated blocks' history, as reth
    * answers it for empty blocks: their base fees from `fees`, no gas used,
-   * and zero rewards. A mock's fields are merged over it. Unmocked, a newest
-   * block past the current one and unordered percentiles are refused, as
-   * reth refuses them.
+   * and zero rewards; a newest block past the current one, and percentiles
+   * out of order or outside 0 to 100, are refused, as reth refuses them. A
+   * mock's fields go over that history.
    */
   getFeeHistory: MockAction<FeeHistoryCall, MockFeeHistory>;
   /**
-   * `eth_getTransactionCount`, an account's nonce: unmocked, the chain's
-   * count, one past the highest nonce of the address's transactions (0 if
-   * none), over those mined at or before the block (all of them at
-   * `"pending"`): its sends, and transactions added with it as `from`.
-   * viem asks for `"pending"` when preparing a transaction, and `"latest"`
-   * by default. A static
-   * `.returns(7)` is the answer, so it doesn't count up; for a starting
-   * nonce that does, a resolver reads `count`:
+   * `eth_getTransactionCount`, an account's nonce. Unmocked, the chain's
+   * count: one past the highest nonce of the address's transactions, or `0`
+   * with none. It counts the address's sends and the transactions added
+   * with it as `from`, mined at or before the block, or all of them at
+   * `"pending"`. viem asks for `"pending"` when preparing a transaction, and
+   * `"latest"` by default.
+   *
+   * A static `.returns(7)` is the answer, so it doesn't count up. For a
+   * starting nonce that does, a resolver reads `count`, e.g.
    * `.returns(({ count }) => Math.max(7, count))`. An `eth_sendTransaction`
    * without a nonce takes the chain's count, not these mocks' answer.
    */
@@ -177,54 +180,52 @@ export type MockActions = {
    * requests are compared as 32 bytes, so `"0x0"` matches a request for slot
    * zero written in full. Answers are up to 32 bytes, padded to 32 as a node
    * sends them, so `.returns("0x1")` works. Unmocked, an `empty()` address's
-   * storage is all zero, as for any address without code; other addresses
-   * aren't answered.
+   * storage is all zero, as for any address without code, and other
+   * addresses aren't answered.
    */
   getStorageAt: MockAction<StorageCall, Hex>;
   /**
-   * `eth_estimateGas`, for `estimateGas` and the gas a transaction is
-   * prepared with. A `.reverts()` `write` or `sendTransaction` mock that
-   * would answer the transaction reverts it first, before any estimate mock.
-   * Then a registered contract's `estimateGas` mocks and defaults answer
-   * estimates of its functions; these answer the rest. Unmocked,
-   * a plain transfer, with no data, to an address without code is 21000
-   * gas, as a node estimates it, and a `write` or `sendTransaction` mock
-   * that would answer the transaction implies 100,000 gas; anything else
-   * isn't answered. `.fails()` takes a node's refusal by name, e.g.
-   * `"insufficientFunds"`.
+   * `eth_estimateGas`, for viem's `estimateGas()` and the gas a transaction
+   * is prepared with. A `.reverts()` send mock (`write` or
+   * `sendTransaction`) that would answer the transaction reverts its
+   * estimate first, before any estimate mock. Then a registered contract's
+   * `estimateGas` mocks and defaults answer estimates of its functions, and
+   * these mocks answer the rest.
+   *
+   * Unmocked, a plain transfer, with no data, to an address without code is
+   * 21,000 gas, as a node estimates it. A send mock that would answer the
+   * transaction implies 100,000 gas, and anything else isn't answered.
+   * `.fails()` takes a node's refusal by name, e.g. `"insufficientFunds"`.
    */
   estimateGas: MockEstimateGasAction;
   /**
-   * `eth_sendTransaction` and `eth_sendRawTransaction`, for `sendTransaction`,
-   * `writeContract` and `deployContract`, and `eth_sendRawTransactionSync`
-   * (EIP-7966), for a local account's `sendTransactionSync` and
-   * `writeContractSync`, answered with its receipt from the chain (a
-   * `getTransactionReceipt` mock answers only the app's own requests). A
-   * registered contract's `write` mocks and defaults answer sends of its functions first; these answer
-   * the rest. A send always goes on the chain:
-   * answered, it's a transaction mined in a new block, which its receipt,
-   * its transaction, its block and `getLogs` answer from (see
-   * `mock.transactions`); only a refusal (`.fails()`, or a send nothing
-   * answers) leaves the chain as it was.
+   * `eth_sendTransaction` and `eth_sendRawTransaction`, for viem's
+   * `sendTransaction()`, `writeContract()` and `deployContract()`, and
+   * `eth_sendRawTransactionSync` (EIP-7966), for a local account's
+   * `sendTransactionSync()` and `writeContractSync()`. A registered
+   * contract's `write` mocks and defaults answer sends of its functions
+   * first, and these mocks answer the rest. Unmocked, a send without data to
+   * an address without code succeeds, as on a node, and anything else isn't
+   * answered.
    *
-   * `.returns()` takes what the chain did (`MockWriteOutcome`): its logs, a
-   * reverted status, its gas, a deploy's address; `.emits(log)` or
-   * `.emits([a, b])` is `.returns({ logs: [a, b] })`. `.reverts(spec)`
-   * reverts its estimate, before any estimate mock (an answer, which uses
-   * the mock), and mines it reverted if it's sent anyway. `.fails()` takes
-   * a node's refusal by name, e.g. `"insufficientFunds"` or `"nonceTooLow"`. A resolver also gets `emit` and `revert`
-   * (see `SendTransactionContext`). Any other matching mock also answers the
-   * transaction's `eth_estimateGas` (when no estimate mock does) with
-   * 100,000 gas, without running it or using it up.
+   * An answered send is mined in a new block, which its receipt,
+   * transaction, block and logs answer from (see `mock.transactions`); a
+   * reverted one is mined too. A send refused with `.fails()` or `fail()`,
+   * or not answered, leaves the chain as it was. A mock answers with what
+   * the chain did: see `MockWriteAnswers`. `.fails()` takes a node's refusal
+   * by name, e.g. `"nonceTooLow"`, and a resolver also gets `emit` and
+   * `revert` (see `SendTransactionContext`). A mock without `.reverts()`
+   * also answers the transaction's estimate with 100,000 gas when no
+   * estimate mock does, without running it or using it up.
    *
-   * A raw send's sender is recovered from its signature, and its hash is
-   * its bytes' (`keccak256`); sending the same bytes again answers the same
-   * hash (or receipt), without a second transaction. A Sync send is mined as
-   * it's answered, so its timeout never passes. An `eth_sendTransaction` without a
-   * nonce takes the sender's next one on the chain (see
-   * `getTransactionCount`), and without gas is sent with 100,000. Unmocked, a send
-   * without data to an address without code succeeds, as on a node;
-   * anything else isn't answered.
+   * The Sync method answers with the chain's receipt, not a
+   * `getTransactionReceipt` mock's; the send is mined at once, so its
+   * timeout never passes. A raw send's sender is recovered from its
+   * signature, and its hash is its bytes' `keccak256`: the same bytes again
+   * answer the same hash or receipt, without a second transaction. An
+   * `eth_sendTransaction` without a nonce takes the sender's next, counting
+   * waiting transactions, as `getTransactionCount` at `"pending"` does; one
+   * without gas is sent with 100,000 gas.
    */
   sendTransaction: MockSendTransactionAction;
 };
