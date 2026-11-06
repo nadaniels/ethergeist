@@ -1237,7 +1237,9 @@ describe("eth_sendRawTransactionSync (EIP-7966, a local account's *Sync sends)",
       const error = await rejectionOf(mock.request({ method, params: [raw] }));
 
       const refused = expectCause(error, MockSetupError);
-      expect(refused.shortMessage).toBe(`Transaction ${keccak256(raw)} is already on the chain.`);
+      expect(refused.shortMessage).toBe(
+        `Transaction ${keccak256(raw)} is already in mock.transactions.`,
+      );
       expect(refused.metaMessages).toEqual([
         "A transaction added in a block not mined yet already claims this hash: give that one another hash.",
       ]);

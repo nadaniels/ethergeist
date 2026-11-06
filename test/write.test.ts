@@ -1017,9 +1017,12 @@ describe("registration refusals", () => {
     for (const error of errors) {
       const refused = expectCause(error, MockSetupError);
       expect(refused.shortMessage).toBe(
-        "mock.addTransaction() and contract.emit can't run while a write's resolver answers a send.",
+        "mock.addTransaction() and contract.emit can't run while a send mock's resolver answers a send.",
       );
-      expect(hintsOf(refused)).toMatch(/^Use the resolver's emit\(\)/u);
+      expect(refused.metaMessages).toEqual([
+        "Use the resolver's emit(), which adds logs to the transaction it answers; these " +
+          "would place a transaction of their own mid-send.",
+      ]);
     }
     expect(mock.transactions).toEqual([]);
     // Once the resolver is done, adding works again.

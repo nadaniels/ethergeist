@@ -155,7 +155,7 @@ features land; tick them off as pages get written.
     adds logs to the transaction; `mock.addTransaction()` and
     `contract.emit` are refused inside one (up to its first `await`; code
     elsewhere can still add transactions while it waits), as they would
-    mine a transaction of their own mid-send. `revert(spec)` mines
+    place a transaction of their own mid-send. `revert(spec)` mines
     it reverted, dropping what it emitted. Send mocks' resolvers get both
     too.
   - The estimate: a matching write mock answers the transaction's
@@ -522,7 +522,7 @@ features land; tick them off as pages get written.
     block, after the ones placed there.
   - Positions are assigned: `logIndex` counts per block, each call is the
     block's next transaction, with a generated hash. Pass a hash the app
-    already has (one from a URL); a hash already on the chain is refused,
+    already has (one from a URL); a hash already placed is refused,
     since a transaction's receipt never grows.
   - Its receipt, transaction and block answer from it, from its fields or
     their defaults. A receipt or transaction mock for its hash answers over

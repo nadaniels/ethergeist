@@ -146,7 +146,7 @@ describe("emit", () => {
     expectThrows(
       MockSetupError,
       // The hash as the chain holds it: lowercase.
-      `Transaction ${hash} is already on the chain.\n\n` +
+      `Transaction ${hash} is already in mock.transactions.\n\n` +
         "Give each added transaction its own hash; one transaction's logs go in one call, as " +
         "mock.addTransaction({ logs: [a, b] }).",
       again,
@@ -161,7 +161,7 @@ describe("emit", () => {
 
     expectThrows(
       MockSetupError,
-      `Transaction ${testHash("tx:1:12:0")} is already on the chain.\n\n` +
+      `Transaction ${testHash("tx:1:12:0")} is already in mock.transactions.\n\n` +
         'Name a hash other than one the mock makes, testHash("tx:<chainId>:<block>:<index>").',
       () => usdc.emit.Transfer({ from: bob, to: alice }),
     );

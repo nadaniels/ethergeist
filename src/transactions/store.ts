@@ -145,7 +145,7 @@ export function createTransactionStore({
     const index = earlier.length;
     const hash = record.hash ?? testHash(`tx:${state.chainId}:${number}:${index}`);
     if (find(hash) !== undefined)
-      throw new MockSetupError(`Transaction ${hash} is already on the chain.`, {
+      throw new MockSetupError(`Transaction ${hash} is already in mock.transactions.`, {
         metaMessages: [
           record.hash === undefined
             ? `Name a hash other than one the mock makes, testHash("tx:<chainId>:<block>:<index>").`
@@ -222,11 +222,11 @@ export function createTransactionStore({
   function addTransaction(fields: AddTransactionParameters = {}): TransactionRecord {
     if (writing)
       throw new MockSetupError(
-        "mock.addTransaction() and contract.emit can't run while a write's resolver answers a send.",
+        "mock.addTransaction() and contract.emit can't run while a send mock's resolver answers a send.",
         {
           metaMessages: [
             "Use the resolver's emit(), which adds logs to the transaction it answers; these " +
-              "would put a transaction of their own on the chain, mined mid-send.",
+              "would place a transaction of their own mid-send.",
           ],
         },
       );
