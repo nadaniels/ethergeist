@@ -46,7 +46,7 @@ function setup() {
   return { mock, client };
 }
 
-/** A local account: viem signs, and sends the bytes with eth_sendRawTransaction. */
+/** A local account: viem signs, and sends with `eth_sendRawTransaction`. */
 function localSetup() {
   const { mock, client } = setup();
   const wallet = createWalletClient({
@@ -57,7 +57,7 @@ function localSetup() {
   return { mock, client, wallet };
 }
 
-/** A node's account: viem sends eth_sendTransaction, unsigned, with `from`. */
+/** A node's account: viem sends `eth_sendTransaction` unsigned, with `from`. */
 function nodeSetup() {
   const { mock, client } = setup();
   const wallet = createWalletClient({
@@ -528,7 +528,7 @@ describe("send mocks", () => {
     const send = mock.actions.sendTransaction();
 
     expect(() => {
-      // @ts-expect-error -- the block comes from where it's mined
+      // @ts-expect-error -- a send's outcome has no blockNumber: it comes from where it's mined
       send.returns({ blockNumber: 3n });
     }).toThrow(
       new MockSetupError("A send's outcome has no blockNumber.", {
@@ -610,7 +610,6 @@ describe("send mocks", () => {
 
     const error = await rejectionOf(wallet.sendTransaction({ to: bob }));
 
-    // The static outcome's own error, not a resolver's.
     expect(findCause(error, MockResolverError)).toBeUndefined();
     expect(expectCause(error, MockSetupError).shortMessage).toBe(
       "Only a deploy (to: null) has a contractAddress.",
@@ -1288,7 +1287,7 @@ describe("eth_sendRawTransactionSync (EIP-7966, a local account's *Sync sends)",
   });
 });
 
-/** Signed bytes for a plain transfer to bob. */
+/** Signed bytes for a plain transfer to `bob`. */
 async function signedTransfer(wallet: ReturnType<typeof localSetup>["wallet"]) {
   return await wallet.signTransaction(
     await wallet.prepareTransactionRequest({ to: bob, value: 1n }),

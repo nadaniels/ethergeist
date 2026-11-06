@@ -13,7 +13,6 @@ import { expectCause, expectThrows, rejectionOf } from "./utils.js";
 
 const TOKEN = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const WETH = "0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2";
-// For tests that register their own contract instead of setup()'s token.
 const OTHER = testAddress("other");
 const alice = testAddress("alice");
 const bob = testAddress("bob");
@@ -146,7 +145,7 @@ describe("simulate", () => {
       MockSetupError,
       '"deposit" is a payable function; register it under simulate, not read.',
       () => {
-        // @ts-expect-error payable functions live on simulate
+        // @ts-expect-error -- `deposit` is payable: it's on simulate, not read
         weth.read.deposit(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
       },
     );
@@ -154,7 +153,7 @@ describe("simulate", () => {
       MockSetupError,
       '"balanceOf" is a view function; register it under read, not simulate.',
       () => {
-        // @ts-expect-error view functions live on read
+        // @ts-expect-error -- `balanceOf` is a view: it's on read, not simulate
         weth.simulate.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
       },
     );
@@ -170,7 +169,7 @@ describe("simulate", () => {
         mock.contract({
           abi: wethAbi,
           address: WETH,
-          // @ts-expect-error payable functions belong under simulate
+          // @ts-expect-error -- `deposit` is payable: its default goes under simulate
           defaults: { read: { deposit: undefined } },
         }),
     );
@@ -178,7 +177,7 @@ describe("simulate", () => {
       mock.contract({
         abi: wethAbi,
         address: OTHER,
-        // @ts-expect-error not on the ABI
+        // @ts-expect-error -- `balanceOff` isn't on the ABI
         defaults: { read: { balanceOff: 0n } },
       }),
     );
@@ -189,7 +188,6 @@ describe("simulate", () => {
     token.simulate.approve().returns(true);
 
     const error = expectCause(await rejectionOf(transfer(bob, 1n)), MockNotFoundError);
-    // A simulate's miss is "No mock", as a read's is.
     expect(error.shortMessage).toBe(`No mock for transfer(${bob}, 1n) on ${TOKEN}.`);
     expect(error.message).toContain('No mocks registered for "transfer"');
   });

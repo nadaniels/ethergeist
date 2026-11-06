@@ -6,8 +6,6 @@ import { type Specificity, bestMatch, firstMismatch, isMatch, mismatches } from 
 const yes = match.where(() => true, "yes");
 const no = match.where(() => false, "no");
 
-// Every shape engines pin: contract args (arrays), action params (objects),
-// and one matcher in place of all the params.
 const cases: [name: string, pinned: unknown, actual: unknown, key: unknown][] = [
   ["args that match", ["0x1", 2n], ["0x1", 2n], undefined],
   ["the first arg that differs", ["0x1", 2n, 3n], ["0x1", 9n, 9n], 1],

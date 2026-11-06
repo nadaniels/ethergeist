@@ -173,7 +173,7 @@ describe("getBalance", () => {
       mock.actions.getBalance().returns(-1n);
     });
     expectThrows(MockSetupError, "A balance must be a bigint", () => {
-      // @ts-expect-error a balance is a bigint
+      // @ts-expect-error -- a balance is a bigint
       mock.actions.getBalance().returns(1);
     });
     expect(() => mock.actions.getBalance({ address: "0x1234" })).toThrow(InvalidAddressError);
@@ -333,10 +333,9 @@ describe("getBlock", () => {
     // Base's blockTime is 2s.
     expect(block.timestamp).toBe(2_020n);
 
-    // Timestamps are whole seconds, even when blockTime isn't.
     const fractional = createMockRpc({ chain: { ...base, blockTime: 1_700 }, timestamp: 0n });
     fractional.mine(5);
-    // 5 blocks of 1.7s is 8.5s.
+    // 5 blocks of 1.7s is 8.5s, and a timestamp is whole seconds.
     expect((await fractional.publicClient().getBlock()).timestamp).toBe(8n);
   });
 
@@ -424,7 +423,7 @@ describe("getBlock", () => {
       MockSetupError,
       '.returns() for "getBlock" was given a value it can\'t encode: Cannot convert soon to a BigInt',
       () => {
-        // @ts-expect-error timestamps are bigints
+        // @ts-expect-error -- timestamps are bigints
         mock.actions.getBlock().returns({ timestamp: "soon" });
       },
     );
@@ -543,13 +542,12 @@ describe("getTransactionReceipt", () => {
     await expect(
       client.waitForTransactionReceipt({ hash: txHash, confirmations: 2, timeout: 1000 }),
     ).resolves.toMatchObject({ blockNumber: 10n });
-    // Its logs stay in its block too, with its timestamp.
     mock.actions.getTransactionReceipt({ hash: otherHash }).returns({ logs: [transferLog] });
     mock.mine();
     const { logs } = await client.getTransactionReceipt({ hash: otherHash });
     expect(logs[0]).toMatchObject({ blockNumber: 11n });
     expect(logs[0]?.blockTimestamp).toBe((await client.getBlock({ blockNumber: 11n })).timestamp);
-    // A hash pinned with a matcher too: only the hash waits for the request.
+    // A matcher pin too: the hash comes from the request, the block from registration.
     mock.actions.getTransactionReceipt({ hash: match.any() }).returns();
     mock.mine();
     expect((await client.getTransactionReceipt({ hash: testHash("any") })).blockNumber).toBe(12n);
@@ -619,7 +617,7 @@ describe("getTransactionReceipt", () => {
       MockSetupError,
       '.returns() for "getTransactionReceipt" was given a value it can\'t encode: Cannot convert lots to a BigInt',
       () => {
-        // @ts-expect-error gas is a bigint
+        // @ts-expect-error -- gas is a bigint
         mock.actions.getTransactionReceipt().returns({ gasUsed: "lots" });
       },
     );
@@ -714,7 +712,7 @@ describe("mock.buildReceipt()", () => {
       MockSetupError,
       "buildReceipt() was given a value it can't encode: Cannot convert x to a BigInt",
       () =>
-        // @ts-expect-error a block number is a bigint
+        // @ts-expect-error -- a block number is a bigint
         mock.buildReceipt({ blockNumber: "x" }),
     );
   });
@@ -783,7 +781,7 @@ describe("mock.buildReceipt()", () => {
 });
 
 // Nodes send every address in their answers lowercase, and viem passes them
-// through as is, so code comparing them with === breaks against a real node.
+// through as is, so an app comparing them with `===` breaks against a node.
 describe("addresses in answers are lowercase, as nodes send them", () => {
   test("in receipts and their logs", async () => {
     const { mock, client } = setup();
@@ -836,7 +834,6 @@ const recased = (hash: Hash, from = 2) =>
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the same hash, recased
   (hash.slice(0, from) + hash.slice(from).toUpperCase()) as Hash;
 
-// Hashes have no checksum, so lowercase is their only form: a node sends them lowercase.
 describe("hashes are lowercase, in and out", () => {
   const hash = testHash("tx");
   const mixed = recased(hash);

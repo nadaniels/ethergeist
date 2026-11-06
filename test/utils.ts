@@ -14,8 +14,9 @@ export async function rejectionOf(promise: Promise<unknown>): Promise<unknown> {
 }
 
 /**
- * Calls `fn`, which should throw a `type` whose message contains `text` (or matches it), and
- * returns the error. Unlike a message-only `toThrow`, it fails when what's thrown isn't one.
+ * Calls `fn`, which should throw a `type` whose message contains or matches
+ * `text`, and returns the error. Unlike a message-only `toThrow`, it fails when
+ * what's thrown isn't a `type`.
  */
 export function expectThrows<error extends Error>(
   type: ErrorClass<error>,
@@ -50,7 +51,7 @@ function expectError<error extends Error>(
   return thrown;
 }
 
-/** The first `type` in `error`'s cause chain (including `error` itself), if any. */
+/** The first `type` in `error`'s cause chain, `error` included, if any. */
 export function findCause<error>(error: unknown, type: ErrorClass<error>): error | undefined {
   const found = error instanceof BaseError ? error.walk((e) => e instanceof type) : error;
   return found instanceof type ? found : undefined;
@@ -63,7 +64,7 @@ export function expectCause<error>(error: unknown, type: ErrorClass<error>): err
   return found;
 }
 
-/** A mock error's hint lines, as its message shows them under the short message. */
+/** A mock error's hint lines, as its message shows them. */
 export function hintsOf(error: { metaMessages?: string[] | undefined } | undefined): string {
   return (error?.metaMessages ?? []).join("\n");
 }
@@ -77,7 +78,10 @@ export function failureOf(
   return result.error;
 }
 
-/** `value` in lowercase, for tests that check the mock normalizes addresses and hashes. */
+/**
+ * `value` in lowercase, for tests that check the mock normalizes addresses and
+ * hashes.
+ */
 export function lowercase<hex extends Hex>(value: hex): hex {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- lowercase hex is still the same kind of hex
   return value.toLowerCase() as hex;

@@ -16,7 +16,6 @@ const feedAbi = parseAbi([
   "function getRoundData(uint80 roundId) view returns (uint80, int256, uint256, uint256, uint80)",
 ]);
 
-// A generic fixture covering every zero-value case.
 const storeAbi = parseAbi([
   "struct Meta { bytes32 tag; bool active; string label; uint256[3] limits; bytes data; }",
   "struct Position { address owner; uint256 amount; Meta meta; }",
@@ -127,18 +126,16 @@ describe("named outputs", () => {
       address: FEED,
     });
 
-    // An object answers only when every output is named.
     expect(() => {
-      // @ts-expect-error unnamed outputs take a tuple
+      // @ts-expect-error -- unnamed outputs take a tuple, not an object
       feed.read.getRoundData().returns({ roundId: 7n });
     }).toThrow(InvalidArrayError);
     expect(() => {
-      // @ts-expect-error one unnamed output is enough
+      // @ts-expect-error -- one unnamed output makes the answer a tuple
       feed.read.quote().returns({ amount: 1n });
     }).toThrow(InvalidArrayError);
-    // Several outputs take a tuple or an object, not one value.
     expect(() => {
-      // @ts-expect-error several outputs
+      // @ts-expect-error -- several outputs take a tuple or an object, not one value
       feed.read.latestRoundData().returns(7n);
     }).toThrow(InvalidArrayError);
   });
@@ -154,7 +151,7 @@ describe("named outputs", () => {
       MockSetupError,
       `.returns() for "total" was given a value it can't encode: Cannot convert soon to a BigInt`,
       () => {
-        // @ts-expect-error a uint256 is a bigint
+        // @ts-expect-error -- a uint256 takes a bigint
         feed.read.total().returns("soon");
       },
     );
@@ -163,11 +160,10 @@ describe("named outputs", () => {
       MockSetupError,
       /^\.returns\(\) for "total" was given a value it can't encode: The number 1\.5 cannot be converted/u,
       () => {
-        // @ts-expect-error a uint256 is a bigint
+        // @ts-expect-error -- a uint256 takes a bigint
         feed.read.total().returns(1.5);
       },
     );
-    // What's thrown is kept as the cause, as an Error even when it isn't one.
     const throwsOnConversion = {
       get [Symbol.toPrimitive]() {
         // oxlint-disable-next-line eslint/no-throw-literal, typescript/only-throw-error -- a thrown non-Error, on purpose
@@ -178,7 +174,7 @@ describe("named outputs", () => {
       MockSetupError,
       `"total" was given a value it can't encode: nope`,
       () => {
-        // @ts-expect-error a uint256 is a bigint
+        // @ts-expect-error -- a uint256 takes a bigint
         feed.read.total().returns(throwsOnConversion);
       },
     );

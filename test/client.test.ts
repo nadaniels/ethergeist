@@ -15,7 +15,7 @@ import { expectRejects } from "./utils.js";
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const customMulticall = testAddress("custom-multicall");
 
-// A chain whose Multicall3 isn't at the canonical address.
+/** A chain whose Multicall3 isn't at the canonical address. */
 const customChain = defineChain({
   id: 999_999,
   name: "Custom",
@@ -72,7 +72,7 @@ describe("publicClient()", () => {
       .publicClient()
       .readContract(decimalsCall)
       .catch(() => {});
-    // One attempt plus viem's default 3 retries.
+    // 1 from the client above, then one attempt and viem's default 3 retries.
     expect(ethCalls()).toHaveLength(5);
   });
 

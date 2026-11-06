@@ -171,7 +171,7 @@ describe("estimateGas", () => {
       MockSetupError,
       "A gas estimate must be a bigint, zero or more; got 21000.",
       () => {
-        // @ts-expect-error viem's estimate is a bigint
+        // @ts-expect-error -- viem's estimate is a bigint
         mock.actions.estimateGas().returns(21_000);
       },
     );
@@ -179,7 +179,7 @@ describe("estimateGas", () => {
       MockSetupError,
       "A gas estimate must be a bigint, zero or more; got undefined.",
       () => {
-        // @ts-expect-error there's no zero estimate
+        // @ts-expect-error -- there's no zero estimate
         mock.actions.estimateGas().returns();
       },
     );
@@ -309,7 +309,6 @@ describe("estimateGas reverts", () => {
       expect(() => {
         builder.reverts({ panic: -1 });
       }).toThrow(IntegerOutOfRangeError);
-    // The answer it had stays, and one without an answer still has none.
     expect(await client.estimateGas({ account: alice, to: bob })).toBe(30_000n);
     expectThrows(MockCheckError, "estimateGas(*) without an answer", () => {
       mock.assertAllUsed();
@@ -339,9 +338,8 @@ describe("estimateGas unmocked", () => {
       // Data to an address without code costs gas for the data.
       { account: alice, to: bob, data: "0x1234" as const },
       { account: alice, to: testAddress("empty"), data: "0x1234" as const },
-      // A deployment.
+      // Deployments, with init code and without, aren't plain transfers.
       { account: alice, data: "0x6000" as const },
-      // A deployment without init code isn't a plain transfer either.
       { account: alice },
     ];
     const errors = await Promise.all(
@@ -547,8 +545,6 @@ describe("contract estimates", () => {
         batch: undefined,
       },
     ]);
-    // A function's list is its own: simulate's has none. The contract's has
-    // every namespace's, tagged.
     expect(token.simulate.transfer.calls).toEqual([]);
     expect(token.calls.map((call) => [call.namespace, call.functionName])).toEqual([
       ["estimateGas", "transfer"],
@@ -671,7 +667,6 @@ describe("estimate precedence", () => {
 
   test("a function not on the contract's ABI falls through to action mocks", async () => {
     const { mock, client, token } = tokenSetup();
-    // The token's ABI has no approve.
     const approve = () =>
       client.estimateGas({
         account: alice,
@@ -698,7 +693,6 @@ describe("estimate precedence", () => {
       "#2 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x0dc7…41c6, value: 0n, " +
         "data: 0x095e…0001, blockNumber: 10n, blockTag: latest }) → 60000n",
     );
-    // An estimate that didn't decode isn't a call of any function.
     expect(token.calls).toEqual([]);
   });
 });
@@ -788,14 +782,14 @@ describe("contract estimate mocks", () => {
       token.estimateGas.transfer().returns(-1n);
     });
     expectThrows(MockSetupError, "A gas estimate must be a bigint, zero or more; got 1.", () => {
-      // @ts-expect-error an estimate is a bigint
+      // @ts-expect-error -- an estimate is a bigint
       token.estimateGas.transfer().returns(1);
     });
     expectThrows(
       MockSetupError,
       "A gas estimate must be a bigint, zero or more; got undefined.",
       () => {
-        // @ts-expect-error there's no zero estimate
+        // @ts-expect-error -- there's no zero estimate
         token.estimateGas.transfer().returns();
       },
     );
@@ -803,7 +797,7 @@ describe("contract estimate mocks", () => {
       MockSetupError,
       '"balanceOf" is a view function; viem estimates gas only for nonpayable and payable functions.',
       () => {
-        // @ts-expect-error viem estimates only writes
+        // @ts-expect-error -- viem doesn't estimate a view
         token.estimateGas.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
       },
     );
@@ -811,7 +805,7 @@ describe("contract estimate mocks", () => {
       mock.contract({
         abi: tokenAbi,
         address: testAddress("other"),
-        // @ts-expect-error viem estimates only writes
+        // @ts-expect-error -- viem doesn't estimate a view
         defaults: { estimateGas: { balanceOf: 1n } },
       }),
     );

@@ -14,7 +14,7 @@ const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const alice = testAddress("alice");
 const bob = testAddress("bob");
 
-// One name, two functions: their calls are listed together, in order.
+/** One name, two functions: their calls are listed together, in order. */
 const overloadedAbi = parseAbi([
   "function quote(uint256 amount) view returns (uint256)",
   "function quote(address token) view returns (uint256)",

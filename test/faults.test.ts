@@ -205,7 +205,7 @@ describe("lifecycle", () => {
   });
 });
 
-// Like setup(), but with nothing registered.
+/** Like `setup()`, with nothing registered. */
 function setupTokens({ retryCount }: { retryCount?: number | undefined } = {}) {
   const mock = createMockRpc();
   const client = createPublicClient({
@@ -330,7 +330,6 @@ describe(".fails()", () => {
     let attempts = 0;
     usdc.read.decimals().returns(({ fail }) => (++attempts === 1 ? fail({ status: 503 }) : 6));
 
-    // The first attempt fails; viem's retry gets the answer.
     expect(await read(USDC, "decimals")).toBe(6);
     expect(mock.history).toHaveLength(2);
   });
@@ -374,7 +373,7 @@ describe("a fault that isn't one", () => {
   test("names what was given, and the kinds", () => {
     const { usdc } = setupTokens();
     expect(() => {
-      // @ts-expect-error -- no fault
+      // @ts-expect-error -- `fails()` takes a fault
       usdc.read.decimals().fails();
     }).toThrow(
       new MockSetupError("Expected a fault; got undefined.", {
@@ -424,7 +423,7 @@ describe("a fault that isn't one", () => {
 
   test("a resolver's fail() with one is a MockResolverError, and history still formats", async () => {
     const { mock, usdc, read } = setupTokens({ retryCount: 0 });
-    // @ts-expect-error -- no fault
+    // @ts-expect-error -- `fail()` takes a fault
     usdc.read.decimals().returns(({ fail }) => fail());
 
     const rejection = await rejectionOf(read(USDC, "decimals"));

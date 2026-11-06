@@ -51,7 +51,10 @@ function getLogsRaw(mock: ReturnType<typeof setup>["mock"], filter: object) {
   return mock.request({ method: "eth_getLogs", params: [filter] });
 }
 
-/** The RPC error a request rejects with, after checking it isn't counted as unhandled. */
+/**
+ * The code and message a request is refused with; fails if it was counted
+ * unhandled.
+ */
 async function refusal(mock: ReturnType<typeof setup>["mock"], promise: Promise<unknown>) {
   const error = expectCause(await rejectionOf(promise), RpcRequestError);
   expect(mock.unhandled).toEqual([]);
@@ -145,7 +148,6 @@ describe("emit", () => {
     expect(again).toThrow(MockSetupError);
     expectThrows(
       MockSetupError,
-      // The hash as the chain holds it: lowercase.
       `Transaction ${hash} is already in mock.transactions.\n\n` +
         "Give each added transaction its own hash; one transaction's logs go in one call, as " +
         "mock.addTransaction({ logs: [a, b] }).",
@@ -175,11 +177,11 @@ describe("emit", () => {
       MockSetupError,
       "contract.emit has no option mine.\n\n" +
         "Its options are blockNumber and hash; without blockNumber, it mines a new block.",
-      // @ts-expect-error -- gone: a plain emit mines
+      // @ts-expect-error -- emit takes no `mine`: a plain emit mines
       () => usdc.emit.Transfer({ from: alice, to: bob }, { mine: true }),
     );
     expectThrows(MockSetupError, "contract.emit has no option transactionIndex.", () =>
-      // @ts-expect-error -- gone: a block's transactions have no holes
+      // @ts-expect-error -- emit takes no `transactionIndex`: a block's transactions have no holes
       usdc.emit.Transfer({ from: alice, to: bob }, { transactionIndex: 3 }),
     );
     expect(mock.blockNumber).toBe(10n);
@@ -192,7 +194,7 @@ describe("emit", () => {
       MockSetupError,
       "contract.emit has no option transactionHash.\n\n" +
         "The transaction's hash is hash, as on a transaction; transactionHash is a log's.",
-      // @ts-expect-error -- a transaction's hash is hash
+      // @ts-expect-error -- emit takes no `transactionHash`: a transaction's hash is `hash`
       () => usdc.emit.Transfer({ from: alice, to: bob }, { transactionHash: testHash("x") }),
     );
     expect(mock.blockNumber).toBe(10n);
@@ -221,7 +223,7 @@ describe("emit", () => {
     const args = { from: alice, to: bob };
 
     expectThrows(MockSetupError, "A block number must be a bigint, zero or more; got 3.", () =>
-      // @ts-expect-error -- a number
+      // @ts-expect-error -- a block number takes a bigint
       usdc.emit.Transfer(args, { blockNumber: 3 }),
     );
     expectThrows(MockSetupError, "A block number must be a bigint, zero or more; got -1n.", () =>
@@ -323,14 +325,13 @@ describe("emit", () => {
 
     const log = usdc.emit.Transfer({ from: alice, to: bob, value: 5n });
     expect(() => {
-      // @ts-expect-error -- read-only
+      // @ts-expect-error -- a log is read-only
       log.logIndex = 7;
     }).toThrow(TypeError);
     expect(() => {
       (log.topics as unknown[]).push("0x");
     }).toThrow(TypeError);
     expect(Object.isFrozen(mock.logs[0])).toBe(true);
-    // A changed log is a spread away.
     expect({ ...log, logIndex: 7 }.logIndex).toBe(7);
   });
 
@@ -705,7 +706,7 @@ describe("the transaction an emit makes", () => {
     const next = { blockNumber: 11n };
     const first = usdc.emit.Transfer({ from: alice, to: bob }, next);
     const second = dai.emit.Transfer({ from: bob, to: alice }, next);
-    // Sent, as a write will be: it mines the block, last.
+    // Sent like a write: it mines the block, last.
     const sent = usdc.emit.Approval({ owner: alice, spender: bob });
 
     expect(mock.blockNumber).toBe(11n);
@@ -942,7 +943,7 @@ describe("state", () => {
   });
 });
 
-// Limits real nodes enforce, as their public endpoints sent them (captured 2026-10-29).
+// Limits nodes enforce, as their public endpoints sent them (captured 2026-10-29).
 // Linea's block range cap (geth-based):
 const rangeTooLarge = { code: -32602, message: "range 49999 exceeds limit of 10000" };
 // reth's own cap on results, with a range that would fit (Base's publicnode endpoint):
@@ -960,7 +961,6 @@ describe("mock.actions.getLogs", () => {
     });
     mock.actions.getLogs({ address: USDC }).returns([instead]);
 
-    // Only the mock's log: a matching mock is the whole answer.
     const logs = await client.getLogs({ address: USDC, event: transfer });
     expect(logs.map((log) => log.args.value)).toEqual([2n]);
   });
@@ -1081,7 +1081,7 @@ describe("mock.actions.getLogs", () => {
       MockSetupError,
       "getLogs log 0's blockTimestamp must be a bigint, or left out; got string.",
       () => {
-        // @ts-expect-error -- viem's logs have a bigint timestamp
+        // @ts-expect-error -- a log's blockTimestamp is a bigint
         mock.actions.getLogs().returns([{ ...log, blockTimestamp: "0x5" }]);
       },
     );

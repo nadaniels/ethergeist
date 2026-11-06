@@ -38,7 +38,6 @@ const alice = testAddress("alice");
 const bob = testAddress("bob");
 const carol = testAddress("carol");
 
-// Generic ABIs for arrays, small integers, and overloads.
 const registryAbi = parseAbi([
   "function totalOf(address[] owners) view returns (uint256)",
   "function feeOf(uint8 tier) view returns (uint256)",
@@ -53,7 +52,6 @@ const multiTokenAbi = parseAbi([
   "function quote(address token, uint256 amount) view returns (uint256)",
 ]);
 
-// A generic order book, for structs: nested, in arrays, and as overloads.
 const bookAbi = parseAbi([
   "struct Asset { address token; uint256 amount; }",
   "struct Order { address maker; Asset sell; Asset buy; uint64 expiry; }",
@@ -151,7 +149,6 @@ describe("match.any()", () => {
       });
 
     expect(await totalOf([alice, bob])).toBe(5n);
-    // Arrays still match on length.
     await expectRejects(ContractFunctionExecutionError, "No mock for totalOf", totalOf([alice]));
   });
 });
@@ -191,7 +188,6 @@ describe("match.where()", () => {
     usdc.read.allowance([match.where(() => true), match.where(() => true)]).returns(2n);
     usdc.read.allowance([alice, match.any()]).returns(3n);
 
-    // One exact value outranks any number of predicates.
     expect(await allowance(alice, bob)).toBe(3n);
     expect(await allowance(bob, alice)).toBe(2n);
   });
@@ -332,7 +328,7 @@ describe("match.partial()", () => {
     expectThrows(
       MockSetupError,
       "match.partial() takes a struct's fields as an object; for arrays, use match.where().",
-      // @ts-expect-error -- arrays aren't structs
+      // @ts-expect-error -- match.partial() takes a struct's fields, not an array
       () => match.partial<Order>([1n]),
     );
   });
@@ -362,14 +358,16 @@ describe("messages", () => {
         "  balanceOf(where((account) => isAddressEqual(account, carol) || isAddressEqu…))  ← account didn't match",
       ].join("\n"),
     );
-    // Matchers are pinned args, so unused ones are reported, `any` included.
     expectThrows(MockCheckError, `allowance(${getAddress(alice)}, any) on USDC (${USDC})`, () => {
       mock.assertAllUsed();
     });
   });
 });
 
-/** The labels of predicates with exactly these sources, as `assertAllUsed()` lists them. */
+/**
+ * The labels of predicates with exactly these sources, as `assertAllUsed()`
+ * lists them.
+ */
 function labelsOf(sources: readonly string[]) {
   const { mock, usdc } = setup();
   for (const source of sources) {
@@ -455,7 +453,6 @@ describe("a miss's reasons", () => {
     book.read.filled([match.partial({ maker: bob })]).returns(true);
 
     const error = expectCause(await rejectionOf(filled(order)), MockNotFoundError);
-    // One for the nested predicate, one for the exact field that differs.
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
@@ -652,7 +649,7 @@ describe("overloads", () => {
     const { book } = setupBook();
     // Only Order has `maker`, but partials are skipped when choosing an overload.
     expectThrows(MockSetupError, `Ambiguous overload for place({ maker: ${alice}, … })`, () =>
-      // @ts-expect-error -- the types can't pick the overload either
+      // @ts-expect-error -- a partial picks no overload of `place`
       book.read.place([match.partial({ maker: alice })]),
     );
   });
@@ -767,7 +764,6 @@ describe("actions and raw methods", () => {
     expect(await client.getStorageAt({ address: bob, slot: "0x0" })).toBe(pad("0x3"));
     expect(await mock.request({ method: "eth_custom", params: ["0x1", "0x2"] })).toBe("0x1");
 
-    // When one doesn't match, it's all of the params that didn't.
     const error = expectCause(
       await rejectionOf(client.getStorageAt({ address: alice, slot: "0x0" })),
       MockNotFoundError,

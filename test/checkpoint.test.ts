@@ -135,7 +135,6 @@ describe("restore()", () => {
     expectCause(await rejectionOf(read(DAI, "decimals")), MockNotFoundError);
     expectCause(await rejectionOf(client.getCode({ address: NOWHERE })), MockNotFoundError);
     expectCause(await rejectionOf(client.getBlockTransactionCount()), MockNotFoundError);
-    // The addresses are free to register again.
     mock.contract({ abi: erc20Abi, address: DAI });
     mock.empty(NOWHERE);
   });
@@ -307,7 +306,6 @@ describe("restore() checks", () => {
     usdc.read.allowance([alice, DAI]).returns(0n);
     const baseline = mock.checkpoint();
 
-    // The baseline's allowance mock goes unused; that's not this test's concern.
     await balanceOf();
     expect(() => {
       baseline.restore({ assertAllUsed: true });
@@ -339,7 +337,6 @@ describe("restore() checks", () => {
     mock.actions.getBalance().returns(0n);
     const baseline = mock.checkpoint();
 
-    // In the baseline: not this test's concern.
     expect(() => {
       baseline.restore({ assertAllUsed: true });
     }).not.toThrow();
@@ -558,7 +555,6 @@ describe("a transaction the last restore() or reset() removed", () => {
     // And a read of a contract it removed, in this test's own restore.
     mock.clearCalls();
     await rejectionOf(read(DAI, "decimals"));
-    // The same list, its hints under each miss.
     expectThrows(
       MockCheckError,
       `The mock couldn't answer 1 request(s):\n  - No mocked contract at ${DAI}.\n` +
@@ -581,7 +577,7 @@ describe("a transaction the last restore() or reset() removed", () => {
     mock.contract({ abi: erc20Abi, address: DAI });
     baseline.restore();
 
-    // A write from the last test that lands after its restore.
+    // A send from the last test that lands after its restore.
     const tx = { from: alice, to: DAI, data: "0x313ce567" } as const;
     const estimate = await notFound(client.request({ method: "eth_estimateGas", params: [tx] }));
     const send = await notFound(mock.request({ method: "eth_sendTransaction", params: [tx] }));

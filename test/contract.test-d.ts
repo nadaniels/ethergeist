@@ -30,7 +30,7 @@ describe("async resolvers", () => {
   test("a resolver may return a promise of the right type", () => {
     const token = createMockRpc().contract({ abi: erc20Abi, address: USDC });
     token.read.decimals().returns(() => Promise.resolve(6));
-    // @ts-expect-error still the function's return type
+    // @ts-expect-error -- an async resolver still resolves to a number
     token.read.decimals().returns(() => Promise.resolve("six"));
     createMockRpc()
       .actions.getBalance()
@@ -43,7 +43,7 @@ describe("presets", () => {
     const registered = preset(createMockRpc(), { abi: erc20Abi, address: USDC, name: "USDC" });
     expectTypeOf(registered.abi).toEqualTypeOf(erc20Abi);
     registered.read.decimals().returns(6);
-    // @ts-expect-error the ABI's own functions only
+    // @ts-expect-error -- the ABI's own functions only
     void registered.read.notAFunction;
   });
 });
@@ -52,7 +52,7 @@ describe("names", () => {
   test("name is optional and readable back", () => {
     const named = createMockRpc().contract({ abi: erc20Abi, address: USDC, name: "USDC" });
     expectTypeOf(named.name).toEqualTypeOf<string | undefined>();
-    // @ts-expect-error names are strings
+    // @ts-expect-error -- names are strings
     createMockRpc().contract({ abi: erc20Abi, address: USDC, name: 1 });
   });
 });
@@ -63,9 +63,9 @@ describe("read", () => {
       "allowance" | "balanceOf" | "decimals" | "name" | "symbol" | "totalSupply"
     >();
 
-    // @ts-expect-error not on the ABI
+    // @ts-expect-error -- not on the ABI
     usdc.read.balanceOff();
-    // @ts-expect-error write functions are excluded
+    // @ts-expect-error -- transfer is nonpayable
     usdc.read.transfer();
   });
 
@@ -73,11 +73,11 @@ describe("read", () => {
     usdc.read.balanceOf(["0x0000000000000000000000000000000000000001"]);
     usdc.read.allowance([USDC, USDC]);
 
-    // @ts-expect-error wrong arg type
+    // @ts-expect-error -- balanceOf takes an address
     usdc.read.balanceOf([123n]);
-    // @ts-expect-error wrong arity
+    // @ts-expect-error -- allowance takes an owner and a spender
     usdc.read.allowance([USDC]);
-    // @ts-expect-error takes no args
+    // @ts-expect-error -- decimals takes no args
     usdc.read.decimals([1n]);
   });
 
@@ -93,9 +93,9 @@ describe("read", () => {
       return 0n;
     });
 
-    // @ts-expect-error wrong return type
+    // @ts-expect-error -- balanceOf returns a bigint
     usdc.read.balanceOf().returns("lots");
-    // @ts-expect-error resolver returns wrong type
+    // @ts-expect-error -- a resolver returns balanceOf's bigint too
     usdc.read.balanceOf().returns(() => "lots");
   });
 });
@@ -136,22 +136,22 @@ describe("defaults", () => {
     mock.contract({
       abi: erc20Abi,
       address: USDC,
-      // @ts-expect-error not a function on the ABI
+      // @ts-expect-error -- not a function on the ABI
       defaults: { read: { balanceOff: 0n } },
     });
     mock.contract({
       abi: erc20Abi,
       address: USDC,
-      // @ts-expect-error nonpayable functions belong in simulate
+      // @ts-expect-error -- nonpayable functions belong in simulate
       defaults: { read: { transfer: true } },
     });
     mock.contract({
       abi: erc20Abi,
       address: USDC,
-      // @ts-expect-error view functions belong in read
+      // @ts-expect-error -- view functions belong in read
       defaults: { simulate: { balanceOf: 0n } },
     });
-    // @ts-expect-error the flat form is gone; functions go under a namespace
+    // @ts-expect-error -- functions go under a namespace, e.g. `read`
     mock.contract({ abi: erc20Abi, address: USDC, defaults: { decimals: 6 } });
   });
 
@@ -159,13 +159,13 @@ describe("defaults", () => {
     mock.contract({
       abi: erc20Abi,
       address: USDC,
-      // @ts-expect-error wrong return type
+      // @ts-expect-error -- decimals returns a number
       defaults: { read: { decimals: "six" } },
     });
     mock.contract({
       abi: erc20Abi,
       address: USDC,
-      // @ts-expect-error wrong return type
+      // @ts-expect-error -- transfer returns a boolean
       defaults: { simulate: { transfer: 1n } },
     });
   });
@@ -187,18 +187,18 @@ describe("reverts", () => {
     nft.read.ownerOf().reverts({ panic: 0x11 });
     nft.read.ownerOf().reverts({ data: "0xdeadbeef" });
 
-    // @ts-expect-error not an error on the ABI
+    // @ts-expect-error -- not an error on the ABI
     nft.read.ownerOf().reverts({ errorName: "Nope" });
-    // @ts-expect-error args are required when the error has inputs
+    // @ts-expect-error -- args are required when the error has inputs
     nft.read.ownerOf().reverts({ errorName: "ERC721IncorrectOwner" });
-    // @ts-expect-error wrong arg types
+    // @ts-expect-error -- the error takes an address, a uint256 and an address
     nft.read.ownerOf().reverts({ errorName: "ERC721IncorrectOwner", args: [1n, USDC, 1n] });
   });
 
   test("revert() in a resolver is typed against the ABI and returns never", () => {
     nft.read.ownerOf().returns(({ args: [tokenId], revert }) => {
       expectTypeOf(revert({ errorName: "EnforcedPause" })).toBeNever();
-      // @ts-expect-error not an error on the ABI
+      // @ts-expect-error -- not an error on the ABI
       if (tokenId === 0n) revert({ errorName: "Nope" });
       return tokenId > 10n ? revert({ errorName: "EnforcedPause" }) : USDC;
     });
@@ -212,7 +212,7 @@ describe("faults", () => {
     usdc.read.decimals().fails("timeout");
     usdc.simulate.transfer().fails("network");
 
-    // @ts-expect-error not a fault kind
+    // @ts-expect-error -- not a fault kind
     usdc.read.decimals().fails("offline");
   });
 
@@ -226,17 +226,17 @@ describe("faults", () => {
       defaults: { simulate: { transfer: ({ fail }) => fail("insufficientFunds") } },
     });
 
-    // @ts-expect-error a node doesn't refuse a read by name
+    // @ts-expect-error -- a node doesn't refuse a read by name
     usdc.read.decimals().fails("insufficientFunds");
-    // @ts-expect-error nor in a resolver
+    // @ts-expect-error -- nor can a resolver fail a read with it
     usdc.read.decimals().returns(({ fail }) => fail("insufficientFunds"));
     usdc.simulate.transfer().fails("gasExceedsAllowance");
     usdc.simulate.transfer().returns(({ fail }) => fail("intrinsicGasTooLow"));
-    // @ts-expect-error a call doesn't check the nonce
+    // @ts-expect-error -- a call doesn't check the nonce
     usdc.simulate.transfer().fails("nonceTooLow");
-    // @ts-expect-error nor in a default
+    // @ts-expect-error -- nor can a default fail a call with a send's refusal
     defaultsOf({ simulate: { transfer: ({ fail }) => fail("alreadyKnown") } });
-    // @ts-expect-error a read takes no gas from viem
+    // @ts-expect-error -- a read takes no gas from viem
     usdc.read.decimals().fails("gasExceedsAllowance");
   });
 
@@ -254,7 +254,7 @@ describe("simulate", () => {
       "approve" | "transfer" | "transferFrom"
     >();
 
-    // @ts-expect-error view functions live on read
+    // @ts-expect-error -- view functions live on read
     usdc.simulate.balanceOf();
   });
 
@@ -267,9 +267,9 @@ describe("simulate", () => {
       return true;
     });
 
-    // @ts-expect-error wrong arg type
+    // @ts-expect-error -- transfer's amount is a bigint
     usdc.simulate.transfer([USDC, "1"]);
-    // @ts-expect-error wrong return type
+    // @ts-expect-error -- transfer returns a boolean
     usdc.simulate.transfer().returns(1n);
   });
 
@@ -311,22 +311,22 @@ describe("estimateGas", () => {
       readonly [Address, bigint]
     >();
 
-    // @ts-expect-error an estimate is gas, not the function's return type
+    // @ts-expect-error -- an estimate is gas, not the function's return type
     token.estimateGas.transfer().returns(true);
-    // @ts-expect-error args are the function's
+    // @ts-expect-error -- transfer takes an address and a bigint
     token.estimateGas.transfer(["0x1"]);
-    // @ts-expect-error not an error on the ABI
+    // @ts-expect-error -- not an error on the ABI
     token.estimateGas.transfer().reverts({ errorName: "Nope" });
     token.estimateGas.transfer().fails("gasExceedsAllowance");
-    // @ts-expect-error an estimate doesn't check the nonce
+    // @ts-expect-error -- an estimate doesn't check the nonce
     token.estimateGas.transfer().fails("nonceTooHigh");
-    // @ts-expect-error nor in a resolver
+    // @ts-expect-error -- nor can a resolver fail an estimate with it
     token.estimateGas.transfer().returns(({ fail }) => fail("nonceTooLow"));
-    // @ts-expect-error an estimate reports too little gas as exceeding the allowance
+    // @ts-expect-error -- an estimate reports too little gas as exceeding the allowance
     token.estimateGas.transfer().returns(({ fail }) => fail("intrinsicGasTooLow"));
-    // @ts-expect-error nor in a default
+    // @ts-expect-error -- nor can a default fail an estimate with a send's refusal
     defaultsOf({ estimateGas: { transfer: ({ fail }) => fail("alreadyKnown") } });
-    // @ts-expect-error viem estimates only writes
+    // @ts-expect-error -- viem doesn't estimate a view
     token.estimateGas.balanceOf; // oxlint-disable-line typescript/no-unused-expressions -- a type test
   });
 });
@@ -357,35 +357,35 @@ describe("write", () => {
       expectTypeOf(from).toEqualTypeOf<Address>();
       expectTypeOf(emit).toEqualTypeOf<(logs: MockEventLog | readonly MockEventLog[]) => void>();
       emit(token.events.Transfer({ from, to: args[0], value: args[1] }));
-      // @ts-expect-error not a log: no address, topics or data
+      // @ts-expect-error -- not a log: no address, topics or data
       emit({ logIndex: 0 });
       if (args[1] > 5n) revert({ errorName: "Paused", args: [from] });
     });
     token.write.transfer().returns(() => Promise.resolve({ logs: [] }));
     expectTypeOf(token.write.transfer.calls[0]!.from).toEqualTypeOf<Address>();
 
-    // @ts-expect-error a write answers with its outcome; the return value goes on simulate
+    // @ts-expect-error -- a `write` mock answers with its outcome; the return value goes on simulate
     token.write.transfer().returns(true);
-    // @ts-expect-error the block comes from where it's mined
+    // @ts-expect-error -- the block comes from where it's mined
     token.write.transfer().returns({ blockNumber: 1n });
-    // @ts-expect-error not an error on the ABI
+    // @ts-expect-error -- not an error on the ABI
     token.write.transfer().reverts({ errorName: "Nope" });
     token.write.transfer().fails("nonceTooLow");
     token.write.transfer().fails("alreadyKnown");
     token.write.transfer().returns(({ fail }) => fail("nonceTooHigh"));
     token.write.transfer().returns(({ fail }) => fail("intrinsicGasTooLow"));
-    // @ts-expect-error a send with too little gas is mined, and runs out
+    // @ts-expect-error -- a send with too little gas is mined, and runs out
     token.write.transfer().fails("gasExceedsAllowance");
-    // @ts-expect-error nor in a resolver
+    // @ts-expect-error -- nor can a resolver fail a send with it
     token.write.transfer().returns(({ fail }) => fail("gasExceedsAllowance"));
-    // @ts-expect-error nor in a default
+    // @ts-expect-error -- nor can a default fail a send with it
     defaultsOf({ write: { transfer: ({ fail }) => fail("gasExceedsAllowance") } });
-    // @ts-expect-error only writes are sent
+    // @ts-expect-error -- a view isn't sent
     token.write.balanceOf; // oxlint-disable-line typescript/no-unused-expressions -- a type test
     createMockRpc().contract({
       abi: erc20Abi,
       address: USDC,
-      // @ts-expect-error a default is an outcome too
+      // @ts-expect-error -- a default is an outcome too
       defaults: { write: { transfer: true } },
     });
   });
@@ -412,25 +412,25 @@ describe("returns: named outputs and partial structs", () => {
     feed.read.latestRoundData().returns({});
     feed.read.latestRoundData().returns(() => ({ answer: 1n }));
 
-    // @ts-expect-error unknown output name
+    // @ts-expect-error -- latestRoundData has no `answr` output
     feed.read.latestRoundData().returns({ answr: 1n });
-    // @ts-expect-error wrong type for a named output
+    // @ts-expect-error -- `answer` is a bigint
     feed.read.latestRoundData().returns({ answer: "1" });
-    // @ts-expect-error unknown output name from a resolver
+    // @ts-expect-error -- nor can a resolver return an `answr` output
     feed.read.latestRoundData().returns(() => ({ answr: 1n }));
   });
 
   test("the tuple form must be complete", () => {
     feed.read.latestRoundData().returns([1n, 2n, 3n, 4n, 5n]);
 
-    // @ts-expect-error missing elements
+    // @ts-expect-error -- latestRoundData returns five values
     feed.read.latestRoundData().returns([1n, 2n]);
   });
 
   test("unnamed outputs only take the tuple form", () => {
     feed.read.getRoundData().returns([1n, 2n, 3n, 4n, 5n]);
 
-    // @ts-expect-error no names to key by
+    // @ts-expect-error -- getRoundData's outputs are unnamed, so it takes a tuple
     feed.read.getRoundData().returns({ answer: 1n });
   });
 
@@ -438,9 +438,9 @@ describe("returns: named outputs and partial structs", () => {
     store.read.position().returns({ amount: 1n });
     store.read.position().returns({});
 
-    // @ts-expect-error unknown field
+    // @ts-expect-error -- the struct has no `ownr` field
     store.read.position().returns({ ownr: USDC });
-    // @ts-expect-error wrong field type
+    // @ts-expect-error -- `amount` is a bigint
     store.read.position().returns({ amount: "1" });
   });
 });
@@ -512,7 +512,7 @@ describe("zeroResult", () => {
     weth.simulate.deposit().returns();
     weth.simulate.deposit().returns(undefined);
 
-    // @ts-expect-error balanceOf has an output
+    // @ts-expect-error -- balanceOf has an output
     usdc.read.balanceOf().returns(undefined);
   });
 });
@@ -530,9 +530,9 @@ describe("pins: fn(args, { from, value })", () => {
     usdc.simulate.transfer(undefined, { from: match.any() });
     usdc.estimateGas.transfer([USDC, 1n], { from: USDC });
     usdc.write.transfer(undefined, { from: match.where((from) => from !== USDC) });
-    // @ts-expect-error from is an address
+    // @ts-expect-error -- from is an address
     usdc.read.balanceOf([USDC], { from: 1n });
-    // @ts-expect-error only from and value
+    // @ts-expect-error -- a call pins only `from` and `value`
     usdc.write.transfer(undefined, { account: USDC });
   });
 
@@ -540,9 +540,9 @@ describe("pins: fn(args, { from, value })", () => {
     vault.write.deposit([], { value: 1n });
     vault.simulate.deposit(undefined, { from: USDC, value: 1n });
     vault.estimateGas.deposit([], { value: match.where((value) => value > 0n, "positive") });
-    // @ts-expect-error withdraw is nonpayable
+    // @ts-expect-error -- withdraw is nonpayable
     vault.write.withdraw([1n], { value: 1n });
-    // @ts-expect-error views take no value
+    // @ts-expect-error -- views take no value
     usdc.read.balanceOf([USDC], { value: 0n });
   });
 

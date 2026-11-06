@@ -140,7 +140,6 @@ describe("once() and times()", () => {
     mock.method("eth_getBlockTransactionCountByNumber").returns("0x2");
     mock.method("eth_getBlockTransactionCountByNumber").once().returns("0x1");
 
-    // Pending once, then mined.
     expectCause(
       await rejectionOf(client.getTransactionReceipt({ hash: txHash })),
       TransactionReceiptNotFoundError,
@@ -233,7 +232,6 @@ describe("retries past a limited fault", () => {
     usdc.read.balanceOf([alice]).returns(1n);
     expect(await read(client)).toBe(1n);
 
-    // Different args: a new request, not a retry.
     const error = expectCause(
       await rejectionOf(
         client.readContract({

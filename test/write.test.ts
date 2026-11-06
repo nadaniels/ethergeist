@@ -45,7 +45,10 @@ const vaultAbi = parseAbi([
   "error Paused(uint256 until)",
 ]);
 
-/** The app's clients: a local account, which signs and sends raw bytes, or a node's (JSON-RPC) account. */
+/**
+ * The app's clients: a local account, which signs and sends raw bytes, or a
+ * node's (JSON-RPC) account.
+ */
 function setup(account: "local" | "node" = "local") {
   const mock = createMockRpc({ blockNumber: 10n });
   const client = mock.publicClient({ retryCount: 0 });
@@ -238,7 +241,6 @@ describe("a write mock", () => {
     usdc.write.transfer().once().returns({ gasUsed: 1n });
     usdc.write.transfer().times(2).returns({ gasUsed: 2n });
 
-    // Each send is estimated first; the estimates use nothing up.
     await transfer(1n);
     await transfer(2n);
     await transfer(3n);
@@ -434,7 +436,7 @@ describe("the estimate a write mock implies", () => {
     await transfer();
     const error = await rejectionOf(transfer());
 
-    // The estimate finds no mock, so nothing is sent; its hint names the used-up write mock.
+    // The estimate finds no mock, so nothing is sent; its hint names the used-up `write` mock.
     const notFound = expectCause(error, MockNotFoundError);
     expect(notFound.shortMessage).toMatch(/^No estimateGas mock for transfer/u);
     expect(hintsOf(notFound)).toBe(
@@ -501,7 +503,7 @@ describe("the estimate a write mock implies", () => {
       mock.request({ method: "eth_estimateGas", params: [{ to: USDC, data }] }),
     );
 
-    // The write mocks were never in contention, so they aren't matched for the message.
+    // The `write` mocks were never in contention, so they aren't matched for the message.
     expect(small).not.toHaveBeenCalled();
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       'No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn\'t answer estimates.',
@@ -895,7 +897,7 @@ describe("registration refusals", () => {
     const write = usdc.write.transfer();
 
     expectThrows(MockSetupError, "A send's outcome has no transactionHash.", () => {
-      // @ts-expect-error -- the transaction's hash comes from where it's mined
+      // @ts-expect-error -- a send's outcome has no transactionHash: it comes from where it's mined
       write.returns({ transactionHash: "0x12" });
     });
     expectThrows(MockSetupError, "A reverted transaction has no logs.", () => {
@@ -904,7 +906,6 @@ describe("registration refusals", () => {
     expectThrows(MockSetupError, "Only a deploy (to: null) has a contractAddress.", () => {
       write.returns({ contractAddress: USDC });
     });
-    // A log is an emitter's address and its topics and data, not the event's args.
     expectThrows(MockSetupError, /^A send's log 0 isn't a log; got \{ eventName: Transfer/u, () => {
       // @ts-expect-error -- not a log
       write.returns({ logs: [{ eventName: "Transfer", args: { to: alice, value: 1n } }] });
@@ -913,14 +914,14 @@ describe("registration refusals", () => {
       write.emits([{ address: "0x12", topics: [], data: "0x" }]);
     });
     expectThrows(MockSetupError, "A send's outcome must be an object; got true.", () => {
-      // @ts-expect-error -- a write answers with its outcome; the return value goes on simulate
+      // @ts-expect-error -- a `write` mock answers an outcome, not a return value
       write.returns(true);
     });
     expectThrows(
       MockSetupError,
       '"balanceOf" is a view function; register it under read, not write.',
       () => {
-        // @ts-expect-error -- a view isn't written
+        // @ts-expect-error -- `balanceOf` is a view: it's on read, not write
         usdc.write.balanceOf(); // oxlint-disable-line typescript/no-unsafe-call -- untyped caller, on purpose
       },
     );
@@ -1025,7 +1026,6 @@ describe("registration refusals", () => {
       ]);
     }
     expect(mock.transactions).toEqual([]);
-    // Once the resolver is done, adding works again.
     mock.addTransaction({ logs: [testLog("noise")] });
     expect(mock.transactions).toHaveLength(1);
   });
@@ -1081,7 +1081,10 @@ describe("state the test owns (controlled mocks)", () => {
   // setup() registers USDC with viem's erc20Abi, which has no errors.
   const TOKEN = testAddress("token");
 
-  /** The docs' example: balances in a closure, read by `balanceOf`, changed only by `transfer`. */
+  /**
+   * The docs' example: balances in a closure, read by `balanceOf`, changed only
+   * by `transfer`.
+   */
   function ledger() {
     const { mock, client, wallet, from: sender } = setup();
     const token = mock.contract({ abi: tokenAbi, address: TOKEN, name: "Token" });
@@ -1160,7 +1163,6 @@ describe("state the test owns (controlled mocks)", () => {
     );
     expect(mock.transactions).toEqual([]);
     expect(await balanceOf(sender)).toBe(10n);
-    // Within the balance, the estimate answers and the write moves it.
     await transfer(4n);
     expect(await balanceOf(sender)).toBe(6n);
   });

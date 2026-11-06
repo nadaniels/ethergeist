@@ -23,12 +23,11 @@ describe("once() and times()", () => {
     const mock = createMockRpc();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });
 
-    // @ts-expect-error -- one limit per mock
+    // @ts-expect-error -- a limited mock takes no second limit
     usdc.read.balanceOf().once().times(2);
-    // The answer returns nothing to chain a limit on.
     type Builder = ReturnType<typeof usdc.read.balanceOf>;
     expectTypeOf<ReturnType<Builder["returns"]>>().toBeVoid();
-    // @ts-expect-error -- one limit per mock
+    // @ts-expect-error -- a limited mock takes no second limit
     mock.actions.getBalance().once().once();
   });
 });

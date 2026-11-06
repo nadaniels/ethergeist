@@ -121,10 +121,8 @@ function layers(error: unknown, { portable = false, details = false } = {}) {
       data?: unknown;
     };
     let { data } = fields;
-    // Decoded revert data is compared by its error name and args.
     if (typeof data === "object" && data !== null && "errorName" in data)
       data = { errorName: data.errorName, args: "args" in data ? data.args : undefined };
-    // "0x" and no data both mean an empty revert; nodes differ on which they send.
     if (portable && data === "0x") data = undefined;
     result.push({
       name: e.name,

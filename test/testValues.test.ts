@@ -44,7 +44,6 @@ describe("testAddress()", () => {
   test("is the address of an account whose key derives from the label", () => {
     const account = privateKeyToAccount(keccak256(toHex("test-account:alice")));
     expect(account.address).toBe(testAddress("alice"));
-    // The key isn't the label's testHash().
     expect(keccak256(toHex("test-account:alice"))).not.toBe(testHash("alice"));
   });
 });
@@ -80,7 +79,7 @@ describe("testLog()", () => {
       from: testAddress("alice"),
       to: testAddress("bob"),
     });
-    // An unknown event at a contract the code does know.
+    // An unknown event at a contract the app knows.
     const unknownAtUsdc = testLog("noise-at-usdc", { address: USDC });
     mock.actions
       .getTransactionReceipt({ hash })

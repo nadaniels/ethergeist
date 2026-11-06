@@ -173,7 +173,6 @@ describe("resolvers that throw", () => {
   });
 });
 
-// A bad spec fails at .reverts(), where it's given, and the mock is left without an answer.
 describe("a revert spec is checked at .reverts(), on every builder", () => {
   const tokenAbi = parseAbi([
     "function transfer(address to, uint256 value) returns (bool)",
@@ -247,7 +246,7 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
       const builder = builders[namespace](mock);
 
       expectThrows(MockSetupError, `${unencodable}: Cannot convert x to a BigInt`, () => {
-        // @ts-expect-error -- code is a uint256
+        // @ts-expect-error -- `code` is a uint256: a bigint
         builder.reverts({ errorName: "Failed", args: ["x"] });
       });
     },

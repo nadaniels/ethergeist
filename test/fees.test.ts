@@ -57,7 +57,7 @@ describe("fees", () => {
       createMockRpc({ fees: { baseFeePerGas: -1n } }),
     );
     expectThrows(MockSetupError, "fees.maxPriorityFeePerGas must be a bigint; got number.", () =>
-      // @ts-expect-error -- not a bigint
+      // @ts-expect-error -- a priority fee is a bigint
       createMockRpc({ fees: { maxPriorityFeePerGas: 1 } }),
     );
   });
@@ -205,7 +205,7 @@ describe("getFeeHistory", () => {
       mock.actions.getFeeHistory().returns({ baseFeePerGas: ["0x1"] });
     });
     expectThrows(MockSetupError, 'A fee history has no field "baseFee".', () => {
-      // @ts-expect-error -- not a field
+      // @ts-expect-error -- a fee history has no `baseFee`
       mock.actions.getFeeHistory().returns({ baseFee: [1n] });
     });
   });
@@ -257,7 +257,7 @@ describe("setFees()", () => {
 
     const history = await client.getFeeHistory({ blockCount: 3, rewardPercentiles: [] });
     expect(history.oldestBlock).toBe(10n);
-    // one base fee per block (10–12), plus the next block (13)
+    // One base fee per block (10 to 12), then the next block's (13).
     expect(history.baseFeePerGas).toEqual([
       parseGwei("10"),
       parseGwei("50"),
@@ -358,7 +358,7 @@ describe("mocking fee answers", () => {
     const { mock } = setup();
 
     expectThrows(MockSetupError, "A gas price must be a bigint; got string.", () => {
-      // @ts-expect-error -- hex isn't a viem-typed gas price
+      // @ts-expect-error -- a gas price is a bigint
       mock.actions.getGasPrice().returns("0x1");
     });
   });

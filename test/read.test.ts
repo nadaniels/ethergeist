@@ -211,7 +211,6 @@ describe("balanceOf", () => {
       BaseError,
     );
     expect(error.message).toContain(`No mock for balanceOf(${getAddress(alice)})`);
-    // Each registered mock says which arg didn't match.
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       `Registered:\n  balanceOf(${getAddress(bob)})  ← account didn't match`,
     );
@@ -334,7 +333,6 @@ describe("balanceOf", () => {
 });
 
 describe("string args", () => {
-  // A name registry keyed by plain strings.
   const registryAbi = parseAbi(["function lookup(string name) view returns (address)"]);
   const lookup = (client: ReturnType<typeof setup>["client"], name: string) =>
     client.readContract({ abi: registryAbi, address: USDC, functionName: "lookup", args: [name] });
@@ -365,7 +363,7 @@ describe("number and bigint args", () => {
   test("a bigint registered for a small integer matches the decoded number", async () => {
     const { mock, client } = setup();
     const votes = mock.contract({ abi, address: USDC });
-    // @ts-expect-error the types want a number for uint32; a loosely typed helper might not
+    // @ts-expect-error -- a uint32 takes a number
     votes.read.checkpoints([alice, 3n]).returns({ value: 7n });
 
     const [, value] = await client.readContract({
@@ -380,7 +378,7 @@ describe("number and bigint args", () => {
   test("a number registered for a wide integer matches the decoded bigint", async () => {
     const { mock, client } = setup();
     const nft = mock.contract({ abi, address: USDC });
-    // @ts-expect-error the types want a bigint for uint256
+    // @ts-expect-error -- a uint256 takes a bigint
     nft.read.ownerOf([42]).returns(alice);
 
     expect(
@@ -391,7 +389,7 @@ describe("number and bigint args", () => {
   test("different values still don't match", async () => {
     const { mock, client } = setup();
     const nft = mock.contract({ abi, address: USDC });
-    // @ts-expect-error the types want a bigint for uint256
+    // @ts-expect-error -- a uint256 takes a bigint
     nft.read.ownerOf([42]).returns(alice);
 
     expectCause(
@@ -434,7 +432,6 @@ describe("defaults", () => {
     expect(await balanceOf(alice)).toBe(500n);
     expect(await balanceOf(bob)).toBe(0n);
 
-    // Closures over test state are the store, for now.
     balances[getAddress(bob)] = 3n;
     expect(await balanceOf(bob)).toBe(3n);
   });

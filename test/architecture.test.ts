@@ -69,7 +69,6 @@ describe("architecture", () => {
             /(?:new|throw) (?:Type|Range|Syntax|Reference|Aggregate)?Error\(|extends (?:(?:Type|Range|Syntax|Reference|Aggregate)?Error|BaseError)\b/gv,
           ),
         ].map(([match]) => match);
-        // Sorted, so moving a declaration doesn't matter, but swapping one kind for another does.
         const expected = (allowed.get(file) ?? []).toSorted();
         return found.toSorted().join() === expected.join() ? [] : [`${file}: ${found.join(", ")}`];
       });

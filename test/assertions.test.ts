@@ -314,7 +314,6 @@ describe("assertNoUnhandled(): what each miss shows", () => {
 });
 
 describe("unencodable returns", () => {
-  // OpenZeppelin's Ownable.
   const ownableAbi = parseAbi(["function owner() view returns (address)"]);
   // USDC with its checksum broken, which viem refuses to encode.
   const badChecksum = "0xa0B86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -347,7 +346,6 @@ describe("unencodable returns", () => {
 });
 
 describe("messages", () => {
-  // A generic order book, for a struct arg.
   const bookAbi = parseAbi([
     "struct Order { address maker; uint256 amount; }",
     "function filled(Order order) view returns (bool)",
@@ -400,7 +398,6 @@ describe("messages", () => {
 });
 
 describe("address args", () => {
-  // A batch-balance view, for address arrays.
   const batchAbi = parseAbi(["function balancesOf(address[] owners) view returns (uint256[])"]);
 
   test("are checksummed at registration, so messages show them one way", () => {
@@ -541,7 +538,6 @@ describe("assertAllUsed()", () => {
       `  - getBalance({ address: ${getAddress(alice)} }) without an answer\n` +
         "    give it one with .returns() or .fails(), or don't register it",
     );
-    // It matched, but had no answer to give: no other mock answered it either.
     expect(message).not.toContain("another mock answered it");
   });
 
@@ -663,7 +659,6 @@ describe("assertAllUsed(): what the function received instead", () => {
 
   test("unnamed inputs are numbered; other overloads' calls are left out", async () => {
     const { mock, client } = setup();
-    // ERC-1155-style overloads, with an unnamed input.
     const abi = parseAbi([
       "function balanceOf(address, uint256 id) view returns (uint256)",
       "function balanceOf(address owner) view returns (uint256)",

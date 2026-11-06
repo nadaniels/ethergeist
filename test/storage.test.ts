@@ -133,7 +133,7 @@ describe("getStorageAt", () => {
       },
     );
     expectThrows(MockSetupError, "A storage value must be hex of up to 32 bytes; got 1n.", () => {
-      // @ts-expect-error storage is hex
+      // @ts-expect-error -- a storage value is hex, not a bigint
       mock.actions.getStorageAt().returns(1n);
     });
     expectThrows(
@@ -141,7 +141,6 @@ describe("getStorageAt", () => {
       `A storage slot must be hex of up to 32 bytes; got 33 bytes: ${tooLong}.`,
       () => mock.actions.getStorageAt({ slot: tooLong }),
     );
-    // No pins: it answers every address and slot, with zero.
     mock.actions.getStorageAt().returns();
     expect(await client.getStorageAt({ address: proxy, slot: "0x0" })).toBe(zeroHash);
   });

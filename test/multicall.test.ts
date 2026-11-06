@@ -193,7 +193,7 @@ const readAll = (client: ReturnType<typeof setup>["client"]) =>
     client.readContract({ abi: feedAbi, address: FEED, functionName: "latestRoundData" }),
   ]);
 
-/** The decoded revert from reading a reverting feed, with batching on or off. */
+/** The decoded revert of a read of a reverting feed, batched or not. */
 async function revertOf(batch: boolean) {
   const { client, feed } = setup({ batch });
   feed.read.latestRoundData().reverts({ errorName: "StalePrice", args: [100n] });

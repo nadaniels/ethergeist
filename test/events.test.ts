@@ -144,7 +144,7 @@ describe("contract.events", () => {
     const { usdc } = setup();
 
     expectThrows(MockSetupError, 'Indexed arg "to" of event "Transfer" is required.', () =>
-      // @ts-expect-error `to` is indexed, so required
+      // @ts-expect-error -- `to` is indexed, so required
       usdc.events.Transfer({ from: alice, value: 5n }),
     );
   });
@@ -156,7 +156,7 @@ describe("contract.events", () => {
       MockSetupError,
       `Event "Transfer" was given a value it can't encode: Cannot convert soon to a BigInt`,
       () =>
-        // @ts-expect-error value is a bigint
+        // @ts-expect-error -- value is a bigint
         usdc.events.Transfer({ from: alice, to: bob, value: "soon" }),
     );
     expect(error.cause).toBeInstanceOf(SyntaxError);
@@ -207,7 +207,7 @@ describe("contract.events", () => {
       MockSetupError,
       'Event "Unnamed" has unnamed args: pass all 2 of them, in order.',
       () =>
-        // @ts-expect-error every arg is required
+        // @ts-expect-error -- every arg is required
         contract.events.Unnamed([alice]),
     );
   });
@@ -228,7 +228,7 @@ describe("contract.events", () => {
       MockSetupError,
       'No arg "amount" on event Transfer(address indexed from, address indexed to, uint256 value).',
       () =>
-        // @ts-expect-error not an arg of Transfer
+        // @ts-expect-error -- not an arg of Transfer
         usdc.events.Transfer({ from: alice, to: bob, amount: 5n }),
     );
   });
@@ -292,7 +292,7 @@ describe("contract.events", () => {
 });
 
 describe("contractEvents()", () => {
-  // A contract the app never calls, only decodes the logs of.
+  /** A contract the app never calls, only decodes the logs of. */
   const FACTORY = testAddress("factory");
 
   test("builds the same logs as a registered contract's events", () => {
@@ -387,7 +387,6 @@ describe("mock.buildLog()", () => {
     expect(logs).toEqual([
       mock.buildLog(content, { blockNumber: 7n, transactionHash: hash, transactionIndex: 2 }),
     ]);
-    // The block hash and timestamp are the generated block's, not the current one's.
     const block = await client.getBlock({ blockNumber: 7n });
     expect(logs[0]?.blockHash).toBe(block.hash);
     expect(logs[0]?.blockTimestamp).toBe(block.timestamp);
@@ -467,13 +466,12 @@ describe("mock.buildLog()", () => {
       // @ts-expect-error -- not a log
       mock.buildLog(),
     );
-    // Its parameters before it took content: a log's content has no abi.
     expectThrows(
       MockSetupError,
       "mock.buildLog()'s content has no field abi; a log's content is its address, topics and data.",
       () =>
         mock.buildLog({
-          // @ts-expect-error -- not a log's content
+          // @ts-expect-error -- an event's parameters, not a log's content
           abi: erc20Abi,
           address: USDC,
           eventName: "Transfer",
@@ -497,7 +495,7 @@ describe("mock.buildLog()", () => {
       MockSetupError,
       "mock.buildLog()'s placement has no field hash.",
       () =>
-        // @ts-expect-error -- a log's transaction is transactionHash
+        // @ts-expect-error -- a log's transaction is `transactionHash`
         mock.buildLog(content, { hash: testHash("transfer") }),
     );
     expect(hash.metaMessages).toEqual([
@@ -521,7 +519,6 @@ describe("mock.buildLog()", () => {
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
 const untyped = (log: object) => log as MockEventLog;
 
-// Every site that places a log refuses what isn't a log's content, in the same words.
 describe("a log's content is checked wherever it's placed", () => {
   const content = testLog("noise");
   const bad = [
@@ -547,7 +544,6 @@ describe("a log's content is checked wherever it's placed", () => {
     },
   ];
   type Setup = ReturnType<typeof setup>;
-  // Each site, and how it names the log it refuses.
   const sites: { site: string; name: string; place: (setup: Setup, log: MockEventLog) => void }[] =
     [
       {
@@ -631,7 +627,6 @@ describe("a log's content is checked wherever it's placed", () => {
     usdc.write.transfer().emits(logs);
     mock.actions.getTransactionReceipt().returns({ logs });
     for (const log of logs) mock.buildLog(log);
-    // A log's data may be left out: it's empty.
     expect(mock.buildLog(untyped({ address: USDC, topics: [] })).data).toBe("0x");
   });
 

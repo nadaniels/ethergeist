@@ -138,7 +138,7 @@ describe("mock.buildLog()", () => {
     mock.buildLog(contractEvents({ abi: shapesAbi, address: USDC }).Paused());
     // @ts-expect-error -- content, not an event's parameters
     mock.buildLog({ abi: erc20Abi, address: USDC, eventName: "Transfer" });
-    // @ts-expect-error -- a log's transaction is transactionHash
+    // @ts-expect-error -- a log's transaction is `transactionHash`
     mock.buildLog(testLog("noise"), { hash: testHash("x") });
   });
 });
@@ -155,19 +155,19 @@ describe("emit", () => {
     shapes.emit.Paused();
     shapes.emit.Paused(undefined, { blockNumber: 3n });
     usdc.emit.Transfer({ from: alice, to: bob }, { blockNumber: 3n, hash: testHash("x") });
-    // @ts-expect-error -- a transaction's hash is hash, as in mock.addTransaction
+    // @ts-expect-error -- a transaction's hash is `hash`, as in `mock.addTransaction()`
     usdc.emit.Transfer({ from: alice, to: bob }, { transactionHash: testHash("x") });
     // @ts-expect-error -- `to` is indexed, so required
     usdc.emit.Transfer({ from: alice });
-    // @ts-expect-error -- not an option
+    // @ts-expect-error -- an emit has no `logIndex` option
     usdc.emit.Transfer({ from: alice, to: bob }, { logIndex: 2 });
-    // @ts-expect-error -- gone: a plain emit mines a new block
+    // @ts-expect-error -- a plain emit mines a new block, so there's no `mine` option
     usdc.emit.Transfer({ from: alice, to: bob }, { mine: true });
-    // @ts-expect-error -- gone: a block's transactions have no holes
+    // @ts-expect-error -- a block's transactions have no holes, so there's no `transactionIndex` option
     usdc.emit.Transfer({ from: alice, to: bob }, { transactionIndex: 1 });
-    // @ts-expect-error -- a transaction's hash is hash; transactionHash is a log's
+    // @ts-expect-error -- a transaction's hash is `hash`; `transactionHash` is a log's
     mock.addTransaction({ transactionHash: testHash("x") });
-    // @ts-expect-error -- deploys aren't supported
+    // @ts-expect-error -- `mock.addTransaction()` doesn't place a deployment
     mock.addTransaction({ to: null });
   });
 

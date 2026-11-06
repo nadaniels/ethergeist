@@ -90,7 +90,7 @@ describe("getTransaction", () => {
     expect(await client.getTransaction({ hash })).toEqual(mined);
     expect(await client.getTransactionConfirmations({ hash })).toBe(2n);
     expect((await client.getTransaction({ hash: testHash("tx-2") })).blockNumber).toBeNull();
-    // A resolver's is made when it answers.
+    // A resolver's answer is in the block current at the request.
     mock.actions.getTransaction({ hash }).returns(() => ({}));
     expect((await client.getTransaction({ hash })).blockNumber).toBe(11n);
   });
@@ -146,7 +146,7 @@ describe("getTransaction", () => {
       MockSetupError,
       "buildTransaction() was given a value it can't encode: Cannot convert lots to a BigInt",
       () =>
-        // @ts-expect-error value is a bigint
+        // @ts-expect-error -- `value` takes a bigint
         mock.buildTransaction({ value: "lots" }),
     );
     expect(error.cause).toBeInstanceOf(SyntaxError);
@@ -195,20 +195,20 @@ describe("getTransaction", () => {
       MockSetupError,
       "A legacy transaction has no maxFeePerGas: set `type` to one that has it (eip1559, eip4844, eip7702).",
       () => {
-        // @ts-expect-error legacy transactions have no max fee
+        // @ts-expect-error -- a legacy transaction has no maxFeePerGas
         mock.actions.getTransaction().returns({ type: "legacy", maxFeePerGas: 1n });
       },
     );
     expectThrows(MockSetupError, "An eip1559 transaction has no authorizationList", () => {
-      // @ts-expect-error the default type, eip1559, has no authorization list
+      // @ts-expect-error -- an eip1559 transaction, the default type, has no authorizationList
       mock.actions.getTransaction().returns({ authorizationList: [] });
     });
     expectThrows(MockSetupError, 'A transaction has no field "data".', () => {
-      // @ts-expect-error not a transaction field
+      // @ts-expect-error -- `data` isn't a transaction field
       mock.actions.getTransaction().returns({ data: "0x" });
     });
     expectThrows(MockSetupError, 'Unknown transaction type "eip9999"', () => {
-      // @ts-expect-error not a type viem knows
+      // @ts-expect-error -- not a transaction type viem knows
       mock.actions.getTransaction().returns({ type: "eip9999" });
     });
   });
@@ -229,14 +229,14 @@ describe("getTransaction", () => {
       MockSetupError,
       "A pending transaction (blockNumber: null) has a null blockHash and transactionIndex.",
       () =>
-        // @ts-expect-error a pending transaction has no block hash
+        // @ts-expect-error -- a pending transaction has a null blockHash
         mock.buildTransaction({ blockNumber: null, blockHash: hash }),
     );
     expectThrows(
       MockSetupError,
       "Only a pending transaction has a null blockHash or transactionIndex",
       () =>
-        // @ts-expect-error only a pending transaction has a null block hash
+        // @ts-expect-error -- only a pending transaction has a null blockHash
         mock.buildTransaction({ blockHash: null }),
     );
     expectThrows(
@@ -523,7 +523,7 @@ describe("mock.addTransaction", () => {
     const { mock } = setup();
 
     expectThrows(MockSetupError, "mock.addTransaction() takes an object of fields; got [", () =>
-      // @ts-expect-error -- logs go in { logs }
+      // @ts-expect-error -- a transaction is an object of fields, not a list of logs
       mock.addTransaction([testLog("noise")]),
     );
     // A log alone shares data with a transaction, so the types let it through.
@@ -544,8 +544,6 @@ describe("mock.addTransaction", () => {
   });
 });
 
-// A mock answers over what the chain would answer at that request: the record once it's
-// mined, and otherwise zeros, in the block current at registration (static) or now (resolver).
 describe("receipt and transaction mocks over the chain", () => {
   const log = testLog("noise");
 
@@ -619,7 +617,7 @@ describe("receipt and transaction mocks over the chain", () => {
     const { mock } = setup();
 
     expectThrows(MockSetupError, "A receipt's log 0 isn't a log; got null.", () =>
-      // @ts-expect-error a log is an object
+      // @ts-expect-error -- a receipt's log is an object, not null
       mock.buildReceipt({ logs: [null] }),
     );
   });

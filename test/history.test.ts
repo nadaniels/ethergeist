@@ -18,9 +18,7 @@ const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const NOWHERE = "0x000000000000000000000000000000000000dEaD";
 const alice = testAddress("alice");
 
-// OpenZeppelin's Pausable error, alongside the ERC-20.
 const tokenAbi = [...erc20Abi, ...parseAbi(["error EnforcedPause()"])];
-// Uniswap V2's pair (named outputs) and WETH9's deposit (no outputs).
 const pairAbi = parseAbi([
   "function getReserves() view returns (uint112 reserve0, uint112 reserve1, uint32 blockTimestampLast)",
   "function price() view returns (uint256, uint256)",
@@ -197,7 +195,6 @@ describe("history entries", () => {
       { type: "builtIn", method: "eth_chainId", outcome: { type: "result", value: base.id } },
       { type: "builtIn", method: "eth_blockNumber", outcome: { type: "result", value: 10n } },
     ]);
-    // A raw method's params are its own: there's no decoded call.
     expect(mock.history[0]).not.toHaveProperty("call");
   });
 
@@ -334,7 +331,6 @@ describe("formatHistory()", () => {
     );
     // The value stays what viem returns: a tuple.
     expect(mock.history[0]?.outcome).toEqual({ type: "result", value: [5n, 7n, 0] });
-    // Each record has the namespace its function answers in.
     expect(mock.history.map((entry) => entry.type === "call" && entry.call?.namespace)).toEqual([
       "read",
       "read",

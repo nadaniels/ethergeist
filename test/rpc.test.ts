@@ -224,7 +224,7 @@ describe("mine()", () => {
       MockSetupError,
       `mock.mine() takes a count of blocks, an integer of 1 or more; ${got}`,
       () => {
-        // @ts-expect-error -- some aren't numbers
+        // @ts-expect-error -- a count is a number
         mock.mine(blocks);
       },
     );
@@ -235,7 +235,7 @@ describe("mine()", () => {
     const { mock } = setup();
 
     const error = expectThrows(MockSetupError, "got 2n.", () => {
-      // @ts-expect-error -- a count is a number
+      // @ts-expect-error -- a count is a number, not a bigint
       mock.mine(2n);
     });
     expect(error.metaMessages).toEqual(["Counts are numbers: mock.mine(2)."]);
@@ -357,9 +357,6 @@ describe("chain.id", () => {
 });
 
 describe("malformed params", () => {
-  // Params are read to the Ethereum JSON-RPC spec (ethereum/execution-apis):
-  // what it rules out is refused with -32602, as nodes refuse it. The
-  // messages are the mock's own: viem classifies these by code.
   test.each([
     ["an address that isn't one", "eth_getBalance", ["0x1234", "latest"]],
     ["a block tag that isn't one", "eth_getBlockByNumber", ["banana", false]],
@@ -426,7 +423,6 @@ describe("malformed params", () => {
       "eth_estimateGas",
       [{ to: USDC, data: "0x", input: "zz" }],
     ],
-    // A block is a number or a tag, and where the method takes them, a hash or an EIP-1898 object.
     ["a block as a JSON number", "eth_getBalance", [USDC, 10]],
     // A null at the end is a param left out (JSON writes one so); anywhere else it's refused.
     ["a block that's null before another param", "eth_feeHistory", ["0x1", null, []]],

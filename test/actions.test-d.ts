@@ -32,9 +32,9 @@ describe("actions", () => {
     mock.actions.getBalance();
     mock.actions.getBalance({ address: alice });
     mock.actions.getBalance({ blockNumber: 5n });
-    // @ts-expect-error not a field of the call
+    // @ts-expect-error -- not a field of the call
     mock.actions.getBalance({ owner: alice });
-    // @ts-expect-error block numbers are bigints
+    // @ts-expect-error -- block numbers are bigints
     mock.actions.getBalance({ blockNumber: 5 });
   });
 
@@ -43,9 +43,9 @@ describe("actions", () => {
     mock.actions.getBalance().returns(zeroResult);
     mock.actions.getBalance().returns();
     mock.actions.getCode().returns("0x6080");
-    // @ts-expect-error a balance is a bigint
+    // @ts-expect-error -- a balance is a bigint
     mock.actions.getBalance().returns("0x1");
-    // @ts-expect-error code is hex
+    // @ts-expect-error -- code is hex
     mock.actions.getCode().returns("6080");
   });
 
@@ -65,7 +65,7 @@ describe("actions", () => {
   });
 
   test("there's no reverts() on actions", () => {
-    // @ts-expect-error node methods don't revert
+    // @ts-expect-error -- node methods don't revert
     mock.actions.getBalance().reverts("nope");
   });
 });
@@ -75,7 +75,7 @@ describe("getBlock", () => {
     mock.actions.getBlock({ blockNumber: 1n });
     mock.actions.getBlock({ blockHash: "0x01" });
     mock.actions.getBlock({ blockTag: "finalized" });
-    // @ts-expect-error not a block tag
+    // @ts-expect-error -- not a block tag
     mock.actions.getBlock({ blockTag: "newest" });
   });
 
@@ -83,7 +83,7 @@ describe("getBlock", () => {
     mock.actions.getBlock().returns({ timestamp: 1n, baseFeePerGas: null });
     mock.actions.getBlock().returns(null);
     mock.actions.getBlock().returns(({ blockNumber }) => ({ gasUsed: blockNumber }));
-    // @ts-expect-error transactions are hashes
+    // @ts-expect-error -- transactions are hashes
     mock.actions.getBlock().returns({ transactions: [{ hash: "0x01" }] });
   });
 
@@ -101,10 +101,10 @@ describe("getTransactionReceipt", () => {
   test("returns a partial viem receipt with logs' content, or null", () => {
     mock.actions.getTransactionReceipt({ hash: "0x01" }).returns({ status: "reverted" });
     mock.actions.getTransactionReceipt().returns({ logs: [testLog("noise")] });
-    // @ts-expect-error a receipt mock's logs are content, which it places
+    // @ts-expect-error -- a receipt mock's logs are content: address, topics and data
     mock.actions.getTransactionReceipt().returns({ logs: [{ address: alice, data: "0x" }] });
     mock.actions.getTransactionReceipt().returns(null);
-    // @ts-expect-error not a receipt status
+    // @ts-expect-error -- not a receipt status
     mock.actions.getTransactionReceipt().returns({ status: "failed" });
   });
 
@@ -121,9 +121,9 @@ describe("getStorageAt", () => {
     mock.actions.getStorageAt({ address: alice, slot: "0x0", blockTag: "latest" }).returns("0x1");
     mock.actions.getStorageAt().returns(({ slot }) => slot);
     expectTypeOf(mock.actions.getStorageAt.calls).toEqualTypeOf<StorageCall[]>();
-    // @ts-expect-error slots are hex
+    // @ts-expect-error -- slots are hex
     mock.actions.getStorageAt({ slot: 0n });
-    // @ts-expect-error storage is hex
+    // @ts-expect-error -- storage is hex
     mock.actions.getStorageAt().returns(1n);
   });
 });
@@ -133,11 +133,11 @@ describe("getTransaction", () => {
     mock.actions.getTransaction({ hash: "0x01" }).returns({ type: "legacy", gasPrice: 1n });
     mock.actions.getTransaction().returns({ maxFeePerGas: 1n, blockNumber: null });
     mock.actions.getTransaction().returns(null);
-    // @ts-expect-error legacy transactions have no max fee
+    // @ts-expect-error -- legacy transactions have no max fee
     mock.actions.getTransaction().returns({ type: "legacy", maxFeePerGas: 1n });
-    // @ts-expect-error a pending transaction has no block hash
+    // @ts-expect-error -- a pending transaction has no block hash
     mock.actions.getTransaction().returns({ blockNumber: null, blockHash: "0x01" });
-    // @ts-expect-error only a pending transaction has a null block hash
+    // @ts-expect-error -- only a pending transaction has a null block hash
     mock.actions.getTransaction().returns({ blockHash: null });
   });
 
@@ -163,7 +163,7 @@ describe("getLogs", () => {
   test("pins the decoded filter", () => {
     mock.actions.getLogs({ address: usdc.address, fromBlock: 1n });
     mock.actions.getLogs({ address: [usdc.address], topics: [null] });
-    // @ts-expect-error blocks are bigints
+    // @ts-expect-error -- blocks are bigints
     mock.actions.getLogs({ fromBlock: "0x1" });
   });
 
@@ -177,7 +177,7 @@ describe("getLogs", () => {
       expectTypeOf(context.fromBlock).toEqualTypeOf<bigint | undefined>();
       return context.logs.slice(0, 1);
     });
-    // @ts-expect-error content isn't placed
+    // @ts-expect-error -- content isn't placed
     mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: alice })]);
     expectTypeOf(mock.actions.getLogs.calls).toEqualTypeOf<LogsCall[]>();
   });
@@ -191,9 +191,9 @@ describe("getLogs", () => {
     mock.actions.estimateMaxPriorityFeePerGas().once().returns(1n);
     mock.actions.getBlobBaseFee().returns(({ fail }) => fail({ status: 503 }));
     mock.actions.getGasPrice().returns();
-    // @ts-expect-error there's nothing to pin
+    // @ts-expect-error -- there's nothing to pin
     mock.actions.getGasPrice({});
-    // @ts-expect-error a gas price is a bigint, not hex
+    // @ts-expect-error -- a gas price is a bigint, not hex
     mock.actions.getGasPrice().returns("0x1");
   });
 
@@ -205,13 +205,13 @@ describe("getLogs", () => {
       expectTypeOf(count).toEqualTypeOf<number>();
       return count;
     });
-    // @ts-expect-error viem's count is a number
+    // @ts-expect-error -- viem's count is a number
     mock.actions.getTransactionCount().returns(1n);
   });
 
   test("estimates pin a transaction, answer gas, and fail with node errors by name", () => {
     mock.actions.estimateGas({ from: alice, to: alice, value: 1n, data: "0x" }).returns(21_000n);
-    // @ts-expect-error the sender is `from`, as the request has it
+    // @ts-expect-error -- the sender is `from`, as the request has it
     mock.actions.estimateGas({ account: alice });
     mock.actions.estimateGas().once().fails("insufficientFunds");
     mock.actions.estimateGas().returns(({ maxFeePerGas, nonce, fail }) => {
@@ -220,39 +220,39 @@ describe("getLogs", () => {
       return fail("feeCapTooLow");
     });
     expectTypeOf(mock.actions.estimateGas.calls).toEqualTypeOf<EstimateGasCall[]>();
-    // @ts-expect-error an estimate is a bigint
+    // @ts-expect-error -- an estimate is a bigint
     mock.actions.estimateGas().returns(21_000);
-    // @ts-expect-error there's no zero estimate
+    // @ts-expect-error -- there's no zero estimate
     mock.actions.estimateGas().returns(zeroResult);
-    // @ts-expect-error nor a default one
+    // @ts-expect-error -- there's no default estimate either
     mock.actions.estimateGas().once().returns();
     mock.actions.estimateGas().fails("gasExceedsAllowance");
     mock.actions.estimateGas().returns(({ fail }) => fail("gasExceedsAllowance"));
-    // @ts-expect-error an estimate doesn't check the nonce
+    // @ts-expect-error -- an estimate doesn't check the nonce
     mock.actions.estimateGas().fails("nonceTooLow");
-    // @ts-expect-error an estimate reports too little gas as exceeding the allowance
+    // @ts-expect-error -- an estimate reports too little gas as exceeding the allowance
     mock.actions.estimateGas().returns(({ fail }) => fail("intrinsicGasTooLow"));
     mock.actions.estimateGas({ to: alice }).reverts();
     mock.actions.estimateGas().reverts("paused");
     mock.actions.estimateGas().once().reverts({ panic: 0x11 });
     mock.actions.estimateGas().times(2).reverts({ data: "0xdeadbeef" });
-    // @ts-expect-error without an ABI, there are no custom errors
+    // @ts-expect-error -- without an ABI, there are no custom errors
     mock.actions.estimateGas().reverts({ errorName: "Paused" });
-    // @ts-expect-error raw data is hex
+    // @ts-expect-error -- raw data is hex
     mock.actions.estimateGas().reverts({ data: "deadbeef" });
     mock.actions.estimateGas().returns(({ value, revert }) => (value > 0n ? revert("paused") : 1n));
     mock.actions.estimateGas().returns(({ revert }) => revert());
     mock.actions.estimateGas().returns(({ revert }) => revert({ panic: 0x11 }));
     mock.actions.estimateGas().returns(({ revert }) => revert({ data: "0xdeadbeef" }));
-    // @ts-expect-error without an ABI, there are no custom errors
+    // @ts-expect-error -- without an ABI, there are no custom errors
     mock.actions.estimateGas().returns(({ revert }) => revert({ errorName: "Paused" }));
-    // @ts-expect-error a node doesn't refuse a balance read by name
+    // @ts-expect-error -- a node doesn't refuse a balance read by name
     mock.actions.getBalance().fails("insufficientFunds");
   });
 
   test("sends pin a transaction and answer with what the chain did", () => {
     mock.actions.sendTransaction({ from: alice, to: null }).returns({ contractAddress: alice });
-    // @ts-expect-error the sender is `from`, as the request has it
+    // @ts-expect-error -- the sender is `from`, as the request has it
     mock.actions.sendTransaction({ account: alice });
     mock.actions.sendTransaction({ to: alice, value: 1n }).once().emits([]);
     mock.actions.sendTransaction().emits(testLog("noise"));
@@ -272,26 +272,25 @@ describe("getLogs", () => {
     mock.actions.sendTransaction().fails("nonceTooLow");
     mock.actions.sendTransaction().fails("alreadyKnown");
     mock.actions.sendTransaction().once().fails("intrinsicGasTooLow");
-    // @ts-expect-error a send with too little gas is mined, and runs out
+    // @ts-expect-error -- a send with too little gas is mined, and runs out
     mock.actions.sendTransaction().fails("gasExceedsAllowance");
-    // @ts-expect-error nor in a resolver
+    // @ts-expect-error -- nor can a resolver fail a send with it
     mock.actions.sendTransaction().returns(({ fail }) => fail("gasExceedsAllowance"));
-    // A resolver may return nothing, for a success.
     mock.actions.sendTransaction().returns(() => {});
     mock.actions.sendTransaction().returns(({ emit, revert }) => {
       expectTypeOf(emit).toEqualTypeOf<(logs: MockEventLog | readonly MockEventLog[]) => void>();
       emit(testLog("noise"));
       emit([testLog("a"), testLog("b")]);
-      // @ts-expect-error not a log: no address, topics or data
+      // @ts-expect-error -- not a log: no address, topics or data
       emit({ logIndex: 0 });
       revert("paused");
     });
     expectTypeOf(mock.actions.sendTransaction.calls).toEqualTypeOf<SendTransactionCall[]>();
-    // @ts-expect-error a write answers with its outcome, not an ABI value
+    // @ts-expect-error -- a send mock answers with its outcome, not an ABI value
     mock.actions.sendTransaction().returns(true);
-    // @ts-expect-error derived fields come from where it's mined
+    // @ts-expect-error -- derived fields come from where it's mined
     mock.actions.sendTransaction().returns({ blockNumber: 1n });
-    // @ts-expect-error without an ABI, there are no custom errors
+    // @ts-expect-error -- without an ABI, there are no custom errors
     mock.actions.sendTransaction().reverts({ errorName: "Paused" });
   });
 
@@ -304,9 +303,9 @@ describe("getLogs", () => {
       expectTypeOf(rewardPercentiles).toEqualTypeOf<readonly number[] | undefined>();
       return { oldestBlock: blockNumber, baseFeePerBlobGas: [1n] };
     });
-    // @ts-expect-error a count is a number
+    // @ts-expect-error -- a count is a number
     mock.actions.getFeeHistory({ blockCount: 4n });
-    // @ts-expect-error rewards are lists of bigints, one per block
+    // @ts-expect-error -- rewards are lists of bigints, one per block
     mock.actions.getFeeHistory().returns({ reward: [1n] });
   });
 });
@@ -315,7 +314,7 @@ describe("method()", () => {
   test("answers with JSON-RPC values, not viem's types", () => {
     mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
     mock.method("eth_feeHistory").returns({ oldestBlock: "0x1", baseFeePerGas: ["0x1"] });
-    // @ts-expect-error JSON-RPC carries quantities as hex strings
+    // @ts-expect-error -- JSON-RPC carries quantities as hex strings
     mock.method("eth_getBlockTransactionCountByNumber").returns(1n);
   });
 
