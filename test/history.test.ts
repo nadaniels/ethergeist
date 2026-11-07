@@ -287,6 +287,17 @@ describe("formatHistory()", () => {
     );
   });
 
+  test("a request repeated after a fault is a retry, bigint params included", async () => {
+    const { mock } = setup();
+    mock.method("x_y").returns(1);
+    mock.failRequests("timeout", { times: 1 });
+    const request = { method: "x_y", params: [1n] };
+
+    await rejectionOf(mock.request(request));
+    expect(await mock.request(request)).toBe(1);
+    expect(mock.formatHistory()).toContain("#2 x_y (retry)");
+  });
+
   test("builtIns: false leaves out eth_chainId and eth_blockNumber, keeping numbers", async () => {
     const { mock, client } = setup();
     mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");

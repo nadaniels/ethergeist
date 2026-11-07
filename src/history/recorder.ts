@@ -11,6 +11,7 @@ import {
 
 import type { ActionName } from "../actions/typedActions.js";
 import type { Reporter, MockTaggedCall } from "../contracts/types.js";
+import { formatValue } from "../mocking/format.js";
 import { type FaultOutcome, failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import {
   type MockError,
@@ -226,8 +227,9 @@ function retriedFault(
   entry: MockHistoryEntry,
 ): FaultOutcome | undefined {
   if (previous.outcome.type !== "fault") return undefined;
+  // Only labels the history, so a rare false match (`[1n]` and `["1n"]` print
+  // alike) costs a wrong "(retry)" and nothing else.
   const same =
-    previous.method === entry.method &&
-    JSON.stringify(previous.params) === JSON.stringify(entry.params);
+    previous.method === entry.method && formatValue(previous.params) === formatValue(entry.params);
   return same ? previous.outcome : undefined;
 }
