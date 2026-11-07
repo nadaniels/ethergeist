@@ -194,6 +194,20 @@ describe("balanceOf", () => {
     expect(usdc.read.name.calls).toHaveLength(1);
   });
 
+  test("function names inherited from Object.prototype get mocks too", async () => {
+    const { mock, client } = setup();
+    const abi = parseAbi(["function toString(uint256) view returns (string)"]);
+    const token = mock.contract({ abi, address: USDC });
+    // Lint reads `token.read.toString()` as `Object.prototype`'s method, so
+    // the registrar is destructured.
+    const { toString: mockToString } = token.read;
+    mockToString().returns("7");
+
+    expect(
+      await client.readContract({ abi, address: USDC, functionName: "toString", args: [7n] }),
+    ).toBe("7");
+  });
+
   test("unmocked calls fail once, loudly, without retries", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });

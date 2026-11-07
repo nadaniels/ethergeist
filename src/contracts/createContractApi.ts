@@ -63,8 +63,10 @@ export function createContractApi<const abi extends Abi>({
    */
   function buildNamespace(namespace: MockNamespace) {
     const entries: Record<string, unknown> = {};
+    // `Object.hasOwn`, not `in`: an ABI function named `toString` or
+    // `valueOf` would otherwise find `Object.prototype`'s and get no entry.
     for (const { name: functionName } of functionsIn[namespace]) {
-      if (functionName in entries) continue;
+      if (Object.hasOwn(entries, functionName)) continue;
       entries[functionName] = withCalls(
         (args?: readonly unknown[], pins?: unknown) =>
           register(namespace, functionName, args, pins),
@@ -75,7 +77,7 @@ export function createContractApi<const abi extends Abi>({
     // pointer to the right one, not "is not a function". Hidden from
     // `Object.keys`.
     for (const { name: functionName } of functionsIn[namespace === "read" ? "simulate" : "read"]) {
-      if (functionName in entries) continue;
+      if (Object.hasOwn(entries, functionName)) continue;
       Object.defineProperty(entries, functionName, {
         value: () => {
           throw notInNamespaceError(namespace, functionName);

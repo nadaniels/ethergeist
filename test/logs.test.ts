@@ -62,6 +62,12 @@ async function refusal(mock: ReturnType<typeof setup>["mock"], promise: Promise<
 }
 
 describe("emit", () => {
+  test("has one emitter per event on the ABI, and nothing else", () => {
+    const { usdc } = setup();
+
+    expect(Object.keys(usdc.emit)).toEqual(["Approval", "Transfer"]);
+  });
+
   test("puts a log in a newly mined block, found by getLogs and decoded by viem", async () => {
     const { mock, client, usdc } = setup();
 
