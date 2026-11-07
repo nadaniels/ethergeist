@@ -73,14 +73,13 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
       given,
     );
   if (!isPlainObject(given)) throw notARevert(given);
-  if ("data" in given) {
-    const { data } = given;
+  const { data, panic } = given;
+  if (data !== undefined) {
     if (typeof data !== "string" || !isHex(data))
       throw new MockSetupError(`A revert's data must be hex; got ${formatValue(data)}.`);
     return new MockRevertError(data);
   }
-  const { panic } = given;
-  if ("panic" in given && typeof panic !== "number" && typeof panic !== "bigint")
+  if (panic !== undefined && typeof panic !== "number" && typeof panic !== "bigint")
     throw new MockSetupError(
       `A revert's panic must be a number or bigint; got ${formatValue(panic)}.`,
     );

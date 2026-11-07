@@ -84,6 +84,28 @@ describe("reverts()", () => {
     expect(revert.reason).toMatch(/overflow/u);
   });
 
+  test("a panic code can be a bigint", async () => {
+    const { nft, ownerOf } = setup();
+    nft.read.ownerOf().reverts({ panic: 0x12n });
+
+    const revert = await revertOf(ownerOf(1n));
+    expect(revert.data?.errorName).toBe("Panic");
+    expect(revert.reason).toMatch(/by zero/u);
+  });
+
+  test("an undefined panic or data is left out, so the custom error answers", async () => {
+    const { nft, ownerOf } = setup();
+    nft.read
+      .ownerOf([1n])
+      .reverts({ errorName: "ERC721NonexistentToken", args: [1n], panic: undefined });
+    nft.read
+      .ownerOf([2n])
+      .reverts({ errorName: "ERC721NonexistentToken", args: [2n], data: undefined });
+
+    expect((await revertOf(ownerOf(1n))).data?.args).toEqual([1n]);
+    expect((await revertOf(ownerOf(2n))).data?.args).toEqual([2n]);
+  });
+
   test("raw data passes through for errors not on the ABI", async () => {
     const { nft, ownerOf } = setup();
     const ownableAbi = parseAbi(["error OwnableUnauthorizedAccount(address account)"]);
