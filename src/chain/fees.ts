@@ -1,6 +1,7 @@
 import { type FeeHistory, numberToHex, parseGwei } from "viem";
 
 import { MockSetupError } from "../shared/errors.js";
+import { withoutUndefined } from "../shared/values.js";
 
 /**
  * The fees generated blocks and fee requests answer with, as
@@ -30,9 +31,12 @@ export function bigintOption(value: bigint, name: string): bigint {
   return value;
 }
 
-/** `fees` over the defaults, checked: each is a bigint, zero or more. */
-export function resolveFees(fees: MockFees = {}): Fees {
-  const resolved = { ...defaults, ...fees };
+/**
+ * `fees` over `base`, checked: each is a bigint, zero or more. A fee left
+ * out, or `undefined`, keeps `base`'s.
+ */
+export function resolveFees(fees: MockFees = {}, base: Fees = defaults): Fees {
+  const resolved = { ...base, ...withoutUndefined(fees) };
   for (const [name, value] of Object.entries(resolved)) bigintOption(value, `fees.${name}`);
   return resolved;
 }

@@ -22,3 +22,10 @@ export function lowercase<hex extends Hex>(value: hex): hex {
 export function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
+
+/**
+ * `fields` without the ones left out: an explicit `undefined` is a field
+ * left out, as consumers' types allow it in any optional field.
+ */
+export const withoutUndefined = (fields: object) =>
+  Object.fromEntries(Object.entries(fields).filter(([, each]) => each !== undefined));

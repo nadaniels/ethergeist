@@ -21,7 +21,7 @@ import type { ChainState } from "../chain/state.js";
 import type { MockTransactionType } from "../chain/transactions.js";
 import type { Registry } from "../contracts/registry.js";
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject, lowercase } from "../shared/values.js";
+import { isPlainObject, lowercase, withoutUndefined } from "../shared/values.js";
 import type { AddressAtBlockCall, SendTransactionCall } from "./types.js";
 
 /**
@@ -95,10 +95,6 @@ export function sendCall(
     type,
   }) as SendTransactionCall;
 }
-
-/** `fields` without the ones left out (`undefined`), as a call has them. */
-export const withoutUndefined = (fields: object) =>
-  Object.fromEntries(Object.entries(fields).filter(([, each]) => each !== undefined));
 
 /**
  * Whether a transaction is a plain transfer to an address without code: no

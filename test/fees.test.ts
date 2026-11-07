@@ -49,6 +49,13 @@ describe("fees", () => {
     });
   });
 
+  test("createMockRpc({ fees }) with an undefined fee keeps its default", async () => {
+    // @ts-expect-error -- an explicit undefined, allowed without exactOptionalPropertyTypes
+    const { client } = setup({ baseFeePerGas: parseGwei("50"), maxPriorityFeePerGas: undefined });
+
+    expect(await client.getGasPrice()).toBe(parseGwei("51"));
+  });
+
   test("zero fees are allowed; others that aren't fees throw", () => {
     expect(() =>
       createMockRpc({ fees: { baseFeePerGas: 0n, maxPriorityFeePerGas: 0n } }),
@@ -246,6 +253,15 @@ describe("setFees()", () => {
     mock.setFees({ maxPriorityFeePerGas: parseGwei("3") });
 
     expect(await client.estimateMaxPriorityFeePerGas()).toBe(parseGwei("3"));
+    expect(await client.getGasPrice()).toBe(parseGwei("23"));
+  });
+
+  test("an undefined fee stays as it is, not back to its default", async () => {
+    const { mock, client } = setup({ baseFeePerGas: parseGwei("20") });
+    mock.setFees({ maxPriorityFeePerGas: parseGwei("3") });
+    // @ts-expect-error -- an explicit undefined, allowed without exactOptionalPropertyTypes
+    mock.setFees({ baseFeePerGas: undefined, maxPriorityFeePerGas: undefined });
+
     expect(await client.getGasPrice()).toBe(parseGwei("23"));
   });
 

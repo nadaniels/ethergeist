@@ -12,15 +12,9 @@ import type {
   MockNodeFault,
   WithLimits,
 } from "../mocking/types.js";
+import { withoutUndefined } from "../shared/values.js";
 import { registeredRevert } from "../transactions/writeOutcome.js";
-import {
-  blockAt,
-  isPlainTransfer,
-  pinTransaction,
-  sendCall,
-  viewQuantity,
-  withoutUndefined,
-} from "./decode.js";
+import { blockAt, isPlainTransfer, pinTransaction, sendCall, viewQuantity } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext, EstimateGasCall, SendTransactionCall } from "./types.js";
 

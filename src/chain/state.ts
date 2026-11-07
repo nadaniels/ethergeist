@@ -124,7 +124,7 @@ export function createChainState(parameters: {
      * they replace.
      */
     setFees(fees: MockFees) {
-      const changed = resolveFees({ ...feesAt(blockNumber), ...fees });
+      const changed = resolveFees(fees, feesAt(blockNumber));
       feeChanges = [
         ...feeChanges.filter((change) => change.fromBlock < blockNumber),
         { fromBlock: blockNumber, fees: changed },
