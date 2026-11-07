@@ -225,6 +225,11 @@ describe("getTransaction", () => {
       gasPrice: parseGwei("11"),
     });
     expect(pending).not.toHaveProperty("blockTimestamp");
+    const unplaced = { blockNumber: null, blockHash: null, transactionIndex: null };
+    expect(mock.buildTransaction({ blockNumber: null, blockHash: null })).toMatchObject(unplaced);
+    expect(mock.buildTransaction({ blockNumber: null, transactionIndex: null })).toMatchObject(
+      unplaced,
+    );
     expectThrows(
       MockSetupError,
       "A pending transaction (blockNumber: null) has a null blockHash and transactionIndex.",
@@ -234,10 +239,24 @@ describe("getTransaction", () => {
     );
     expectThrows(
       MockSetupError,
+      "A pending transaction (blockNumber: null) has a null blockHash and transactionIndex.",
+      () =>
+        // @ts-expect-error -- a pending transaction has a null transactionIndex
+        mock.buildTransaction({ blockNumber: null, transactionIndex: 0 }),
+    );
+    expectThrows(
+      MockSetupError,
       "Only a pending transaction has a null blockHash or transactionIndex",
       () =>
         // @ts-expect-error -- only a pending transaction has a null blockHash
         mock.buildTransaction({ blockHash: null }),
+    );
+    expectThrows(
+      MockSetupError,
+      "Only a pending transaction has a null blockHash or transactionIndex",
+      () =>
+        // @ts-expect-error -- only a pending transaction has a null transactionIndex
+        mock.buildTransaction({ transactionIndex: null }),
     );
     expectThrows(
       MockSetupError,

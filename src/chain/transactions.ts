@@ -187,15 +187,14 @@ function assertTransaction(transaction: TransactionFields): MockTransactionType 
     );
   }
   const { blockNumber, blockHash: hash, transactionIndex, blockTimestamp } = transaction;
-  const pendingFields = [hash, transactionIndex].filter((field) => field === null).length;
   if (blockNumber === null) {
-    if (pendingFields < 2 && (hash !== undefined || transactionIndex !== undefined))
+    if ((hash ?? null) !== null || (transactionIndex ?? null) !== null)
       throw new MockSetupError(
         "A pending transaction (blockNumber: null) has a null blockHash and transactionIndex.",
       );
     if (blockTimestamp !== undefined)
       throw new MockSetupError("A pending transaction (blockNumber: null) has no blockTimestamp.");
-  } else if (pendingFields > 0) {
+  } else if (hash === null || transactionIndex === null) {
     throw new MockSetupError(
       "Only a pending transaction has a null blockHash or transactionIndex: set blockNumber: null.",
     );
