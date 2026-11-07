@@ -39,6 +39,7 @@ describe("HTTP status faults", () => {
 
     const error = expectCause(await rejectionOf(decimals()), HttpRequestError);
     expect(error.status).toBe(503);
+    expect(error.url).toBe("mock://ethergeist");
     // One attempt plus viem's 3 retries, without waiting between them.
     expect(mock.history).toHaveLength(4);
     expect(outage.count).toBe(4);

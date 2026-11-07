@@ -195,6 +195,13 @@ export function createTable(
   const actualOf = (pinned: unknown, call: object) =>
     definition.actual === undefined ? call : definition.actual(pinned, call);
 
+  /**
+   * The builder methods that answer, named for a mock registered without
+   * one. Set from a built builder, since only it knows whether the
+   * action's `extendBuilder` added `.reverts()`.
+   */
+  let answers = ".returns() or .fails()";
+
   function register(params: unknown) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
     const handler = mocks.register(pinned, undefined);
@@ -206,6 +213,7 @@ export function createTable(
       return fixed;
     });
     definition.extendBuilder?.(builder);
+    if ("reverts" in builder) answers = ".returns(), .reverts() or .fails()";
     return builder;
   }
 
@@ -215,7 +223,7 @@ export function createTable(
       (handler) =>
         `${describeMock(definition.name, handler)}${
           handler.resolver === undefined
-            ? formatNoAnswer(".returns() or .fails()")
+            ? formatNoAnswer(answers)
             : formatReceived(definition.name, received(handler), calls.total)
         }`,
     );

@@ -172,7 +172,9 @@ export class MockInternalError extends MockError {
     const error = asError(cause);
     super(`The mock failed unexpectedly: ${summaryOf(error)}`, {
       cause: error,
-      metaMessages: ["This is a bug in viem-transport-mock; please report it, with the request."],
+      metaMessages: [
+        "This is a bug in ethergeist; please report it at https://github.com/nadaniels/ethergeist/issues, with the request.",
+      ],
     });
   }
 }

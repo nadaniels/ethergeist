@@ -9,7 +9,7 @@ import { MockRevertError, MockRpcError } from "../shared/errors.js";
  * The URL viem's errors name, since they require one: the mock has no
  * endpoint.
  */
-const url = "mock://viem-transport-mock";
+const url = "mock://ethergeist";
 
 /**
  * A revert as viem's `http` transport reports it from a reth node: an

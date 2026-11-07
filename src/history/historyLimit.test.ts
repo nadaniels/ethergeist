@@ -15,6 +15,7 @@ describe("createRecordLimit()", () => {
 
     expect(limit).toBe(1000);
     expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toMatch(/^ethergeist: dropped the oldest entry/u);
     expect(warnings[0]).toContain("createMockRpc({ historyLimit })");
   });
 

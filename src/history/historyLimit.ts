@@ -32,7 +32,7 @@ export function createRecordLimit(
       if (warned) return;
       warned = true;
       warn(
-        "viem-transport-mock: dropped the oldest entry of a record. Each record (history, " +
+        "ethergeist: dropped the oldest entry of a record. Each record (history, " +
           "calls, unhandled, and each action's and contract function's .calls) " +
           `keeps its last ${defaultHistoryLimit.toLocaleString("en-US")} by default. Pass ` +
           "createMockRpc({ historyLimit }) to choose: how many to keep, or Infinity to keep " +

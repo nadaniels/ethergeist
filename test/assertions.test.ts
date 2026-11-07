@@ -541,6 +541,31 @@ describe("assertAllUsed()", () => {
     expect(message).not.toContain("another mock answered it");
   });
 
+  test("an estimate or send mock without an answer can also be given .reverts()", () => {
+    const { mock } = setup();
+    mock.actions.estimateGas({ to: USDC });
+    mock.actions.sendTransaction({ to: USDC });
+
+    const message = unusedMessage(mock);
+    expect(message).toContain(
+      `  - estimateGas({ to: ${USDC} }) without an answer\n` +
+        "    give it one with .returns(), .reverts() or .fails(), or don't register it",
+    );
+    expect(message).toContain(
+      `  - sendTransaction({ to: ${USDC} }) without an answer\n` +
+        "    give it one with .returns(), .reverts() or .fails(), or don't register it",
+    );
+  });
+
+  test("a raw method mock without an answer can't be given .reverts()", () => {
+    const { mock } = setup();
+    mock.method("eth_getProof");
+
+    expect(unusedMessage(mock)).toContain(
+      "give it one with .returns() or .fails(), or don't register it",
+    );
+  });
+
   test("counts calls inside a multicall", async () => {
     const { mock, client } = setup();
     mock.contract({ abi: erc20Abi, address: USDC }).read.balanceOf([alice]).returns(1n);
