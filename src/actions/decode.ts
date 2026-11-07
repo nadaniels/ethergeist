@@ -21,7 +21,7 @@ import type { ChainState } from "../chain/state.js";
 import type { MockTransactionType } from "../chain/transactions.js";
 import type { Registry } from "../contracts/registry.js";
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject, lowercase, withoutUndefined } from "../shared/values.js";
+import { isPlainObject, leftOut, lowercase, withoutUndefined } from "../shared/values.js";
 import type { AddressAtBlockCall, SendTransactionCall } from "./types.js";
 
 /**
@@ -172,9 +172,15 @@ export const registeredAt = (state: ChainState) => (value: unknown) =>
 
 /**
  * An answer and the block a static one was registered in; `undefined` for a
- * resolver's, which is made at the request.
+ * resolver's, which is made at the request. A static one's `undefined`
+ * fields are left out here, since the table passes the wrapper through.
  */
 export const unwrapRegistered = (
   answer: unknown,
 ): { value: unknown; blockNumber: bigint | undefined } =>
-  answer instanceof Registered ? answer : { value: answer, blockNumber: undefined };
+  answer instanceof Registered
+    ? {
+        value: leftOut(answer.value),
+        blockNumber: answer.blockNumber,
+      }
+    : { value: answer, blockNumber: undefined };

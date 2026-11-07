@@ -6,7 +6,7 @@ import type { Builder } from "../mocking/handlers.js";
 import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockRevertError, MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isPlainObject, withoutUndefined } from "../shared/values.js";
 
 /**
  * What the chain did with a send, as a send mock answers it. The rest of its
@@ -134,7 +134,7 @@ export function encodeWriteOutcome(
       { metaMessages: ["Pass a log from contract.events."] },
     );
   return {
-    ...value,
+    ...withoutUndefined(value),
     ...(typeof contractAddress === "string" && { contractAddress: getAddress(contractAddress) }),
   };
 }

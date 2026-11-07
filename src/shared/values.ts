@@ -29,3 +29,13 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
  */
 export const withoutUndefined = (fields: object) =>
   Object.fromEntries(Object.entries(fields).filter(([, each]) => each !== undefined));
+
+/**
+ * `value` with its `undefined` fields left out when it's an object literal;
+ * anything else, e.g. a class instance or an array, is as given. A copy, so
+ * a caller that holds an answer as given strips it each time it reads it.
+ */
+export const leftOut = (value: unknown): unknown =>
+  typeof value === "object" && value !== null && Object.getPrototypeOf(value) === Object.prototype
+    ? withoutUndefined(value)
+    : value;

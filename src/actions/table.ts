@@ -25,6 +25,7 @@ import { zeroResult } from "../mocking/zeroResult.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, createRecordList } from "../shared/records.js";
+import { leftOut } from "../shared/values.js";
 import type { TransactionStore } from "../transactions/store.js";
 import type { ActionCalls, ActionContext } from "./types.js";
 
@@ -270,7 +271,7 @@ export function createTable(
   /** A value in viem's types as JSON-RPC; `zeroResult` is the action's zero. */
   function encode(value: unknown, call: object | undefined) {
     assertNoMatchers(value);
-    return definition.encode(value === zeroResult ? definition.zero : value, call);
+    return definition.encode(leftOut(value === zeroResult ? definition.zero : value), call);
   }
 
   /**

@@ -9,6 +9,7 @@ import {
 } from "./chain/transactions.js";
 import { type LogPlacement, type MockEventLog, buildLog } from "./logs/events.js";
 import { refuseUnencodable } from "./shared/errors.js";
+import { withoutUndefined } from "./shared/values.js";
 import type { TransactionStore } from "./transactions/store.js";
 
 /**
@@ -34,7 +35,11 @@ export function createBuilders(
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- formatTransaction of the transaction's own type
       formatTransaction(
         refuseUnencodable("buildTransaction()", () =>
-          encodeTransaction(state, transaction ?? {}, transaction?.hash ?? zeroHash),
+          encodeTransaction(
+            state,
+            withoutUndefined(transaction ?? {}),
+            transaction?.hash ?? zeroHash,
+          ),
         ),
       ) as BuiltTransaction<transaction>,
     /**
@@ -44,7 +49,7 @@ export function createBuilders(
      */
     buildReceipt: (receipt: MockReceipt = {}) =>
       refuseUnencodable("buildReceipt()", () =>
-        placedReceipt(receipt, {
+        placedReceipt(withoutUndefined(receipt), {
           hash: receipt.transactionHash ?? zeroHash,
           blockNumber: state.blockNumber,
           timestampAt: state.timestampAt,
