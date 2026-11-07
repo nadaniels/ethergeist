@@ -738,6 +738,28 @@ describe("receipt and transaction mocks over the chain", () => {
     ]);
   });
 
+  test("a receipt with logs over a reverted transaction is refused at .returns()", () => {
+    const { mock } = setup();
+    mock.addTransaction({ hash, status: "reverted" });
+
+    const error = expectThrows(MockSetupError, "A reverted transaction has no logs.", () => {
+      mock.actions.getTransactionReceipt({ hash }).returns({ logs: [log] });
+    });
+    expect(error.metaMessages).toEqual([
+      `Transaction ${hash} on the chain reverted: answer this receipt without logs, or with ` +
+        '{ status: "success" }.',
+    ]);
+  });
+
+  test("a receipt over a transaction on the chain refuses a log that's already placed", () => {
+    const { mock } = setup();
+    mock.addTransaction({ hash });
+
+    expect(() => {
+      mock.actions.getTransactionReceipt({ hash }).returns({ logs: [mock.buildLog(log)] });
+    }).toThrow(MockSetupError);
+  });
+
   test("a reverted receipt with logs: [] over a transaction with logs answers without them", async () => {
     const { mock, client } = setup();
     mock.addTransaction({ hash, from: alice, logs: [log] });

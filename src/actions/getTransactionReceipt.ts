@@ -100,10 +100,13 @@ export const getTransactionReceipt = ({
       );
     const { logs, ...fields } = value;
     if (logs !== undefined) checkContentLogs(logs);
-    refuseRevertedLogs(fields.status, logs ?? record.logs, [
-      `Transaction ${record.hash} on the chain has ${record.logs.length} log(s): answer this ` +
-        'receipt without them, { status: "reverted", logs: [] }, or add it reverted, ' +
-        'mock.addTransaction({ …, status: "reverted" }), so every method agrees.',
+    refuseRevertedLogs(fields.status ?? record.receipt.status, logs ?? record.logs, [
+      fields.status === undefined
+        ? `Transaction ${record.hash} on the chain reverted: answer this receipt without logs, ` +
+          'or with { status: "success" }.'
+        : `Transaction ${record.hash} on the chain has ${record.logs.length} log(s): answer this ` +
+          'receipt without them, { status: "reverted", logs: [] }, or add it reverted, ' +
+          'mock.addTransaction({ …, status: "reverted" }), so every method agrees.',
     ]);
     return transactions.receiptFor(record.hash, fields, logs)!;
   },
