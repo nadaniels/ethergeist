@@ -54,12 +54,15 @@ export type AddTransactionParameters = {
   gasUsed?: bigint;
   /**
    * The block to place it in, after the transactions already there,
-   * without mining: an earlier block for history, the current one to share
-   * a block, or a later one, where it waits until that block is mined. A
-   * watcher that has already polled the block misses it, as it misses
-   * anything added to a block it has read. Defaults to a newly mined block,
-   * which moves the clock on: watchers and a waiting
-   * `waitForTransactionReceipt({ confirmations })` see it.
+   * without mining. Defaults to a newly mined block, which moves the clock
+   * on: watchers and a waiting `waitForTransactionReceipt({ confirmations })`
+   * see it.
+   * - A later block: it waits until that block is mined, as with Anvil's
+   *   automine off.
+   * - The current block or an earlier one: it joins a block that's already
+   *   mined, which no node can do. Use it for history, or for a test that
+   *   pins a block. A watcher that has already polled the block misses it,
+   *   as it misses anything added to a block it has read.
    */
   blockNumber?: bigint;
   /**

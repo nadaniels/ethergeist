@@ -173,9 +173,12 @@ export type MockRpc = {
    */
   buildLog(log: MockEventLog, placement?: LogPlacement): Log<bigint, number, false>;
   /**
-   * Places a transaction the app didn't send, in a newly mined block unless
-   * `blockNumber` names one, and returns its record, as `mock.transactions`
-   * lists it. Its fields are a send's, all optional: see
+   * Places a transaction the app didn't send, and returns its record, as
+   * `mock.transactions` lists it. Like a send, and like Anvil with automine
+   * on, it mines a new block for it, so the head and the clock move on;
+   * `blockNumber` places it in a given block instead (`mock.blockNumber` for
+   * the current one). Read the block from the record rather than pinning
+   * it. Its fields are a send's, all optional: see
    * `AddTransactionParameters`. Its receipt, transaction and block answer
    * from it, unless a mock for its hash answers first. For one event,
    * `contract.emit.X(args)` is shorter.
