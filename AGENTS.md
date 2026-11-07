@@ -40,7 +40,7 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 - Run `vp run smoke` when a change touches the public types, `exports`, `package.json` or the build. CI runs it on every push; it takes about 30 s and needs the network.
 - `vp run knip` runs [Knip](https://knip.dev) twice: the default mode (all code, tests included), then `--production --strict` (only what ships: `src/` minus colocated tests, with dependencies checked against what ships). Config is in `knip.json`.
 - Fix findings rather than configure around them: remove an `export` nothing outside its file uses, delete an unused file, add or remove the dependency. A file that a tool or a person runs directly is an `entry` in `knip.json`.
-- `vp run mutate` runs [Stryker](https://stryker-mutator.io) mutation testing (config in `stryker.config.mjs`; reports in `reports/mutation/`). It's slow, so it isn't part of the checks: run it before an engine or matching change, on the files the change touches (`vp run mutate --mutate "src/contracts/**/*.ts"`). Close the gaps it finds with tests of behavior the change keeps, through the public API in `test/` where possible, so they outlive the refactor; skip survivors in code the change removes, and in error wording and answer fields viem doesn't read (see "Fidelity").
+- `vp run mutate` runs [Stryker](https://stryker-mutator.io) mutation testing (config in `stryker.config.mjs`; reports in `reports/mutation/`). It's slow, so it isn't part of the checks: run it before an engine or matching change, on the files the change touches (`vp run mutate --mutate "src/contracts/**/*.ts"`). Close the gaps it finds with tests of behavior the change keeps, through the public API in `test/` where possible, so they outlive the refactor; skip survivors in code the change removes, in error wording and display formatting (history lines, thresholds like where hex is shortened), and in answer fields viem doesn't read (see "Fidelity").
 - An export only a unit test needs gets `@internal` in its doc comment, which production mode skips. Don't export a value just so a test can read it back: a test should pin documented values as literals, or it can't catch them changing.
 
 ## Addresses
@@ -72,6 +72,7 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 ## Bugs
 
 - Fix bugs red/green: first write a test that reproduces the bug and watch it fail for the reason reported, then fix the code and watch it pass. A bug that's only in a doc comment gets a test that pins the real behavior, where practical.
+- Fix bugs real use plausibly hits: what viem, ethers or an app sends, or what a test author would write (casts of fixtures and partial objects included, since tests cast often). A failure only contrived input reaches (a hand-built cyclic object, a request no client sends, a matcher where nobody would put one) isn't worth new machinery: leave it, or take it only if the fix removes code or is a one-line swap. Before fixing, say how real use reaches it.
 
 ## Independent review
 
@@ -85,12 +86,12 @@ Any change beyond a trivial one (anything that changes behavior, types, matching
    - **code quality:** naming, comments, consistency, missing tests;
    - **the smallest change:** whether the same full feature could be done with less code overall: a few lines in an existing place instead of a new module, a helper, an option or a layer. Count the code that exists after the change, not the size of the diff: a different seam or a small architecture shift that leaves less machinery behind is worth naming, even if it means more churn now. Ask for each piece that could shrink or go, and what it would cost. This is about less machinery, not fewer lines: never condense code so it reads worse.
 
-   Ask for findings ranked most important first, each marked bug, design or nit, with a concrete failing scenario.
+   Ask for findings ranked most important first, each marked bug, design or nit, with a concrete failing scenario. A bug's scenario is one real use plausibly hits (see "Bugs"); ask the reviewer to say how real use reaches it, and to mark a failure that needs contrived input as a nit, not a bug.
 
 4. **Verify before acting:** check each finding against the code yourself, and reproduce bugs red/green. Judge each one on its merits: decline any that don't hold up, and say why. A reviewer that's asked to find problems will always find something. An architecture shift is never taken as a cheap fix: bring it to the owner with what it saves and what it churns.
 5. **Fix, then send it back to the same reviewer** with what changed and where the risk is (new call sites, changed signatures). A re-review covers only the fixes and what they touch; it isn't a fresh review of everything.
 6. **When to stop:**
-   - **Stop when a pass finds no bugs.** A bug is something wrong, with a concrete failing scenario. Design suggestions and nits don't keep the loop going: take them if they're clearly better and cheap, otherwise list them as declined or deferred.
+   - **Stop when a pass finds no bugs.** A bug is something wrong, with a concrete failing scenario that real use plausibly hits. Design suggestions and nits don't keep the loop going: take them if they're clearly better and cheap, otherwise list them as declined or deferred.
    - **At most three rounds.** If a third round still finds bugs, stop and bring them to the owner instead of continuing.
    - **If a round contradicts an earlier one,** or a fix undoes an earlier fix, stop and bring both to the owner. Going back and forth makes the code worse, not better. A fix that introduces a new bug is different: fix it in the next round, within the three.
 7. **Report** what each round found and what was done about it, including findings that were declined and why.
