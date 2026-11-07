@@ -850,7 +850,8 @@ features land; tick them off as pages get written.
       A message is its short message, then hint lines (`metaMessages`, which
       viem's errors carry too); `details` is always empty, so viem never
       mistakes a hint for a node error. Assert with `toThrow(MockSetupError)`
-      plus the message, not the native `TypeError` / `RangeError`.
+      (or its `code`), not the message text: messages are for reading,
+      and their wording can improve in any release.
 - [ ] Failed checks' stacks start at the caller (the test or hook), not in
       the mock, so the runner's code frame points at the test.
 - [ ] Addresses in messages are always checksummed. Address args are
