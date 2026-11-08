@@ -746,8 +746,8 @@ describe("receipt and transaction mocks over the chain", () => {
       mock.actions.getTransactionReceipt({ hash }).returns({ logs: [log] });
     });
     expect(error.metaMessages).toEqual([
-      `Transaction ${hash} on the chain reverted: answer this receipt without logs, or with ` +
-        '{ status: "success" }.',
+      `Transaction ${hash} on the chain reverted: answer this receipt without logs, or add it ` +
+        'with them and without status: "reverted", so every method agrees.',
     ]);
   });
 
