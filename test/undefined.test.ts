@@ -125,6 +125,13 @@ describe("an explicit undefined in a mock's fields is the field left out", () =>
     );
   });
 
+  test("a field left out can't be unknown", () => {
+    const { mock } = setup();
+
+    // @ts-expect-error -- not a field of a transaction
+    expect(() => mock.addTransaction({ gass: unset })).not.toThrow();
+  });
+
   test("a defaults entry left out registers no mock, and isn't refused", async () => {
     const { mock, client } = setup();
     mock.contract({

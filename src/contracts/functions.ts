@@ -184,7 +184,7 @@ export type Pins = { readonly from?: unknown; readonly value?: unknown };
  */
 export function pinCall(abiItem: AbiFunction, pins: unknown): Pins | undefined {
   if (pins === undefined) return undefined;
-  if (!isPlainObject(pins))
+  if (!isPlainObject(pins) || isMatcher(pins))
     throw new MockSetupError(`A mock pins from and value as an object; got ${formatValue(pins)}.`);
   const { from, value, ...rest } = pins;
   const [other] = Object.keys(rest);

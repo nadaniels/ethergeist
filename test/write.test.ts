@@ -896,7 +896,7 @@ describe("registration refusals", () => {
     const { usdc } = setup();
     const write = usdc.write.transfer();
 
-    expectThrows(MockSetupError, "A send's outcome has no transactionHash.", () => {
+    expectThrows(MockSetupError, "transactionHash isn't a field of a send's outcome.", () => {
       // @ts-expect-error -- a send's outcome has no transactionHash: it comes from where it's mined
       write.returns({ transactionHash: "0x12" });
     });
@@ -913,7 +913,7 @@ describe("registration refusals", () => {
     expectThrows(InvalidAddressError, /Address "0x12" is invalid/u, () => {
       write.emits([{ address: "0x12", topics: [], data: "0x" }]);
     });
-    expectThrows(MockSetupError, "A send's outcome must be an object; got true.", () => {
+    expectThrows(MockSetupError, "Expected an object for a send's outcome; got true.", () => {
       // @ts-expect-error -- a `write` mock answers an outcome, not a return value
       write.returns(true);
     });
@@ -977,7 +977,7 @@ describe("registration refusals", () => {
     {
       name: "a value that isn't an outcome, after emit()",
       outcome: true,
-      message: "A send's outcome must be an object; got true.",
+      message: "Expected an object for a send's outcome; got true.",
     },
   ])("a resolver's outcome with $name is refused at the send", async ({ outcome, message }) => {
     const { mock, usdc, transfer } = setup();

@@ -1,11 +1,8 @@
 import type { Abi, AbiFunction, Address } from "viem";
 
 import { contractEvents, encodeEventLog } from "../logs/events.js";
-import { formatValue } from "../mocking/format.js";
 import { withCalls } from "../mocking/handlers.js";
-import { checkAmount } from "../mocking/setupChecks.js";
-import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { checkAmount, checkFields } from "../mocking/setupChecks.js";
 import {
   type AddTransactionParameters,
   transactionHashHint,
@@ -109,19 +106,15 @@ export function createContractApi<const abi extends Abi>({
         (args?: unknown, options: unknown = {}) => {
           assertAttached();
           const log = encodeEventLog(abi, address, eventName, args);
-          if (!isPlainObject(options))
-            throw new MockSetupError(
-              `contract.emit takes its options as an object; got ${formatValue(options)}.`,
-              { metaMessages: [emitOptionsHint] },
-            );
-          const unknown = Object.keys(options).find((key) => !emitOptionNames.has(key));
-          if (unknown !== undefined)
-            throw new MockSetupError(`contract.emit has no option ${unknown}.`, {
-              metaMessages: [unknown === "transactionHash" ? transactionHashHint : emitOptionsHint],
-            });
-          if (options.blockNumber !== undefined)
-            checkAmount(options.blockNumber, "contract.emit's blockNumber");
-          return addTransaction({ ...options, logs: [log] }).logs[0];
+          const checked = checkFields(
+            options,
+            "contract.emit's options",
+            emitOptionNames,
+            (field) => (field === "transactionHash" ? transactionHashHint : emitOptionsHint),
+          );
+          if (checked.blockNumber !== undefined)
+            checkAmount(checked.blockNumber, "contract.emit's blockNumber");
+          return addTransaction({ ...checked, logs: [log] }).logs[0];
         },
       ]),
     ),

@@ -1,7 +1,6 @@
 import { type FeeHistory, numberToHex, parseGwei } from "viem";
 
-import { checkAmount } from "../mocking/setupChecks.js";
-import { withoutUndefined } from "../shared/values.js";
+import { checkAmount, checkFields } from "../mocking/setupChecks.js";
 
 /**
  * The fees generated blocks and fee requests answer with, as
@@ -23,14 +22,22 @@ export type Fees = Required<MockFees>;
 
 const defaults: Fees = { baseFeePerGas: parseGwei("10"), maxPriorityFeePerGas: parseGwei("1") };
 
+const feeFields = new Set(["baseFeePerGas", "maxPriorityFeePerGas"]);
+
 /**
- * `fees` over `base`, checked: each is a non-negative bigint, its subject in
- * the message `place` followed by its name. A fee left out, or `undefined`,
- * keeps `base`'s.
+ * `fees` over `base`, checked: only fees, each a non-negative bigint, `what`
+ * their subject in the message ("mock.setFees()'s fees"). A fee left out, or
+ * `undefined`, keeps `base`'s.
  */
-export function resolveFees(fees: MockFees = {}, place: string, base: Fees = defaults): Fees {
-  const resolved = { ...base, ...withoutUndefined(fees) };
-  for (const [name, value] of Object.entries(resolved)) checkAmount(value, `${place}${name}`);
+export function resolveFees(fees: MockFees = {}, what: string, base: Fees = defaults): Fees {
+  const given = checkFields(
+    fees,
+    what,
+    feeFields,
+    () => "Its fields are baseFeePerGas and maxPriorityFeePerGas.",
+  );
+  const resolved = { ...base, ...given };
+  for (const [name, value] of Object.entries(resolved)) checkAmount(value, `${what}.${name}`);
   return resolved;
 }
 

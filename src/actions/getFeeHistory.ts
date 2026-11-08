@@ -2,6 +2,7 @@ import { hexToBigInt, isHex } from "viem";
 
 import { feeHistory, toRpcFeeHistory } from "../chain/fees.js";
 import { type ResolveBlock, numberParam } from "../chain/params.js";
+import { checkFields } from "../mocking/setupChecks.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { blockAt } from "./decode.js";
@@ -15,21 +16,25 @@ const isList = (value: unknown, type: string) =>
  * Throws unless `history`'s fields are a fee history's, in viem's types:
  * bigints, and numbers for ratios.
  */
-function assertFeeHistory(history: Record<string, unknown>) {
-  const kinds: Record<string, "bigints" | "numbers" | "bigint" | "rewards"> = {
-    baseFeePerGas: "bigints",
-    baseFeePerBlobGas: "bigints",
-    gasUsedRatio: "numbers",
-    blobGasUsedRatio: "numbers",
-    oldestBlock: "bigint",
-    reward: "rewards",
-  };
+const kinds = new Map<string, "bigints" | "numbers" | "bigint" | "rewards">([
+  ["baseFeePerGas", "bigints"],
+  ["baseFeePerBlobGas", "bigints"],
+  ["gasUsedRatio", "numbers"],
+  ["blobGasUsedRatio", "numbers"],
+  ["oldestBlock", "bigint"],
+  ["reward", "rewards"],
+]);
+const kindFields = new Set(kinds.keys());
+
+function checkFeeHistory(given: unknown) {
+  const history = checkFields(
+    given,
+    "getFeeHistory's answer",
+    kindFields,
+    () => `Its fields: ${[...kindFields].join(", ")}.`,
+  );
   for (const [field, value] of Object.entries(history)) {
-    const kind = kinds[field];
-    if (kind === undefined)
-      throw new MockSetupError(`A fee history has no field "${field}".`, {
-        metaMessages: [`Its fields: ${Object.keys(kinds).join(", ")}.`],
-      });
+    const kind = kinds.get(field)!;
     const valid =
       kind === "bigint"
         ? typeof value === "bigint"
@@ -43,9 +48,10 @@ function assertFeeHistory(history: Record<string, unknown>) {
         bigint: "a bigint",
         rewards: "lists of bigints, one per block",
       }[kind];
-      throw new MockSetupError(`A fee history's ${field} must be ${expected}.`);
+      throw new MockSetupError(`${field} in getFeeHistory's answer must be ${expected}.`);
     }
   }
+  return history;
 }
 
 /** JSON-RPC quantities as bigints, leaving anything else as is. */
@@ -104,11 +110,9 @@ export const getFeeHistory = ({ state }: ActionsContext): Definition<FeeHistoryC
     decode: (params) => decodeFeeHistory(params, state.resolveBlock),
     zero: {},
     encode(value, call) {
-      if (!isPlainObject(value))
-        throw new MockSetupError(`A fee history must be an object; got ${typeof value}.`);
-      assertFeeHistory(value);
+      const history = checkFeeHistory(value);
       const derived = call === undefined ? {} : feeHistoryOf(call);
-      return toRpcFeeHistory({ ...derived, ...value });
+      return toRpcFeeHistory({ ...derived, ...history });
     },
     view: viewFeeHistory,
     fallback(call) {

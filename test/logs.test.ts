@@ -181,12 +181,12 @@ describe("emit", () => {
 
     expectThrows(
       MockSetupError,
-      "contract.emit has no option mine.\n\n" +
+      "mine isn't a field of contract.emit's options.\n\n" +
         "Its options are blockNumber and hash; without blockNumber, it mines a new block.",
       // @ts-expect-error -- emit takes no `mine`: a plain emit mines
       () => usdc.emit.Transfer({ from: alice, to: bob }, { mine: true }),
     );
-    expectThrows(MockSetupError, "contract.emit has no option transactionIndex.", () =>
+    expectThrows(MockSetupError, "transactionIndex isn't a field of contract.emit's options.", () =>
       // @ts-expect-error -- emit takes no `transactionIndex`: a block's transactions have no holes
       usdc.emit.Transfer({ from: alice, to: bob }, { transactionIndex: 3 }),
     );
@@ -198,7 +198,7 @@ describe("emit", () => {
 
     expectThrows(
       MockSetupError,
-      "contract.emit has no option transactionHash.\n\n" +
+      "transactionHash isn't a field of contract.emit's options.\n\n" +
         "The transaction's hash is hash, as on a transaction; transactionHash is a log's.",
       // @ts-expect-error -- emit takes no `transactionHash`: a transaction's hash is `hash`
       () => usdc.emit.Transfer({ from: alice, to: bob }, { transactionHash: testHash("x") }),
@@ -216,7 +216,7 @@ describe("emit", () => {
     ] as const)
       expectThrows(
         MockSetupError,
-        `contract.emit takes its options as an object; got ${got}.\n\n` +
+        `Expected an object for contract.emit's options; got ${got}.\n\n` +
           "Its options are blockNumber and hash; without blockNumber, it mines a new block.",
         // @ts-expect-error -- not options
         () => usdc.emit.Transfer({ from: alice, to: bob }, options),

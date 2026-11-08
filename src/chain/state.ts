@@ -61,7 +61,7 @@ export function createChainState(parameters: {
     startTimestamp,
     blockTime: blockTimeOf(chain),
   };
-  const initialFees = resolveFees(parameters.fees, "createMockRpc()'s fees.");
+  const initialFees = resolveFees(parameters.fees, "createMockRpc()'s fees");
   /** `setFees()` changes, oldest first; each applies from its block on. */
   let feeChanges: readonly { fromBlock: bigint; fees: Fees }[] = [];
   const feesAt = (number: bigint) =>
@@ -117,7 +117,7 @@ export function createChainState(parameters: {
      * they replace.
      */
     setFees(fees: MockFees) {
-      const changed = resolveFees(fees, "mock.setFees()'s ", feesAt(blockNumber));
+      const changed = resolveFees(fees, "mock.setFees()'s fees", feesAt(blockNumber));
       feeChanges = [
         ...feeChanges.filter((change) => change.fromBlock < blockNumber),
         { fromBlock: blockNumber, fees: changed },

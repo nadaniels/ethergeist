@@ -15,6 +15,7 @@ import {
   createMockRpc,
   testAddress,
   testHash,
+  match,
   testLog,
 } from "../src/index.js";
 import { expectCause, expectThrows, lowercase, rejectionOf } from "./utils.js";
@@ -450,15 +451,20 @@ describe("mock.addTransaction", () => {
     [
       "transactionHash",
       { transactionHash: hash },
-      "mock.addTransaction() has no field transactionHash.",
+      "transactionHash isn't a field of mock.addTransaction()'s transaction.",
       "The transaction's hash is hash, as on a transaction; transactionHash is a log's.",
     ],
     [
       "an unknown field",
       { gas: 1n },
-      "mock.addTransaction() has no field gas.",
+      "gas isn't a field of mock.addTransaction()'s transaction.",
       "Its fields are from, to, value, data, nonce, logs, status, gasUsed, blockNumber and hash; " +
         "without blockNumber, it mines a new block.",
+    ],
+    [
+      "a matcher in a field",
+      { status: match.any() },
+      "match.any() can't go in mock.addTransaction()'s transaction; matchers only go in args and params.",
     ],
     ["a deploy", { to: null }, "mock.addTransaction() doesn't deploy: to can't be null."],
     [
@@ -545,13 +551,18 @@ describe("mock.addTransaction", () => {
   test("refuses what isn't an object of fields, such as a log on its own", () => {
     const { mock } = setup();
 
-    expectThrows(MockSetupError, "mock.addTransaction() takes an object of fields; got [", () =>
-      // @ts-expect-error -- a transaction is an object of fields, not a list of logs
-      mock.addTransaction([testLog("noise")]),
+    expectThrows(
+      MockSetupError,
+      "Expected an object for mock.addTransaction()'s transaction; got [",
+      () =>
+        // @ts-expect-error -- a transaction is an object of fields, not a list of logs
+        mock.addTransaction([testLog("noise")]),
     );
     // A log alone shares data with a transaction, so the types let it through.
-    const error = expectThrows(MockSetupError, "mock.addTransaction() has no field address.", () =>
-      mock.addTransaction(testLog("noise")),
+    const error = expectThrows(
+      MockSetupError,
+      "address isn't a field of mock.addTransaction()'s transaction.",
+      () => mock.addTransaction(testLog("noise")),
     );
     expect(error.metaMessages).toEqual([
       "A log goes in logs: mock.addTransaction({ logs: [log] }).",

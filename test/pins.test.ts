@@ -333,6 +333,11 @@ describe("pins at registration", () => {
       pins({ from: expect.any(String) }),
     );
     expectThrows(MockSetupError, /^A mock pins from and value as an object; got 5/u, pins(5));
+    expectThrows(
+      MockSetupError,
+      /^A mock pins from and value as an object; got any/u,
+      pins(match.any()),
+    );
     expect(usdc.read.balanceOf.calls).toEqual([]);
   });
 

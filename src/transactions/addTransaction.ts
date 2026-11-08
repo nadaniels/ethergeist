@@ -3,9 +3,8 @@ import { type Address, type Hash, type Hex, getAddress, isHex } from "viem";
 import { nodeHash } from "../chain/hashes.js";
 import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
-import { checkAmount, checkCount } from "../mocking/setupChecks.js";
+import { checkAmount, checkCount, checkFields } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
 import { refuseRevertedLogs } from "./writeOutcome.js";
 
 /**
@@ -99,23 +98,18 @@ const fieldsHint =
  * addresses checksummed, `data` as `input`, and the outcome as its receipt.
  * Placement is the store's: `hash` goes on the record, `blockNumber` to `add`.
  */
-export function checkAddTransaction(fields: AddTransactionParameters) {
-  if (!isPlainObject(fields))
-    throw new MockSetupError(
-      `mock.addTransaction() takes an object of fields; got ${formatValue(fields)}.`,
-      { metaMessages: [fieldsHint] },
-    );
-  const unknown = Object.keys(fields).find((key) => !addTransactionFields.has(key));
-  if (unknown !== undefined)
-    throw new MockSetupError(`mock.addTransaction() has no field ${unknown}.`, {
-      metaMessages: [
-        unknown === "transactionHash"
-          ? transactionHashHint
-          : unknown === "address" || unknown === "topics"
-            ? "A log goes in logs: mock.addTransaction({ logs: [log] })."
-            : fieldsHint,
-      ],
-    });
+export function checkAddTransaction(given: AddTransactionParameters) {
+  const fields = checkFields(
+    given,
+    "mock.addTransaction()'s transaction",
+    addTransactionFields,
+    (field) =>
+      field === "transactionHash"
+        ? transactionHashHint
+        : field === "address" || field === "topics"
+          ? "A log goes in logs: mock.addTransaction({ logs: [log] })."
+          : fieldsHint,
+  );
   const { value, data, nonce, logs = [], status, gasUsed, blockNumber, hash } = fields;
   if (fields.to === null)
     throw new MockSetupError("mock.addTransaction() doesn't deploy: to can't be null.");

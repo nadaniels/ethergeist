@@ -493,13 +493,16 @@ describe("mock.buildLog()", () => {
     const { mock, usdc } = setup();
     const content = usdc.events.Transfer({ from: alice, to: bob });
 
-    expectThrows(MockSetupError, "mock.buildLog() takes its placement as an object; got 7n.", () =>
-      // @ts-expect-error -- a placement, not a block number
-      mock.buildLog(content, 7n),
+    expectThrows(
+      MockSetupError,
+      "Expected an object for mock.buildLog()'s placement; got 7n.",
+      () =>
+        // @ts-expect-error -- a placement, not a block number
+        mock.buildLog(content, 7n),
     );
     const hash = expectThrows(
       MockSetupError,
-      "mock.buildLog()'s placement has no field hash.",
+      "hash isn't a field of mock.buildLog()'s placement.",
       () =>
         // @ts-expect-error -- a log's transaction is `transactionHash`
         mock.buildLog(content, { hash: testHash("transfer") }),
@@ -509,7 +512,7 @@ describe("mock.buildLog()", () => {
     ]);
     const mine = expectThrows(
       MockSetupError,
-      "mock.buildLog()'s placement has no field mine.",
+      "mine isn't a field of mock.buildLog()'s placement.",
       () =>
         // @ts-expect-error -- not a placement field
         mock.buildLog(content, { mine: true }),

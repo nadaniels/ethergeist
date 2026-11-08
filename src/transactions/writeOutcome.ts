@@ -3,11 +3,11 @@ import { type Address, getAddress } from "viem";
 import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import type { Builder } from "../mocking/handlers.js";
-import { checkAmount } from "../mocking/setupChecks.js";
+import { checkAmount, checkFields } from "../mocking/setupChecks.js";
 import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockRevertError, MockSetupError } from "../shared/errors.js";
-import { isPlainObject, withoutUndefined } from "../shared/values.js";
+import { isPlainObject } from "../shared/values.js";
 
 /**
  * What the chain did with a send, as a send mock answers it. The rest of its
@@ -101,16 +101,8 @@ export function encodeWriteOutcome(
   isDeploy: boolean | undefined,
 ): MockWriteOutcome {
   if (value === undefined || value === zeroResult) return {};
-  if (!isPlainObject(value))
-    throw new MockSetupError(`A send's outcome must be an object; got ${formatValue(value)}.`, {
-      metaMessages: [fieldsHint],
-    });
-  const unknown = Object.keys(value).find((key) => !outcomeFields.has(key));
-  if (unknown !== undefined)
-    throw new MockSetupError(`A send's outcome has no ${unknown}.`, {
-      metaMessages: [fieldsHint],
-    });
-  const { logs = [], status, gasUsed, effectiveGasPrice, contractAddress } = value;
+  const outcome = checkFields(value, "a send's outcome", outcomeFields, () => fieldsHint);
+  const { logs = [], status, gasUsed, effectiveGasPrice, contractAddress } = outcome;
   checkLogs(logs, "A send's");
   if (status !== undefined && status !== "success" && status !== "reverted")
     throw new MockSetupError(
@@ -132,7 +124,7 @@ export function encodeWriteOutcome(
       { metaMessages: ["Pass a log from contract.events."] },
     );
   return {
-    ...withoutUndefined(value),
+    ...outcome,
     ...(typeof contractAddress === "string" && { contractAddress: getAddress(contractAddress) }),
   };
 }

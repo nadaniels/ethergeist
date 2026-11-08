@@ -212,11 +212,11 @@ describe("getFeeHistory", () => {
   test("a mock's fields must have viem's types", () => {
     const { mock } = setup();
 
-    expectThrows(MockSetupError, "A fee history's baseFeePerGas must be bigints.", () => {
+    expectThrows(MockSetupError, "baseFeePerGas in getFeeHistory's answer must be bigints.", () => {
       // @ts-expect-error -- base fees are bigints
       mock.actions.getFeeHistory().returns({ baseFeePerGas: ["0x1"] });
     });
-    expectThrows(MockSetupError, 'A fee history has no field "baseFee".', () => {
+    expectThrows(MockSetupError, "baseFee isn't a field of getFeeHistory's answer.", () => {
       // @ts-expect-error -- a fee history has no `baseFee`
       mock.actions.getFeeHistory().returns({ baseFee: [1n] });
     });
@@ -318,12 +318,25 @@ describe("setFees()", () => {
     expect(await client.getGasPrice()).toBe(parseGwei("11"));
   });
 
+  test("setFees() and createMockRpc({ fees }) refuse a field that isn't a fee", () => {
+    const { mock } = setup();
+
+    expectThrows(MockSetupError, "baseFee isn't a field of mock.setFees()'s fees.", () => {
+      // @ts-expect-error -- a typo of baseFeePerGas
+      mock.setFees({ baseFee: 1n });
+    });
+    expectThrows(MockSetupError, "baseFee isn't a field of createMockRpc()'s fees.", () =>
+      // @ts-expect-error -- a typo of baseFeePerGas
+      createMockRpc({ fees: { baseFee: 1n } }),
+    );
+  });
+
   test("setFees() rejects invalid fees, as in createMockRpc({ fees })", () => {
     const { mock } = setup();
 
     expectThrows(
       MockSetupError,
-      "mock.setFees()'s baseFeePerGas must be a non-negative bigint; got -1n.",
+      "mock.setFees()'s fees.baseFeePerGas must be a non-negative bigint; got -1n.",
       () => {
         mock.setFees({ baseFeePerGas: -1n });
       },

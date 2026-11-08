@@ -531,7 +531,7 @@ describe("send mocks", () => {
       // @ts-expect-error -- a send's outcome has no blockNumber: it comes from where it's mined
       send.returns({ blockNumber: 3n });
     }).toThrow(
-      new MockSetupError("A send's outcome has no blockNumber.", {
+      new MockSetupError("blockNumber isn't a field of a send's outcome.", {
         metaMessages: [
           "Its fields are logs, status, gasUsed, effectiveGasPrice and contractAddress; the rest " +
             "of its receipt comes from the transaction and the block it's mined in.",
@@ -568,7 +568,7 @@ describe("send mocks", () => {
         send.emits([mock.buildLog(testLog("noise"))]);
       },
     );
-    expectThrows(MockSetupError, "A send's outcome must be an object; got true.", () => {
+    expectThrows(MockSetupError, "Expected an object for a send's outcome; got true.", () => {
       // @ts-expect-error -- an outcome, not an ABI value
       send.returns(true);
     });
