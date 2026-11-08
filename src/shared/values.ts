@@ -32,8 +32,10 @@ export const withoutUndefined = (fields: object) =>
 
 /**
  * `value` with its `undefined` fields left out when it's an object literal;
- * anything else, e.g. a class instance or an array, is as given. A copy, so
- * a caller that holds an answer as given strips it each time it reads it.
+ * anything else is as given. Only literals, so the action table passes
+ * `fixAtRegistration`'s `Registered` wrapper through for `unwrapRegistered`
+ * to strip. It returns a copy, so an answer held as given is stripped on
+ * each read.
  */
 export const leftOut = (value: unknown): unknown =>
   typeof value === "object" && value !== null && Object.getPrototypeOf(value) === Object.prototype

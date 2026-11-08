@@ -30,7 +30,7 @@ features land; tick them off as pages get written.
       This is the first setup code everyone writes, so the docs should lead
       with it and repeat it in examples.
       An entry set to `undefined` is no default, as an explicit `undefined`
-      is a key left out everywhere the mock takes fields: write a zero
+      is a key left out in a mock's answers and options: write a zero
       default as a value (`balanceOf: 0n`). `.returns()` and
       `.returns(undefined)` are the zero answer, since that's an argument
       left out of a call, not a key.

@@ -125,7 +125,7 @@ describe("an explicit undefined in a mock's fields is the field left out", () =>
     );
   });
 
-  test("a defaults entry left out registers no mock, in every namespace", async () => {
+  test("a defaults entry left out registers no mock, and isn't refused", async () => {
     const { mock, client } = setup();
     mock.contract({
       abi,
