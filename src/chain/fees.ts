@@ -29,9 +29,9 @@ const feeFields = new Set(["baseFeePerGas", "maxPriorityFeePerGas"]);
  * their subject in the message ("mock.setFees()'s fees"). A fee left out, or
  * `undefined`, keeps `base`'s.
  */
-export function resolveFees(fees: MockFees = {}, what: string, base: Fees = defaults): Fees {
+export function resolveFees(fees: MockFees | undefined, what: string, base: Fees = defaults): Fees {
   const given = checkFields(
-    fees,
+    fees ?? {},
     what,
     feeFields,
     () => "Its fields are baseFeePerGas and maxPriorityFeePerGas.",

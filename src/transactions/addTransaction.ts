@@ -118,7 +118,7 @@ export function checkAddTransaction(given: AddTransactionParameters) {
   for (const [name, amount] of Object.entries({ value, gasUsed }))
     if (amount !== undefined) checkAmount(amount, `mock.addTransaction()'s ${name}`);
   if (data !== undefined && !isHex(data))
-    throw new MockSetupError(`A transaction's data must be hex; got ${formatValue(data)}.`);
+    throw new MockSetupError(`mock.addTransaction()'s data must be hex; got ${formatValue(data)}.`);
   if (nonce !== undefined) checkCount(nonce, "mock.addTransaction()'s nonce", 0);
   checkLogs(logs, "A transaction's");
   checkStatus(status, logs, "mock.addTransaction()'s status");

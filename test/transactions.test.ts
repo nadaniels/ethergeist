@@ -498,7 +498,11 @@ describe("mock.addTransaction", () => {
       { gasUsed: 1 },
       "mock.addTransaction()'s gasUsed must be a non-negative bigint; got 1.",
     ],
-    ["data that isn't hex", { data: "0xzz" }, "A transaction's data must be hex; got 0xzz."],
+    [
+      "data that isn't hex",
+      { data: "0xzz" },
+      "mock.addTransaction()'s data must be hex; got 0xzz.",
+    ],
     [
       "a fractional nonce",
       { nonce: 1.5 },

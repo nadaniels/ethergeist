@@ -39,10 +39,10 @@ export function checkCount(
 
 /**
  * `value` as an object of known fields, with its `undefined` fields left
- * out; throws unless it's an object, every field it has is in `fields`, and
- * it holds no matcher. `what` names it mid-sentence in the message ("a
- * send's outcome"), and `hint` the hint line for a field it doesn't take, or with
- * no field, for a value that isn't an object.
+ * out; throws unless it's an object, it holds no matcher, and every field
+ * it has is in `fields`. `what` names it mid-sentence in the message ("a
+ * send's outcome"). `hint` gives the hint line: for a field it doesn't take,
+ * or, called without one, for a value that isn't an object.
  */
 export function checkFields<value>(
   value: value,
@@ -54,13 +54,13 @@ export function checkFields<value>(
     throw new MockSetupError(`Expected an object for ${what}; got ${formatValue(value)}.`, {
       metaMessages: [hint()],
     });
+  checkNoMatchers(value, what);
   const given = withoutUndefined(value);
   const unknown = Object.keys(given).find((field) => !fields.has(field));
   if (unknown !== undefined)
     throw new MockSetupError(`${unknown} isn't a field of ${what}.`, {
       metaMessages: [hint(unknown)],
     });
-  checkNoMatchers(given, what);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the same object, less its undefined fields
   return given as value & Record<string, unknown>;
 }

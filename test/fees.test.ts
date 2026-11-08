@@ -1,7 +1,7 @@
 import { RpcRequestError, createPublicClient, parseGwei } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
-import { type MockFees, MockSetupError, createMockRpc } from "../src/index.js";
+import { type MockFees, MockSetupError, createMockRpc, match } from "../src/index.js";
 import { expectCause, expectThrows, rejectionOf } from "./utils.js";
 
 function setup(fees: MockFees = {}) {
@@ -212,14 +212,34 @@ describe("getFeeHistory", () => {
   test("a mock's fields must have viem's types", () => {
     const { mock } = setup();
 
-    expectThrows(MockSetupError, "baseFeePerGas in getFeeHistory's answer must be bigints.", () => {
-      // @ts-expect-error -- base fees are bigints
-      mock.actions.getFeeHistory().returns({ baseFeePerGas: ["0x1"] });
-    });
+    expectThrows(
+      MockSetupError,
+      "baseFeePerGas in getFeeHistory's answer must be a non-negative bigint; got 0x1.",
+      () => {
+        // @ts-expect-error -- base fees are bigints
+        mock.actions.getFeeHistory().returns({ baseFeePerGas: ["0x1"] });
+      },
+    );
     expectThrows(MockSetupError, "baseFee isn't a field of getFeeHistory's answer.", () => {
       // @ts-expect-error -- a fee history has no `baseFee`
       mock.actions.getFeeHistory().returns({ baseFee: [1n] });
     });
+  });
+
+  test.each([
+    ["oldestBlock", { oldestBlock: -1n }],
+    ["baseFeePerGas", { baseFeePerGas: [1n, -1n] }],
+    ["reward", { reward: [[1n], [-1n]] }],
+  ])("a negative bigint in a mock's %s is refused", (field, history) => {
+    const { mock } = setup();
+
+    expectThrows(
+      MockSetupError,
+      `${field} in getFeeHistory's answer must be a non-negative bigint; got -1n.`,
+      () => {
+        mock.actions.getFeeHistory().returns(history);
+      },
+    );
   });
 
   test("history shows the call and the answer in viem's types", async () => {
@@ -324,6 +344,9 @@ describe("setFees()", () => {
     expectThrows(MockSetupError, "baseFee isn't a field of mock.setFees()'s fees.", () => {
       // @ts-expect-error -- a typo of baseFeePerGas
       mock.setFees({ baseFee: 1n });
+    });
+    expectThrows(MockSetupError, "match.any() can't go in mock.setFees()'s fees;", () => {
+      mock.setFees(match.any());
     });
     expectThrows(MockSetupError, "baseFee isn't a field of createMockRpc()'s fees.", () =>
       // @ts-expect-error -- a typo of baseFeePerGas

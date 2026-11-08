@@ -3,6 +3,7 @@ import { type RpcBlock, formatBlock, hexToBigInt } from "viem";
 import { numberOfBlockHash, toRpcBlock } from "../chain/blocks.js";
 import { hashParam } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
+import { formatValue } from "../mocking/format.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { blockAt } from "./decode.js";
@@ -64,7 +65,9 @@ export const getBlock = ({
   encode(value, call) {
     if (value === null) return null;
     if (!isPlainObject(value))
-      throw new MockSetupError(`A block must be an object or null; got ${typeof value}.`);
+      throw new MockSetupError(
+        `Expected an object or null for getBlock's answer; got ${formatValue(value)}.`,
+      );
     const generated = state.generateBlock(call?.blockNumber ?? state.blockNumber);
     const blockHash = call?.blockHash;
     const base = blockHash === undefined ? generated : { ...generated, hash: blockHash };

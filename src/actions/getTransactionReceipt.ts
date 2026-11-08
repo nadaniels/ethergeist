@@ -3,6 +3,7 @@ import { type Hash, type TransactionReceipt, formatTransactionReceipt } from "vi
 import { hashParam } from "../chain/params.js";
 import { type ReceiptFields, completeReceipt, toRpcReceipt } from "../chain/receipts.js";
 import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
+import { formatValue } from "../mocking/format.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { checkStatus } from "../transactions/writeOutcome.js";
@@ -91,7 +92,9 @@ export const getTransactionReceipt = ({
     const { value, blockNumber } = unwrapRegistered(answer);
     if (value === null) return null;
     if (!isPlainObject(value))
-      throw new MockSetupError(`A receipt must be an object or null; got ${typeof value}.`);
+      throw new MockSetupError(
+        `Expected an object or null for getTransactionReceipt's answer; got ${formatValue(value)}.`,
+      );
     const record = call && transactions.minedRecord(call.hash);
     if (record === undefined)
       return toRpcReceipt(

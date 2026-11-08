@@ -1223,3 +1223,22 @@ describe("bookkeeping", () => {
     expectCause(await rejectionOf(client.getBlockTransactionCount()), MockNotFoundError);
   });
 });
+
+describe("a block, transaction or receipt answer", () => {
+  test.each([
+    ["getBlock", 5, "5"],
+    ["getTransaction", [], "[]"],
+    ["getTransactionReceipt", "0x1", "0x1"],
+  ] as const)("%s refuses one that isn't an object or null", (action, answer, shown) => {
+    const { mock } = setup();
+
+    expectThrows(
+      MockSetupError,
+      `Expected an object or null for ${action}'s answer; got ${shown}.`,
+      () => {
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+        mock.actions[action]().returns(answer as never);
+      },
+    );
+  });
+});

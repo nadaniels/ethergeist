@@ -2,56 +2,62 @@ import { hexToBigInt, isHex } from "viem";
 
 import { feeHistory, toRpcFeeHistory } from "../chain/fees.js";
 import { type ResolveBlock, numberParam } from "../chain/params.js";
-import { checkFields } from "../mocking/setupChecks.js";
+import { formatValue } from "../mocking/format.js";
+import { checkAmount, checkFields } from "../mocking/setupChecks.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { blockAt } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { FeeHistoryCall } from "./types.js";
 
-const isList = (value: unknown, type: string) =>
-  Array.isArray(value) && value.every((each) => typeof each === type);
+const feeHistoryFields = new Set([
+  "baseFeePerGas",
+  "baseFeePerBlobGas",
+  "gasUsedRatio",
+  "blobGasUsedRatio",
+  "oldestBlock",
+  "reward",
+]);
+const fieldsHint =
+  "Its fields are baseFeePerGas, baseFeePerBlobGas, gasUsedRatio, blobGasUsedRatio, " +
+  "oldestBlock and reward.";
+
+/** A fee history field's subject in messages. */
+const subject = (field: string) => `${field} in getFeeHistory's answer`;
 
 /**
- * Throws unless `history`'s fields are a fee history's, in viem's types:
- * bigints, and numbers for ratios.
+ * `given` as a fee history's fields, checked against viem's types: bigints,
+ * non-negative, and numbers for ratios.
  */
-const kinds = new Map<string, "bigints" | "numbers" | "bigint" | "rewards">([
-  ["baseFeePerGas", "bigints"],
-  ["baseFeePerBlobGas", "bigints"],
-  ["gasUsedRatio", "numbers"],
-  ["blobGasUsedRatio", "numbers"],
-  ["oldestBlock", "bigint"],
-  ["reward", "rewards"],
-]);
-const kindFields = new Set(kinds.keys());
-
 function checkFeeHistory(given: unknown) {
-  const history = checkFields(
-    given,
-    "getFeeHistory's answer",
-    kindFields,
-    () => `Its fields: ${[...kindFields].join(", ")}.`,
-  );
-  for (const [field, value] of Object.entries(history)) {
-    const kind = kinds.get(field)!;
-    const valid =
-      kind === "bigint"
-        ? typeof value === "bigint"
-        : kind === "rewards"
-          ? Array.isArray(value) && value.every((block) => isList(block, "bigint"))
-          : isList(value, kind === "bigints" ? "bigint" : "number");
-    if (!valid) {
-      const expected = {
-        bigints: "bigints",
-        numbers: "numbers",
-        bigint: "a bigint",
-        rewards: "lists of bigints, one per block",
-      }[kind];
-      throw new MockSetupError(`${field} in getFeeHistory's answer must be ${expected}.`);
+  const history = checkFields(given, "getFeeHistory's answer", feeHistoryFields, () => fieldsHint);
+  const { baseFeePerGas, baseFeePerBlobGas, gasUsedRatio, blobGasUsedRatio, oldestBlock, reward } =
+    history;
+  for (const [field, fees] of Object.entries({ baseFeePerGas, baseFeePerBlobGas })) {
+    if (fees === undefined) continue;
+    checkList(fees, subject(field));
+    for (const fee of fees) checkAmount(fee, subject(field));
+  }
+  for (const [field, ratios] of Object.entries({ gasUsedRatio, blobGasUsedRatio }))
+    if (ratios !== undefined && !isNumberList(ratios))
+      throw new MockSetupError(
+        `${subject(field)} must be a list of numbers; got ${formatValue(ratios)}.`,
+      );
+  if (oldestBlock !== undefined) checkAmount(oldestBlock, subject("oldestBlock"));
+  if (reward !== undefined) {
+    checkList(reward, subject("reward"));
+    for (const tips of reward) {
+      checkList(tips, subject("reward"));
+      for (const tip of tips) checkAmount(tip, subject("reward"));
     }
   }
   return history;
+}
+
+/** Throws unless `value` is a list; `what` names it. */
+function checkList(value: unknown, what: string): asserts value is readonly unknown[] {
+  if (!Array.isArray(value))
+    throw new MockSetupError(`${what} must be a list; got ${formatValue(value)}.`);
 }
 
 /** JSON-RPC quantities as bigints, leaving anything else as is. */
