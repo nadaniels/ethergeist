@@ -193,6 +193,10 @@ describe("reverts", () => {
     nft.read.ownerOf().reverts({ errorName: "ERC721IncorrectOwner" });
     // @ts-expect-error -- the error takes an address, a uint256 and an address
     nft.read.ownerOf().reverts({ errorName: "ERC721IncorrectOwner", args: [1n, USDC, 1n] });
+    // @ts-expect-error -- a revert spec takes one form: a panic or data, not both
+    nft.read.ownerOf().reverts({ panic: 0x11, data: "0xdeadbeef" });
+    // @ts-expect-error -- a revert spec takes one form: a custom error or a panic, not both
+    nft.read.ownerOf().reverts({ errorName: "EnforcedPause", panic: 0x11 });
   });
 
   test("revert() in a resolver is typed against the ABI and returns never", () => {

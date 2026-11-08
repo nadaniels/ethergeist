@@ -97,9 +97,11 @@ describe("reverts()", () => {
     const { nft, ownerOf } = setup();
     nft.read
       .ownerOf([1n])
+      // @ts-expect-error -- an explicit undefined, allowed without exactOptionalPropertyTypes
       .reverts({ errorName: "ERC721NonexistentToken", args: [1n], panic: undefined });
     nft.read
       .ownerOf([2n])
+      // @ts-expect-error -- an explicit undefined, allowed without exactOptionalPropertyTypes
       .reverts({ errorName: "ERC721NonexistentToken", args: [2n], data: undefined });
 
     expect((await revertOf(ownerOf(1n))).data?.args).toEqual([1n]);
@@ -241,6 +243,24 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
         { data: "0xzz" },
         MockSetupError,
         "A revert's data must be hex; got 0xzz.",
+      ],
+      [
+        "a panic and data",
+        { panic: 1, data: "0x12" },
+        MockSetupError,
+        "A revert spec takes one of data, panic, or errorName; got data and panic.",
+      ],
+      [
+        "an errorName and a panic",
+        { errorName: "EnforcedPause", panic: 1 },
+        MockSetupError,
+        "A revert spec takes one of data, panic, or errorName; got panic and errorName.",
+      ],
+      [
+        "args with a panic",
+        { panic: 1, args: [] },
+        MockSetupError,
+        "A revert spec takes one of data, panic, or errorName; got panic and args.",
       ],
       [
         "a negative panic code, as viem refuses it",

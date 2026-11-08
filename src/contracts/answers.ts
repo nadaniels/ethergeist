@@ -58,11 +58,12 @@ function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
 /**
  * The revert `spec` gives, its custom errors from `abi`. A spec the types
  * rule out is the mock's setup error: an untyped caller's `null` or `{}`,
- * data that isn't hex, a panic that isn't a number or bigint, args that
- * aren't a list or don't match the error's inputs in number (as a loosely
- * typed ABI allows), or args or a panic code that throw a native error as
- * they encode, e.g. `1.5`. viem's own refusals pass through, e.g. an error
- * not on the ABI or a panic code out of range.
+ * fields of two forms (e.g. `{ panic, data }`), data that isn't hex, a
+ * panic that isn't a number or bigint, args that aren't a list or don't
+ * match the error's inputs in number (as a loosely typed ABI allows), or
+ * args or a panic code that throw a native error as they encode, e.g.
+ * `1.5`. viem's own refusals pass through, e.g. an error not on the ABI or
+ * a panic code out of range.
  */
 export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError {
   const given: unknown = spec;
@@ -74,6 +75,14 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
     );
   if (!isPlainObject(given)) throw notARevert(given);
   const { data, panic } = given;
+  const fields = (["data", "panic", "errorName", "args"] as const).filter(
+    (field) => given[field] !== undefined,
+  );
+  // `args` belong to `errorName`'s form.
+  if (new Set(fields.map((field) => (field === "args" ? "errorName" : field))).size > 1)
+    throw new MockSetupError(
+      `A revert spec takes one of data, panic, or errorName; got ${fields.join(" and ")}.`,
+    );
   if (data !== undefined) {
     if (typeof data !== "string" || !isHex(data))
       throw new MockSetupError(`A revert's data must be hex; got ${formatValue(data)}.`);

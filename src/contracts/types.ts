@@ -140,11 +140,18 @@ type CustomRevert<abi extends Abi, errorName extends ContractErrorName<abi>> = {
  * - `{ panic }`: a `Panic(uint256)` code, e.g. `0x11` for arithmetic overflow
  * - `{ data }`: raw revert data, for errors not on the ABI
  * - nothing: a bare `revert()` with empty data
+ *
+ * One form at a time: a spec with the fields of two, e.g.
+ * `{ panic, data }`, is a type error, and refused.
  */
 export type RevertSpec<
   abi extends Abi = Abi,
   errorName extends ContractErrorName<abi> = ContractErrorName<abi>,
-> = string | CustomRevert<abi, errorName> | { panic: number | bigint } | { data: Hex };
+> =
+  | string
+  | (CustomRevert<abi, errorName> & { panic?: never; data?: never })
+  | { panic: number | bigint; errorName?: never; args?: never; data?: never }
+  | { data: Hex; errorName?: never; args?: never; panic?: never };
 
 /**
  * The `revert` a contract's resolver gets: it reverts the call with `spec`,
