@@ -215,6 +215,10 @@ describe("lifecycle", () => {
       // @ts-expect-error -- a pattern, not a name
       mock.failRequests("timeout", { method: /^eth_/u }),
     );
+    expectThrows(MockSetupError, "failRequests()'s method must be a method name or a list", () =>
+      // @ts-expect-error -- a pattern, not a name
+      mock.failRequests("timeout", { method: ["eth_call", /^eth_/u] }),
+    );
   });
 });
 

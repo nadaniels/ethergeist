@@ -224,6 +224,26 @@ describe("getFeeHistory", () => {
       // @ts-expect-error -- a fee history has no `baseFee`
       mock.actions.getFeeHistory().returns({ baseFee: [1n] });
     });
+    expectThrows(
+      MockSetupError,
+      "baseFeePerGas in getFeeHistory's answer must be a list; got 1n.",
+      () => {
+        // @ts-expect-error -- base fees are a list, one per block
+        mock.actions.getFeeHistory().returns({ baseFeePerGas: 1n });
+      },
+    );
+    expectThrows(MockSetupError, "reward in getFeeHistory's answer must be a list; got 1n.", () => {
+      // @ts-expect-error -- rewards are a list of tips per block
+      mock.actions.getFeeHistory().returns({ reward: [1n] });
+    });
+    expectThrows(
+      MockSetupError,
+      "gasUsedRatio in getFeeHistory's answer must be a list of numbers; got [0.5]",
+      () => {
+        // @ts-expect-error -- ratios are numbers
+        mock.actions.getFeeHistory().returns({ gasUsedRatio: ["0.5"] });
+      },
+    );
   });
 
   test.each([
