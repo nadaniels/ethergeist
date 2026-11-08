@@ -1,4 +1,4 @@
-import { type Hash, formatTransactionReceipt, getContractAddress } from "viem";
+import { type Hash, formatTransactionReceipt } from "viem";
 
 import { transactionParam } from "../chain/params.js";
 import type { toRpcReceipt } from "../chain/receipts.js";
@@ -6,7 +6,6 @@ import { decodeRawTransaction, sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
 import type { CallContext, RevertFn, RevertSpec } from "../contracts/types.js";
 import type { MockLogContent } from "../logs/events.js";
-import { impliedGas } from "../mocking/gas.js";
 import type { FoundMock } from "../mocking/handlers.js";
 import type { MockNodeFault, SendErrorName, WithLimits } from "../mocking/types.js";
 import { invalidParams } from "../shared/errors.js";
@@ -215,40 +214,15 @@ export function sendTransaction({
     },
     fallback: (call) => (isPlainTransfer(registry, call) ? {} : undefined),
     /**
-     * Mines the send's transaction in a new block and answers it
-     * (`answerFor`). The same bytes sent twice at once are one transaction
-     * too: the second is answered as the first. A nonce left out is the
-     * sender's next, waiting transactions included (`nonceOf`), as a wallet
-     * fills it, not a `getTransactionCount` mock's. Gas left out is
-     * `impliedGas`.
+     * Mines the send's transaction in a new block (`placeSend`) and answers
+     * it (`answerFor`). The same bytes sent twice at once are one
+     * transaction too: the second is answered as the first.
      */
     commit(outcome, call) {
       const repeated = sentBefore(call);
       if (repeated !== undefined) return answerFor(call, repeated);
       const hash = rawSends.get(call)?.hash;
-      const {
-        from,
-        to,
-        data,
-        nonce = transactions.nonceOf(from, "pending"),
-        gas = impliedGas,
-        ...fees
-      } = call;
-      const { logs = [], ...receipt } = outcome;
-      const placed = transactions.add({
-        origin: "sent",
-        hash,
-        fields: { from, to, ...(data && { input: data }), nonce, gas, ...fees },
-        receipt:
-          to === null
-            ? {
-                contractAddress: getContractAddress({ from, nonce: BigInt(nonce) }),
-                ...receipt,
-              }
-            : receipt,
-        logs,
-      });
-      return answerFor(call, placed.hash);
+      return answerFor(call, transactions.placeSend({ hash, sent: call, outcome }).hash);
     },
     view: (rpc) => (typeof rpc === "string" ? rpc : formatTransactionReceipt(rpc)),
   };

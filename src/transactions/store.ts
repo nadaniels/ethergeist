@@ -5,6 +5,7 @@ import {
   type TransactionReceipt,
   formatTransaction,
   getAddress,
+  getContractAddress,
 } from "viem";
 
 import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
@@ -19,9 +20,11 @@ import type { ChainState } from "../chain/state.js";
 import { type MockTransactionType, encodeTransaction } from "../chain/transactions.js";
 import { type EmittedLog, type MockLogContent, checkLogs } from "../logs/events.js";
 import { type LogsCall, topicsMatch } from "../logs/filter.js";
+import { impliedGas } from "../mocking/gas.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
 import { testHash } from "../shared/testValues.js";
 import { type AddTransactionParameters, checkAddTransaction } from "./addTransaction.js";
+import type { MockWriteOutcome } from "./writeOutcome.js";
 
 /**
  * A placed transaction, as `mock.transactions` lists it: the facts it was
@@ -105,6 +108,16 @@ type LogsPosition = Pick<
   "blockHash" | "blockNumber" | "transactionHash" | "transactionIndex"
 >;
 
+/**
+ * What `placeSend` takes: the transaction a send asked for, with its
+ * calldata as `data`, as a request names it.
+ */
+type SentTransaction = Omit<TransactionRecord["fields"], "from" | "to" | "input"> & {
+  from: Address;
+  to: Address | null;
+  data?: Hex;
+};
+
 /** What `add` takes: a record's facts, which it places. */
 type NewRecord = Pick<TransactionRecord, "origin" | "fields" | "receipt"> & {
   /** Lowercase; left out, one the mock makes from its chain id and position. */
@@ -184,7 +197,10 @@ export function createTransactionStore({
   /**
    * Places a transaction in `blockNumber`, after what's placed there, or,
    * left out, in a newly mined block, as a send is. Checks everything first,
-   * so a refused record changes nothing, mining included.
+   * so a refused record changes nothing, mining included. A nonce left out
+   * is `from`'s next, waiting transactions included (`nonceOf`), not a
+   * `getTransactionCount` mock's. A deploy's address (only a send deploys)
+   * follows from both, unless its receipt gives one.
    */
   function add(record: NewRecord, { blockNumber }: { blockNumber?: bigint | undefined } = {}) {
     for (const log of record.logs)
@@ -217,12 +233,22 @@ export function createTransactionStore({
       Object.freeze(log.topics);
       return Object.freeze(log);
     });
+    // Copies, so the caller's objects can't change the chain afterwards.
+    const fields = { ...record.fields };
+    const receipt = { ...record.receipt };
+    if (fields.from !== undefined) {
+      fields.nonce ??= nonceOf(fields.from, "pending");
+      if (fields.to === null)
+        receipt.contractAddress ??= getContractAddress({
+          from: fields.from,
+          nonce: BigInt(fields.nonce),
+        });
+    }
     const added: TransactionRecord = Object.freeze({
       ...record,
       hash,
-      // Copies, so the caller's objects can't change the chain afterwards.
-      fields: Object.freeze({ ...record.fields }),
-      receipt: Object.freeze({ ...record.receipt }),
+      fields: Object.freeze(fields),
+      receipt: Object.freeze(receipt),
       logs: Object.freeze(logs),
       position: Object.freeze({ blockNumber: number, index }),
     });
@@ -264,8 +290,7 @@ export function createTransactionStore({
 
   /**
    * Places one transaction the app didn't send, from `fields`: checked
-   * first, then in `blockNumber`, or left out, in a newly mined block. A
-   * nonce left out is `from`'s next, as a send takes it.
+   * first, then in `blockNumber`, or left out, in a newly mined block.
    */
   function addTransaction(fields: AddTransactionParameters = {}): TransactionRecord {
     if (sending)
@@ -279,13 +304,33 @@ export function createTransactionStore({
         },
       );
     const { blockNumber, ...record } = checkAddTransaction(fields);
-    const { from, nonce } = record.fields;
-    return add(
-      from === undefined || nonce !== undefined
-        ? record
-        : { ...record, fields: { ...record.fields, nonce: nonceOf(from, "pending") } },
-      { blockNumber },
-    );
+    return add(record, { blockNumber });
+  }
+
+  /**
+   * Places a send's transaction in a newly mined block: `sent` as its
+   * request asked for it, and `outcome` as what the chain did. Gas left out
+   * is `impliedGas`. `hash` is a raw send's, from its bytes; left out, the
+   * mock makes one.
+   */
+  function placeSend({
+    hash,
+    sent,
+    outcome,
+  }: {
+    hash?: Hash | undefined;
+    sent: SentTransaction;
+    outcome: MockWriteOutcome;
+  }) {
+    const { data, gas = impliedGas, ...fields } = sent;
+    const { logs = [], ...receipt } = outcome;
+    return add({
+      origin: "sent",
+      hash,
+      fields: { ...fields, ...(data && { input: data }), gas },
+      receipt,
+      logs,
+    });
   }
 
   /**
@@ -456,8 +501,8 @@ export function createTransactionStore({
   }
 
   return {
-    add,
     addTransaction,
+    placeSend,
     whileSending,
     mine,
     logsFor,
