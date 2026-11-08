@@ -1,4 +1,4 @@
-import { type Hash, formatTransactionReceipt } from "viem";
+import { type Hash, formatTransactionReceipt, isAddress } from "viem";
 
 import { transactionParam } from "../chain/params.js";
 import type { toRpcReceipt } from "../chain/receipts.js";
@@ -189,13 +189,15 @@ export function sendTransaction({
       return call;
     },
     pin: pinTransaction,
+    // `pin` has checksummed a string `to`: `isAddress` narrows its type.
     pinnedCall: (pinned) =>
-      isPlainObject(pinned) && typeof pinned.to === "string"
-        ? // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- encode reads only `to`
-          ({ to: pinned.to } as SendTransactionCall)
-        : undefined,
+      isPlainObject(pinned) &&
+      (pinned.to === null || (typeof pinned.to === "string" && isAddress(pinned.to)))
+        ? { to: pinned.to }
+        : {},
     zero: {},
-    encode: (value, call) => encodeWriteOutcome(value, call && call.to === null),
+    encode: (value, { pinnedCall: { to } }) =>
+      encodeWriteOutcome(value, to === undefined ? undefined : to === null),
     // Sending the same bytes again is the same transaction: answered with its
     // hash (or receipt), without asking the mocks again.
     known(call) {

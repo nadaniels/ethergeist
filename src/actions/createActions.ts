@@ -40,6 +40,7 @@ export function createActions(
           chain.registry.removedByLastRestore(call.to)
         ? removedContractNote
         : undefined;
+  const currentBlock = () => chain.state.blockNumber;
   // Asked only while answering, once every table is made.
   const context: ActionsContext = {
     ...chain,
@@ -49,13 +50,16 @@ export function createActions(
   const typed = Object.fromEntries(
     names.map((name) => [
       name,
-      createTable(typedActions[name].define(context), recordLimit, removedNote),
+      createTable(typedActions[name].define(context), recordLimit, {
+        currentBlock,
+        notFoundNote: removedNote,
+      }),
     ]),
   ) as Record<ActionName, Table>;
   const typedMethods = new Map<string, ActionName>(
     names.flatMap((name) => typedActions[name].methods.map((method) => [method, name] as const)),
   );
-  const methods = createMethods((method) => typedMethods.get(method), recordLimit);
+  const methods = createMethods((method) => typedMethods.get(method), recordLimit, currentBlock);
 
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- built from the tables at runtime, in the shape MockActions describes
   const actions = Object.fromEntries(

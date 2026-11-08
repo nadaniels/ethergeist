@@ -17,11 +17,10 @@ import {
   addressParam,
   isBlockTag,
 } from "../chain/params.js";
-import type { ChainState } from "../chain/state.js";
 import type { MockTransactionType } from "../chain/transactions.js";
 import type { Registry } from "../contracts/registry.js";
 import { checkAmount } from "../mocking/setupChecks.js";
-import { isPlainObject, leftOut, lowercase, withoutUndefined } from "../shared/values.js";
+import { isPlainObject, lowercase, withoutUndefined } from "../shared/values.js";
 import type { AddressAtBlockCall, SendTransactionCall } from "./types.js";
 
 /**
@@ -143,43 +142,9 @@ export function decodeAddressAtBlock(
 
 /**
  * The hash a receipt or transaction mock pins exactly, as its call, lowercase
- * as a request's is decoded; `undefined` for a matcher.
+ * as a request's is decoded; `{}` for a matcher.
  */
-export const pinnedHash = (pinned: unknown): { hash: Hash } | undefined =>
+export const pinnedHash = (pinned: unknown): { hash?: Hash } =>
   isPlainObject(pinned) && typeof pinned.hash === "string" && isHash(pinned.hash)
     ? { hash: lowercase(pinned.hash) }
-    : undefined;
-
-/** A static answer with the head when it was registered: see `registeredAt`. */
-class Registered {
-  readonly value: unknown;
-  readonly blockNumber: bigint;
-  constructor(value: unknown, blockNumber: bigint) {
-    this.value = value;
-    this.blockNumber = blockNumber;
-  }
-}
-
-/**
- * Keeps the head at registration beside a static receipt or transaction,
- * which a node never moves: where the chain has no transaction to answer
- * from, it's the block the answer is mined in. The value is held as given,
- * not copied.
- */
-export const registeredAt = (state: ChainState) => (value: unknown) =>
-  new Registered(value, state.blockNumber);
-
-/**
- * An answer and the block a static one was registered in; `undefined` for a
- * resolver's, which is made at the request. A static one's `undefined`
- * fields are left out here, since the table passes the wrapper through.
- */
-export const unwrapRegistered = (
-  answer: unknown,
-): { value: unknown; blockNumber: bigint | undefined } =>
-  answer instanceof Registered
-    ? {
-        value: leftOut(answer.value),
-        blockNumber: answer.blockNumber,
-      }
-    : { value: answer, blockNumber: undefined };
+    : {};

@@ -3,7 +3,7 @@ import { formatTransactionReceipt } from "viem";
 import { hashParam } from "../chain/params.js";
 import type { toRpcReceipt } from "../chain/receipts.js";
 import { checkObject } from "../mocking/setupChecks.js";
-import { pinnedHash, registeredAt, unwrapRegistered } from "./decode.js";
+import { pinnedHash } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ReceiptCall } from "./types.js";
 
@@ -19,7 +19,6 @@ const inAnswer = (field: string) => `${field} in getTransactionReceipt's answer`
  * answer, or at the request for a resolver.
  */
 export const getTransactionReceipt = ({
-  state,
   transactions,
 }: ActionsContext): Definition<ReceiptCall, ReturnType<typeof toRpcReceipt> | null> => ({
   name: "getTransactionReceipt",
@@ -27,12 +26,10 @@ export const getTransactionReceipt = ({
   decode: ([hash]) => ({ hash: hashParam(hash) }),
   pinnedCall: pinnedHash,
   zero: {},
-  fixAtRegistration: registeredAt(state),
-  encode(answer, call) {
-    const { value, blockNumber } = unwrapRegistered(answer);
+  encode(value, { pinnedCall, blockNumber }) {
     if (value === null) return null;
     checkObject(value, "getTransactionReceipt's answer", "Or null for none.");
-    return transactions.mockedReceipt(value, inAnswer, { hash: call?.hash, blockNumber });
+    return transactions.mockedReceipt(value, inAnswer, { hash: pinnedCall.hash, blockNumber });
   },
   fallback: (call) => transactions.receiptFor(call.hash),
   view: (rpc) => (rpc === null ? null : formatTransactionReceipt(rpc)),

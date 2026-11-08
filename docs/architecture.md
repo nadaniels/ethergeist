@@ -182,20 +182,22 @@ everything, then mutate.
    mocked (`fallback`), or, rarely, an answer that comes before any mock's
    (`preempt`: an estimate reverts for its send's `.reverts()` mock).
    `call` is its decoded call's type and `rpc` its JSON-RPC answer's, so its
-   members get them typed, without casts. If `encode` checks the answer against the call
-   (as a receipt refuses a reverted status over its transaction's own logs),
-   also give `pinnedCall`, so a static answer that can't fit fails at
-   `.returns()` instead of at request time. If a static answer takes a
-   default from the chain as it stands at registration, which a node would
-   never change, give `fixAtRegistration`: receipts and transactions keep
-   the head beside the value, as the block a hash not on the chain is
-   mined in. A mock that answers over the chain's own answer (a block, a
-   receipt, a transaction) follows the rules in `docs/notes.md` ("You don't
-   have to use the chain"): it answers one method, over what the chain
-   would answer at that request, its fields winning (methods may
-   disagree); its answer places its parts (a receipt its logs, a block its
-   transactions), and nothing else is derived; and each answer is one a
-   node could send, as an object.
+   members get them typed, without casts. `encode` checks a static answer at
+   registration and encodes it again at each request, so beside the value it
+   gets an `Encoding`: the call (none at registration), what's known of it,
+   and the block the answer is made in. That's the block current at
+   registration for a static answer, which a node would never move, so a
+   receipt for a hash not on the chain stays mined in it. If `encode` checks
+   the answer against the call (as a receipt refuses a reverted status over
+   its transaction's own logs), also give `pinnedCall`, what the pins settle
+   of the call, so a static answer that can't fit fails at `.returns()`
+   instead of at request time. A mock that answers over the chain's own
+   answer (a block, a receipt, a transaction) follows the rules in
+   `docs/notes.md` ("You don't have to use the chain"): it answers one
+   method, over what the chain would answer at that request, its fields
+   winning (methods may disagree); its answer places its parts (a receipt
+   its logs, a block its transactions), and nothing else is derived; and
+   each answer is one a node could send, as an object.
    An action that changes the chain (a send) answers in two steps: `encode`
    checks the answer, as at registration, and `commit` places it on the
    chain once it's chosen, answering the JSON-RPC value; its `Definition`

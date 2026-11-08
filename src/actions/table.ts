@@ -43,10 +43,40 @@ export type ActionsContext = {
 };
 
 /**
+ * What `encode` gets beside the value: the call, what's known of it, and the
+ * block the answer is made in.
+ */
+type Encoding<call extends object> = {
+  /** The request's call; `undefined` at registration. */
+  call: call | undefined;
+  /**
+   * What's known of the call: at the request, the call itself; at
+   * registration, what `pinnedCall` settles from the pins, or `{}`.
+   */
+  pinnedCall: Partial<call>;
+  /**
+   * The block current when a static answer was registered, which a node
+   * never moves: a receipt for a hash with no mined transaction is mined in
+   * it. A resolver's answer is made at the request, in the block current
+   * then.
+   */
+  blockNumber: bigint;
+};
+
+/**
  * How a table answers one action: decoding its calls, encoding answers, and
  * what it answers unmocked. `call` is what `decode` returns and every other
  * member receives; `answer` is what `encode` and `fallback` give, and `rpc`
  * the JSON-RPC answer `commit` makes of it (the answer itself, without one).
+ *
+ * Members are listed in the order they run: registration's first, then a
+ * request's. At registration: `pin`, then `extendBuilder`, then for a static
+ * answer `pinnedCall` and `encode` (`zero` for one left out). At a request:
+ * `decode`, then `known`, which skips to `view` when it answers. Otherwise
+ * `contractTurn`, `preempt` and the contract's turn, then this table's mocks
+ * are matched (`actual`), and the one that answers gets `extendContext` and
+ * `encode`. Without one, `fallback` answers, then the contract's miss, then
+ * "No mock for" with `hint` or `hintFor`. `commit` and `view` come last.
  *
  * Members are methods, whose parameters TypeScript checks both ways, so a
  * `Definition<BalanceCall>` is a `Definition`: the table holds every action's
@@ -56,54 +86,41 @@ export type ActionsContext = {
 export type Definition<call extends object = object, rpc = unknown, answer = rpc> = {
   /** How calls and mocks are named in messages, e.g. `getBalance`. */
   name: string;
-  /** Where to register a mock, for "No mock for" messages. */
-  hint: string;
+  /** Normalizes pinned fields at registration, e.g. checksumming addresses. */
+  pin?(pinned: unknown): unknown;
   /**
-   * `hint` for a call, where it depends on the call; `undefined` for `hint`
-   * itself.
+   * Adds to a mock's builder, beyond `.returns()` and `.fails()`, e.g. a
+   * send's `.emits()`.
    */
-  hintFor?(call: call): string | undefined;
+  extendBuilder?(builder: Builder): void;
   /**
-   * The call `params` ask for. It may be async, as a raw send's sender is
-   * recovered.
+   * What the pins settle of the call, for checking a static answer at
+   * registration, so a mismatch fails at `.returns()`. It leaves out what
+   * the pins don't settle exactly (e.g. a matcher), leaving that check to
+   * the request.
    */
-  decode(params: readonly unknown[], method: string): call | Promise<call>;
-  /**
-   * Validates a value in viem's types and converts it to its JSON-RPC form.
-   * `call` is `undefined` when validating a static value at registration.
-   */
-  encode(value: unknown, call: call | undefined): answer;
+  pinnedCall?(pinned: unknown): Partial<call>;
   /**
    * What `.returns()` without a value answers, in viem's types: the action's
    * zero.
    */
   zero: unknown;
   /**
-   * What a static answer is kept as at registration, for what it leaves to
-   * the chain as it stands then: a receipt for a hash with no mined
-   * transaction is mined in the block current at registration. `encode` gets
-   * what it returns. A resolver's answer is made at the request, so it's
-   * left to `encode`.
+   * The call `params` ask for. It may be async, as a raw send's sender is
+   * recovered.
    */
-  fixAtRegistration?(value: unknown): unknown;
-  /** Normalizes pinned fields at registration, e.g. checksumming addresses. */
-  pin?(pinned: unknown): unknown;
+  decode(params: readonly unknown[], method: string): call | Promise<call>;
   /**
-   * The call a static answer is checked against at registration, from what
-   * the mock pins, so a mismatch fails at `.returns()`. `undefined` when the
-   * pins don't settle it (e.g. a matcher), leaving the check to request time.
+   * The answer a call already has, before any mock is asked: a repeated raw
+   * send's hash, once its transaction is on the chain.
    */
-  pinnedCall?(pinned: unknown): call | undefined;
+  known?(call: call): rpc | undefined;
   /**
-   * What pinned params are matched against, deeply. Defaults to the call
-   * itself.
+   * A registered contract's turn at the call (an estimate or a send of one
+   * of its functions), prepared as the call arrives. Its mocks answer before
+   * this table's: it owns its functions.
    */
-  actual?(pinned: unknown, call: call): unknown;
-  /**
-   * The answer when no mock matches, or `undefined` to report the call as
-   * unhandled.
-   */
-  fallback?(call: call): answer | undefined;
+  contractTurn?(call: call): ContractTurn<answer> | undefined;
   /**
    * An answer that comes before the contract's and the mocks', thrown: an
    * estimate reverts as the `.reverts()` send mock that would answer its
@@ -111,6 +128,31 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
    * still recorded as the contract's.
    */
   preempt?(call: call): void;
+  /**
+   * What pinned params are matched against, deeply. Defaults to the call
+   * itself.
+   */
+  actual?(pinned: unknown, call: call): unknown;
+  /** Adds to what a resolver gets, beyond the call and `fail`. */
+  extendContext?(context: object, call: call): void;
+  /**
+   * Validates a value in viem's types and converts it to its JSON-RPC form.
+   * At registration it only checks a static answer, which is encoded again
+   * at each request: see `Encoding`.
+   */
+  encode(value: unknown, at: Encoding<call>): answer;
+  /**
+   * The answer when no mock matches, or `undefined` to report the call as
+   * unhandled.
+   */
+  fallback?(call: call): answer | undefined;
+  /** Where to register a mock, for "No mock for" messages. */
+  hint: string;
+  /**
+   * `hint` for a call, where it depends on the call; `undefined` for `hint`
+   * itself.
+   */
+  hintFor?(call: call): string | undefined;
   /**
    * Turns the answer to a call into its JSON-RPC answer, once it's chosen
    * (a contract's, a mock's or the fallback's): a send mines its
@@ -120,28 +162,10 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
    */
   commit?(answer: answer, call: call): rpc;
   /**
-   * The answer a call already has, before any mock is asked: a repeated raw
-   * send's hash, once its transaction is on the chain.
-   */
-  known?(call: call): rpc | undefined;
-  /**
-   * Adds to a mock's builder, beyond `.returns()` and `.fails()`, e.g. a
-   * send's `.emits()`.
-   */
-  extendBuilder?(builder: Builder): void;
-  /**
    * A JSON-RPC answer in viem's types, as the action returns it, for history.
    * Defaults to the answer as is.
    */
   view?(rpc: rpc): unknown;
-  /** Adds to what a resolver gets, beyond the call and `fail`. */
-  extendContext?(context: object, call: call): void;
-  /**
-   * A registered contract's turn at the call (an estimate or a send of one
-   * of its functions), prepared as the call arrives. Its mocks answer before
-   * this table's: it owns its functions.
-   */
-  contractTurn?(call: call): ContractTurn<answer> | undefined;
 };
 
 /**
@@ -169,17 +193,38 @@ const paramName = (key: PinnedKey) =>
 const shown = (call: object) => ("params" in call ? call.params : call);
 
 /**
+ * A static answer with the block current when it was registered, as its
+ * mock's resolver returns it: see `Encoding`. The value is held as given,
+ * not copied.
+ */
+class Registered {
+  readonly value: unknown;
+  readonly blockNumber: bigint;
+  constructor(value: unknown, blockNumber: bigint) {
+    this.value = value;
+    this.blockNumber = blockNumber;
+  }
+}
+
+/** What a table needs beside its definition: see `createTable`. */
+type TableOptions = {
+  /** The block current now, e.g. `state.blockNumber`. */
+  currentBlock: () => bigint;
+  /**
+   * A first line for the error when nothing answers `call`, where the call
+   * says why.
+   */
+  notFoundNote?: (call: object) => string | undefined;
+};
+
+/**
  * A table answering `definition`'s action, with its mocks and the calls it
  * received, kept to `recordLimit`.
  */
 export function createTable(
   definition: Definition,
   recordLimit: RecordLimit,
-  /**
-   * A first line for the error when nothing answers `call`, where the call
-   * says why.
-   */
-  notFoundNote?: (call: object) => string | undefined,
+  { currentBlock, notFoundNote }: TableOptions,
 ) {
   const mocks = createHandlers<ActionContext<object>, unknown>();
   const calls = createRecordList<object>(recordLimit);
@@ -197,11 +242,9 @@ export function createTable(
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
     const handler = mocks.register(pinned, undefined);
     const builder = mocks.createBuilder(handler, definition.name, (value) => {
-      const given = value === zeroResult ? definition.zero : value;
-      const call = definition.pinnedCall?.(pinned);
-      const fixed = definition.fixAtRegistration?.(given) ?? given;
-      encode(fixed, call);
-      return fixed;
+      const registered = new Registered(value, currentBlock());
+      encode(registered, undefined, definition.pinnedCall?.(pinned) ?? {});
+      return registered;
     });
     definition.extendBuilder?.(builder);
     if ("reverts" in builder) answers = ".returns(), .reverts() or .fails()";
@@ -258,10 +301,20 @@ export function createTable(
     }
   }
 
-  /** A value in viem's types as JSON-RPC; `zeroResult` is the action's zero. */
-  function encode(value: unknown, call: object | undefined) {
+  /**
+   * An answer in viem's types as JSON-RPC: a static one with the block it was
+   * registered in, a resolver's with the block current now. Its `undefined`
+   * fields are left out, and `zeroResult` is the action's zero.
+   */
+  function encode(given: unknown, call: object | undefined, pinnedCall: object) {
+    const registered = given instanceof Registered ? given : undefined;
+    const value = registered === undefined ? given : registered.value;
     checkNoMatchers(value, `${definition.name}'s answer`);
-    return definition.encode(leftOut(value === zeroResult ? definition.zero : value), call);
+    return definition.encode(leftOut(value === zeroResult ? definition.zero : value), {
+      call,
+      pinnedCall,
+      blockNumber: registered === undefined ? currentBlock() : registered.blockNumber,
+    });
   }
 
   /**
@@ -316,7 +369,7 @@ export function createTable(
     return await mocks.answerWith(
       handler,
       context,
-      (value) => encode(value, call),
+      (value) => encode(value, call, call),
       definition.name,
     );
   }
@@ -336,10 +389,9 @@ export function createTable(
       calls.clear();
       mocks.clearUsage();
     },
-    /** Removes every mock, whose builders then throw, and forgets the calls. */
+    /** Removes every mock, whose builders then throw. */
     removeAll() {
       mocks.removeAll();
-      calls.clear();
     },
     unusedMocks: () => describeUnused(mocks.unused(mocks.handlers)),
     /**

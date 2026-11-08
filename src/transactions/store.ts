@@ -426,7 +426,7 @@ export function createTransactionStore({
   function mockedReceipt(
     receipt: MockReceipt,
     named: ReceiptNames,
-    { hash, blockNumber }: { hash: Hash | undefined; blockNumber: bigint | undefined },
+    { hash, blockNumber }: { hash: Hash | undefined; blockNumber: bigint },
   ) {
     const record = hash === undefined ? undefined : find(hash);
     const mined = record && minedAt(record);

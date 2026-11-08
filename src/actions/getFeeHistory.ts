@@ -109,7 +109,7 @@ export const getFeeHistory = ({ state }: ActionsContext): Definition<FeeHistoryC
     hint: "mock.actions.getFeeHistory(…).returns(…), or `fees` in createMockRpc()",
     decode: (params) => decodeFeeHistory(params, state.resolveBlock),
     zero: {},
-    encode(value, call) {
+    encode(value, { call }) {
       const history = checkFeeHistory(value);
       const derived = call === undefined ? {} : feeHistoryOf(call);
       return toRpcFeeHistory({ ...derived, ...history });
