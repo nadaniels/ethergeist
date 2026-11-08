@@ -12,12 +12,24 @@ import {
   type Specificity,
   checkNoRunnerMatchers,
   bestMatch,
-  setLimit,
   specificity,
 } from "./matching.js";
 import { isAnswer } from "./outcomes.js";
+import { checkCount } from "./setupChecks.js";
 import type { MockNodeFault, PinnedKey } from "./types.js";
 import { zeroResult } from "./zeroResult.js";
+
+/** A mock's limit: `limit` answers in all, `remaining` of them left. */
+type Limit = { limit: number | undefined; remaining: number | undefined };
+
+/** Limits a mock to `count` answers, for `.once()` and `.times(count)`. */
+function setLimit(mock: Limit, count: number): void {
+  checkCount(count, "times()'s count", 1);
+  if (mock.limit !== undefined)
+    throw new MockSetupError("This mock already has a limit; call once() or times() only once.");
+  mock.limit = count;
+  mock.remaining = count;
+}
 
 /**
  * One registered mock, for a contract's function or an action: what it pins,

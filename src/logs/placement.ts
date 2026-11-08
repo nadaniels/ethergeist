@@ -5,7 +5,7 @@ import { nodeHash } from "../chain/hashes.js";
 import { placeLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { formatValue } from "../mocking/format.js";
-import { checkAmount } from "../mocking/setupChecks.js";
+import { checkAmount, checkCount } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { type MockEventLog, checkLog, isPlaced } from "./events.js";
@@ -80,14 +80,8 @@ export function buildLog(
   checkAmount(blockNumber, "mock.buildLog()'s blockNumber");
   const hash =
     transactionHash === undefined ? zeroHash : nodeHash(transactionHash, "A transaction hash");
-  for (const [name, index] of Object.entries({
-    "transaction index": transactionIndex,
-    "log index": logIndex,
-  }))
-    if (index !== undefined && (!Number.isSafeInteger(index) || index < 0))
-      throw new MockSetupError(
-        `A ${name} must be an integer, zero or more; got ${formatValue(index)}.`,
-      );
+  for (const [name, index] of Object.entries({ transactionIndex, logIndex }))
+    if (index !== undefined) checkCount(index, `mock.buildLog()'s ${name}`, 0);
   return placeLog(log, {
     blockHash: blockHash(blockNumber),
     blockNumber,

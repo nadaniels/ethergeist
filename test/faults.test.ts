@@ -197,11 +197,13 @@ describe("lifecycle", () => {
 
   test("times must be a positive integer", () => {
     const { mock } = setup();
-    expect(() => mock.failRequests("timeout", { times: 0 })).toThrow(
-      new MockSetupError("`times` takes a positive integer; got 0."),
+    expectThrows(MockSetupError, "failRequests()'s times must be a positive integer; got 0.", () =>
+      mock.failRequests("timeout", { times: 0 }),
     );
-    expectThrows(MockSetupError, "positive integer", () =>
-      mock.failRequests("timeout", { times: 1.5 }),
+    expectThrows(
+      MockSetupError,
+      "failRequests()'s times must be a positive integer; got 1.5.",
+      () => mock.failRequests("timeout", { times: 1.5 }),
     );
   });
 });

@@ -107,7 +107,7 @@ export type WithLimits<answers> = answers & {
 export type MockEstimateAnswers<context> = {
   /**
    * Answers every matching call with `value` gas, or with what a resolver
-   * returns for each call, sync or async: a bigint, `0n` or more.
+   * returns for each call, sync or async: a non-negative bigint.
    * `.returns()` without a value is refused: an estimate has no zero answer
    * to default to.
    */

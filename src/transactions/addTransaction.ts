@@ -3,7 +3,7 @@ import { type Address, type Hash, type Hex, getAddress, isHex } from "viem";
 import { nodeHash } from "../chain/hashes.js";
 import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
-import { checkAmount } from "../mocking/setupChecks.js";
+import { checkAmount, checkCount } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { refuseRevertedLogs } from "./writeOutcome.js";
@@ -125,10 +125,7 @@ export function checkAddTransaction(fields: AddTransactionParameters) {
     if (amount !== undefined) checkAmount(amount, `mock.addTransaction()'s ${name}`);
   if (data !== undefined && !isHex(data))
     throw new MockSetupError(`A transaction's data must be hex; got ${formatValue(data)}.`);
-  if (nonce !== undefined && (!Number.isSafeInteger(nonce) || nonce < 0))
-    throw new MockSetupError(
-      `A transaction's nonce must be an integer, zero or more; got ${formatValue(nonce)}.`,
-    );
+  if (nonce !== undefined) checkCount(nonce, "mock.addTransaction()'s nonce", 0);
   if (status !== undefined && status !== "success" && status !== "reverted")
     throw new MockSetupError(
       `A transaction's status is "success" or "reverted"; got ${formatValue(status)}.`,

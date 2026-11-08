@@ -2,8 +2,8 @@ import { type Chain, type Hash, getAddress, isHash, isHex } from "viem";
 import { mainnet } from "viem/chains";
 
 import { formatValue } from "../mocking/format.js";
-import { checkAmount } from "../mocking/setupChecks.js";
-import { MockNotFoundError, MockSetupError, invalidParams } from "../shared/errors.js";
+import { checkAmount, checkCount } from "../mocking/setupChecks.js";
+import { MockNotFoundError, invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { type BlockClock, type MockBlock, generateBlock, numberOfBlockHash } from "./blocks.js";
 import { type Fees, type MockFees, resolveFees } from "./fees.js";
@@ -33,12 +33,8 @@ const expectedBlock: Record<BlockForm, string> = {
 
 /** A chain's block time, in milliseconds: 12s if it doesn't say. */
 function blockTimeOf(chain: Chain): number {
-  const blockTime: unknown = chain.blockTime ?? 12_000;
-  if (typeof blockTime !== "number" || !Number.isInteger(blockTime) || blockTime < 0)
-    throw new MockSetupError(
-      "chain.blockTime must be a whole number of milliseconds, zero or more; got " +
-        `${typeof blockTime === "number" ? blockTime : typeof blockTime}.`,
-    );
+  const blockTime = chain.blockTime ?? 12_000;
+  checkCount(blockTime, "createMockRpc()'s chain.blockTime", 0, "It's in milliseconds.");
   return blockTime;
 }
 
@@ -111,14 +107,7 @@ export function createChainState(parameters: {
      * moves forward.
      */
     mine(blocks = 1) {
-      const given: unknown = blocks;
-      if (!Number.isSafeInteger(given) || blocks < 1)
-        throw new MockSetupError(
-          `mock.mine() takes a count of blocks, an integer of 1 or more; got ${formatValue(given)}.`,
-          typeof given === "bigint"
-            ? { metaMessages: [`Counts are numbers: mock.mine(${given}).`] }
-            : undefined,
-        );
+      checkCount(blocks, "mock.mine()'s block count", 1);
       blockNumber += BigInt(blocks);
     },
     /** Block `number`'s fees. */

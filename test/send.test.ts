@@ -545,16 +545,12 @@ describe("send mocks", () => {
       // @ts-expect-error -- not a status
       send.returns({ status: "failed" });
     });
+    expectThrows(MockSetupError, "A send's gasUsed must be a non-negative bigint; got -1n.", () => {
+      send.returns({ gasUsed: -1n });
+    });
     expectThrows(
       MockSetupError,
-      "A send's gasUsed must be a bigint, zero or more; got -1n.",
-      () => {
-        send.returns({ gasUsed: -1n });
-      },
-    );
-    expectThrows(
-      MockSetupError,
-      "A send's effectiveGasPrice must be a bigint, zero or more; got 7.",
+      "A send's effectiveGasPrice must be a non-negative bigint; got 7.",
       () => {
         // @ts-expect-error -- not a bigint
         send.returns({ effectiveGasPrice: 7 });

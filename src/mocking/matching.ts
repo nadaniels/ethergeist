@@ -157,19 +157,6 @@ function pinnedEntries(pinned: unknown): [number | string, unknown][] {
   return isPlainObject(pinned) ? Object.entries(pinned) : [];
 }
 
-/** A mock's limit: `limit` answers in all, `remaining` of them left. */
-type Limit = { limit: number | undefined; remaining: number | undefined };
-
-/** Limits a mock to `count` answers, for `.once()` and `.times(count)`. */
-export function setLimit(mock: Limit, count: number): void {
-  if (!Number.isInteger(count) || count < 1)
-    throw new MockSetupError(`times() takes a positive integer; got ${String(count)}.`);
-  if (mock.limit !== undefined)
-    throw new MockSetupError("This mock already has a limit; call once() or times() only once.");
-  mock.limit = count;
-  mock.remaining = count;
-}
-
 /** What `bestMatch` ranks a candidate by. */
 type Rankable = {
   specificity: Specificity;

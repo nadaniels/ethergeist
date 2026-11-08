@@ -222,23 +222,13 @@ describe("mine()", () => {
 
     expectThrows(
       MockSetupError,
-      `mock.mine() takes a count of blocks, an integer of 1 or more; ${got}`,
+      `mock.mine()'s block count must be a positive integer; ${got}`,
       () => {
         // @ts-expect-error -- a count is a number
         mock.mine(blocks);
       },
     );
     expect(mock.blockNumber).toBe(100n);
-  });
-
-  test("a bigint's refusal says to pass a number", () => {
-    const { mock } = setup();
-
-    const error = expectThrows(MockSetupError, "got 2n.", () => {
-      // @ts-expect-error -- a count is a number, not a bigint
-      mock.mine(2n);
-    });
-    expect(error.metaMessages).toEqual(["Counts are numbers: mock.mine(2)."]);
   });
 
   test("mines the largest count a number holds exactly", () => {
@@ -583,27 +573,24 @@ describe("options", () => {
   // Typed, but JavaScript callers (or a cast) can pass anything: without a
   // check, the first block fails inside a request instead.
   test.each([
-    [{ blockNumber: 5 }, "createMockRpc()'s blockNumber must be a bigint, zero or more; got 5."],
-    [
-      { blockNumber: -1n },
-      "createMockRpc()'s blockNumber must be a bigint, zero or more; got -1n.",
-    ],
-    [{ timestamp: 5 }, "createMockRpc()'s timestamp must be a bigint, zero or more; got 5."],
-    [{ timestamp: -1n }, "createMockRpc()'s timestamp must be a bigint, zero or more; got -1n."],
+    [{ blockNumber: 5 }, "createMockRpc()'s blockNumber must be a non-negative bigint; got 5."],
+    [{ blockNumber: -1n }, "createMockRpc()'s blockNumber must be a non-negative bigint; got -1n."],
+    [{ timestamp: 5 }, "createMockRpc()'s timestamp must be a non-negative bigint; got 5."],
+    [{ timestamp: -1n }, "createMockRpc()'s timestamp must be a non-negative bigint; got -1n."],
     [
       { chain: { ...mainnet, blockTime: "x" } },
-      "chain.blockTime must be a whole number of milliseconds, zero or more; got string.",
+      "createMockRpc()'s chain.blockTime must be a non-negative integer; got x.",
     ],
     [
       { chain: { ...mainnet, blockTime: 1.5 } },
-      "chain.blockTime must be a whole number of milliseconds, zero or more; got 1.5.",
+      "createMockRpc()'s chain.blockTime must be a non-negative integer; got 1.5.",
     ],
     [
       { chain: { ...mainnet, blockTime: -1 } },
-      "chain.blockTime must be a whole number of milliseconds, zero or more; got -1.",
+      "createMockRpc()'s chain.blockTime must be a non-negative integer; got -1.",
     ],
   ])("%o is refused when the mock is created", (parameters, message) => {
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what a JavaScript caller can pass
-    expect(() => createMockRpc(parameters as never)).toThrow(new MockSetupError(message));
+    expectThrows(MockSetupError, message, () => createMockRpc(parameters as never));
   });
 });

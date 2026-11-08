@@ -416,15 +416,18 @@ describe("mock.buildLog()", () => {
     const content = usdc.events.Transfer({ from: alice, to: bob });
 
     for (const [placement, message] of [
-      [{ blockNumber: 5 }, "mock.buildLog()'s blockNumber must be a bigint, zero or more; got 5."],
+      [{ blockNumber: 5 }, "mock.buildLog()'s blockNumber must be a non-negative bigint; got 5."],
       [
         { blockNumber: -1n },
-        "mock.buildLog()'s blockNumber must be a bigint, zero or more; got -1n.",
+        "mock.buildLog()'s blockNumber must be a non-negative bigint; got -1n.",
       ],
       [{ transactionHash: "0x12" }, "A transaction hash must be 32 bytes; got 0x12."],
-      [{ transactionIndex: 1.5 }, "A transaction index must be an integer, zero or more; got 1.5."],
-      [{ logIndex: -1 }, "A log index must be an integer, zero or more; got -1."],
-      [{ logIndex: "x" }, "A log index must be an integer, zero or more; got x."],
+      [
+        { transactionIndex: 1.5 },
+        "mock.buildLog()'s transactionIndex must be a non-negative integer; got 1.5.",
+      ],
+      [{ logIndex: -1 }, "mock.buildLog()'s logIndex must be a non-negative integer; got -1."],
+      [{ logIndex: "x" }, "mock.buildLog()'s logIndex must be a non-negative integer; got x."],
     ] as const)
       // @ts-expect-error -- some aren't the placement's types
       expectThrows(MockSetupError, message, () => mock.buildLog(content, placement));

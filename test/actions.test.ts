@@ -170,14 +170,14 @@ describe("getBalance", () => {
 
     expectThrows(
       MockSetupError,
-      "getBalance's answer must be a bigint, zero or more; got -1n.",
+      "getBalance's answer must be a non-negative bigint; got -1n.",
       () => {
         mock.actions.getBalance().returns(-1n);
       },
     );
     expectThrows(
       MockSetupError,
-      "getBalance's answer must be a bigint, zero or more; got 1.",
+      "getBalance's answer must be a non-negative bigint; got 1.",
       () => {
         // @ts-expect-error -- a balance is a bigint
         mock.actions.getBalance().returns(1);
@@ -680,21 +680,21 @@ describe("getTransactionCount", () => {
     expect(mock.actions.getTransactionCount.calls).toMatchObject([{ blockTag: "pending" }]);
   });
 
-  test("a count is a whole number, zero or more", () => {
+  test("a count is a non-negative integer", () => {
     const { mock } = setup();
     mock.actions.getTransactionCount().returns(0);
 
     for (const value of [-1, 1.5])
       expectThrows(
         MockSetupError,
-        `A transaction count must be a whole number, zero or more; got ${value}.`,
+        `getTransactionCount's answer must be a non-negative integer; got ${value}.`,
         () => {
           mock.actions.getTransactionCount().returns(value);
         },
       );
     expectThrows(
       MockSetupError,
-      "A transaction count must be a whole number, zero or more; got 1n.",
+      "getTransactionCount's answer must be a non-negative integer; got 1n.",
       () => {
         // @ts-expect-error -- viem's count is a number
         mock.actions.getTransactionCount().returns(1n);

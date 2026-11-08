@@ -24,7 +24,7 @@ export type Fees = Required<MockFees>;
 const defaults: Fees = { baseFeePerGas: parseGwei("10"), maxPriorityFeePerGas: parseGwei("1") };
 
 /**
- * `fees` over `base`, checked: each is a bigint, zero or more, its subject in
+ * `fees` over `base`, checked: each is a non-negative bigint, its subject in
  * the message `place` followed by its name. A fee left out, or `undefined`,
  * keeps `base`'s.
  */

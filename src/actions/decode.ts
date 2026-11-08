@@ -25,8 +25,8 @@ import { isPlainObject, leftOut, lowercase, withoutUndefined } from "../shared/v
 import type { AddressAtBlockCall, SendTransactionCall } from "./types.js";
 
 /**
- * Encodes a bigint answer, zero or more, as a JSON-RPC quantity; `what` is
- * its subject in the message.
+ * Encodes a non-negative bigint answer as a JSON-RPC quantity; `what` is its
+ * subject in the message.
  */
 export function encodeQuantity(what: string) {
   return (value: unknown) => {

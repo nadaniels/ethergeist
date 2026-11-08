@@ -11,7 +11,7 @@ export const impliedGas = 100_000n;
 
 /**
  * A gas estimate as a JSON-RPC quantity, for `estimateGas` mocks on actions
- * and contracts alike: a bigint, `0n` or more; `what` is its subject in the
+ * and contracts alike: a non-negative bigint; `what` is its subject in the
  * message. `.returns()` with no value is refused: a node never estimates zero
  * gas, so an estimate has no zero answer to default to.
  */

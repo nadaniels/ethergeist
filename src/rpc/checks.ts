@@ -1,6 +1,7 @@
 import { type FormatContext, formatRecent } from "../history/format.js";
 import type { Recorder } from "../history/recorder.js";
 import type { UnhandledRequest } from "../history/types.js";
+import { checkCount } from "../mocking/setupChecks.js";
 import {
   MockCheckError,
   MockNotFoundError,
@@ -125,7 +126,7 @@ function unusedFailure(list: readonly string[]): string[] {
  * The mock's own checks: `assertNoUnhandled()`, `assertAllUsed()`, and
  * `checkpoint()`, whose `restore()` can run both. A failed check's error
  * ends with the most recent requests: `historyOnFailure` of them. Throws if
- * `historyOnFailure` is neither `false` nor a whole number.
+ * `historyOnFailure` is neither `false` nor a non-negative integer.
  */
 export function createChecks({
   recorder,
@@ -139,10 +140,8 @@ export function createChecks({
   historyOnFailure: number | false | undefined;
 }) {
   const historyOnFailure = given ?? 10;
-  if (historyOnFailure !== false && (!Number.isInteger(historyOnFailure) || historyOnFailure < 0))
-    throw new MockSetupError(
-      `historyOnFailure takes a count of requests or false; got ${String(historyOnFailure)}.`,
-    );
+  if (historyOnFailure !== false)
+    checkCount(historyOnFailure, "createMockRpc()'s historyOnFailure", 0, "Or false for none.");
 
   /**
    * A failed check's error, with the most recent requests after the message.

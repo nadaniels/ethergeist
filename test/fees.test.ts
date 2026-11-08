@@ -62,12 +62,12 @@ describe("fees", () => {
     ).not.toThrow();
     expectThrows(
       MockSetupError,
-      "createMockRpc()'s fees.baseFeePerGas must be a bigint, zero or more; got -1n.",
+      "createMockRpc()'s fees.baseFeePerGas must be a non-negative bigint; got -1n.",
       () => createMockRpc({ fees: { baseFeePerGas: -1n } }),
     );
     expectThrows(
       MockSetupError,
-      "createMockRpc()'s fees.maxPriorityFeePerGas must be a bigint, zero or more; got 1.",
+      "createMockRpc()'s fees.maxPriorityFeePerGas must be a non-negative bigint; got 1.",
       () =>
         // @ts-expect-error -- a priority fee is a bigint
         createMockRpc({ fees: { maxPriorityFeePerGas: 1 } }),
@@ -323,7 +323,7 @@ describe("setFees()", () => {
 
     expectThrows(
       MockSetupError,
-      "mock.setFees()'s baseFeePerGas must be a bigint, zero or more; got -1n.",
+      "mock.setFees()'s baseFeePerGas must be a non-negative bigint; got -1n.",
       () => {
         mock.setFees({ baseFeePerGas: -1n });
       },
@@ -384,7 +384,7 @@ describe("mocking fee answers", () => {
 
     expectThrows(
       MockSetupError,
-      "getGasPrice's answer must be a bigint, zero or more; got 0x1.",
+      "getGasPrice's answer must be a non-negative bigint; got 0x1.",
       () => {
         // @ts-expect-error -- a gas price is a bigint
         mock.actions.getGasPrice().returns("0x1");

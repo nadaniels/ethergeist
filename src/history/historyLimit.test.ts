@@ -43,7 +43,7 @@ describe("createRecordLimit()", () => {
   test.each([-1, 1.5, Number.NaN, -Infinity])("refuses %s", (historyLimit) => {
     expectThrows(
       MockSetupError,
-      `historyLimit takes a positive whole number or Infinity; got ${String(historyLimit)}.`,
+      `createMockRpc()'s historyLimit must be a positive integer; got ${String(historyLimit)}.`,
       () => createRecordLimit(historyLimit),
     );
   });

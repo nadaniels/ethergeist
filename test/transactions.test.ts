@@ -464,12 +464,12 @@ describe("mock.addTransaction", () => {
     [
       "a number block",
       { blockNumber: 3 },
-      "mock.addTransaction()'s blockNumber must be a bigint, zero or more; got 3.",
+      "mock.addTransaction()'s blockNumber must be a non-negative bigint; got 3.",
     ],
     [
       "a negative block",
       { blockNumber: -1n },
-      "mock.addTransaction()'s blockNumber must be a bigint, zero or more; got -1n.",
+      "mock.addTransaction()'s blockNumber must be a non-negative bigint; got -1n.",
     ],
     ["a short hash", { hash: "0x12" }, "A transaction hash must be 32 bytes; got 0x12."],
     [
@@ -485,18 +485,18 @@ describe("mock.addTransaction", () => {
     [
       "a negative value",
       { value: -1n },
-      "mock.addTransaction()'s value must be a bigint, zero or more; got -1n.",
+      "mock.addTransaction()'s value must be a non-negative bigint; got -1n.",
     ],
     [
       "a number gasUsed",
       { gasUsed: 1 },
-      "mock.addTransaction()'s gasUsed must be a bigint, zero or more; got 1.",
+      "mock.addTransaction()'s gasUsed must be a non-negative bigint; got 1.",
     ],
     ["data that isn't hex", { data: "0xzz" }, "A transaction's data must be hex; got 0xzz."],
     [
       "a fractional nonce",
       { nonce: 1.5 },
-      "A transaction's nonce must be an integer, zero or more; got 1.5.",
+      "mock.addTransaction()'s nonce must be a non-negative integer; got 1.5.",
     ],
     ["logs that aren't a list", { logs: testLog("noise") }, "A transaction's logs must be a list"],
     ["a log that isn't one", { logs: [null] }, "A transaction's log 0 isn't a log; got null."],

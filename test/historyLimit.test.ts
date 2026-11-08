@@ -379,7 +379,7 @@ describe("historyLimit", () => {
     );
     expectThrows(
       MockSetupError,
-      "historyLimit takes a positive whole number or Infinity; got 2.5.",
+      "createMockRpc()'s historyLimit must be a positive integer; got 2.5.",
       () => createMockRpc({ historyLimit: 2.5 }),
     );
   });

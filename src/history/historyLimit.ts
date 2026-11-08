@@ -1,3 +1,4 @@
+import { checkCount } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
 import type { RecordLimit } from "../shared/records.js";
 
@@ -8,7 +9,7 @@ const defaultHistoryLimit = 1000;
  * Each list's limit, from `createMockRpc()`'s `historyLimit`. Left out, it's
  * `defaultHistoryLimit`, and the first entry dropped warns once, so a test
  * that counted on every request hears about it. Throws on anything but a
- * positive whole number or `Infinity`.
+ * positive integer or `Infinity`.
  */
 export function createRecordLimit(
   historyLimit: number | undefined,
@@ -16,13 +17,11 @@ export function createRecordLimit(
 ): RecordLimit {
   if (historyLimit === 0)
     throw new MockSetupError(
-      "historyLimit keeps at least 1 entry per record; use 1 for the least memory, " +
-        "or Infinity to keep them all.",
+      "createMockRpc()'s historyLimit keeps at least 1 entry per record; use 1 for the least " +
+        "memory, or Infinity to keep them all.",
     );
-  if (historyLimit !== undefined && historyLimit !== Infinity && !isPositiveInteger(historyLimit))
-    throw new MockSetupError(
-      `historyLimit takes a positive whole number or Infinity; got ${String(historyLimit)}.`,
-    );
+  if (historyLimit !== undefined && historyLimit !== Infinity)
+    checkCount(historyLimit, "createMockRpc()'s historyLimit", 1, "Or Infinity to keep them all.");
   if (historyLimit !== undefined) return { limit: historyLimit, onDrop() {} };
 
   let warned = false;
@@ -41,5 +40,3 @@ export function createRecordLimit(
     },
   };
 }
-
-const isPositiveInteger = (value: number) => Number.isInteger(value) && value >= 1;

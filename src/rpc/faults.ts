@@ -1,6 +1,6 @@
 import { checkFault } from "../mocking/faults.js";
+import { checkCount } from "../mocking/setupChecks.js";
 import type { MockFault } from "../mocking/types.js";
-import { MockSetupError } from "../shared/errors.js";
 
 /** What `mock.failRequests()` takes besides its fault. */
 export type FailRequestsOptions = {
@@ -11,8 +11,8 @@ export type FailRequestsOptions = {
    */
   method?: string | readonly string[];
   /**
-   * How many requests it fails before they're answered again, a whole number
-   * `1` or more. Defaults to every request until it's cleared.
+   * How many requests it fails before they're answered again, a positive
+   * integer. Defaults to every request until it's cleared.
    */
   times?: number;
 };
@@ -39,8 +39,8 @@ type ActiveFault = {
 function createActiveFault(fault: MockFault, options: FailRequestsOptions): ActiveFault {
   checkFault(fault);
   const { method, times = Infinity } = options;
-  if (times !== Infinity && !(Number.isInteger(times) && times > 0))
-    throw new MockSetupError(`\`times\` takes a positive integer; got ${times}.`);
+  if (times !== Infinity)
+    checkCount(times, "failRequests()'s times", 1, "Or Infinity, the default: every request.");
   return {
     fault,
     methods: typeof method === "string" ? [method] : method,

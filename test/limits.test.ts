@@ -153,7 +153,7 @@ describe("once() and times()", () => {
 
   test("takes a positive integer, once", () => {
     const { usdc } = setup();
-    expectThrows(MockSetupError, "times() takes a positive integer; got 0.", () =>
+    expectThrows(MockSetupError, "times()'s count must be a positive integer; got 0.", () =>
       usdc.read.balanceOf().times(0),
     );
     expect(() => usdc.read.balanceOf().times(1.5)).toThrow(MockSetupError);

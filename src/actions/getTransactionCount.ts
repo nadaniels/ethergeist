@@ -1,7 +1,6 @@
 import { hexToNumber, isHex, numberToHex } from "viem";
 
-import { formatValue } from "../mocking/format.js";
-import { MockSetupError } from "../shared/errors.js";
+import { checkCount } from "../mocking/setupChecks.js";
 import { decodeAddressAtBlock, pinAddress } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext, TransactionCountCall } from "./types.js";
@@ -37,10 +36,7 @@ export const getTransactionCount = ({
     pin: pinAddress,
     zero: 0,
     encode(value) {
-      if (typeof value !== "number" || !Number.isSafeInteger(value) || value < 0)
-        throw new MockSetupError(
-          `A transaction count must be a whole number, zero or more; got ${formatValue(value)}.`,
-        );
+      checkCount(value, "getTransactionCount's answer", 0);
       return numberToHex(value);
     },
     extendContext(context, call) {

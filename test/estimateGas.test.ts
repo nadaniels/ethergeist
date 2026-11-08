@@ -161,19 +161,19 @@ describe("estimateGas", () => {
     expect(await client.estimateGas({ account: bob, to: alice })).toBe(100_000n);
   });
 
-  test("answers are gas: a bigint, zero or more", () => {
+  test("answers are gas: a non-negative bigint", () => {
     const { mock } = setup();
 
     expectThrows(
       MockSetupError,
-      "estimateGas's answer must be a bigint, zero or more; got -1n.",
+      "estimateGas's answer must be a non-negative bigint; got -1n.",
       () => {
         mock.actions.estimateGas().returns(-1n);
       },
     );
     expectThrows(
       MockSetupError,
-      "estimateGas's answer must be a bigint, zero or more; got 21000.",
+      "estimateGas's answer must be a non-negative bigint; got 21000.",
       () => {
         // @ts-expect-error -- viem's estimate is a bigint
         mock.actions.estimateGas().returns(21_000);
@@ -181,7 +181,7 @@ describe("estimateGas", () => {
     );
     expectThrows(
       MockSetupError,
-      "estimateGas's answer must be a bigint, zero or more; got undefined.",
+      "estimateGas's answer must be a non-negative bigint; got undefined.",
       () => {
         // @ts-expect-error -- there's no zero estimate
         mock.actions.estimateGas().returns();
@@ -785,14 +785,14 @@ describe("contract estimate mocks", () => {
 
     expectThrows(
       MockSetupError,
-      "estimateGas.transfer's answer must be a bigint, zero or more; got -1n.",
+      "estimateGas.transfer's answer must be a non-negative bigint; got -1n.",
       () => {
         token.estimateGas.transfer().returns(-1n);
       },
     );
     expectThrows(
       MockSetupError,
-      "estimateGas.transfer's answer must be a bigint, zero or more; got 1.",
+      "estimateGas.transfer's answer must be a non-negative bigint; got 1.",
       () => {
         // @ts-expect-error -- an estimate is a bigint
         token.estimateGas.transfer().returns(1);
@@ -800,7 +800,7 @@ describe("contract estimate mocks", () => {
     );
     expectThrows(
       MockSetupError,
-      "estimateGas.transfer's answer must be a bigint, zero or more; got undefined.",
+      "estimateGas.transfer's answer must be a non-negative bigint; got undefined.",
       () => {
         // @ts-expect-error -- there's no zero estimate
         token.estimateGas.transfer().returns();
