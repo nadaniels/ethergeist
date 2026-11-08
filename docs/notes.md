@@ -848,10 +848,15 @@ features land; tick them off as pages get written.
       mined with logs after it's registered),
       `MockCheckError` (a failed check), `MockNotFoundError` (not mocked),
       `MockResolverError` (a resolver or predicate threw; its cause is what
-      it threw) and `MockInternalError` (a bug in the mock: report it).
+      it threw) and `MockInternalError` (a bug in the mock, unless it was
+      given a value its types don't allow: report it).
       Everything else is viem's: reverts, faults and a node's refusals reach
       the app as viem's own classes, as in production, and viem's and ox's
       validation errors (an invalid address at registration) pass through.
+      A setup message names the call and field it's about
+      ("mock.addTransaction()'s gasUsed must be a non-negative bigint"). A
+      matcher can't stand in for a value: `match.any()` type-checks in any
+      field, but it's refused outside args, params and pins.
       A message is its short message, then hint lines (`metaMessages`, which
       viem's errors carry too); `details` is always empty, so viem never
       mistakes a hint for a node error. Assert with `toThrow(MockSetupError)`

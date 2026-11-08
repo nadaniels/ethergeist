@@ -57,6 +57,16 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 - Consumers rarely set `exactOptionalPropertyTypes`, so their types let an explicit `undefined` into any optional field, and a spread of a partial fixture puts one there. Strip it before a mock's fields spread over defaults or a record (`withoutUndefined` and `leftOut` in `src/shared/values.ts`): a plain spread lets `undefined` override.
 - A value that means something is `null` or a named value, never `undefined`: `null` for a pending transaction or a deploy's `to`, `false` for `historyOnFailure`.
 
+## Setup checks
+
+These are runtime checks on the values a test hands the mock's setup API.
+
+- Check a value where a mistake would otherwise be silent (ignored, coerced, or merged into a plausible answer) or blamed on the wrong party, including values the types rule out: tests cast often, and the mock transforms what it's given. Drop a one-off check that only repeats what fails loudly and clearly anyway (viem's own error naming the value, or a check a line later). Where a shared helper covers the kind, use it regardless, so every setup mistake is a `MockSetupError`.
+- Check once, in the first part that reads the value, never in the composition root. The generic kinds use the helpers in `src/mocking/setupChecks.ts`: `checkAmount` (a non-negative bigint), `checkCount` (a safe integer of 0 or 1 or more) and `checkFields` (an object of known fields, holding no matcher). Domain checks (logs, statuses, reverts, faults, hashes) stay in their layer.
+- Name a setup check `check*`: it throws `MockSetupError` and narrows (`asserts`). `assert*` is for the public checks, which throw `MockCheckError`.
+- A message's subject names the value as the user wrote it, qualified by the call that took it: "mock.addTransaction()'s gasUsed", "times()'s count", "getBalance's answer". Each kind has one form, which its helper words: "`<subject>` must be a non-negative bigint; got `<value>`." A subject mid-sentence stays lowercase ("Expected an object for a send's outcome").
+- An entry that takes a value refuses matchers (`match.any()` type-checks in any field) with `checkNoMatchers`, naming the place; args, params and pins take them.
+
 ## Errors
 
 - Throw the `MockError` family from `src/shared/errors.ts`, never a plain `Error`, `TypeError` or `RangeError` (`test/architecture.test.ts` checks): `MockSetupError` for the mock's API called wrong, `MockCheckError` for failed checks. A request param a node would refuse is `invalidParams` instead (`src/chain/params.ts`).

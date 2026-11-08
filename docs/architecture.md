@@ -18,7 +18,8 @@ shared → mocking → chain → logs → transactions → contracts → actions
 - **`mocking/`:** the mock engine that contracts and actions share
   (`handlers.ts`: registering mocks, picking the most specific match, limits
   and usage), plus matching, matchers, faults (`MockFailure`), `zeroResult`,
-  and outcomes (`MockOutcome`: how a mock answered, which history records).
+  outcomes (`MockOutcome`: how a mock answered, which history records), and
+  the shared setup checks (`setupChecks.ts`).
 - **`chain/`:** the chain's own state (`createChainState`: block number, clock,
   fees) and the node's shapes for blocks, transactions, receipts and errors,
   and for request params (`params.ts`: read to the Ethereum JSON-RPC spec,
@@ -70,7 +71,8 @@ up, move it down to where both can use it, as `MockOutcome` moved to
 `MockRevertError`, `MockRpcError` for a node's refusal), or the mock's own
 errors for what it couldn't answer: the `MockError` family in
 `shared/errors.ts`. Anything else thrown while answering is a bug in the mock,
-wrapped in `MockInternalError` (`asMockError`), so it's recorded as unhandled
+or a value its types don't allow that no check caught. It's wrapped in
+`MockInternalError` (`asMockError`), so it's recorded as unhandled
 and isn't retried. An adapter turns answers into its client's errors:
 `toViemError` in `viem/errors.ts` for viem. Support for another client (wagmi,
 ethers) is a new adapter folder beside `viem/`, not a change to the layers
@@ -89,6 +91,11 @@ The mock's errors:
   is the failure, so it stays in the short message: checks never reach viem.
 - A request param a node can't parse is `invalidParams` (`chain/params.ts`),
   never a setup error, even when the same check runs at registration.
+- Setup checks run once, in the first part that reads a value: the generic
+  kinds through `mocking/setupChecks.ts` (`checkAmount`, `checkCount`,
+  `checkFields`), domain checks in their layer. They're named `check*`, and
+  an entry that takes a value refuses matchers. AGENTS.md ("Setup checks")
+  has the rules.
 
 ## Naming
 
