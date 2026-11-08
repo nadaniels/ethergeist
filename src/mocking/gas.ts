@@ -1,6 +1,8 @@
 import { type Hex, numberToHex } from "viem";
 
+import { MockSetupError } from "../shared/errors.js";
 import { checkAmount } from "./setupChecks.js";
+import { zeroResult } from "./zeroResult.js";
 
 /**
  * The gas a send mock implies: its transaction's estimate, which runs
@@ -16,6 +18,10 @@ export const impliedGas = 100_000n;
  * gas, so an estimate has no zero answer to default to.
  */
 export function encodeGas(value: unknown, what: string): Hex {
+  if (value === undefined || value === zeroResult)
+    throw new MockSetupError(`${what} can't be left out: an estimate has no zero answer.`, {
+      metaMessages: ["Pass or return the gas, e.g. 21_000n."],
+    });
   checkAmount(value, what);
   return numberToHex(value);
 }

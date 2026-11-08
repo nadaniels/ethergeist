@@ -368,6 +368,19 @@ describe("setFees()", () => {
     expectThrows(MockSetupError, "match.any() can't go in mock.setFees()'s fees;", () => {
       mock.setFees(match.any());
     });
+    // An estimate isn't a literal, so its extra field type-checks.
+    const estimate = { maxFeePerGas: 2n, maxPriorityFeePerGas: 1n };
+    const error = expectThrows(
+      MockSetupError,
+      "maxFeePerGas isn't a field of mock.setFees()'s fees.",
+      () => {
+        mock.setFees(estimate);
+      },
+    );
+    expect(error.metaMessages).toEqual([
+      "Its fields are baseFeePerGas and maxPriorityFeePerGas. A send's max fee and the gas " +
+        "price follow from them, as viem's estimates do.",
+    ]);
     expectThrows(MockSetupError, "baseFee isn't a field of createMockRpc()'s fees.", () =>
       // @ts-expect-error -- a typo of baseFeePerGas
       createMockRpc({ fees: { baseFee: 1n } }),

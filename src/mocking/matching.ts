@@ -242,14 +242,16 @@ export function findMatcher(value: unknown): Matcher | undefined {
 
 /**
  * Throws if `value` holds a matcher anywhere: matchers go in a mock's args,
- * params and pins, not in values. `place` names the value for messages.
+ * params and pins, not in values. `place` names the value for messages;
+ * `hint` says what to do instead, where the place invites a matcher.
  */
-export function checkNoMatchers(value: unknown, place: string): void {
+export function checkNoMatchers(value: unknown, place: string, hint?: string): void {
   const found = findMatcher(value);
   if (found)
     throw new MockSetupError(
       `match.${found.type}() can't go in ${place}; matchers only go in a mock's args, params ` +
         "and pins.",
+      hint === undefined ? undefined : { metaMessages: [hint] },
     );
 }
 

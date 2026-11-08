@@ -79,7 +79,12 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
       given,
     );
   if (!isPlainObject(given)) throw notARevert(given);
-  checkNoMatchers(given, "a revert spec");
+  checkNoMatchers(
+    given,
+    "a revert spec",
+    "A revert spec holds the error's values. To revert whatever the call, pin the mock's " +
+      "args or params instead: read.f([match.any()]).reverts(…).",
+  );
   const { data, panic } = given;
   const fields = (["data", "panic", "errorName", "args"] as const).filter(
     (field) => given[field] !== undefined,

@@ -34,7 +34,8 @@ export function resolveFees(fees: MockFees | undefined, what: string, base: Fees
     fees ?? {},
     what,
     feeFields,
-    () => "Its fields are baseFeePerGas and maxPriorityFeePerGas.",
+    "Its fields are baseFeePerGas and maxPriorityFeePerGas. A send's max fee and the gas " +
+      "price follow from them, as viem's estimates do.",
   );
   const resolved = { ...base, ...given };
   for (const [name, value] of Object.entries(resolved)) checkAmount(value, `${what}.${name}`);

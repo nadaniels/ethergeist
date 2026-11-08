@@ -347,6 +347,19 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
     });
   });
 
+  test("a matcher in an error's args says to pin the mock's args instead", () => {
+    const { nft } = setup();
+
+    const error = expectThrows(MockSetupError, "match.any() can't go in a revert spec", () => {
+      // @ts-expect-error -- a typed ABI's error args take values; a JSON ABI's take anything
+      nft.read.ownerOf().reverts({ errorName: "ERC721NonexistentToken", args: [match.any()] });
+    });
+    expect(error.metaMessages).toEqual([
+      "A revert spec holds the error's values. To revert whatever the call, pin the mock's " +
+        "args or params instead: read.f([match.any()]).reverts(…).",
+    ]);
+  });
+
   test("a resolver's revert() with a spec the types rule out throws the mock's error, sends too", async () => {
     const { mock, nft, ownerOf } = setup();
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out

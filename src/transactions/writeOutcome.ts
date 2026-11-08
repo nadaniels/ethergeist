@@ -101,7 +101,7 @@ export function encodeWriteOutcome(
   isDeploy: boolean | undefined,
 ): MockWriteOutcome {
   if (value === undefined || value === zeroResult) return {};
-  const outcome = checkFields(value, "a send's outcome", outcomeFields, () => fieldsHint);
+  const outcome = checkFields(value, "a send's outcome", outcomeFields, fieldsHint);
   const { logs = [], status, gasUsed, effectiveGasPrice, contractAddress } = outcome;
   checkLogs(logs, "A send's");
   checkStatus(status, logs, "A send's status");

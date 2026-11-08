@@ -181,7 +181,7 @@ describe("estimateGas", () => {
     );
     expectThrows(
       MockSetupError,
-      "estimateGas's answer must be a non-negative bigint; got undefined.",
+      "estimateGas's answer can't be left out: an estimate has no zero answer.",
       () => {
         // @ts-expect-error -- there's no zero estimate
         mock.actions.estimateGas().returns();
@@ -800,7 +800,7 @@ describe("contract estimate mocks", () => {
     );
     expectThrows(
       MockSetupError,
-      "estimateGas.transfer's answer must be a non-negative bigint; got undefined.",
+      "estimateGas.transfer's answer can't be left out: an estimate has no zero answer.",
       () => {
         // @ts-expect-error -- there's no zero estimate
         token.estimateGas.transfer().returns();

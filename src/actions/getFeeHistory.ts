@@ -30,7 +30,7 @@ const subject = (field: string) => `${field} in getFeeHistory's answer`;
  * non-negative, and numbers for ratios.
  */
 function checkFeeHistory(given: unknown) {
-  const history = checkFields(given, "getFeeHistory's answer", feeHistoryFields, () => fieldsHint);
+  const history = checkFields(given, "getFeeHistory's answer", feeHistoryFields, fieldsHint);
   const { baseFeePerGas, baseFeePerBlobGas, gasUsedRatio, blobGasUsedRatio, oldestBlock, reward } =
     history;
   for (const [field, fees] of Object.entries({ baseFeePerGas, baseFeePerBlobGas })) {
