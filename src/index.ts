@@ -74,7 +74,7 @@ export type {
   MockTransaction,
   MockTransactionType,
 } from "./chain/transactions.js";
-export type { MockReceipt } from "./actions/getTransactionReceipt.js";
+export type { MockReceipt } from "./transactions/store.js";
 export type { LogsCall, LogsTopic } from "./logs/filter.js";
 export type { MockCheckpoint, RestoreOptions } from "./rpc/checks.js";
 export type { MockCallRecord } from "./contracts/types.js";

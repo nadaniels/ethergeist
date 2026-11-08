@@ -1,6 +1,5 @@
 import { formatTransaction, zeroHash } from "viem";
 
-import { type MockReceipt, placedReceipt } from "./actions/getTransactionReceipt.js";
 import type { ChainState } from "./chain/state.js";
 import {
   encodeTransaction,
@@ -11,7 +10,7 @@ import type { MockLogContent } from "./logs/events.js";
 import { type LogPlacement, buildLog } from "./logs/placement.js";
 import { refuseUnencodable } from "./shared/errors.js";
 import { withoutUndefined } from "./shared/values.js";
-import type { TransactionStore } from "./transactions/store.js";
+import type { MockReceipt, TransactionStore } from "./transactions/store.js";
 
 /**
  * The mock's builders of what it answers, in viem's types, with its answers'
@@ -22,7 +21,7 @@ import type { TransactionStore } from "./transactions/store.js";
  */
 export function createBuilders(
   state: ChainState,
-  transactions: Pick<TransactionStore, "logsBefore">,
+  transactions: Pick<TransactionStore, "placedReceipt">,
 ) {
   return {
     /**
@@ -50,12 +49,10 @@ export function createBuilders(
      */
     buildReceipt: (receipt: MockReceipt = {}) =>
       refuseUnencodable("buildReceipt()", () =>
-        placedReceipt(withoutUndefined(receipt), (field) => `mock.buildReceipt()'s ${field}`, {
-          hash: receipt.transactionHash ?? zeroHash,
-          blockNumber: state.blockNumber,
-          timestampAt: state.timestampAt,
-          logsBefore: transactions.logsBefore,
-        }),
+        transactions.placedReceipt(
+          withoutUndefined(receipt),
+          (part) => `mock.buildReceipt()'s ${part}`,
+        ),
       ),
     /**
      * `log`'s content placed as a complete viem log, in the current block

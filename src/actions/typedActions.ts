@@ -5,6 +5,7 @@ import type { MockFeeHistory } from "../chain/fees.js";
 import type { MockTransaction } from "../chain/transactions.js";
 import type { EmittedLog } from "../logs/events.js";
 import type { LogsCall } from "../logs/filter.js";
+import type { MockReceipt } from "../transactions/store.js";
 import { estimateGas, type MockEstimateGasAction } from "./estimateGas.js";
 import { estimateMaxPriorityFeePerGas } from "./estimateMaxPriorityFeePerGas.js";
 import { getBalance } from "./getBalance.js";
@@ -17,7 +18,7 @@ import { getLogs, type LogsContext } from "./getLogs.js";
 import { getStorageAt } from "./getStorageAt.js";
 import { getTransaction } from "./getTransaction.js";
 import { getTransactionCount, type TransactionCountContext } from "./getTransactionCount.js";
-import { type MockReceipt, getTransactionReceipt } from "./getTransactionReceipt.js";
+import { getTransactionReceipt } from "./getTransactionReceipt.js";
 import { type MockSendTransactionAction, sendTransaction } from "./sendTransaction.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type {

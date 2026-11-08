@@ -33,7 +33,9 @@ shared → mocking → chain → logs → transactions → contracts → actions
   receipts, transactions, blocks and `eth_getLogs` answer from when no mock
   answers first. Every record goes in through `add`, and all mining through
   its `mine`; a record is on the chain once its block is mined (at or below
-  the head).
+  the head). It also builds every receipt, a mock's and `mock.buildReceipt()`'s
+  included, and places every log a transaction or receipt has (all but
+  `mock.buildLog()`'s), so a log's index counts across its block in one place.
 - **`contracts/`:** mocked contracts, their registry, and `eth_call`
   dispatch, multicall included; a contract also takes a turn at the
   estimates and sends of its functions, ahead of the action's own mocks

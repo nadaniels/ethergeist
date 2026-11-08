@@ -9,7 +9,6 @@ import type {
   TransactionReceipt,
 } from "viem";
 
-import type { MockReceipt } from "./actions/getTransactionReceipt.js";
 import type { MockActions } from "./actions/typedActions.js";
 import type { MockMethodBuilder } from "./actions/types.js";
 import type { MockFees } from "./chain/fees.js";
@@ -27,7 +26,7 @@ import type { MockFault } from "./mocking/types.js";
 import type { MockCheckpoint } from "./rpc/checks.js";
 import type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
 import type { AddTransactionParameters } from "./transactions/addTransaction.js";
-import type { TransactionRecord } from "./transactions/store.js";
+import type { MockReceipt, TransactionRecord } from "./transactions/store.js";
 import type { MockPublicClientParameters } from "./viem/adapter.js";
 
 /** What `createMockRpc()` takes. Every option is optional. */
