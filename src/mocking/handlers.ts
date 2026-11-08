@@ -71,16 +71,31 @@ export type Handler<context = never, extra = unknown> = extra & {
 };
 
 /**
- * A mock found without answering (see `findAnswering`): its answer, and its
- * use, counted if what it would answer is given after all (see `countUse`).
+ * A mock found without answering (see `findAnswering`): its answer, and
+ * `spend`, which counts a use if what it would answer is given after all.
  */
-export type FoundMock = Pick<Handler, "resolver" | "usedCount" | "remaining">;
+export type FoundMock = {
+  /** Its resolver, to read what's marked on it, not to call. */
+  resolver: object;
+  spend: () => void;
+};
+
+/** `handler`, found without answering: see `FoundMock`. */
+export function foundMock(handler: Handler | undefined): FoundMock | undefined {
+  if (handler === undefined) return undefined;
+  return {
+    resolver: handler.resolver!,
+    spend() {
+      countUse(handler);
+    },
+  };
+}
 
 /**
  * Counts an answer `handler` gave: it's used, and spends one of a limit's
  * answers.
  */
-export function countUse(handler: FoundMock): void {
+function countUse(handler: Pick<Handler, "usedCount" | "remaining">): void {
   handler.usedCount += 1;
   if (handler.remaining !== undefined) handler.remaining -= 1;
 }

@@ -7,14 +7,17 @@ import { createRevertError } from "../contracts/answers.js";
 import type { CallContext, RevertFn, RevertSpec } from "../contracts/types.js";
 import type { MockLogContent } from "../logs/events.js";
 import { impliedGas } from "../mocking/gas.js";
+import type { FoundMock } from "../mocking/handlers.js";
 import type { MockNodeFault, SendErrorName, WithLimits } from "../mocking/types.js";
 import { invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import {
+  type ImpliedEstimate,
   type MockWriteAnswers,
   type MockWriteOutcome,
   encodeWriteOutcome,
   extendWriteBuilder,
+  impliedBy,
 } from "../transactions/writeOutcome.js";
 import { isPlainTransfer, pinTransaction, sendCall } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
@@ -95,6 +98,37 @@ function decodeSendTransaction([tx]: readonly unknown[]): SendTransactionCall {
 }
 
 /**
+ * The registered contract at a send's `to`, with the send's data and its
+ * call's context, when the send has data: the contract's `write` mocks
+ * answer it first.
+ */
+function contractCall(
+  { registry, state }: Pick<ActionsContext, "registry" | "state">,
+  { from, to, data, value }: SendTransactionCall,
+) {
+  if (to === null || data === undefined) return undefined;
+  const contract = registry.contractAt(to);
+  const context: CallContext = { from, value, blockNumber: state.blockNumber, batch: undefined };
+  return contract && { contract, data, context };
+}
+
+/**
+ * The implied estimate of `sent`: what the send mock that would answer it
+ * now implies (see `ImpliedEstimate`), found without answering it, so
+ * nothing runs and nothing is recorded. A registered contract's `write` mock
+ * comes first, as in its turn; `findMock` finds this action's own.
+ */
+export function impliedEstimate(
+  chain: Pick<ActionsContext, "registry" | "state">,
+  findMock: (call: SendTransactionCall) => FoundMock | undefined,
+  sent: SendTransactionCall,
+): ImpliedEstimate {
+  const called = contractCall(chain, sent);
+  const contractMock = called && called.contract.writeMock(called.data, called.context);
+  return impliedBy(contractMock ?? findMock(sent));
+}
+
+/**
  * `eth_sendTransaction`, `eth_sendRawTransaction` and
  * `eth_sendRawTransactionSync`. A send is mined in a new block as it's
  * answered (see `commit`), so the Sync method never times out. It's
@@ -111,22 +145,6 @@ export function sendTransaction({
   Hash | ReturnType<typeof toRpcReceipt>,
   MockWriteOutcome
 > {
-  /**
-   * The registered contract at a send's `to`, with the send's data and its
-   * call's context, when the send has data: the contract's `write` mocks
-   * answer it first.
-   */
-  const contractCall = ({ from, to, data, value }: SendTransactionCall) => {
-    if (to === null || data === undefined) return undefined;
-    const contract = registry.contractAt(to);
-    const context: CallContext = {
-      from,
-      value,
-      blockNumber: state.blockNumber,
-      batch: undefined,
-    };
-    return contract && { contract, data, context };
-  };
   /**
    * Each raw send's hash, from its bytes, and whether it's the Sync method.
    * An `eth_sendTransaction` has none: `add` makes its hash.
@@ -192,12 +210,8 @@ export function sendTransaction({
       });
     },
     contractTurn(call) {
-      const called = contractCall(call);
+      const called = contractCall({ registry, state }, call);
       return called && called.contract.write(called.data, called.context);
-    },
-    contractMock(call) {
-      const called = contractCall(call);
-      return called && called.contract.writeMock(called.data, called.context);
     },
     fallback: (call) => (isPlainTransfer(registry, call) ? {} : undefined),
     /**

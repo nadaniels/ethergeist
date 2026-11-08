@@ -6,6 +6,7 @@ import { MockRpcError, removedContractNote, removedTransactionNote } from "../sh
 import type { PartSnapshot } from "../shared/parts.js";
 import type { RecordLimit } from "../shared/records.js";
 import { createMethods } from "./methods.js";
+import { impliedEstimate } from "./sendTransaction.js";
 import { type ActionReport, type Table, createTable, type ActionsContext } from "./table.js";
 import { type MockActions, type ActionName, typedActions } from "./typedActions.js";
 
@@ -16,7 +17,10 @@ export type Actions = ReturnType<typeof createActions>;
  * The typed actions (`mock.actions`) and raw methods (`mock.method()`): their
  * mocks, and answering the requests they're for.
  */
-export function createActions(chain: Omit<ActionsContext, "mockFor">, recordLimit: RecordLimit) {
+export function createActions(
+  chain: Omit<ActionsContext, "impliedEstimate">,
+  recordLimit: RecordLimit,
+) {
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
   const names = Object.keys(typedActions) as ActionName[];
   /**
@@ -37,7 +41,10 @@ export function createActions(chain: Omit<ActionsContext, "mockFor">, recordLimi
         ? removedContractNote
         : undefined;
   // Asked only while answering, once every table is made.
-  const context: ActionsContext = { ...chain, mockFor: (name, call) => typed[name].findMock(call) };
+  const context: ActionsContext = {
+    ...chain,
+    impliedEstimate: (sent) => impliedEstimate(chain, typed.sendTransaction.findMock, sent),
+  };
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- one table per name, as built
   const typed = Object.fromEntries(
     names.map((name) => [

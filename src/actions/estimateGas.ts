@@ -5,7 +5,6 @@ import { sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
 import type { RevertFn, RevertSpec } from "../contracts/types.js";
 import { encodeGas, impliedGas } from "../mocking/gas.js";
-import { type FoundMock, countUse } from "../mocking/handlers.js";
 import type {
   EstimateErrorName,
   MockEstimateAnswers,
@@ -13,7 +12,7 @@ import type {
   WithLimits,
 } from "../mocking/types.js";
 import { withoutUndefined } from "../shared/values.js";
-import { registeredRevert } from "../transactions/writeOutcome.js";
+import type { ImpliedEstimate } from "../transactions/writeOutcome.js";
 import { blockAt, isPlainTransfer, pinTransaction, sendCall, viewQuantity } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext, EstimateGasCall, SendTransactionCall } from "./types.js";
@@ -64,28 +63,28 @@ export type MockEstimateGasAction = {
 
 /**
  * The send each estimate with a sender is for, which send mocks are matched
- * against, and the mock `sendMock` found for it. Its type is its request's,
- * as a send's is. viem's estimate carries no `type`, so an `eip2930` send
- * without an `accessList` looks legacy.
+ * against, and its implied estimate once `implied` asked for it. Its type is
+ * its request's, as a send's is. viem's estimate carries no `type`, so an
+ * `eip2930` send without an `accessList` looks legacy.
  */
 const sends = new WeakMap<
   EstimateGasCall,
-  { sent: SendTransactionCall; found?: { mock: FoundMock | undefined } }
+  { sent: SendTransactionCall; asked?: { implied: ImpliedEstimate } }
 >();
 
 /**
- * The mock that would answer the estimate's send, if it has one (see
- * `ActionsContext.mockFor`): found once per estimate, so its predicates run
- * once, though `refuse` and `fallback` both ask.
+ * The implied estimate of the estimate's send, if it has one (see
+ * `ActionsContext.impliedEstimate`): asked once per estimate, so predicates
+ * run once, though `preempt` and `fallback` both ask.
  */
-function sendMock(
+function implied(
   call: EstimateGasCall,
-  mockFor: ActionsContext["mockFor"],
-): FoundMock | undefined {
+  impliedEstimate: ActionsContext["impliedEstimate"],
+): ImpliedEstimate {
   const send = sends.get(call);
   if (send === undefined) return undefined;
-  send.found ??= { mock: mockFor("sendTransaction", send.sent) };
-  return send.found.mock;
+  send.asked ??= { implied: impliedEstimate(send.sent) };
+  return send.asked.implied;
 }
 
 /**
@@ -118,7 +117,7 @@ function decodeEstimateGas(
 export const estimateGas = ({
   state,
   registry,
-  mockFor,
+  impliedEstimate,
 }: ActionsContext): Definition<EstimateGasCall, Hex> => ({
   name: "estimateGas",
   hint: "mock.actions.estimateGas({ to }).returns(…)",
@@ -152,18 +151,18 @@ export const estimateGas = ({
     return registry.contractAt(to)?.estimate(data, { from, value, blockNumber, batch: undefined });
   },
   /**
-   * Reverting the estimate is the send mock's answer, so it counts as a use.
+   * Reverts the estimate as the `.reverts()` send mock that would answer its
+   * send says, which counts as that mock's use.
    */
-  refuse(call) {
-    const send = sendMock(call, mockFor);
-    const revert = send && registeredRevert(send.resolver);
-    if (!revert) return;
-    countUse(send);
-    throw revert;
+  preempt(call) {
+    const estimate = implied(call, impliedEstimate);
+    if (estimate === undefined || estimate === "gas") return;
+    estimate.spend();
+    throw estimate.reverts;
   },
   /** The send mock implies the estimate without running or being used up. */
   fallback(call) {
     if (isPlainTransfer(registry, call)) return numberToHex(21_000n);
-    return sendMock(call, mockFor) ? numberToHex(impliedGas) : undefined;
+    return implied(call, impliedEstimate) === "gas" ? numberToHex(impliedGas) : undefined;
   },
 });

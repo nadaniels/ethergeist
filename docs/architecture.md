@@ -174,11 +174,11 @@ everything, then mutate.
 
 1. Add its file in `actions/`, named for the action (`getGasPrice.ts`). It
    exports a function that takes the `ActionsContext` (`state`, `registry`,
-   `transactions`, and `mockFor`, another action's mock that would answer a
-   call) and returns its `Definition<call, rpc>`: how to decode the
-   call, encode and view answers, and what to answer when it isn't mocked
-   (`fallback`), or, rarely, what it refuses before any mock answers
-   (`refuse`: an estimate reverts for its send's `.reverts()` mock).
+   `transactions`, and `impliedEstimate`, what the send mocks imply for a
+   send's estimate) and returns its `Definition<call, rpc>`: how to decode
+   the call, encode and view answers, and what to answer when it isn't
+   mocked (`fallback`), or, rarely, an answer that comes before any mock's
+   (`preempt`: an estimate reverts for its send's `.reverts()` mock).
    `call` is its decoded call's type and `rpc` its JSON-RPC answer's, so its
    members get them typed, without casts. If `encode` checks the answer against the call
    (as a receipt refuses a reverted status over its transaction's own logs),

@@ -14,9 +14,9 @@ import {
 } from "../mocking/format.js";
 import {
   type Builder,
-  type FoundMock,
   type Handler as MockHandler,
   createHandlers,
+  foundMock,
 } from "../mocking/handlers.js";
 import { checkNoMatchers, firstMismatch, mismatches } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
@@ -27,24 +27,19 @@ import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, createRecordList } from "../shared/records.js";
 import { leftOut } from "../shared/values.js";
 import type { TransactionStore } from "../transactions/store.js";
-import type { ActionCalls, ActionContext } from "./types.js";
+import type { ImpliedEstimate } from "../transactions/writeOutcome.js";
+import type { ActionContext, SendTransactionCall } from "./types.js";
 
 /**
  * What an action's definition reads: the chain's state, what's registered,
- * its transactions, and the other actions' mocks.
+ * its transactions, and the send mocks' implied estimates.
  */
 export type ActionsContext = {
   state: ChainState;
   registry: Registry;
   transactions: TransactionStore;
-  /**
-   * The mock of action `name` that would answer `call` now, if any: see
-   * `findMock`.
-   */
-  mockFor: <name extends keyof ActionCalls>(
-    name: name,
-    call: ActionCalls[name],
-  ) => FoundMock | undefined;
+  /** The implied estimate of `sent`, as its send mocks stand now. */
+  impliedEstimate: (sent: SendTransactionCall) => ImpliedEstimate;
 };
 
 /**
@@ -110,12 +105,12 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
    */
   fallback?(call: call): answer | undefined;
   /**
-   * Refuses the call before any mock answers it, a registered contract's
-   * included, by throwing: an estimate reverts as the `.reverts()` mock
-   * that would answer its send does. It runs once the contract's turn is
-   * prepared, so the call is still recorded as the contract's.
+   * An answer that comes before the contract's and the mocks', thrown: an
+   * estimate reverts as the `.reverts()` send mock that would answer its
+   * send does. It runs once the contract's turn is prepared, so the call is
+   * still recorded as the contract's.
    */
-  refuse?(call: call): void;
+  preempt?(call: call): void;
   /**
    * Turns the answer to a call into its JSON-RPC answer, once it's chosen
    * (a contract's, a mock's or the fallback's): a send mines its
@@ -147,11 +142,6 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
    * this table's: it owns its functions.
    */
   contractTurn?(call: call): ContractTurn<answer> | undefined;
-  /**
-   * The contract's mock that would answer the call in its turn, if any,
-   * found without preparing the turn: nothing is recorded, and nothing runs.
-   */
-  contractMock?(call: call): FoundMock | undefined;
 };
 
 /**
@@ -293,9 +283,9 @@ export function createTable(
 
   async function answerCall(call: object, turn: ContractTurn | undefined): Promise<unknown> {
     try {
-      definition.refuse?.(call);
+      definition.preempt?.(call);
     } catch (error) {
-      turn?.refused(error);
+      turn?.preempted(error);
       throw error;
     }
     const answered = turn?.answer();
@@ -335,11 +325,11 @@ export function createTable(
     register,
     answer,
     /**
-     * The mock that would answer `call` now, if any, found without answering
-     * it: nothing runs, and no use is counted. A registered contract's mock
-     * comes first, as in its turn.
+     * This table's mock that would answer `call` now, if any, found without
+     * answering it: nothing runs, and no use is counted until `spend` counts
+     * one.
      */
-    findMock: (call: object) => definition.contractMock?.(call) ?? match(call).handler,
+    findMock: (call: object) => foundMock(match(call).handler),
     /** The calls this table received, as they arrive. */
     calls,
     clearCalls() {

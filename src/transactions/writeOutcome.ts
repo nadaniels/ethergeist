@@ -3,7 +3,7 @@ import { type Address, getAddress } from "viem";
 import { checkStatus } from "../chain/receipts.js";
 import { type MockLogContent, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
-import type { Builder } from "../mocking/handlers.js";
+import type { Builder, FoundMock } from "../mocking/handlers.js";
 import { checkAmount, checkFields } from "../mocking/setupChecks.js";
 import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
@@ -124,7 +124,7 @@ export function encodeWriteOutcome(
  * A send mock's `.reverts()` answer: mined reverted, as a send that reaches
  * the chain is. The resolver carries `error`, so the estimate of a send the
  * mock would answer reverts with it without running anything (see
- * `registeredRevert`).
+ * `impliedBy`).
  */
 const revertedWith = (error: MockRevertError) =>
   Object.assign((): MockWriteOutcome => ({ status: "reverted" }), { revert: error });
@@ -196,10 +196,23 @@ export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void 
   });
 }
 
-/** The revert a send mock's `.reverts()` registered, if its resolver is one. */
-export const registeredRevert = (resolver: unknown): MockRevertError | undefined =>
-  typeof resolver === "function" &&
-  "revert" in resolver &&
-  resolver.revert instanceof MockRevertError
-    ? resolver.revert
-    : undefined;
+/**
+ * A send mock's implied estimate: the estimate of a send it would answer.
+ * A `.reverts()` mock reverts it, and `spend` counts the use; any other
+ * mock implies gas, without running or being used up. `undefined` when no
+ * send mock would answer.
+ */
+export type ImpliedEstimate = { reverts: MockRevertError; spend: () => void } | "gas" | undefined;
+
+/**
+ * What `found`, the send mock that would answer a send, implies for its
+ * estimate: see `ImpliedEstimate`. Only `.reverts()` marks a revert
+ * (`revertedWith`): a resolver's `revert()` runs only at the send.
+ */
+export function impliedBy(found: FoundMock | undefined): ImpliedEstimate {
+  if (found === undefined) return undefined;
+  const { resolver, spend } = found;
+  if ("revert" in resolver && resolver.revert instanceof MockRevertError)
+    return { reverts: resolver.revert, spend };
+  return "gas";
+}
