@@ -121,7 +121,7 @@ export function encodeWriteOutcome(
     );
   return {
     ...outcome,
-    ...(typeof contractAddress === "string" && { contractAddress: getAddress(contractAddress) }),
+    ...(contractAddress !== undefined && { contractAddress: getAddress(contractAddress) }),
   };
 }
 

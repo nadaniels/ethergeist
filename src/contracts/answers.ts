@@ -90,7 +90,7 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
       `A revert spec takes one of data, panic, or errorName; got ${fields.join(" and ")}.`,
     );
   if (data !== undefined) {
-    if (typeof data !== "string" || !isHex(data))
+    if (!isHex(data))
       throw new MockSetupError(`A revert's data must be hex; got ${formatValue(data)}.`);
     return new MockRevertError(data);
   }

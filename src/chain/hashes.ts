@@ -11,8 +11,8 @@ import { lowercase } from "../shared/values.js";
  * transaction hash"). For identifiers only: calldata, bytes and topics keep
  * their case.
  */
-export function nodeHash(hash: unknown, name: string): Hash {
-  if (typeof hash !== "string" || !isHash(hash))
+export function nodeHash(hash: string, name: string): Hash {
+  if (!isHash(hash))
     throw new MockSetupError(`${name} must be 32 bytes; got ${formatValue(hash)}.`);
   return lowercase(hash);
 }

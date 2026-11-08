@@ -79,12 +79,8 @@ export function createFunctions(abi: Abi) {
         `Ambiguous overload for ${functionName}(*): pin args to choose one, e.g. [match.any()].`,
         { metaMessages: ["Overloads:", listSignatures(overloads)] },
       );
-    if (overloads.length < 2 || findMatcher(args) === undefined) {
-      const abiItem = getAbiItem({ abi: functionsIn[namespace], name: functionName, args });
-      // viem's type assumes a match, but untyped callers can pass any name.
-      if (abiItem === undefined) throw notInNamespaceError(namespace, functionName);
-      return abiItem;
-    }
+    if (overloads.length < 2 || findMatcher(args) === undefined)
+      return getAbiItem({ abi: functionsIn[namespace], name: functionName, args });
 
     const fits = overloads.filter(
       (overload) =>

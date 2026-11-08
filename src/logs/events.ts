@@ -89,7 +89,7 @@ export function checkLog(log: unknown, name: string): asserts log is MockEventLo
   const field = Object.keys(log).find((key) => !contentFields.has(key));
   if (field !== undefined)
     throw refuse(`has no field ${field}; a log's content is its address, topics and data`);
-  if (log.data !== undefined && (typeof log.data !== "string" || !isHex(log.data)))
+  if (log.data !== undefined && !isHex(log.data))
     throw refuse(`has data that isn't hex; got ${formatValue(log.data)}`);
   const topics: readonly unknown[] = log.topics ?? [];
   const index = topics.findIndex((topic) => typeof topic !== "string" || !isHash(topic));
