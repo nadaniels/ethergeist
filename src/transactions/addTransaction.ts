@@ -1,7 +1,7 @@
 import { type Address, type Hash, type Hex, getAddress, isHex } from "viem";
 
 import { nodeHash } from "../chain/hashes.js";
-import { type MockEventLog, isPlaced, refuseNonLogs } from "../logs/events.js";
+import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
@@ -135,7 +135,7 @@ export function checkAddTransaction(fields: AddTransactionParameters) {
     throw new MockSetupError(
       `A transaction's status is "success" or "reverted"; got ${formatValue(status)}.`,
     );
-  refuseNonLogs(logs, "A transaction's");
+  checkLogs(logs, "A transaction's");
   refuseRevertedLogs(status, logs);
   if (logs.some((log) => isPlaced(log)))
     throw new MockSetupError(

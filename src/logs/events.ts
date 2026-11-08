@@ -22,7 +22,7 @@ import { nodeHash } from "../chain/hashes.js";
 import { placeLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { formatCall, formatValue } from "../mocking/format.js";
-import { assertNoMatchers } from "../mocking/matching.js";
+import { checkNoMatchers } from "../mocking/matching.js";
 import {
   type AllNamed,
   type PartialStructs,
@@ -104,7 +104,7 @@ const contentFields = new Set(["address", "topics", "data"]);
  * mock's bug, or place an empty log. Placed logs are left to the caller,
  * which says who places them.
  */
-function refuseNonLog(log: unknown, name: string): asserts log is MockEventLog {
+function checkLog(log: unknown, name: string): asserts log is MockEventLog {
   const refuse = (problem: string) =>
     new MockSetupError(`${name} ${problem}.`, { metaMessages: [logsHint] });
   if (
@@ -129,14 +129,11 @@ function refuseNonLog(log: unknown, name: string): asserts log is MockEventLog {
 }
 
 /** Refuses `logs` unless it's a list of logs, for `subject` ("A send's"). */
-export function refuseNonLogs(
-  logs: unknown,
-  subject: string,
-): asserts logs is readonly MockEventLog[] {
+export function checkLogs(logs: unknown, subject: string): asserts logs is readonly MockEventLog[] {
   if (!Array.isArray(logs))
     throw new MockSetupError(`${subject} logs must be a list; got ${formatValue(logs)}.`);
   logs.forEach((log: unknown, index: number) => {
-    refuseNonLog(log, `${subject} log ${index}`);
+    checkLog(log, `${subject} log ${index}`);
   });
 }
 
@@ -224,7 +221,7 @@ export function buildLog(
   placement: LogPlacement,
   chain: Pick<ChainState, "blockNumber" | "timestampAt">,
 ): Log<bigint, number, false> {
-  refuseNonLog(log, "mock.buildLog()'s content");
+  checkLog(log, "mock.buildLog()'s content");
   if (isPlaced(log))
     throw new MockSetupError(
       "mock.buildLog() places a log's content, but this log already has a position.",
@@ -315,7 +312,7 @@ export function encodeEventLog(
   eventName: string,
   args: unknown,
 ): MockEventLog {
-  assertNoMatchers(args, "event args");
+  checkNoMatchers(args, "event args");
   const overloads = withoutRepeats(
     abi.filter((item): item is AbiEvent => item.type === "event" && item.name === eventName),
   );

@@ -257,7 +257,7 @@ export function findMatcher(value: unknown): Matcher | undefined {
  * Throws if `value` holds a matcher anywhere: matchers go in args and
  * params, not in answers.
  */
-export function assertNoMatchers(value: unknown, place = "return values"): void {
+export function checkNoMatchers(value: unknown, place = "return values"): void {
   const found = findMatcher(value);
   if (found)
     throw new MockSetupError(
@@ -270,7 +270,7 @@ export function assertNoMatchers(value: unknown, place = "return values"): void 
  * like) anywhere. The mock can't run them, and they're typed `any`, so they
  * would type-check and then never match.
  */
-export function assertNoRunnerMatchers(pinned: unknown): void {
+export function checkNoRunnerMatchers(pinned: unknown): void {
   const found = findRunnerMatcher(pinned, new Set());
   if (found !== undefined)
     throw new MockSetupError(

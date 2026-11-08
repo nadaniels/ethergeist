@@ -17,7 +17,7 @@ import {
   type Handler as MockHandler,
   createHandlers,
 } from "../mocking/handlers.js";
-import { assertNoRunnerMatchers, firstMismatch, specificity } from "../mocking/matching.js";
+import { checkNoRunnerMatchers, firstMismatch, specificity } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
@@ -232,7 +232,7 @@ export function createMockContract<const abi extends Abi>(
     const isDefault = asDefault !== undefined;
 
     const pinned = pinArgs(abiItem, args);
-    assertNoRunnerMatchers(given);
+    checkNoRunnerMatchers(given);
     const pins = pinCall(abiItem, given);
     const handler = mocks.register(
       pinned,

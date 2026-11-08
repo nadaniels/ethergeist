@@ -18,7 +18,7 @@ import {
   type Handler as MockHandler,
   createHandlers,
 } from "../mocking/handlers.js";
-import { assertNoMatchers, firstMismatch, mismatches } from "../mocking/matching.js";
+import { checkNoMatchers, firstMismatch, mismatches } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
@@ -270,7 +270,7 @@ export function createTable(
 
   /** A value in viem's types as JSON-RPC; `zeroResult` is the action's zero. */
   function encode(value: unknown, call: object | undefined) {
-    assertNoMatchers(value);
+    checkNoMatchers(value);
     return definition.encode(leftOut(value === zeroResult ? definition.zero : value), call);
   }
 

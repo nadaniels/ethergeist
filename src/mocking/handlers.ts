@@ -10,7 +10,7 @@ import { checkFault, fail } from "./faults.js";
 import {
   type MatchOptions,
   type Specificity,
-  assertNoRunnerMatchers,
+  checkNoRunnerMatchers,
   bestMatch,
   setLimit,
   specificity,
@@ -135,7 +135,7 @@ export function createHandlers<context, extra>() {
       ranked?: Specificity;
     } = {},
   ): Handler<context, extra> {
-    assertNoRunnerMatchers(pinned);
+    checkNoRunnerMatchers(pinned);
     const handler: Handler<context, extra> = {
       ...extra,
       pinned,

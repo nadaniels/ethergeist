@@ -11,7 +11,7 @@ import { formatAbiItem } from "viem/utils";
 
 import { formatValue } from "../mocking/format.js";
 import { encodeGas } from "../mocking/gas.js";
-import { assertNoMatchers } from "../mocking/matching.js";
+import { checkNoMatchers } from "../mocking/matching.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { builtinErrors, fillZeros } from "../shared/abiValues.js";
 import { MockRevertError, MockSetupError, refuseUnencodable } from "../shared/errors.js";
@@ -46,7 +46,7 @@ export function encodeAnswer(
 
 /** `value` as `abiItem`'s encoded return data, as `eth_call` answers. */
 function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
-  assertNoMatchers(value);
+  checkNoMatchers(value);
   return encodeFunctionResult({
     abi: [abiItem],
     functionName: abiItem.name,

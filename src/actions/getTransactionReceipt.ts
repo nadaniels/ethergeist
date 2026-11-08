@@ -2,7 +2,7 @@ import { type Hash, type TransactionReceipt, formatTransactionReceipt } from "vi
 
 import { hashParam } from "../chain/params.js";
 import { type ReceiptFields, completeReceipt, toRpcReceipt } from "../chain/receipts.js";
-import { type MockEventLog, isPlaced, refuseNonLogs } from "../logs/events.js";
+import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { refuseRevertedLogs } from "../transactions/writeOutcome.js";
@@ -51,7 +51,7 @@ export function placedReceipt(
  * placed yet.
  */
 function checkContentLogs(logs: unknown): asserts logs is readonly MockEventLog[] {
-  refuseNonLogs(logs, "A receipt's");
+  checkLogs(logs, "A receipt's");
   if (logs.some((log) => isPlaced(log)))
     throw new MockSetupError(
       "A receipt places its logs, but one already has a position (e.g. from mock.buildLog()).",

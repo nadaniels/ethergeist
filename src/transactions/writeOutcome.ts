@@ -1,6 +1,6 @@
 import { type Address, getAddress } from "viem";
 
-import { type MockEventLog, isPlaced, refuseNonLogs } from "../logs/events.js";
+import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import type { Builder } from "../mocking/handlers.js";
 import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
@@ -110,7 +110,7 @@ export function encodeWriteOutcome(
       metaMessages: [fieldsHint],
     });
   const { logs = [], status, gasUsed, effectiveGasPrice, contractAddress } = value;
-  refuseNonLogs(logs, "A send's");
+  checkLogs(logs, "A send's");
   if (status !== undefined && status !== "success" && status !== "reverted")
     throw new MockSetupError(
       `A send's status is "success" or "reverted"; got ${formatValue(status)}.`,
