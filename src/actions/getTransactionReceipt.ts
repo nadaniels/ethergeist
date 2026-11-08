@@ -5,7 +5,7 @@ import { type ReceiptFields, completeReceipt, toRpcReceipt } from "../chain/rece
 import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-import { refuseRevertedLogs } from "../transactions/writeOutcome.js";
+import { checkStatus } from "../transactions/writeOutcome.js";
 import { pinnedHash, registeredAt, unwrapRegistered } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ReceiptCall } from "./types.js";
@@ -33,6 +33,8 @@ export type MockReceipt = ReceiptFields & {
  */
 export function placedReceipt(
   receipt: MockReceipt,
+  /** Names its status for messages. */
+  what: string,
   context: {
     hash: Hash | undefined;
     blockNumber: bigint;
@@ -42,7 +44,7 @@ export function placedReceipt(
 ): TransactionReceipt {
   const { logs = [], ...fields } = receipt;
   checkContentLogs(logs);
-  refuseRevertedLogs(fields.status, logs);
+  checkStatus(fields.status, logs, what);
   return completeReceipt(fields, { ...context, logs });
 }
 
@@ -63,6 +65,8 @@ function checkContentLogs(logs: unknown): asserts logs is readonly MockEventLog[
       },
     );
 }
+
+const statusSubject = "status in getTransactionReceipt's answer";
 
 /**
  * `eth_getTransactionReceipt`. Unmocked, it answers with a placed
@@ -91,7 +95,7 @@ export const getTransactionReceipt = ({
     const record = call && transactions.minedRecord(call.hash);
     if (record === undefined)
       return toRpcReceipt(
-        placedReceipt(value, {
+        placedReceipt(value, statusSubject, {
           hash: call?.hash,
           blockNumber: blockNumber ?? state.blockNumber,
           timestampAt: state.timestampAt,
@@ -100,7 +104,7 @@ export const getTransactionReceipt = ({
       );
     const { logs, ...fields } = value;
     if (logs !== undefined) checkContentLogs(logs);
-    refuseRevertedLogs(fields.status ?? record.receipt.status, logs ?? record.logs, [
+    checkStatus(fields.status ?? record.receipt.status, logs ?? record.logs, statusSubject, [
       fields.status === undefined
         ? `Transaction ${record.hash} on the chain reverted: answer this receipt without logs, ` +
           'or add it with them and without status: "reverted", so every method agrees.'

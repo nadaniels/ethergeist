@@ -617,6 +617,22 @@ describe("getTransactionReceipt", () => {
     });
   });
 
+  test("a status that isn't one is refused, as from a receipt pasted from a node", () => {
+    const { mock } = setup();
+    const { hash } = mock.addTransaction({ from: alice, to: bob });
+    const message =
+      'status in getTransactionReceipt\'s answer must be "success" or "reverted"; got 0x1.';
+
+    expectThrows(MockSetupError, message, () => {
+      // @ts-expect-error -- a node's status, not viem's
+      mock.actions.getTransactionReceipt({ hash: txHash }).returns({ status: "0x1" });
+    });
+    expectThrows(MockSetupError, message, () => {
+      // @ts-expect-error -- a node's status, not viem's
+      mock.actions.getTransactionReceipt({ hash }).returns({ status: "0x1" });
+    });
+  });
+
   test("an invalid static value fails at registration", () => {
     const { mock } = setup();
 
@@ -721,6 +737,18 @@ describe("mock.buildReceipt()", () => {
       () =>
         // @ts-expect-error -- a block number is a bigint
         mock.buildReceipt({ blockNumber: "x" }),
+    );
+  });
+
+  test("a status that isn't one is refused", () => {
+    const { mock } = setup();
+
+    expectThrows(
+      MockSetupError,
+      'mock.buildReceipt()\'s status must be "success" or "reverted"; got 0x1.',
+      () =>
+        // @ts-expect-error -- a node's status, not viem's
+        mock.buildReceipt({ status: "0x1" }),
     );
   });
 

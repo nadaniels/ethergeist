@@ -541,10 +541,14 @@ describe("send mocks", () => {
     expectThrows(MockSetupError, "A reverted transaction has no logs.", () => {
       send.returns({ status: "reverted", logs: [testLog("noise")] });
     });
-    expectThrows(MockSetupError, 'A send\'s status is "success" or "reverted"; got failed.', () => {
-      // @ts-expect-error -- not a status
-      send.returns({ status: "failed" });
-    });
+    expectThrows(
+      MockSetupError,
+      'A send\'s status must be "success" or "reverted"; got failed.',
+      () => {
+        // @ts-expect-error -- not a status
+        send.returns({ status: "failed" });
+      },
+    );
     expectThrows(MockSetupError, "A send's gasUsed must be a non-negative bigint; got -1n.", () => {
       send.returns({ gasUsed: -1n });
     });

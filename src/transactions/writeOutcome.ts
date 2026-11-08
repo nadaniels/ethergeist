@@ -104,11 +104,7 @@ export function encodeWriteOutcome(
   const outcome = checkFields(value, "a send's outcome", outcomeFields, () => fieldsHint);
   const { logs = [], status, gasUsed, effectiveGasPrice, contractAddress } = outcome;
   checkLogs(logs, "A send's");
-  if (status !== undefined && status !== "success" && status !== "reverted")
-    throw new MockSetupError(
-      `A send's status is "success" or "reverted"; got ${formatValue(status)}.`,
-    );
-  refuseRevertedLogs(status, logs);
+  checkStatus(status, logs, "A send's status");
   for (const [name, gas] of Object.entries({ gasUsed, effectiveGasPrice }))
     if (gas !== undefined) checkAmount(gas, `A send's ${name}`);
   if (contractAddress !== undefined && typeof contractAddress !== "string")
@@ -130,15 +126,21 @@ export function encodeWriteOutcome(
 }
 
 /**
- * Refuses logs on a reverted transaction, which emits none: for a send's
- * outcome, an added transaction and a receipt mock over one alike, with
- * `metaMessages` for where the logs came from.
+ * Refuses a status that isn't `"success"` or `"reverted"` (`undefined` is
+ * left out), and logs on a reverted transaction, which emits none: for a
+ * send's outcome, an added transaction and a receipt alike. `what` names
+ * the status for messages; `metaMessages` say where the logs came from.
  */
-export function refuseRevertedLogs(
+export function checkStatus(
   status: unknown,
   logs: readonly unknown[],
+  what: string,
   metaMessages?: string[],
-): void {
+): asserts status is "success" | "reverted" | undefined {
+  if (status !== undefined && status !== "success" && status !== "reverted")
+    throw new MockSetupError(
+      `${what} must be "success" or "reverted"; got ${formatValue(status)}.`,
+    );
   if (status === "reverted" && logs.length > 0)
     throw new MockSetupError("A reverted transaction has no logs.", { metaMessages });
 }

@@ -5,7 +5,7 @@ import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import { checkAmount, checkCount, checkFields } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
-import { refuseRevertedLogs } from "./writeOutcome.js";
+import { checkStatus } from "./writeOutcome.js";
 
 /**
  * What `mock.addTransaction()` takes: a transaction the app didn't send, in
@@ -120,12 +120,8 @@ export function checkAddTransaction(given: AddTransactionParameters) {
   if (data !== undefined && !isHex(data))
     throw new MockSetupError(`A transaction's data must be hex; got ${formatValue(data)}.`);
   if (nonce !== undefined) checkCount(nonce, "mock.addTransaction()'s nonce", 0);
-  if (status !== undefined && status !== "success" && status !== "reverted")
-    throw new MockSetupError(
-      `A transaction's status is "success" or "reverted"; got ${formatValue(status)}.`,
-    );
   checkLogs(logs, "A transaction's");
-  refuseRevertedLogs(status, logs);
+  checkStatus(status, logs, "mock.addTransaction()'s status");
   if (logs.some((log) => isPlaced(log)))
     throw new MockSetupError(
       "mock.addTransaction() places logs itself, but one already has a position (e.g. from " +

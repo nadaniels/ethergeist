@@ -486,7 +486,7 @@ describe("mock.addTransaction", () => {
     [
       "an unknown status",
       { status: "pending" },
-      'A transaction\'s status is "success" or "reverted"; got pending.',
+      'mock.addTransaction()\'s status must be "success" or "reverted"; got pending.',
     ],
     [
       "a negative value",

@@ -50,7 +50,7 @@ export function createBuilders(
      */
     buildReceipt: (receipt: MockReceipt = {}) =>
       refuseUnencodable("buildReceipt()", () =>
-        placedReceipt(withoutUndefined(receipt), {
+        placedReceipt(withoutUndefined(receipt), "mock.buildReceipt()'s status", {
           hash: receipt.transactionHash ?? zeroHash,
           blockNumber: state.blockNumber,
           timestampAt: state.timestampAt,
