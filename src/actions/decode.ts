@@ -20,18 +20,17 @@ import {
 import type { ChainState } from "../chain/state.js";
 import type { MockTransactionType } from "../chain/transactions.js";
 import type { Registry } from "../contracts/registry.js";
-import { MockSetupError } from "../shared/errors.js";
+import { checkAmount } from "../mocking/setupChecks.js";
 import { isPlainObject, leftOut, lowercase, withoutUndefined } from "../shared/values.js";
 import type { AddressAtBlockCall, SendTransactionCall } from "./types.js";
 
 /**
- * Encodes a bigint answer as a JSON-RPC quantity; `what` names it in the
- * error.
+ * Encodes a bigint answer, zero or more, as a JSON-RPC quantity; `what` is
+ * its subject in the message.
  */
 export function encodeQuantity(what: string) {
   return (value: unknown) => {
-    if (typeof value !== "bigint")
-      throw new MockSetupError(`${what} must be a bigint; got ${typeof value}.`);
+    checkAmount(value, what);
     return numberToHex(value);
   };
 }

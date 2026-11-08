@@ -1,7 +1,6 @@
 import {
   type Hash,
   HttpRequestError,
-  IntegerOutOfRangeError,
   InvalidAddressError,
   InvalidInputRpcError,
   MethodNotFoundRpcError,
@@ -169,13 +168,21 @@ describe("getBalance", () => {
   test("invalid values and addresses fail at registration", () => {
     const { mock } = setup();
 
-    expectThrows(IntegerOutOfRangeError, "not in safe integer range", () => {
-      mock.actions.getBalance().returns(-1n);
-    });
-    expectThrows(MockSetupError, "A balance must be a bigint", () => {
-      // @ts-expect-error -- a balance is a bigint
-      mock.actions.getBalance().returns(1);
-    });
+    expectThrows(
+      MockSetupError,
+      "getBalance's answer must be a bigint, zero or more; got -1n.",
+      () => {
+        mock.actions.getBalance().returns(-1n);
+      },
+    );
+    expectThrows(
+      MockSetupError,
+      "getBalance's answer must be a bigint, zero or more; got 1.",
+      () => {
+        // @ts-expect-error -- a balance is a bigint
+        mock.actions.getBalance().returns(1);
+      },
+    );
     expect(() => mock.actions.getBalance({ address: "0x1234" })).toThrow(InvalidAddressError);
   });
 

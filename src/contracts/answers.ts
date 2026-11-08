@@ -41,7 +41,9 @@ export function encodeAnswer(
   { namespace, abiItem }: { namespace: MockNamespace; abiItem: AbiFunction },
   value: unknown,
 ): Hex {
-  return namespace === "estimateGas" ? encodeGas(value) : encodeResult(abiItem, value);
+  return namespace === "estimateGas"
+    ? encodeGas(value, `estimateGas.${abiItem.name}'s answer`)
+    : encodeResult(abiItem, value);
 }
 
 /** `value` as `abiItem`'s encoded return data, as `eth_call` answers. */

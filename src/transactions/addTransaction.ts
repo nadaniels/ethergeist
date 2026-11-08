@@ -3,6 +3,7 @@ import { type Address, type Hash, type Hex, getAddress, isHex } from "viem";
 import { nodeHash } from "../chain/hashes.js";
 import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
+import { checkAmount } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { refuseRevertedLogs } from "./writeOutcome.js";
@@ -121,10 +122,7 @@ export function checkAddTransaction(fields: AddTransactionParameters) {
   const from = fields.from === undefined ? undefined : getAddress(fields.from);
   const to = fields.to === undefined ? undefined : getAddress(fields.to);
   for (const [name, amount] of Object.entries({ value, gasUsed }))
-    if (amount !== undefined && (typeof amount !== "bigint" || amount < 0n))
-      throw new MockSetupError(
-        `A transaction's ${name} must be a bigint, zero or more; got ${formatValue(amount)}.`,
-      );
+    if (amount !== undefined) checkAmount(amount, `mock.addTransaction()'s ${name}`);
   if (data !== undefined && !isHex(data))
     throw new MockSetupError(`A transaction's data must be hex; got ${formatValue(data)}.`);
   if (nonce !== undefined && (!Number.isSafeInteger(nonce) || nonce < 0))
@@ -148,10 +146,7 @@ export function checkAddTransaction(fields: AddTransactionParameters) {
         ],
       },
     );
-  if (blockNumber !== undefined && (typeof blockNumber !== "bigint" || blockNumber < 0n))
-    throw new MockSetupError(
-      `A block number must be a bigint, zero or more; got ${formatValue(blockNumber)}.`,
-    );
+  if (blockNumber !== undefined) checkAmount(blockNumber, "mock.addTransaction()'s blockNumber");
   return {
     origin: "added" as const,
     hash: hash === undefined ? undefined : nodeHash(hash, "A transaction hash"),

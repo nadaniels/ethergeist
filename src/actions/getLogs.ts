@@ -3,6 +3,7 @@ import { type RpcLog, formatLog } from "viem";
 import { toRpcLog } from "../chain/receipts.js";
 import type { EmittedLog } from "../logs/events.js";
 import { type LogsCall, decodeLogsCall } from "../logs/filter.js";
+import { checkAmount } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { pinAddress } from "./decode.js";
@@ -73,11 +74,8 @@ function toRpcLogs(value: unknown): RpcLog[] {
       );
     // `toRpcLog` would silently drop a value that isn't a bigint.
     const { blockTimestamp } = log;
-    if (blockTimestamp !== undefined && typeof blockTimestamp !== "bigint")
-      throw new MockSetupError(
-        `getLogs log ${i}'s blockTimestamp must be a bigint, or left out; ` +
-          `got ${blockTimestamp === null ? "null" : typeof blockTimestamp}.`,
-      );
+    if (blockTimestamp !== undefined)
+      checkAmount(blockTimestamp, `getLogs log ${i}'s blockTimestamp`);
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- its position is checked above; the rest is the mock's answer as given
     return toRpcLog(log as unknown as EmittedLog);
   });

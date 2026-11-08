@@ -9,6 +9,6 @@ export const getBalance = ({ state }: ActionsContext): Definition<BalanceCall> =
   decode: (params) => decodeAddressAtBlock(params, state.resolveBlock),
   pin: pinAddress,
   zero: 0n,
-  encode: encodeQuantity("A balance"),
+  encode: encodeQuantity("getBalance's answer"),
   view: viewQuantity,
 });

@@ -60,12 +60,17 @@ describe("fees", () => {
     expect(() =>
       createMockRpc({ fees: { baseFeePerGas: 0n, maxPriorityFeePerGas: 0n } }),
     ).not.toThrow();
-    expectThrows(MockSetupError, "fees.baseFeePerGas can't be negative; got -1.", () =>
-      createMockRpc({ fees: { baseFeePerGas: -1n } }),
+    expectThrows(
+      MockSetupError,
+      "createMockRpc()'s fees.baseFeePerGas must be a bigint, zero or more; got -1n.",
+      () => createMockRpc({ fees: { baseFeePerGas: -1n } }),
     );
-    expectThrows(MockSetupError, "fees.maxPriorityFeePerGas must be a bigint; got number.", () =>
-      // @ts-expect-error -- a priority fee is a bigint
-      createMockRpc({ fees: { maxPriorityFeePerGas: 1 } }),
+    expectThrows(
+      MockSetupError,
+      "createMockRpc()'s fees.maxPriorityFeePerGas must be a bigint, zero or more; got 1.",
+      () =>
+        // @ts-expect-error -- a priority fee is a bigint
+        createMockRpc({ fees: { maxPriorityFeePerGas: 1 } }),
     );
   });
 
@@ -316,9 +321,13 @@ describe("setFees()", () => {
   test("setFees() rejects invalid fees, as in createMockRpc({ fees })", () => {
     const { mock } = setup();
 
-    expectThrows(MockSetupError, "fees.baseFeePerGas can't be negative; got -1.", () => {
-      mock.setFees({ baseFeePerGas: -1n });
-    });
+    expectThrows(
+      MockSetupError,
+      "mock.setFees()'s baseFeePerGas must be a bigint, zero or more; got -1n.",
+      () => {
+        mock.setFees({ baseFeePerGas: -1n });
+      },
+    );
   });
 });
 
@@ -373,9 +382,13 @@ describe("mocking fee answers", () => {
   test("answers must be bigints", () => {
     const { mock } = setup();
 
-    expectThrows(MockSetupError, "A gas price must be a bigint; got string.", () => {
-      // @ts-expect-error -- a gas price is a bigint
-      mock.actions.getGasPrice().returns("0x1");
-    });
+    expectThrows(
+      MockSetupError,
+      "getGasPrice's answer must be a bigint, zero or more; got 0x1.",
+      () => {
+        // @ts-expect-error -- a gas price is a bigint
+        mock.actions.getGasPrice().returns("0x1");
+      },
+    );
   });
 });

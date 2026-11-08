@@ -416,8 +416,11 @@ describe("mock.buildLog()", () => {
     const content = usdc.events.Transfer({ from: alice, to: bob });
 
     for (const [placement, message] of [
-      [{ blockNumber: 5 }, "A block number must be a bigint, zero or more; got 5."],
-      [{ blockNumber: -1n }, "A block number must be a bigint, zero or more; got -1n."],
+      [{ blockNumber: 5 }, "mock.buildLog()'s blockNumber must be a bigint, zero or more; got 5."],
+      [
+        { blockNumber: -1n },
+        "mock.buildLog()'s blockNumber must be a bigint, zero or more; got -1n.",
+      ],
       [{ transactionHash: "0x12" }, "A transaction hash must be 32 bytes; got 0x12."],
       [{ transactionIndex: 1.5 }, "A transaction index must be an integer, zero or more; got 1.5."],
       [{ logIndex: -1 }, "A log index must be an integer, zero or more; got -1."],

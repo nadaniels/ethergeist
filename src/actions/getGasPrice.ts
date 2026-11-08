@@ -13,7 +13,7 @@ export const getGasPrice = ({ state }: ActionsContext): Definition<EmptyCall> =>
   hint: "mock.actions.getGasPrice().returns(…), or `fees` in createMockRpc()",
   decode: () => ({}),
   zero: 0n,
-  encode: encodeQuantity("A gas price"),
+  encode: encodeQuantity("getGasPrice's answer"),
   view: viewQuantity,
   fallback() {
     const { baseFeePerGas, maxPriorityFeePerGas } = state.feesAt(state.blockNumber);

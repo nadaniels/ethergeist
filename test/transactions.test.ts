@@ -461,11 +461,15 @@ describe("mock.addTransaction", () => {
         "without blockNumber, it mines a new block.",
     ],
     ["a deploy", { to: null }, "mock.addTransaction() doesn't deploy: to can't be null."],
-    ["a number block", { blockNumber: 3 }, "A block number must be a bigint, zero or more; got 3."],
+    [
+      "a number block",
+      { blockNumber: 3 },
+      "mock.addTransaction()'s blockNumber must be a bigint, zero or more; got 3.",
+    ],
     [
       "a negative block",
       { blockNumber: -1n },
-      "A block number must be a bigint, zero or more; got -1n.",
+      "mock.addTransaction()'s blockNumber must be a bigint, zero or more; got -1n.",
     ],
     ["a short hash", { hash: "0x12" }, "A transaction hash must be 32 bytes; got 0x12."],
     [
@@ -481,12 +485,12 @@ describe("mock.addTransaction", () => {
     [
       "a negative value",
       { value: -1n },
-      "A transaction's value must be a bigint, zero or more; got -1n.",
+      "mock.addTransaction()'s value must be a bigint, zero or more; got -1n.",
     ],
     [
       "a number gasUsed",
       { gasUsed: 1 },
-      "A transaction's gasUsed must be a bigint, zero or more; got 1.",
+      "mock.addTransaction()'s gasUsed must be a bigint, zero or more; got 1.",
     ],
     ["data that isn't hex", { data: "0xzz" }, "A transaction's data must be hex; got 0xzz."],
     [

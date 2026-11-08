@@ -3,6 +3,7 @@ import type { Abi, AbiFunction, Address } from "viem";
 import { contractEvents, encodeEventLog } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import { withCalls } from "../mocking/handlers.js";
+import { checkAmount } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import {
@@ -118,6 +119,8 @@ export function createContractApi<const abi extends Abi>({
             throw new MockSetupError(`contract.emit has no option ${unknown}.`, {
               metaMessages: [unknown === "transactionHash" ? transactionHashHint : emitOptionsHint],
             });
+          if (options.blockNumber !== undefined)
+            checkAmount(options.blockNumber, "contract.emit's blockNumber");
           return addTransaction({ ...options, logs: [log] }).logs[0];
         },
       ]),

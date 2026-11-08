@@ -13,7 +13,7 @@ export const estimateMaxPriorityFeePerGas = ({ state }: ActionsContext): Definit
   hint: "mock.actions.estimateMaxPriorityFeePerGas().returns(…), or `fees` in createMockRpc()",
   decode: () => ({}),
   zero: 0n,
-  encode: encodeQuantity("A priority fee"),
+  encode: encodeQuantity("estimateMaxPriorityFeePerGas's answer"),
   view: viewQuantity,
   fallback: () => numberToHex(state.feesAt(state.blockNumber).maxPriorityFeePerGas),
 });

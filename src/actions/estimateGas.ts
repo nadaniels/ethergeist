@@ -126,7 +126,7 @@ export const estimateGas = ({
   pin: pinTransaction,
   /** No zero estimate: `encodeGas` refuses `.returns()` without a value. */
   zero: undefined,
-  encode: encodeGas,
+  encode: (value) => encodeGas(value, "estimateGas's answer"),
   view: viewQuantity,
   extendContext(context) {
     Object.assign(context, {

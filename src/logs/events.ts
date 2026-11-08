@@ -23,6 +23,7 @@ import { placeLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { formatCall, formatValue } from "../mocking/format.js";
 import { checkNoMatchers } from "../mocking/matching.js";
+import { checkAmount } from "../mocking/setupChecks.js";
 import {
   type AllNamed,
   type PartialStructs,
@@ -252,10 +253,7 @@ export function buildLog(
     transactionIndex,
     logIndex,
   } = placement;
-  if (typeof blockNumber !== "bigint" || blockNumber < 0n)
-    throw new MockSetupError(
-      `A block number must be a bigint, zero or more; got ${formatValue(blockNumber)}.`,
-    );
+  checkAmount(blockNumber, "mock.buildLog()'s blockNumber");
   const hash =
     transactionHash === undefined ? zeroHash : nodeHash(transactionHash, "A transaction hash");
   for (const [name, index] of Object.entries({

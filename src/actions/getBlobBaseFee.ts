@@ -11,7 +11,7 @@ export const getBlobBaseFee = (): Definition<EmptyCall> => ({
   hint: "mock.actions.getBlobBaseFee().returns(…)",
   decode: () => ({}),
   zero: 0n,
-  encode: encodeQuantity("A blob base fee"),
+  encode: encodeQuantity("getBlobBaseFee's answer"),
   view: viewQuantity,
   fallback: () => numberToHex(blobBaseFee),
 });

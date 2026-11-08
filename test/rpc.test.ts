@@ -583,10 +583,13 @@ describe("options", () => {
   // Typed, but JavaScript callers (or a cast) can pass anything: without a
   // check, the first block fails inside a request instead.
   test.each([
-    [{ blockNumber: 5 }, "blockNumber must be a bigint; got number."],
-    [{ blockNumber: -1n }, "blockNumber can't be negative; got -1."],
-    [{ timestamp: 5 }, "timestamp must be a bigint; got number."],
-    [{ timestamp: -1n }, "timestamp can't be negative; got -1."],
+    [{ blockNumber: 5 }, "createMockRpc()'s blockNumber must be a bigint, zero or more; got 5."],
+    [
+      { blockNumber: -1n },
+      "createMockRpc()'s blockNumber must be a bigint, zero or more; got -1n.",
+    ],
+    [{ timestamp: 5 }, "createMockRpc()'s timestamp must be a bigint, zero or more; got 5."],
+    [{ timestamp: -1n }, "createMockRpc()'s timestamp must be a bigint, zero or more; got -1n."],
     [
       { chain: { ...mainnet, blockTime: "x" } },
       "chain.blockTime must be a whole number of milliseconds, zero or more; got string.",

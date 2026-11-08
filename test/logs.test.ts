@@ -228,12 +228,17 @@ describe("emit", () => {
     const { mock, usdc } = setup();
     const args = { from: alice, to: bob };
 
-    expectThrows(MockSetupError, "A block number must be a bigint, zero or more; got 3.", () =>
-      // @ts-expect-error -- a block number takes a bigint
-      usdc.emit.Transfer(args, { blockNumber: 3 }),
+    expectThrows(
+      MockSetupError,
+      "contract.emit's blockNumber must be a bigint, zero or more; got 3.",
+      () =>
+        // @ts-expect-error -- a block number takes a bigint
+        usdc.emit.Transfer(args, { blockNumber: 3 }),
     );
-    expectThrows(MockSetupError, "A block number must be a bigint, zero or more; got -1n.", () =>
-      usdc.emit.Transfer(args, { blockNumber: -1n }),
+    expectThrows(
+      MockSetupError,
+      "contract.emit's blockNumber must be a bigint, zero or more; got -1n.",
+      () => usdc.emit.Transfer(args, { blockNumber: -1n }),
     );
     expectThrows(MockSetupError, "A transaction hash must be 32 bytes; got 0x12.", () =>
       usdc.emit.Transfer(args, { hash: "0x12" }),
@@ -1085,7 +1090,7 @@ describe("mock.actions.getLogs", () => {
 
     expectThrows(
       MockSetupError,
-      "getLogs log 0's blockTimestamp must be a bigint, or left out; got string.",
+      "getLogs log 0's blockTimestamp must be a bigint, zero or more; got 0x5.",
       () => {
         // @ts-expect-error -- a log's blockTimestamp is a bigint
         mock.actions.getLogs().returns([{ ...log, blockTimestamp: "0x5" }]);

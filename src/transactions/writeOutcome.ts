@@ -3,6 +3,7 @@ import { type Address, getAddress } from "viem";
 import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import type { Builder } from "../mocking/handlers.js";
+import { checkAmount } from "../mocking/setupChecks.js";
 import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockRevertError, MockSetupError } from "../shared/errors.js";
@@ -117,10 +118,7 @@ export function encodeWriteOutcome(
     );
   refuseRevertedLogs(status, logs);
   for (const [name, gas] of Object.entries({ gasUsed, effectiveGasPrice }))
-    if (gas !== undefined && (typeof gas !== "bigint" || gas < 0n))
-      throw new MockSetupError(
-        `A send's ${name} must be a bigint, zero or more; got ${formatValue(gas)}.`,
-      );
+    if (gas !== undefined) checkAmount(gas, `A send's ${name}`);
   if (contractAddress !== undefined && typeof contractAddress !== "string")
     throw new MockSetupError(
       `A send's contractAddress must be an address; got ${formatValue(contractAddress)}.`,

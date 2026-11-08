@@ -2,10 +2,11 @@ import { type Chain, type Hash, getAddress, isHash, isHex } from "viem";
 import { mainnet } from "viem/chains";
 
 import { formatValue } from "../mocking/format.js";
+import { checkAmount } from "../mocking/setupChecks.js";
 import { MockNotFoundError, MockSetupError, invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { type BlockClock, type MockBlock, generateBlock, numberOfBlockHash } from "./blocks.js";
-import { type Fees, type MockFees, bigintOption, resolveFees } from "./fees.js";
+import { type Fees, type MockFees, resolveFees } from "./fees.js";
 import { type BlockForm, hashParam, isBlockTag, quantityParam } from "./params.js";
 
 /**
@@ -54,14 +55,17 @@ export function createChainState(parameters: {
 }) {
   const chain: Chain = parameters.chain ?? mainnet;
   const multicall3 = chain.contracts?.multicall3?.address;
-  const initialBlockNumber = bigintOption(parameters.blockNumber ?? 1n, "blockNumber");
+  const initialBlockNumber = parameters.blockNumber ?? 1n;
+  checkAmount(initialBlockNumber, "createMockRpc()'s blockNumber");
+  const startTimestamp = parameters.timestamp ?? 1_700_000_000n;
+  checkAmount(startTimestamp, "createMockRpc()'s timestamp");
   let blockNumber = initialBlockNumber;
   const clock: BlockClock = {
     startBlock: initialBlockNumber,
-    startTimestamp: bigintOption(parameters.timestamp ?? 1_700_000_000n, "timestamp"),
+    startTimestamp,
     blockTime: blockTimeOf(chain),
   };
-  const initialFees = resolveFees(parameters.fees);
+  const initialFees = resolveFees(parameters.fees, "createMockRpc()'s fees.");
   /** `setFees()` changes, oldest first; each applies from its block on. */
   let feeChanges: readonly { fromBlock: bigint; fees: Fees }[] = [];
   const feesAt = (number: bigint) =>
@@ -124,7 +128,7 @@ export function createChainState(parameters: {
      * they replace.
      */
     setFees(fees: MockFees) {
-      const changed = resolveFees(fees, feesAt(blockNumber));
+      const changed = resolveFees(fees, "mock.setFees()'s ", feesAt(blockNumber));
       feeChanges = [
         ...feeChanges.filter((change) => change.fromBlock < blockNumber),
         { fromBlock: blockNumber, fees: changed },

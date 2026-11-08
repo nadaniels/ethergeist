@@ -1,6 +1,6 @@
 import { type FeeHistory, numberToHex, parseGwei } from "viem";
 
-import { MockSetupError } from "../shared/errors.js";
+import { checkAmount } from "../mocking/setupChecks.js";
 import { withoutUndefined } from "../shared/values.js";
 
 /**
@@ -23,21 +23,14 @@ export type Fees = Required<MockFees>;
 
 const defaults: Fees = { baseFeePerGas: parseGwei("10"), maxPriorityFeePerGas: parseGwei("1") };
 
-/** A bigint option, checked: zero or more; `name` names it in the error. */
-export function bigintOption(value: bigint, name: string): bigint {
-  if (typeof value !== "bigint")
-    throw new MockSetupError(`${name} must be a bigint; got ${typeof value}.`);
-  if (value < 0n) throw new MockSetupError(`${name} can't be negative; got ${value}.`);
-  return value;
-}
-
 /**
- * `fees` over `base`, checked: each is a bigint, zero or more. A fee left
- * out, or `undefined`, keeps `base`'s.
+ * `fees` over `base`, checked: each is a bigint, zero or more, its subject in
+ * the message `place` followed by its name. A fee left out, or `undefined`,
+ * keeps `base`'s.
  */
-export function resolveFees(fees: MockFees = {}, base: Fees = defaults): Fees {
+export function resolveFees(fees: MockFees = {}, place: string, base: Fees = defaults): Fees {
   const resolved = { ...base, ...withoutUndefined(fees) };
-  for (const [name, value] of Object.entries(resolved)) bigintOption(value, `fees.${name}`);
+  for (const [name, value] of Object.entries(resolved)) checkAmount(value, `${place}${name}`);
   return resolved;
 }
 
