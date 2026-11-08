@@ -1,6 +1,6 @@
 {
   "name": "ethergeist",
-  "version": "0.1.1",
+  "version": "0.2.0",
   "description": "A mock Ethereum node for viem: mock contracts and JSON-RPC actions behind a viem transport, for tests and demos.",
   "keywords": [
     "ethereum",
