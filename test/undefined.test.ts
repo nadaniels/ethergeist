@@ -1,12 +1,12 @@
 import { createWalletClient, getContractAddress, parseAbi, parseGwei, zeroAddress } from "viem";
 import { describe, expect, test } from "vite-plus/test";
 
-import { createMockRpc, testAddress, testHash } from "../src/index.js";
-import { lowercase } from "./utils.js";
+import { MockNotFoundError, createMockRpc, testAddress, testHash } from "../src/index.js";
+import { expectCause, lowercase, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const TOKEN = testAddress("token");
-const abi = parseAbi(["function f()"]);
+const abi = parseAbi(["function f()", "function g() view returns (uint256)"]);
 
 /**
  * An explicit `undefined`. Consumers' types allow one in any optional field
@@ -123,5 +123,17 @@ describe("an explicit undefined in a mock's fields is the field left out", () =>
     expect((await client.getTransactionReceipt({ hash })).contractAddress).toBe(
       lowercase(getContractAddress({ from: alice, nonce: 0n })),
     );
+  });
+
+  test("a defaults entry left out registers no mock, in every namespace", async () => {
+    const { mock, client } = setup();
+    mock.contract({
+      abi,
+      address: TOKEN,
+      defaults: { read: { g: unset }, estimateGas: { f: unset } },
+    });
+
+    const read = client.readContract({ abi, address: TOKEN, functionName: "g" });
+    expectCause(await rejectionOf(read), MockNotFoundError);
   });
 });

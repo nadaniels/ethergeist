@@ -170,7 +170,7 @@ describe("simulate", () => {
           abi: wethAbi,
           address: WETH,
           // @ts-expect-error -- `deposit` is payable: its default goes under simulate
-          defaults: { read: { deposit: undefined } },
+          defaults: { read: { deposit: 0n } },
         }),
     );
     expectThrows(MockSetupError, 'No function "balanceOff" on this contract\'s ABI.', () =>

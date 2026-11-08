@@ -266,6 +266,7 @@ export function createMockContract<const abi extends Abi>(
 
   for (const namespace of ["read", "simulate", "estimateGas", "write"] as const)
     for (const [functionName, resolver] of Object.entries(defaults[namespace] ?? {})) {
+      if (resolver === undefined) continue;
       const overloads = functionsIn[namespace].filter((abiItem) => abiItem.name === functionName);
       if (overloads.length === 0) throw notInNamespaceError(namespace, functionName);
       for (const abiItem of overloads)
