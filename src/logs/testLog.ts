@@ -1,7 +1,7 @@
 import { type Address, getAddress } from "viem";
 
 import { testAddress, testHash } from "../shared/testValues.js";
-import type { MockEventLog } from "./events.js";
+import type { MockLogContent } from "./events.js";
 
 /**
  * Stable log content for `label` that matches no event: a topic that's no
@@ -10,7 +10,7 @@ import type { MockEventLog } from "./events.js";
  * from `address` (any valid address, checksummed) for an unknown event at a
  * contract the app does know.
  */
-export function testLog(label: string, { address }: { address?: Address } = {}): MockEventLog {
+export function testLog(label: string, { address }: { address?: Address } = {}): MockLogContent {
   return {
     address: address === undefined ? testAddress(label) : getAddress(address),
     topics: [testHash(`Unknown(${label})`)],

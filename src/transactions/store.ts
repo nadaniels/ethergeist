@@ -4,7 +4,7 @@ import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
 import { type ReceiptFields, completeReceipt, placeLog, toRpcReceipt } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { type MockTransactionType, encodeTransaction } from "../chain/transactions.js";
-import type { EmittedLog, MockEventLog } from "../logs/events.js";
+import type { EmittedLog, MockLogContent } from "../logs/events.js";
 import { type LogsCall, topicsMatch } from "../logs/filter.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
 import { testHash } from "../shared/testValues.js";
@@ -71,7 +71,7 @@ export type TransactionRecord = {
 type NewRecord = Pick<TransactionRecord, "origin" | "fields" | "receipt"> & {
   /** Lowercase; left out, one the mock makes from its chain id and position. */
   hash?: Hash | undefined;
-  logs: readonly MockEventLog[];
+  logs: readonly MockLogContent[];
 };
 
 /**
@@ -329,7 +329,7 @@ export function createTransactionStore({
      * `null` while its block isn't mined, and `undefined` for a hash with no
      * placed transaction.
      */
-    receiptFor(hash: Hash, override: ReceiptFields = {}, logs?: readonly MockEventLog[]) {
+    receiptFor(hash: Hash, override: ReceiptFields = {}, logs?: readonly MockLogContent[]) {
       const record = find(hash);
       if (record === undefined) return undefined;
       const mined = minedAt(record);

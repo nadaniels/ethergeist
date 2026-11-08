@@ -1,7 +1,7 @@
 import { type Address, type Hash, type Hex, getAddress } from "viem";
 
 import { nodeHash } from "../chain/hashes.js";
-import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
+import { type MockLogContent, isPlaced, checkLogs } from "../logs/events.js";
 import { checkAmount, checkCount, checkFields, checkHex } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
 import { checkStatus } from "./writeOutcome.js";
@@ -43,7 +43,7 @@ export type AddTransactionParameters = {
    * swap's logs from several contracts go in one transaction, e.g.
    * `{ logs: [a, b] }`. A placed log is refused.
    */
-  logs?: readonly MockEventLog[];
+  logs?: readonly MockLogContent[];
   /**
    * Its receipt's status: with `"reverted"`, logs are refused, as a
    * reverted transaction has none. Defaults to `"success"`.

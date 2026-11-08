@@ -4,7 +4,7 @@ import { describe, expectTypeOf, test } from "vite-plus/test";
 import {
   type LogsCall,
   type EventArgs,
-  type MockEventLog,
+  type MockLogContent,
   type TransactionRecord,
   contractEvents,
   createMockRpc,
@@ -82,7 +82,7 @@ describe("contract.events", () => {
   test("one function per event, returning the log's content", () => {
     expectTypeOf(
       usdc.events.Transfer({ from: alice, to: bob, value: 5n }),
-    ).toEqualTypeOf<MockEventLog>();
+    ).toEqualTypeOf<MockLogContent>();
     // @ts-expect-error -- `to` is indexed, so required
     usdc.events.Transfer({ from: alice, value: 5n });
     // @ts-expect-error -- not an arg of Transfer
@@ -115,7 +115,9 @@ describe("contractEvents()", () => {
     expectTypeOf(usdc).toEqualTypeOf(
       createMockRpc().contract({ abi: erc20Abi, address: USDC }).events,
     );
-    expectTypeOf(usdc.Transfer({ from: alice, to: bob, value: 5n })).toEqualTypeOf<MockEventLog>();
+    expectTypeOf(
+      usdc.Transfer({ from: alice, to: bob, value: 5n }),
+    ).toEqualTypeOf<MockLogContent>();
     // @ts-expect-error -- `to` is indexed, so required
     usdc.Transfer({ from: alice, value: 5n });
     expectTypeOf(usdc).not.toHaveProperty("Swap");

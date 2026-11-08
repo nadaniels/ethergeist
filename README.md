@@ -525,7 +525,7 @@ write, and they're kept stable:
 - setup: `CreateMockRpcParameters`, `MockRpc`, `MockContract`,
   `CreateMockContractParameters`;
 - resolvers: the `*Call` and `*Context` types;
-- answers: `MockReceipt`, `MockBlock`, `MockTransaction`, `MockEventLog`;
+- answers: `MockReceipt`, `MockBlock`, `MockTransaction`, `MockLogContent`;
 - records: `TransactionRecord`, `MockHistoryEntry`;
 - parameters: `AddTransactionParameters`, `RestoreOptions`;
 - the error classes and the error-name unions (`NodeErrorName` and the like).

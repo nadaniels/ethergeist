@@ -5,7 +5,7 @@ import type { toRpcReceipt } from "../chain/receipts.js";
 import { decodeRawTransaction, sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
 import type { CallContext, RevertFn, RevertSpec } from "../contracts/types.js";
-import type { MockEventLog } from "../logs/events.js";
+import type { MockLogContent } from "../logs/events.js";
 import { impliedGas } from "../mocking/gas.js";
 import type { MockNodeFault, SendErrorName, WithLimits } from "../mocking/types.js";
 import { invalidParams } from "../shared/errors.js";
@@ -34,7 +34,7 @@ export type SendTransactionContext = ActionContext<
    * place a separate transaction: they're refused in this resolver up to its
    * first `await`, and after it they place one.
    */
-  emit: (logs: MockEventLog | readonly MockEventLog[]) => void;
+  emit: (logs: MockLogContent | readonly MockLogContent[]) => void;
   /**
    * Mines the transaction reverted, e.g. `revert("paused")`, dropping what
    * it emitted. Without an ABI, it takes a reason, a panic code, raw data or

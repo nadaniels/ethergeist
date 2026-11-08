@@ -21,7 +21,7 @@ import type {
 } from "./contracts/types.js";
 import type { FormatHistoryOptions } from "./history/format.js";
 import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./history/types.js";
-import type { EmittedLog, MockEventLog } from "./logs/events.js";
+import type { EmittedLog, MockLogContent } from "./logs/events.js";
 import type { LogPlacement } from "./logs/placement.js";
 import type { MockFault } from "./mocking/types.js";
 import type { MockCheckpoint } from "./rpc/checks.js";
@@ -172,7 +172,7 @@ export type MockRpc = {
    * `isAddressEqual()`, not `toBe()`. A transaction's logs aren't built
    * here: a transaction places its logs' content itself.
    */
-  buildLog(log: MockEventLog, placement?: LogPlacement): Log<bigint, number, false>;
+  buildLog(log: MockLogContent, placement?: LogPlacement): Log<bigint, number, false>;
   /**
    * Places a transaction the app didn't send, and returns its record, as
    * `mock.transactions` lists it. Like a send, and like Anvil with automine

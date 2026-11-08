@@ -14,7 +14,7 @@ import {
   type EstimateGasCall,
   type LogsCall,
   type LogsContext,
-  type MockEventLog,
+  type MockLogContent,
   type RpcValue,
   type SendTransactionCall,
   type StorageCall,
@@ -278,7 +278,9 @@ describe("getLogs", () => {
     mock.actions.sendTransaction().returns(({ fail }) => fail("gasExceedsAllowance"));
     mock.actions.sendTransaction().returns(() => {});
     mock.actions.sendTransaction().returns(({ emit, revert }) => {
-      expectTypeOf(emit).toEqualTypeOf<(logs: MockEventLog | readonly MockEventLog[]) => void>();
+      expectTypeOf(emit).toEqualTypeOf<
+        (logs: MockLogContent | readonly MockLogContent[]) => void
+      >();
       emit(testLog("noise"));
       emit([testLog("a"), testLog("b")]);
       // @ts-expect-error -- not a log: no address, topics or data

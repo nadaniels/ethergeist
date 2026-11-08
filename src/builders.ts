@@ -7,7 +7,7 @@ import {
   type BuiltTransaction,
   type MockTransaction,
 } from "./chain/transactions.js";
-import type { MockEventLog } from "./logs/events.js";
+import type { MockLogContent } from "./logs/events.js";
 import { type LogPlacement, buildLog } from "./logs/placement.js";
 import { refuseUnencodable } from "./shared/errors.js";
 import { withoutUndefined } from "./shared/values.js";
@@ -61,6 +61,7 @@ export function createBuilders(
      * `log`'s content placed as a complete viem log, in the current block
      * unless `placement` gives one; see `buildLog`.
      */
-    buildLog: (log: MockEventLog, placement: LogPlacement = {}) => buildLog(log, placement, state),
+    buildLog: (log: MockLogContent, placement: LogPlacement = {}) =>
+      buildLog(log, placement, state),
   };
 }

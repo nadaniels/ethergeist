@@ -17,7 +17,7 @@ import type {
   EmittedLog,
   EventArgsParameter,
   MockContractEvents,
-  MockEventLog,
+  MockLogContent,
 } from "../logs/events.js";
 import type { MockOutcome } from "../mocking/outcomes.js";
 import type {
@@ -344,7 +344,7 @@ export type WriteResolverContext<abi extends Abi, args> = ResolverContext<
    * place a separate transaction: they're refused in this resolver up to its
    * first `await`, and after it they place one.
    */
-  emit: (logs: MockEventLog | readonly MockEventLog[]) => void;
+  emit: (logs: MockLogContent | readonly MockLogContent[]) => void;
   /**
    * Mines the transaction reverted, e.g. `revert("paused")`, dropping what
    * it emitted. A resolver runs only at the send, so the estimate doesn't

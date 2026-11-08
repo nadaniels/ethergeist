@@ -6,7 +6,7 @@ import { placeLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { checkAmount, checkCount, checkFields } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
-import { type MockEventLog, checkLog, isPlaced } from "./events.js";
+import { type MockLogContent, checkLog, isPlaced } from "./events.js";
 
 /**
  * Where `mock.buildLog()` places a log, in a log's own field names: its
@@ -40,7 +40,7 @@ const placementHint =
  * Content already placed is refused, as everywhere that places logs.
  */
 export function buildLog(
-  log: MockEventLog,
+  log: MockLogContent,
   placement: LogPlacement,
   chain: Pick<ChainState, "blockNumber" | "timestampAt">,
 ): Log<bigint, number, false> {

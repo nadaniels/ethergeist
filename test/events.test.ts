@@ -14,7 +14,7 @@ import {
 import { describe, expect, test } from "vite-plus/test";
 
 import {
-  type MockEventLog,
+  type MockLogContent,
   MockNotFoundError,
   MockSetupError,
   contractEvents,
@@ -526,7 +526,7 @@ describe("mock.buildLog()", () => {
 
 /** A log the types rule out, as an untyped caller passes it. */
 // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
-const untyped = (log: object) => log as MockEventLog;
+const untyped = (log: object) => log as MockLogContent;
 
 describe("a log's content is checked wherever it's placed", () => {
   const content = testLog("noise");
@@ -553,37 +553,40 @@ describe("a log's content is checked wherever it's placed", () => {
     },
   ];
   type Setup = ReturnType<typeof setup>;
-  const sites: { site: string; name: string; place: (setup: Setup, log: MockEventLog) => void }[] =
-    [
-      {
-        site: "mock.addTransaction({ logs })",
-        name: "A transaction's log 0",
-        place: ({ mock }, log) => {
-          mock.addTransaction({ logs: [log] });
-        },
+  const sites: {
+    site: string;
+    name: string;
+    place: (setup: Setup, log: MockLogContent) => void;
+  }[] = [
+    {
+      site: "mock.addTransaction({ logs })",
+      name: "A transaction's log 0",
+      place: ({ mock }, log) => {
+        mock.addTransaction({ logs: [log] });
       },
-      {
-        site: "a write's .emits()",
-        name: "A send's log 0",
-        place: ({ usdc }, log) => {
-          usdc.write.transfer().emits(log);
-        },
+    },
+    {
+      site: "a write's .emits()",
+      name: "A send's log 0",
+      place: ({ usdc }, log) => {
+        usdc.write.transfer().emits(log);
       },
-      {
-        site: "a receipt mock's logs",
-        name: "A receipt's log 0",
-        place: ({ mock }, log) => {
-          mock.actions.getTransactionReceipt().returns({ logs: [log] });
-        },
+    },
+    {
+      site: "a receipt mock's logs",
+      name: "A receipt's log 0",
+      place: ({ mock }, log) => {
+        mock.actions.getTransactionReceipt().returns({ logs: [log] });
       },
-      {
-        site: "mock.buildLog()",
-        name: "mock.buildLog()'s content",
-        place: ({ mock }, log) => {
-          mock.buildLog(log);
-        },
+    },
+    {
+      site: "mock.buildLog()",
+      name: "mock.buildLog()'s content",
+      place: ({ mock }, log) => {
+        mock.buildLog(log);
       },
-    ];
+    },
+  ];
 
   for (const { site, name, place } of sites)
     test.each(bad)(`${site} refuses $name, changing nothing`, ({ log, says }) => {
@@ -624,7 +627,7 @@ describe("a log's content is checked wherever it's placed", () => {
 
   test("logs from contract.events, contractEvents(), testLog() and four topics are placed everywhere", () => {
     const { mock, usdc, shapes } = setup();
-    const logs: MockEventLog[] = [
+    const logs: MockLogContent[] = [
       usdc.events.Transfer({ from: alice, to: bob, value: 1n }),
       contractEvents({ abi: erc20Abi, address: USDC }).Approval({ owner: alice, spender: bob }),
       shapes.events.Registered({ name: "a", key: "0x01", owner: alice }),

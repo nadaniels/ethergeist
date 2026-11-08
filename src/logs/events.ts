@@ -32,7 +32,7 @@ import { isPlainObject } from "../shared/values.js";
  * `contract.events`, `contractEvents()` or `testLog()`. It has no position:
  * the send, transaction, receipt or `mock.buildLog()` it goes to places it.
  */
-export type MockEventLog = {
+export type MockLogContent = {
   /** The emitting contract, checksummed. */
   address: Address;
   /**
@@ -75,7 +75,7 @@ const contentFields = new Set(["address", "topics", "data"]);
  * mock's bug, or place an empty log. Placed logs are left to the caller,
  * which says who places them.
  */
-export function checkLog(log: unknown, name: string): asserts log is MockEventLog {
+export function checkLog(log: unknown, name: string): asserts log is MockLogContent {
   const refuse = (problem: string) =>
     new MockSetupError(`${name} ${problem}.`, { metaMessages: [logsHint] });
   if (
@@ -100,7 +100,10 @@ export function checkLog(log: unknown, name: string): asserts log is MockEventLo
 }
 
 /** Refuses `logs` unless it's a list of logs, for `subject` ("A send's"). */
-export function checkLogs(logs: unknown, subject: string): asserts logs is readonly MockEventLog[] {
+export function checkLogs(
+  logs: unknown,
+  subject: string,
+): asserts logs is readonly MockLogContent[] {
   checkList(logs, `${subject} logs`);
   logs.forEach((log: unknown, index: number) => {
     checkLog(log, `${subject} log ${index}`);
@@ -169,7 +172,7 @@ export type EventArgsParameter<abi extends Abi, eventName extends ContractEventN
 export type MockContractEvents<abi extends Abi> = {
   [eventName in ContractEventName<abi>]: (
     ...args: EventArgsParameter<abi, eventName>
-  ) => MockEventLog;
+  ) => MockLogContent;
 };
 
 /**
@@ -214,7 +217,7 @@ export function encodeEventLog(
   address: Address,
   eventName: string,
   args: unknown,
-): MockEventLog {
+): MockLogContent {
   checkNoMatchers(args, "event args");
   const overloads = withoutRepeats(
     abi.filter((item): item is AbiEvent => item.type === "event" && item.name === eventName),
@@ -252,7 +255,7 @@ export function encodeEventLog(
  * Encodes `event` with `args`, filling non-indexed args that are left out
  * with zeros.
  */
-function encodeWith(event: AbiEvent, address: Address, args: unknown): MockEventLog {
+function encodeWith(event: AbiEvent, address: Address, args: unknown): MockLogContent {
   const { inputs, name } = event;
   const values = argValues(event, args);
 
@@ -281,7 +284,7 @@ function encodeWith(event: AbiEvent, address: Address, args: unknown): MockEvent
   return {
     address,
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- every indexed arg is given, so each topic is one hash, not a filter's list
-    topics: topics as MockEventLog["topics"],
+    topics: topics as MockLogContent["topics"],
     data: encodeAbiParameters(
       nonIndexed.map(([input]) => input),
       nonIndexed.map(([input, value]) => fillZeros(input, value)),

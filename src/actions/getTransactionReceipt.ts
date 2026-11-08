@@ -2,7 +2,7 @@ import { type Hash, type TransactionReceipt, formatTransactionReceipt } from "vi
 
 import { hashParam } from "../chain/params.js";
 import { type ReceiptFields, completeReceipt, toRpcReceipt } from "../chain/receipts.js";
-import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
+import { type MockLogContent, isPlaced, checkLogs } from "../logs/events.js";
 import { checkObject } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
 import { checkStatus } from "../transactions/writeOutcome.js";
@@ -23,7 +23,7 @@ export type MockReceipt = ReceiptFields & {
    * the transaction with `mock.addTransaction({ hash, logs })`. A reverted
    * receipt with logs is refused: its own, or its mined transaction's.
    */
-  logs?: readonly MockEventLog[];
+  logs?: readonly MockLogContent[];
 };
 
 /**
@@ -52,7 +52,7 @@ export function placedReceipt(
  * Refuses `logs` unless they're content a receipt can place: logs, not
  * placed yet.
  */
-function checkContentLogs(logs: unknown): asserts logs is readonly MockEventLog[] {
+function checkContentLogs(logs: unknown): asserts logs is readonly MockLogContent[] {
   checkLogs(logs, "A receipt's");
   if (logs.some((log) => isPlaced(log)))
     throw new MockSetupError(

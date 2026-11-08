@@ -121,7 +121,7 @@ The mock's errors:
    mocks answer with (`MockReceipt`, `MockBlock`, `MockFees`, `MockFault`,
    `MockWriteOutcome`), what it records of the requests it gets
    (`MockHistoryEntry`, `MockCallRecord`, `MockOutcome`, `MockBatch`), what
-   it builds for you (`MockEventLog`), and types made from these
+   it builds for you (`MockLogContent`), and types made from these
    (`MockNodeFault`, `MockTaggedCall`). It keeps `Mock` when it's also a
    parameter (`buildReceipt(MockReceipt)`, `failRequests(MockFault)`).
    **None on what you hand the mock**: parameter, option and context types

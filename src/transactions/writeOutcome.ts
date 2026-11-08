@@ -1,6 +1,6 @@
 import { type Address, getAddress } from "viem";
 
-import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
+import { type MockLogContent, isPlaced, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import type { Builder } from "../mocking/handlers.js";
 import { checkAmount, checkFields } from "../mocking/setupChecks.js";
@@ -19,7 +19,7 @@ export type MockWriteOutcome = {
    * it's mined. Any address but an `empty()` one's, which has no code to
    * emit them; a placed log is refused.
    */
-  logs?: readonly MockEventLog[];
+  logs?: readonly MockLogContent[];
   /**
    * Its receipt's status: `"reverted"` mines it reverted, and logs with it
    * are refused. Defaults to `"success"`.
@@ -60,7 +60,7 @@ export type MockWriteAnswers<context, revertSpec> = {
    * Answers every matching call with this log, or these logs, as
    * `.returns({ logs: [log] })` does.
    */
-  emits(logs: MockEventLog | readonly MockEventLog[]): void;
+  emits(logs: MockLogContent | readonly MockLogContent[]): void;
   /**
    * Reverts every matching call's transaction. Its estimate reverts with
    * `spec`, before any estimate mock, so a client that estimates first
@@ -181,9 +181,9 @@ export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void 
   const withWriteContext =
     (resolver: (context: object) => unknown) =>
     async (context: object): Promise<unknown> => {
-      const emitted: MockEventLog[] = [];
+      const emitted: MockLogContent[] = [];
       const writeContext = {
-        emit(logs: MockEventLog | readonly MockEventLog[]) {
+        emit(logs: MockLogContent | readonly MockLogContent[]) {
           emitted.push(...[logs].flat());
         },
         revert(spec?: unknown): never {
@@ -210,7 +210,7 @@ export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void 
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the types guarantee a resolver's signature
       returns(typeof value === "function" ? withWriteContext(value as () => unknown) : value);
     },
-    emits(logs: MockEventLog | readonly MockEventLog[]) {
+    emits(logs: MockLogContent | readonly MockLogContent[]) {
       returns({ logs: [logs].flat() });
     },
     // The unwrapped `returns`, so the estimate still sees the resolver's
