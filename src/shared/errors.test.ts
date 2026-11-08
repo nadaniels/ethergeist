@@ -106,7 +106,9 @@ describe("MockInternalError", () => {
 
     expect(error.shortMessage).toBe("The mock failed unexpectedly: x is undefined");
     expect(error.metaMessages).toEqual([
-      "This is a bug in ethergeist; please report it at https://github.com/nadaniels/ethergeist/issues, with the request.",
+      "This is a bug in ethergeist, unless the mock was given a value its types don't allow " +
+        "(through a cast or plain JavaScript); if not, please report it at " +
+        "https://github.com/nadaniels/ethergeist/issues, with the request.",
     ]);
     expect(error.cause).toBe(cause);
   });

@@ -162,7 +162,8 @@ export class MockResolverError extends MockError {
 
 /**
  * Thrown when the mock fails unexpectedly while answering: a bug in the
- * mock. Its cause is what was thrown, with its stack.
+ * mock, or a value its types don't allow that no check caught. Its cause is
+ * what was thrown, with its stack.
  */
 export class MockInternalError extends MockError {
   override name = "MockInternalError";
@@ -173,7 +174,9 @@ export class MockInternalError extends MockError {
     super(`The mock failed unexpectedly: ${summaryOf(error)}`, {
       cause: error,
       metaMessages: [
-        "This is a bug in ethergeist; please report it at https://github.com/nadaniels/ethergeist/issues, with the request.",
+        "This is a bug in ethergeist, unless the mock was given a value its types don't allow " +
+          "(through a cast or plain JavaScript); if not, please report it at " +
+          "https://github.com/nadaniels/ethergeist/issues, with the request.",
       ],
     });
   }
