@@ -17,6 +17,7 @@ import {
 
 import { formatCall, formatValue } from "../mocking/format.js";
 import { checkNoMatchers } from "../mocking/matching.js";
+import { checkList } from "../mocking/setupChecks.js";
 import {
   type AllNamed,
   type PartialStructs,
@@ -100,8 +101,7 @@ export function checkLog(log: unknown, name: string): asserts log is MockEventLo
 
 /** Refuses `logs` unless it's a list of logs, for `subject` ("A send's"). */
 export function checkLogs(logs: unknown, subject: string): asserts logs is readonly MockEventLog[] {
-  if (!Array.isArray(logs))
-    throw new MockSetupError(`${subject} logs must be a list; got ${formatValue(logs)}.`);
+  checkList(logs, `${subject} logs`);
   logs.forEach((log: unknown, index: number) => {
     checkLog(log, `${subject} log ${index}`);
   });

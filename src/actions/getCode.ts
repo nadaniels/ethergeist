@@ -1,6 +1,4 @@
-import { isHex } from "viem";
-
-import { MockSetupError } from "../shared/errors.js";
+import { checkHex } from "../mocking/setupChecks.js";
 import { decodeAddressAtBlock, pinAddress } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { CodeCall } from "./types.js";
@@ -17,7 +15,7 @@ export const getCode = ({ state, registry }: ActionsContext): Definition<CodeCal
   pin: pinAddress,
   zero: "0x",
   encode(value) {
-    if (!isHex(value)) throw new MockSetupError(`Code must be hex; got ${String(value)}.`);
+    checkHex(value, "getCode's answer");
     return value;
   },
   fallback: (call) => registry.codeAt(call.address),

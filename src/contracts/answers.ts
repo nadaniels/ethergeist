@@ -5,13 +5,13 @@ import {
   type Hex,
   encodeFunctionResult,
   encodeErrorResult,
-  isHex,
 } from "viem";
 import { formatAbiItem } from "viem/utils";
 
 import { formatValue } from "../mocking/format.js";
 import { encodeGas } from "../mocking/gas.js";
 import { checkNoMatchers } from "../mocking/matching.js";
+import { checkHex, checkList } from "../mocking/setupChecks.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { builtinErrors, fillZeros } from "../shared/abiValues.js";
 import { MockRevertError, MockSetupError, refuseUnencodable } from "../shared/errors.js";
@@ -90,8 +90,7 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
       `A revert spec takes one of data, panic, or errorName; got ${fields.join(" and ")}.`,
     );
   if (data !== undefined) {
-    if (!isHex(data))
-      throw new MockSetupError(`A revert's data must be hex; got ${formatValue(data)}.`);
+    checkHex(data, "A revert's data");
     return new MockRevertError(data);
   }
   if (panic !== undefined && typeof panic !== "number" && typeof panic !== "bigint")
@@ -103,10 +102,12 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
       return encodeErrorResult({ abi: builtinErrors, errorName: "Panic", args: [BigInt(panic)] });
     const { errorName, args } = given;
     if (typeof errorName !== "string") throw notARevert(given);
-    if (args !== undefined && !Array.isArray(args))
-      throw new MockSetupError(`A revert's args must be a list; got ${formatValue(args)}.`, {
-        metaMessages: ["List them in the error's input order, e.g. { errorName, args: [1n] }."],
-      });
+    if (args !== undefined)
+      checkList(
+        args,
+        "A revert's args",
+        "List them in the error's input order, e.g. { errorName, args: [1n] }.",
+      );
     // viem encodes no args at all for a missing or empty list, whatever the error takes.
     const count = args === undefined ? 0 : args.length;
     const errors = abi.filter(
@@ -126,8 +127,7 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
         },
       );
     }
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the count matches the error's inputs; viem checks their types
-    return encodeErrorResult({ abi, errorName, args: args as readonly unknown[] });
+    return encodeErrorResult({ abi, errorName, args });
   };
   return new MockRevertError(refuseUnencodable("A revert", encode));
 }

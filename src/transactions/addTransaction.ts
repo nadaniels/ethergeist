@@ -1,9 +1,8 @@
-import { type Address, type Hash, type Hex, getAddress, isHex } from "viem";
+import { type Address, type Hash, type Hex, getAddress } from "viem";
 
 import { nodeHash } from "../chain/hashes.js";
 import { type MockEventLog, isPlaced, checkLogs } from "../logs/events.js";
-import { formatValue } from "../mocking/format.js";
-import { checkAmount, checkCount, checkFields } from "../mocking/setupChecks.js";
+import { checkAmount, checkCount, checkFields, checkHex } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
 import { checkStatus } from "./writeOutcome.js";
 
@@ -117,8 +116,7 @@ export function checkAddTransaction(given: AddTransactionParameters) {
   const to = fields.to === undefined ? undefined : getAddress(fields.to);
   for (const [name, amount] of Object.entries({ value, gasUsed }))
     if (amount !== undefined) checkAmount(amount, `mock.addTransaction()'s ${name}`);
-  if (data !== undefined && !isHex(data))
-    throw new MockSetupError(`mock.addTransaction()'s data must be hex; got ${formatValue(data)}.`);
+  if (data !== undefined) checkHex(data, "mock.addTransaction()'s data");
   if (nonce !== undefined) checkCount(nonce, "mock.addTransaction()'s nonce", 0);
   checkLogs(logs, "A transaction's");
   checkStatus(status, logs, "mock.addTransaction()'s status");

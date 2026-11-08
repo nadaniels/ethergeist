@@ -286,6 +286,15 @@ describe("getCode", () => {
     expect(await client.getCode({ address: NOWHERE })).toBeUndefined();
   });
 
+  test("a mock's code must be hex", () => {
+    const { mock } = setup();
+
+    expectThrows(MockSetupError, "getCode's answer must be hex; got fe.", () => {
+      // @ts-expect-error -- code is hex
+      mock.actions.getCode().returns("fe");
+    });
+  });
+
   test("an unknown address is unhandled", async () => {
     const { mock, client } = setup();
 
@@ -1232,13 +1241,9 @@ describe("a block, transaction or receipt answer", () => {
   ] as const)("%s refuses one that isn't an object or null", (action, answer, shown) => {
     const { mock } = setup();
 
-    expectThrows(
-      MockSetupError,
-      `Expected an object or null for ${action}'s answer; got ${shown}.`,
-      () => {
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
-        mock.actions[action]().returns(answer as never);
-      },
-    );
+    expectThrows(MockSetupError, `Expected an object for ${action}'s answer; got ${shown}.`, () => {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+      mock.actions[action]().returns(answer as never);
+    });
   });
 });

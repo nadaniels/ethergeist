@@ -93,9 +93,9 @@ The mock's errors:
   never a setup error, even when the same check runs at registration.
 - Setup checks run once, in the first part that reads a value: the generic
   kinds through `mocking/setupChecks.ts` (`checkAmount`, `checkCount`,
-  `checkFields`), domain checks in their layer. They're named `check*`, and
-  an entry that takes a value refuses matchers. AGENTS.md ("Setup checks")
-  has the rules.
+  `checkHex`, `checkList`, `checkObject`, `checkFields`), domain checks in
+  their layer. They're named `check*`, and an entry that takes a value
+  refuses matchers. AGENTS.md ("Setup checks") has the rules.
 
 ## Naming
 

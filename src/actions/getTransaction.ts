@@ -2,9 +2,7 @@ import { formatTransaction, zeroHash } from "viem";
 
 import { hashParam } from "../chain/params.js";
 import { encodeTransaction } from "../chain/transactions.js";
-import { formatValue } from "../mocking/format.js";
-import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { checkObject } from "../mocking/setupChecks.js";
 import { registeredAt, unwrapRegistered } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { TransactionCall } from "./types.js";
@@ -29,10 +27,7 @@ export const getTransaction = ({
   encode(answer, call) {
     const { value, blockNumber } = unwrapRegistered(answer);
     if (value === null) return null;
-    if (!isPlainObject(value))
-      throw new MockSetupError(
-        `Expected an object or null for getTransaction's answer; got ${formatValue(value)}.`,
-      );
+    checkObject(value, "getTransaction's answer", "Or null for none.");
     const onChain = call && transactions.transactionFor(call.hash, value);
     return onChain ?? encodeTransaction(state, { blockNumber, ...value }, call?.hash ?? zeroHash);
   },

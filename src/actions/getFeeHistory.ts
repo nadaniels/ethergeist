@@ -3,7 +3,7 @@ import { hexToBigInt, isHex } from "viem";
 import { feeHistory, toRpcFeeHistory } from "../chain/fees.js";
 import { type ResolveBlock, numberParam } from "../chain/params.js";
 import { formatValue } from "../mocking/format.js";
-import { checkAmount, checkFields } from "../mocking/setupChecks.js";
+import { checkAmount, checkFields, checkList } from "../mocking/setupChecks.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { blockAt } from "./decode.js";
@@ -52,12 +52,6 @@ function checkFeeHistory(given: unknown) {
     }
   }
   return history;
-}
-
-/** Throws unless `value` is a list; `what` names it. */
-function checkList(value: unknown, what: string): asserts value is readonly unknown[] {
-  if (!Array.isArray(value))
-    throw new MockSetupError(`${what} must be a list; got ${formatValue(value)}.`);
 }
 
 /** JSON-RPC quantities as bigints, leaving anything else as is. */

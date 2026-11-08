@@ -1,10 +1,12 @@
 /**
  * Checks of the generic kinds of value the mock's setup API takes (amounts,
- * counts, and objects of known fields), each a `MockSetupError` when the
- * value is wrong. Domain checks (logs, reverts, faults, hashes) stay in
- * their own layers, and the public assertions (`assertAllUsed` and the rest)
- * are in `rpc/checks.ts`.
+ * counts, hex, lists, objects, and objects of known fields), each a
+ * `MockSetupError` when the value is wrong. Domain checks (logs, reverts,
+ * faults, hashes) stay in their own layers, and the public assertions
+ * (`assertAllUsed` and the rest) are in `rpc/checks.ts`.
  */
+import { type Hex, isHex } from "viem";
+
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject, withoutUndefined } from "../shared/values.js";
 import { formatValue } from "./format.js";
@@ -33,7 +35,41 @@ export function checkCount(
   if (typeof value !== "number" || !Number.isSafeInteger(value) || value < min)
     throw new MockSetupError(
       `${what} must be ${min === 1 ? "a positive" : "a non-negative"} integer; got ${formatValue(value)}.`,
-      hint === undefined ? undefined : { metaMessages: [hint] },
+      withHint(hint),
+    );
+}
+
+/** Throws unless `value` is hex. `what` is its subject in the message. */
+export function checkHex(value: unknown, what: string): asserts value is Hex {
+  if (!isHex(value)) throw new MockSetupError(`${what} must be hex; got ${formatValue(value)}.`);
+}
+
+/**
+ * Throws unless `value` is a list. `what` is its subject in the message;
+ * `hint` says what goes in it.
+ */
+export function checkList(
+  value: unknown,
+  what: string,
+  hint?: string,
+): asserts value is readonly unknown[] {
+  if (!Array.isArray(value))
+    throw new MockSetupError(`${what} must be a list; got ${formatValue(value)}.`, withHint(hint));
+}
+
+/**
+ * Throws unless `value` is an object. `what` names it mid-sentence in the
+ * message ("getBlock's answer"); `hint` says what goes in it.
+ */
+export function checkObject(
+  value: unknown,
+  what: string,
+  hint?: string,
+): asserts value is Record<string, unknown> {
+  if (!isPlainObject(value))
+    throw new MockSetupError(
+      `Expected an object for ${what}; got ${formatValue(value)}.`,
+      withHint(hint),
     );
 }
 
@@ -50,10 +86,7 @@ export function checkFields<value>(
   fields: ReadonlySet<string>,
   hint: (field?: string) => string,
 ): value & Record<string, unknown> {
-  if (!isPlainObject(value))
-    throw new MockSetupError(`Expected an object for ${what}; got ${formatValue(value)}.`, {
-      metaMessages: [hint()],
-    });
+  checkObject(value, what, hint());
   checkNoMatchers(value, what);
   const given = withoutUndefined(value);
   const unknown = Object.keys(given).find((field) => !fields.has(field));
@@ -64,3 +97,7 @@ export function checkFields<value>(
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the same object, less its undefined fields
   return given as value & Record<string, unknown>;
 }
+
+/** A `MockSetupError`'s options with `hint` as its hint line, if any. */
+const withHint = (hint: string | undefined) =>
+  hint === undefined ? undefined : { metaMessages: [hint] };
