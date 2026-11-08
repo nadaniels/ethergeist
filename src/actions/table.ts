@@ -270,7 +270,7 @@ export function createTable(
 
   /** A value in viem's types as JSON-RPC; `zeroResult` is the action's zero. */
   function encode(value: unknown, call: object | undefined) {
-    checkNoMatchers(value);
+    checkNoMatchers(value, `${definition.name}'s answer`);
     return definition.encode(leftOut(value === zeroResult ? definition.zero : value), call);
   }
 

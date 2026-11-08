@@ -17,6 +17,7 @@ import {
   type MockRpc,
   MockSetupError,
   createMockRpc,
+  match,
   testAddress,
 } from "../src/index.js";
 import { expectCause, expectThrows, findCause, rejectionOf } from "./utils.js";
@@ -261,6 +262,12 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
         { panic: 1, args: [] },
         MockSetupError,
         "A revert spec takes one of data, panic, or errorName; got panic and args.",
+      ],
+      [
+        "a matcher in an error's args, as if it matched any",
+        { errorName: "Failed", args: [match.any()] },
+        MockSetupError,
+        "match.any() can't go in a revert spec; matchers only go in a mock's args, params and pins.",
       ],
       [
         "a negative panic code, as viem refuses it",

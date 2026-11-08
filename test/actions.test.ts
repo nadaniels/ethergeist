@@ -262,7 +262,7 @@ describe("getBalance", () => {
 
     expectThrows(
       MockSetupError,
-      "match.any() can't go in return values; matchers only go in args and params.",
+      "match.any() can't go in getBalance's answer; matchers only go in a mock's args, params and pins.",
       () => {
         mock.actions.getBalance().returns(match.any());
       },

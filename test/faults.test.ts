@@ -206,6 +206,16 @@ describe("lifecycle", () => {
       () => mock.failRequests("timeout", { times: 1.5 }),
     );
   });
+
+  test("method must be a method name or a list of them, not a pattern", () => {
+    const { mock } = setup();
+    const message =
+      "failRequests()'s method must be a method name or a list of them; got /^eth_/u.";
+    expectThrows(MockSetupError, message, () =>
+      // @ts-expect-error -- a pattern, not a name
+      mock.failRequests("timeout", { method: /^eth_/u }),
+    );
+  });
 });
 
 /** Like `setup()`, with nothing registered. */

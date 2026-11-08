@@ -464,7 +464,7 @@ describe("mock.addTransaction", () => {
     [
       "a matcher in a field",
       { status: match.any() },
-      "match.any() can't go in mock.addTransaction()'s transaction; matchers only go in args and params.",
+      "match.any() can't go in mock.addTransaction()'s transaction; matchers only go in a mock's args, params and pins.",
     ],
     ["a deploy", { to: null }, "mock.addTransaction() doesn't deploy: to can't be null."],
     [

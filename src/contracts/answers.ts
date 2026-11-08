@@ -43,12 +43,15 @@ export function encodeAnswer(
 ): Hex {
   return namespace === "estimateGas"
     ? encodeGas(value, `estimateGas.${abiItem.name}'s answer`)
-    : encodeResult(abiItem, value);
+    : encodeResult(abiItem, value, `${namespace}.${abiItem.name}'s answer`);
 }
 
-/** `value` as `abiItem`'s encoded return data, as `eth_call` answers. */
-function encodeResult(abiItem: AbiFunction, value: unknown): Hex {
-  checkNoMatchers(value);
+/**
+ * `value` as `abiItem`'s encoded return data, as `eth_call` answers. `what`
+ * names it for messages.
+ */
+function encodeResult(abiItem: AbiFunction, value: unknown, what: string): Hex {
+  checkNoMatchers(value, what);
   return encodeFunctionResult({
     abi: [abiItem],
     functionName: abiItem.name,
@@ -76,6 +79,7 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
       given,
     );
   if (!isPlainObject(given)) throw notARevert(given);
+  checkNoMatchers(given, "a revert spec");
   const { data, panic } = given;
   const fields = (["data", "panic", "errorName", "args"] as const).filter(
     (field) => given[field] !== undefined,

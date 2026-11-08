@@ -277,7 +277,7 @@ describe("contract.events", () => {
 
     expectThrows(
       MockSetupError,
-      "match.any() can't go in event args; matchers only go in args and params.",
+      "match.any() can't go in event args; matchers only go in a mock's args, params and pins.",
       () => usdc.events.Transfer({ from: alice, to: bob, value: match.any() }),
     );
   });

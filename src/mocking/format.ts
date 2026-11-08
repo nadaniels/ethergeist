@@ -128,8 +128,8 @@ type FormatOptions = {
 };
 
 /**
- * A value for messages: bigints as `5n`, arrays and structs spelled out, and
- * matchers as `formatMatcher` shows them.
+ * A value for messages: bigints as `5n`, arrays and structs spelled out,
+ * patterns as written, and matchers as `formatMatcher` shows them.
  */
 export function formatValue(value: unknown, options: FormatOptions = {}): string {
   if (isMatcher(value)) return formatMatcher(value, options);
@@ -138,6 +138,7 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
   if (typeof value === "number") return String(value);
   if (Array.isArray(value))
     return `[${value.map((v: unknown) => formatValue(v, options)).join(", ")}]`;
+  if (value instanceof RegExp) return String(value);
   if (isPlainObject(value))
     return `{ ${Object.entries(value)
       .map(([key, v]) => `${key}: ${formatValue(v, options)}`)

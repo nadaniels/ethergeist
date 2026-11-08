@@ -586,20 +586,20 @@ describe("registration", () => {
     const { usdc, balanceOf } = setup();
     expectThrows(
       MockSetupError,
-      "match.any() can't go in return values; matchers only go in args and params.",
+      "match.any() can't go in read.balanceOf's answer; matchers only go in a mock's args, params and pins.",
       () => {
         usdc.read.balanceOf([alice]).returns(match.any());
       },
     );
 
-    expectThrows(MockSetupError, "match.partial() can't go in return values", () => {
+    expectThrows(MockSetupError, "match.partial() can't go in read.balanceOf's answer", () => {
       // The types allow it: `partial` takes the resolver function's type from `.returns()`.
       usdc.read.balanceOf([alice]).returns(match.partial({}));
     });
 
     usdc.read.balanceOf([bob]).returns(() => match.any());
     const error = expectCause(await rejectionOf(balanceOf(bob)), MockResolverError);
-    expect(error.shortMessage).toContain("matchers only go in args and params");
+    expect(error.shortMessage).toContain("matchers only go in a mock's args, params and pins");
   });
 });
 
