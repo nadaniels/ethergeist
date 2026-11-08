@@ -29,6 +29,11 @@ features land; tick them off as pages get written.
       `defaults: { read: { … }, simulate: { … }, estimateGas: { … } }`.
       This is the first setup code everyone writes, so the docs should lead
       with it and repeat it in examples.
+      An entry set to `undefined` is no default, as an explicit `undefined`
+      is a key left out everywhere the mock takes fields: write a zero
+      default as a value (`balanceOf: 0n`). `.returns()` and
+      `.returns(undefined)` are the zero answer, since that's an argument
+      left out of a call, not a key.
 - [ ] `read` vs `simulate` namespaces (view/pure vs nonpayable/payable),
       mirroring `getContract`, and `estimateGas` (the same functions as
       `simulate`, for `estimateContractGas` and a write's prepare). A

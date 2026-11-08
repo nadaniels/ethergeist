@@ -51,6 +51,12 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 - Addresses in answers (receipts, logs, blocks) go out lowercase, as nodes send them: validate with `getAddress`, then lowercase with `nodeAddress` in `src/shared/values.ts`. Compare them after `getAddress`, never as sent.
 - Hashes (transaction, block, log and root hashes) have no checksum, so lowercase is their only form: addresses are checksummed to compare, hashes lowercase; both go out lowercase. Validate and lowercase a hash where it comes in (`nodeHash` in `src/chain/hashes.ts` for the mock's API and a mock's answers, `hashParam` for a request's), so records and lookups hold only lowercase and compare with `===`. Not calldata, `bytes` or topics: they aren't identifiers, and keep their case.
 
+## Values left out
+
+- `undefined` never means anything of its own: an explicit `undefined` behaves exactly as if the key or argument were left out. For a setup field or option, that's its default; in args, params and pins, it's not pinned (any value matches); for a required value, it's the same refusal as leaving it out. A `defaults:` entry that's `undefined` is no default.
+- Consumers rarely set `exactOptionalPropertyTypes`, so their types let an explicit `undefined` into any optional field, and a spread of a partial fixture puts one there. Strip it before a mock's fields spread over defaults or a record (`withoutUndefined` and `leftOut` in `src/shared/values.ts`): a plain spread lets `undefined` override.
+- A value that means something is `null` or a named value, never `undefined`: `null` for a pending transaction or a deploy's `to`, `false` for `historyOnFailure`.
+
 ## Errors
 
 - Throw the `MockError` family from `src/shared/errors.ts`, never a plain `Error`, `TypeError` or `RangeError` (`test/architecture.test.ts` checks): `MockSetupError` for the mock's API called wrong, `MockCheckError` for failed checks. A request param a node would refuse is `invalidParams` instead (`src/chain/params.ts`).
