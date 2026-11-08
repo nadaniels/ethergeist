@@ -37,6 +37,7 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 ## Checks
 
 - Run `vp check`, `vp run knip` and `vp run test` before handing a change over. The pre-commit hook runs `vp staged` and then `vp run knip`, so a commit fails if Knip isn't satisfied.
+- `vp run test` is the test command: it adds `--typecheck`, so the `*.test-d.ts` type tests run too. The Vite+ checklist above names the built-in `vp test`, which runs without them.
 - Run `vp run smoke` when a change touches the public types, `exports`, `package.json` or the build. CI runs it on every push; it takes about 30 s and needs the network.
 - `vp run knip` runs [Knip](https://knip.dev) twice: the default mode (all code, tests included), then `--production --strict` (only what ships: `src/` minus colocated tests, with dependencies checked against what ships). Config is in `knip.json`.
 - Fix findings rather than configure around them: remove an `export` nothing outside its file uses, delete an unused file, add or remove the dependency. A file that a tool or a person runs directly is an `entry` in `knip.json`.
@@ -62,9 +63,9 @@ Read `docs/architecture.md` before changing `src/`: the layers, naming, and how 
 These are runtime checks on the values a test hands the mock's setup API.
 
 - Check a value where a mistake would otherwise be silent (ignored, coerced, or merged into a plausible answer) or blamed on the wrong party, including values the types rule out: tests cast often, and the mock transforms what it's given. Drop a one-off check that only repeats what fails loudly and clearly anyway (viem's own error naming the value, or a check a line later). Where a shared helper covers the kind, use it regardless, so every setup mistake is a `MockSetupError`.
-- Check once, in the first part that reads the value, never in the composition root. The generic kinds use the helpers in `src/mocking/setupChecks.ts`: `checkAmount` (a non-negative bigint), `checkCount` (a safe integer of 0 or 1 or more), `checkHex`, `checkList`, `checkObject`, and `checkFields` (an object of known fields, holding no matcher). Domain checks (logs, statuses, reverts, faults, hashes) stay in their layer.
+- Check once, in the first part that reads the value, never in the composition root. The generic kinds use the helpers in `src/mocking/setupChecks.ts`: `checkAmount` (a non-negative bigint), `checkCount` (a safe integer of 0 or 1 or more), `checkHex`, `checkList`, `checkObject`, and `checkFields` (an object of known fields, holding no matcher). Domain checks stay with the shape they check, in its layer: logs' content in `src/logs/events.ts`, a status beside the receipt's fields in `src/chain/receipts.ts`, hashes in `src/chain/hashes.ts`.
 - Name a setup check `check*`: it throws `MockSetupError` and narrows (`asserts`). `assert*` is for the public checks, which throw `MockCheckError`.
-- A message's subject names the value as the user wrote it, qualified by the call that took it: "mock.addTransaction()'s gasUsed", "times()'s count", "getBalance's answer". Each kind has one form, which its helper words: "`<subject>` must be a non-negative bigint; got `<value>`." A subject mid-sentence stays lowercase ("Expected an object for a send's outcome").
+- A message's subject names the value as the user wrote it, qualified by the call that took it: "mock.addTransaction()'s gasUsed", "times()'s count", "getBalance's answer". A part of an answer follows it: "log 0 in getTransactionReceipt's answer". A value that several calls feed (a send's outcome comes from `.returns()`, a resolver, `.emits()` or `emit()`) is named for what it is: "A send's log 0". Each kind has one form, which its helper words: "`<subject>` must be a non-negative bigint; got `<value>`." A subject mid-sentence stays lowercase ("Expected an object for a send's outcome").
 - An entry that takes a value refuses matchers (`match.any()` type-checks in any field) with `checkNoMatchers`, naming the place; args, params and pins take them.
 
 ## Errors
@@ -73,6 +74,7 @@ These are runtime checks on the values a test hands the mock's setup API.
 - The short message says what's wrong, as one sentence. Hints (how to fix it, what's registered, lists) go in `metaMessages`, a line each; never in `details` or `docsPath`. See "Clients and errors" in `docs/architecture.md`.
 - The exception is a failed check (`MockCheckError`): its list is the failure, so it stays in the short message, and the recent requests are its `metaMessages`. Checks never reach viem, so its reasons for the rule don't apply.
 - viem's and ox's own validation errors (e.g. `getAddress` at registration) pass through unwrapped.
+- Tests pin an error's class and its wording, with `expectThrows` in `test/utils.ts`: the whole short message where the wording is what the test is about (a refusal's form, its subject), a distinctive fragment where it isn't, and `metaMessages` with `toEqual` where the hint is the point. The wording is part of what ships, so the mock's own tests pin it, while users assert on the class or `code` (`docs/notes.md`).
 
 ## Request params
 
@@ -111,3 +113,13 @@ Any change beyond a trivial one (anything that changes behavior, types, matching
    - **At most three rounds.** If a third round still finds bugs, stop and bring them to the owner instead of continuing.
    - **If a round contradicts an earlier one,** or a fix undoes an earlier fix, stop and bring both to the owner. Going back and forth makes the code worse, not better. A fix that introduces a new bug is different: fix it in the next round, within the three.
 7. **Report** what each round found and what was done about it, including findings that were declined and why.
+
+## Agent skills
+
+### Issue tracker
+
+Issues live as local markdown items in `docs/backlog/` (gitignored, not GitHub Issues). See `docs/agents/issue-tracker.md`.
+
+### Domain docs
+
+Single-context: the glossary is section 2 of `docs/backlog/reference/style-guide.md`; ADRs would go in `docs/adr/`. See `docs/agents/domain.md`.
