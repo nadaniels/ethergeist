@@ -1,6 +1,7 @@
 import { type Address, getAddress } from "viem";
 
-import { type MockLogContent, isPlaced, checkLogs } from "../logs/events.js";
+import { checkStatus } from "../chain/receipts.js";
+import { type MockLogContent, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import type { Builder } from "../mocking/handlers.js";
 import { checkAmount, checkFields } from "../mocking/setupChecks.js";
@@ -103,7 +104,7 @@ export function encodeWriteOutcome(
   if (value === undefined || value === zeroResult) return {};
   const outcome = checkFields(value, "a send's outcome", outcomeFields, fieldsHint);
   const { logs = [], status, gasUsed, effectiveGasPrice, contractAddress } = outcome;
-  checkLogs(logs, "A send's");
+  checkLogs(logs, (part) => `A send's ${part}`);
   checkStatus(status, logs, "A send's status");
   for (const [name, gas] of Object.entries({ gasUsed, effectiveGasPrice }))
     if (gas !== undefined) checkAmount(gas, `A send's ${name}`);
@@ -113,36 +114,10 @@ export function encodeWriteOutcome(
     );
   if (contractAddress !== undefined && isDeploy === false)
     throw new MockSetupError("Only a deploy (to: null) has a contractAddress.");
-  if (logs.some((log: object) => isPlaced(log)))
-    throw new MockSetupError(
-      "A send's logs are placed when it's mined, but one already has a position (e.g. from " +
-        "mock.buildLog()).",
-      { metaMessages: ["Pass a log from contract.events."] },
-    );
   return {
     ...outcome,
     ...(contractAddress !== undefined && { contractAddress: getAddress(contractAddress) }),
   };
-}
-
-/**
- * Refuses a status that isn't `"success"` or `"reverted"` (`undefined` is
- * left out), and logs on a reverted transaction, which emits none: for a
- * send's outcome, an added transaction and a receipt alike. `what` names
- * the status for messages; `metaMessages` say where the logs came from.
- */
-export function checkStatus(
-  status: unknown,
-  logs: readonly unknown[],
-  what: string,
-  metaMessages?: string[],
-): asserts status is "success" | "reverted" | undefined {
-  if (status !== undefined && status !== "success" && status !== "reverted")
-    throw new MockSetupError(
-      `${what} must be "success" or "reverted"; got ${formatValue(status)}.`,
-    );
-  if (status === "reverted" && logs.length > 0)
-    throw new MockSetupError("A reverted transaction has no logs.", { metaMessages });
 }
 
 /**

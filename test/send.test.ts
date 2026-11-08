@@ -565,13 +565,9 @@ describe("send mocks", () => {
       send.returns({ logs: testLog("noise") });
     });
     send.returns({ status: "success", gasUsed: 0n, effectiveGasPrice: 0n });
-    expectThrows(
-      MockSetupError,
-      "A send's logs are placed when it's mined, but one already has a position",
-      () => {
-        send.emits([mock.buildLog(testLog("noise"))]);
-      },
-    );
+    expectThrows(MockSetupError, "A send's log 0 is already placed", () => {
+      send.emits([mock.buildLog(testLog("noise"))]);
+    });
     expectThrows(MockSetupError, "Expected an object for a send's outcome; got true.", () => {
       // @ts-expect-error -- an outcome, not an ABI value
       send.returns(true);

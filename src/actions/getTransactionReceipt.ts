@@ -1,11 +1,14 @@
 import { type Hash, type TransactionReceipt, formatTransactionReceipt } from "viem";
 
 import { hashParam } from "../chain/params.js";
-import { type ReceiptFields, completeReceipt, toRpcReceipt } from "../chain/receipts.js";
-import { type MockLogContent, isPlaced, checkLogs } from "../logs/events.js";
+import {
+  type ReceiptFields,
+  checkStatus,
+  completeReceipt,
+  toRpcReceipt,
+} from "../chain/receipts.js";
+import { type MockLogContent, checkLogs } from "../logs/events.js";
 import { checkObject } from "../mocking/setupChecks.js";
-import { MockSetupError } from "../shared/errors.js";
-import { checkStatus } from "../transactions/writeOutcome.js";
 import { pinnedHash, registeredAt, unwrapRegistered } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ReceiptCall } from "./types.js";
@@ -33,8 +36,8 @@ export type MockReceipt = ReceiptFields & {
  */
 export function placedReceipt(
   receipt: MockReceipt,
-  /** Names its status for messages. */
-  what: string,
+  /** Names a part of the receipt for messages, as the user wrote it. */
+  named: (field: string) => string,
   context: {
     hash: Hash | undefined;
     blockNumber: bigint;
@@ -43,30 +46,12 @@ export function placedReceipt(
   },
 ): TransactionReceipt {
   const { logs = [], ...fields } = receipt;
-  checkContentLogs(logs);
-  checkStatus(fields.status, logs, what);
+  checkLogs(logs, named);
+  checkStatus(fields.status, logs, named("status"));
   return completeReceipt(fields, { ...context, logs });
 }
 
-/**
- * Refuses `logs` unless they're content a receipt can place: logs, not
- * placed yet.
- */
-function checkContentLogs(logs: unknown): asserts logs is readonly MockLogContent[] {
-  checkLogs(logs, "A receipt's");
-  if (logs.some((log) => isPlaced(log)))
-    throw new MockSetupError(
-      "A receipt places its logs, but one already has a position (e.g. from mock.buildLog()).",
-      {
-        metaMessages: [
-          "Pass a log's content, from contract.events, or contractEvents({ abi, address }) " +
-            "for a contract you don't mock.",
-        ],
-      },
-    );
-}
-
-const statusSubject = "status in getTransactionReceipt's answer";
+const inAnswer = (field: string) => `${field} in getTransactionReceipt's answer`;
 
 /**
  * `eth_getTransactionReceipt`. Unmocked, it answers with a placed
@@ -94,7 +79,7 @@ export const getTransactionReceipt = ({
     const record = call && transactions.minedRecord(call.hash);
     if (record === undefined)
       return toRpcReceipt(
-        placedReceipt(value, statusSubject, {
+        placedReceipt(value, inAnswer, {
           hash: call?.hash,
           blockNumber: blockNumber ?? state.blockNumber,
           timestampAt: state.timestampAt,
@@ -102,8 +87,8 @@ export const getTransactionReceipt = ({
         }),
       );
     const { logs, ...fields } = value;
-    if (logs !== undefined) checkContentLogs(logs);
-    checkStatus(fields.status ?? record.receipt.status, logs ?? record.logs, statusSubject, [
+    if (logs !== undefined) checkLogs(logs, inAnswer);
+    checkStatus(fields.status ?? record.receipt.status, logs ?? record.logs, inAnswer("status"), [
       fields.status === undefined
         ? `Transaction ${record.hash} on the chain reverted: answer this receipt without logs, ` +
           'or add it with them and without status: "reverted", so every method agrees.'

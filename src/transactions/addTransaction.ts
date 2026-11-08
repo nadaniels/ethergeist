@@ -1,10 +1,10 @@
 import { type Address, type Hash, type Hex, getAddress } from "viem";
 
 import { nodeHash } from "../chain/hashes.js";
-import { type MockLogContent, isPlaced, checkLogs } from "../logs/events.js";
+import { checkStatus } from "../chain/receipts.js";
+import { type MockLogContent, checkLogs } from "../logs/events.js";
 import { checkAmount, checkCount, checkFields, checkHex } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
-import { checkStatus } from "./writeOutcome.js";
 
 /**
  * What `mock.addTransaction()` takes: a transaction the app didn't send, in
@@ -118,19 +118,12 @@ export function checkAddTransaction(given: AddTransactionParameters) {
     if (amount !== undefined) checkAmount(amount, `mock.addTransaction()'s ${name}`);
   if (data !== undefined) checkHex(data, "mock.addTransaction()'s data");
   if (nonce !== undefined) checkCount(nonce, "mock.addTransaction()'s nonce", 0);
-  checkLogs(logs, "A transaction's");
+  checkLogs(
+    logs,
+    (part) => `mock.addTransaction()'s ${part}`,
+    "Give its position as addTransaction()'s blockNumber or hash.",
+  );
   checkStatus(status, logs, "mock.addTransaction()'s status");
-  if (logs.some((log) => isPlaced(log)))
-    throw new MockSetupError(
-      "mock.addTransaction() places logs itself, but one already has a position (e.g. from " +
-        "mock.buildLog()).",
-      {
-        metaMessages: [
-          "Pass a log from contract.events, and its block or hash as addTransaction()'s " +
-            "blockNumber or hash.",
-        ],
-      },
-    );
   if (blockNumber !== undefined) checkAmount(blockNumber, "mock.addTransaction()'s blockNumber");
   return {
     origin: "added" as const,

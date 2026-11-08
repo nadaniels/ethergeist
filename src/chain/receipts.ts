@@ -9,6 +9,8 @@ import {
   zeroHash,
 } from "viem";
 
+import { formatValue } from "../mocking/format.js";
+import { MockSetupError } from "../shared/errors.js";
 import { nodeAddress } from "../shared/values.js";
 import { blockHash } from "./blocks.js";
 import { nodeHash } from "./hashes.js";
@@ -26,6 +28,26 @@ type ReceiptLog = Partial<Pick<Log<bigint, number, false>, "address" | "data">> 
  * placed.
  */
 export type ReceiptFields = Partial<Omit<TransactionReceipt, "logs">>;
+
+/**
+ * Refuses a status that isn't `"success"` or `"reverted"` (`undefined` is
+ * left out), and logs on a reverted transaction, which emits none: for a
+ * send's outcome, an added transaction and a receipt alike. `what` names
+ * the status for messages; `metaMessages` say where the logs came from.
+ */
+export function checkStatus(
+  status: unknown,
+  logs: readonly unknown[],
+  what: string,
+  metaMessages?: string[],
+): asserts status is "success" | "reverted" | undefined {
+  if (status !== undefined && status !== "success" && status !== "reverted")
+    throw new MockSetupError(
+      `${what} must be "success" or "reverted"; got ${formatValue(status)}.`,
+    );
+  if (status === "reverted" && logs.length > 0)
+    throw new MockSetupError("A reverted transaction has no logs.", { metaMessages });
+}
 
 const zeroBloom = `0x${"00".repeat(256)}` as const;
 

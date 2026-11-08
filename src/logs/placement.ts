@@ -5,8 +5,7 @@ import { nodeHash } from "../chain/hashes.js";
 import { placeLog } from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { checkAmount, checkCount, checkFields } from "../mocking/setupChecks.js";
-import { MockSetupError } from "../shared/errors.js";
-import { type MockLogContent, checkLog, isPlaced } from "./events.js";
+import { type MockLogContent, checkLog } from "./events.js";
 
 /**
  * Where `mock.buildLog()` places a log, in a log's own field names: its
@@ -44,17 +43,7 @@ export function buildLog(
   placement: LogPlacement,
   chain: Pick<ChainState, "blockNumber" | "timestampAt">,
 ): Log<bigint, number, false> {
-  checkLog(log, "mock.buildLog()'s content");
-  if (isPlaced(log))
-    throw new MockSetupError(
-      "mock.buildLog() places a log's content, but this log already has a position.",
-      {
-        metaMessages: [
-          "Pass a log from contract.events, contractEvents() or testLog(), and its position " +
-            "as buildLog()'s placement.",
-        ],
-      },
-    );
+  checkLog(log, "mock.buildLog()'s content", "Give its position as buildLog()'s placement.");
   const {
     blockNumber = chain.blockNumber,
     transactionHash,

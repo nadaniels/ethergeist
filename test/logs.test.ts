@@ -263,9 +263,9 @@ describe("emit", () => {
 
     expectThrows(
       MockSetupError,
-      "mock.addTransaction() places logs itself, but one already has a position (e.g. from " +
-        "mock.buildLog()).\n\n" +
-        "Pass a log from contract.events, and its block or hash as addTransaction()'s blockNumber or hash.",
+      "mock.addTransaction()'s log 0 is already placed (e.g. by mock.buildLog()).\n\n" +
+        "Logs come from contract.events, contractEvents() or testLog().\n" +
+        "Give its position as addTransaction()'s blockNumber or hash.",
       () =>
         mock.addTransaction({
           logs: [mock.buildLog(usdc.events.Transfer({ from: alice, to: bob }))],
@@ -324,11 +324,7 @@ describe("emit", () => {
 
     const add = () => mock.addTransaction({ logs: [log], blockNumber: 10n });
     expect(add).toThrow(MockSetupError);
-    expectThrows(
-      MockSetupError,
-      "mock.addTransaction() places logs itself, but one already has a position",
-      add,
-    );
+    expectThrows(MockSetupError, "mock.addTransaction()'s log 0 is already placed", add);
   });
 
   test("returns frozen logs: changing one throws", () => {

@@ -334,21 +334,24 @@ describe("contractEvents()", () => {
     expect(() => contractEvents({ abi: erc20Abi, address: "0x1234" })).toThrow(InvalidAddressError);
   });
 
-  test("a receipt rejecting a placed log points to it", () => {
+  test("a receipt rejecting a placed log points to contractEvents()", () => {
     const { mock } = setup();
     const placed = mock.buildLog(
       contractEvents({ abi: erc20Abi, address: FACTORY }).Transfer({ from: alice, to: bob }),
     );
 
-    expectThrows(
+    const error = expectThrows(
       MockSetupError,
-      "or contractEvents({ abi, address }) for a contract you don't mock",
+      "log 0 in getTransactionReceipt's answer is already placed",
       () => {
         mock.actions
           .getTransactionReceipt({ hash: testHash("transfer") })
           .returns({ logs: [placed] });
       },
     );
+    expect(error.metaMessages).toEqual([
+      "Logs come from contract.events, contractEvents() or testLog().",
+    ]);
   });
 });
 
@@ -445,12 +448,12 @@ describe("mock.buildLog()", () => {
     ]) {
       const error = expectThrows(
         MockSetupError,
-        "mock.buildLog() places a log's content, but this log already has a position.",
+        "mock.buildLog()'s content is already placed (e.g. by mock.buildLog()).",
         () => mock.buildLog(log),
       );
       expect(error.metaMessages).toEqual([
-        "Pass a log from contract.events, contractEvents() or testLog(), and its position as " +
-          "buildLog()'s placement.",
+        "Logs come from contract.events, contractEvents() or testLog().",
+        "Give its position as buildLog()'s placement.",
       ]);
     }
   });
@@ -556,11 +559,14 @@ describe("a log's content is checked wherever it's placed", () => {
   const sites: {
     site: string;
     name: string;
+    /** Where it takes a position instead, if it does. */
+    position?: string;
     place: (setup: Setup, log: MockLogContent) => void;
   }[] = [
     {
       site: "mock.addTransaction({ logs })",
-      name: "A transaction's log 0",
+      name: "mock.addTransaction()'s log 0",
+      position: "Give its position as addTransaction()'s blockNumber or hash.",
       place: ({ mock }, log) => {
         mock.addTransaction({ logs: [log] });
       },
@@ -574,14 +580,22 @@ describe("a log's content is checked wherever it's placed", () => {
     },
     {
       site: "a receipt mock's logs",
-      name: "A receipt's log 0",
+      name: "log 0 in getTransactionReceipt's answer",
       place: ({ mock }, log) => {
         mock.actions.getTransactionReceipt().returns({ logs: [log] });
       },
     },
     {
+      site: "mock.buildReceipt({ logs })",
+      name: "mock.buildReceipt()'s log 0",
+      place: ({ mock }, log) => {
+        mock.buildReceipt({ logs: [log] });
+      },
+    },
+    {
       site: "mock.buildLog()",
       name: "mock.buildLog()'s content",
+      position: "Give its position as buildLog()'s placement.",
       place: ({ mock }, log) => {
         mock.buildLog(log);
       },
@@ -601,6 +615,24 @@ describe("a log's content is checked wherever it's placed", () => {
       expect(placed.mock.transactions).toEqual([]);
       expect(placed.mock.blockNumber).toBe(10n);
     });
+
+  test.each(sites)("$site refuses a log that's already placed, naming it", (site) => {
+    const placed = setup();
+    const log = placed.mock.buildLog(content);
+
+    const error = expectThrows(
+      MockSetupError,
+      `${site.name} is already placed (e.g. by mock.buildLog()).`,
+      () => {
+        site.place(placed, log);
+      },
+    );
+    expect(error.metaMessages).toEqual([
+      "Logs come from contract.events, contractEvents() or testLog().",
+      ...(site.position === undefined ? [] : [site.position]),
+    ]);
+    expect(placed.mock.transactions).toEqual([]);
+  });
 
   test.each(bad)("a resolver's emit() of $name is refused at the send", async ({ log, says }) => {
     const { mock, usdc } = setup();
@@ -646,7 +678,16 @@ describe("a log's content is checked wherever it's placed", () => {
     const { mock } = setup();
     const placed = untyped({ address: USDC, topics: ["0x12"], data: "zz", blockNumber: 1n });
 
-    expectThrows(MockSetupError, "mock.addTransaction() places logs itself, but one already", () =>
+    expectThrows(MockSetupError, "mock.addTransaction()'s log 0 is already placed", () =>
+      mock.addTransaction({ logs: [placed] }),
+    );
+  });
+
+  test("a placed log with an invalid address is refused for its address first", () => {
+    const { mock } = setup();
+    const placed = untyped({ address: "0x123", topics: [], data: "0x", blockNumber: 1n });
+
+    expectThrows(InvalidAddressError, /Address "0x123" is invalid/u, () =>
       mock.addTransaction({ logs: [placed] }),
     );
   });

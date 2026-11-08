@@ -508,12 +508,20 @@ describe("mock.addTransaction", () => {
       { nonce: 1.5 },
       "mock.addTransaction()'s nonce must be a non-negative integer; got 1.5.",
     ],
-    ["logs that aren't a list", { logs: testLog("noise") }, "A transaction's logs must be a list"],
-    ["a log that isn't one", { logs: [null] }, "A transaction's log 0 isn't a log; got null."],
+    [
+      "logs that aren't a list",
+      { logs: testLog("noise") },
+      "mock.addTransaction()'s logs must be a list",
+    ],
+    [
+      "a log that isn't one",
+      { logs: [null] },
+      "mock.addTransaction()'s log 0 isn't a log; got null.",
+    ],
     [
       "a log whose topics aren't a list",
       { logs: [testLog("noise"), { ...testLog("noise"), topics: "0xab" }] },
-      "A transaction's log 1 isn't a log",
+      "mock.addTransaction()'s log 1 isn't a log",
     ],
   ])("refuses %s, and changes nothing", (_, fields, message, hint) => {
     const { mock } = setup();
@@ -654,7 +662,7 @@ describe("receipt and transaction mocks over the chain", () => {
   test("buildReceipt() refuses a log that isn't one", () => {
     const { mock } = setup();
 
-    expectThrows(MockSetupError, "A receipt's log 0 isn't a log; got null.", () =>
+    expectThrows(MockSetupError, "mock.buildReceipt()'s log 0 isn't a log; got null.", () =>
       // @ts-expect-error -- a receipt's log is an object, not null
       mock.buildReceipt({ logs: [null] }),
     );

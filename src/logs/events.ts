@@ -58,7 +58,7 @@ const positionFields = [
  * Whether `log` is already placed, e.g. by `mock.buildLog()`: a log is placed
  * only once.
  */
-export const isPlaced = (log: object) => positionFields.some((field) => field in log);
+const isPlaced = (log: object) => positionFields.some((field) => field in log);
 
 const logsHint = "Logs come from contract.events, contractEvents() or testLog().";
 
@@ -71,11 +71,15 @@ const contentFields = new Set(["address", "topics", "data"]);
 /**
  * Refuses `log` unless it's a log's content, naming it `name` ("A send's
  * log 0"): an address, hex data, and at most four 32-byte topics, with no
- * other fields. Content that isn't one would fail where it's placed, as the
- * mock's bug, or place an empty log. Placed logs are left to the caller,
- * which says who places them.
+ * other fields, and not placed yet. Content that isn't one would fail where
+ * it's placed, as the mock's bug, or place an empty log. `positionHint` says
+ * where the caller takes a position instead, if it does.
  */
-export function checkLog(log: unknown, name: string): asserts log is MockLogContent {
+export function checkLog(
+  log: unknown,
+  name: string,
+  positionHint?: string,
+): asserts log is MockLogContent {
   const refuse = (problem: string) =>
     new MockSetupError(`${name} ${problem}.`, { metaMessages: [logsHint] });
   if (
@@ -86,7 +90,10 @@ export function checkLog(log: unknown, name: string): asserts log is MockLogCont
     throw refuse(`isn't a log; got ${formatValue(log)}`);
   // getAddress validates it; it's checksummed or lowercased where it's placed.
   getAddress(log.address);
-  if (isPlaced(log)) return;
+  if (isPlaced(log))
+    throw new MockSetupError(`${name} is already placed (e.g. by mock.buildLog()).`, {
+      metaMessages: positionHint === undefined ? [logsHint] : [logsHint, positionHint],
+    });
   const field = Object.keys(log).find((key) => !contentFields.has(key));
   if (field !== undefined)
     throw refuse(`has no field ${field}; a log's content is its address, topics and data`);
@@ -99,14 +106,20 @@ export function checkLog(log: unknown, name: string): asserts log is MockLogCont
   if (topics.length > 4) throw refuse(`has ${topics.length} topics; a log has at most 4`);
 }
 
-/** Refuses `logs` unless it's a list of logs, for `subject` ("A send's"). */
+/**
+ * Refuses `logs` unless it's a list of logs' content. `named` names a part
+ * of what holds them, as the user wrote it: `` (part) => `A send's ${part}` ``
+ * gives "A send's logs" and "A send's log 0". `positionHint` as for
+ * `checkLog`.
+ */
 export function checkLogs(
   logs: unknown,
-  subject: string,
+  named: (part: string) => string,
+  positionHint?: string,
 ): asserts logs is readonly MockLogContent[] {
-  checkList(logs, `${subject} logs`);
+  checkList(logs, named("logs"));
   logs.forEach((log: unknown, index: number) => {
-    checkLog(log, `${subject} log ${index}`);
+    checkLog(log, named(`log ${index}`), positionHint);
   });
 }
 

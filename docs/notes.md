@@ -417,7 +417,7 @@ features land; tick them off as pages get written.
   - `logs` takes their content (`contract.events`, `contractEvents()`,
     `testLog()`), placed in the receipt's block and transaction, indexed
     after the logs of the chain's transactions before it in that block; a
-    log that already has a position is refused, and so
+    log that's already placed is refused, and so
     are logs on a reverted receipt. Over a transaction on the chain, they
     replace its logs in that receipt only (`logs: []` is none); `getLogs`
     still answers the chain's.
@@ -465,7 +465,7 @@ features land; tick them off as pages get written.
     aren't supported yet.
   - Overloaded events use the overload the args fit; "ambiguous" when
     several do.
-  - A log that already has a position (e.g. a `mock.buildLog()` result) is
+  - A log that's already placed (e.g. a `mock.buildLog()` result) is
     refused: it's placed once.
   - For a receipt with logs for a hash the app has, mock its receipt with
     `logs`, which answer that receipt only, or add its transaction,

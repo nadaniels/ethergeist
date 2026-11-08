@@ -589,7 +589,7 @@ describe("getTransactionReceipt", () => {
     expect((await client.getTransactionReceipt({ hash: txHash })).blockNumber).toBe(11n);
   });
 
-  test("a log that already has a position is refused: the receipt places it", () => {
+  test("a log that's already placed is refused: the receipt places it", () => {
     const { mock } = setup();
     const placed = mock.buildLog(
       contractEvents({ abi: erc20Abi, address: USDC }).Transfer({ from: alice, to: bob }),
@@ -597,15 +597,30 @@ describe("getTransactionReceipt", () => {
 
     const error = expectThrows(
       MockSetupError,
-      "A receipt places its logs, but one already has a position (e.g. from mock.buildLog()).",
+      "log 0 in getTransactionReceipt's answer is already placed (e.g. by mock.buildLog()).",
       () => {
         mock.actions.getTransactionReceipt().returns({ logs: [placed] });
       },
     );
     expect(error.metaMessages).toEqual([
-      "Pass a log's content, from contract.events, or contractEvents({ abi, address }) for a " +
-        "contract you don't mock.",
+      "Logs come from contract.events, contractEvents() or testLog().",
     ]);
+  });
+
+  test("a log that's already placed is refused over a mined transaction too", () => {
+    const { mock } = setup();
+    const { hash } = mock.addTransaction({ from: alice });
+    const placed = mock.buildLog(
+      contractEvents({ abi: erc20Abi, address: USDC }).Transfer({ from: alice, to: bob }),
+    );
+
+    expectThrows(
+      MockSetupError,
+      "log 0 in getTransactionReceipt's answer is already placed (e.g. by mock.buildLog()).",
+      () => {
+        mock.actions.getTransactionReceipt({ hash }).returns({ logs: [placed] });
+      },
+    );
   });
 
   test("its logs answer this receipt only: getLogs doesn't see them", async () => {
@@ -799,7 +814,7 @@ describe("mock.buildReceipt()", () => {
     );
   });
 
-  test("refuses a log that already has a position, as a receipt mock does", () => {
+  test("refuses a log that's already placed, as a receipt mock does", () => {
     const { mock } = setup();
     const placed = mock.buildLog(
       contractEvents({ abi: erc20Abi, address: USDC }).Transfer({ from: alice, to: bob }),
@@ -807,7 +822,7 @@ describe("mock.buildReceipt()", () => {
 
     expectThrows(
       MockSetupError,
-      "A receipt places its logs, but one already has a position (e.g. from mock.buildLog()).",
+      "mock.buildReceipt()'s log 0 is already placed (e.g. by mock.buildLog()).",
       () => mock.buildReceipt({ logs: [placed] }),
     );
   });
