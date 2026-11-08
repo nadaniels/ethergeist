@@ -7,7 +7,8 @@ import {
   type BuiltTransaction,
   type MockTransaction,
 } from "./chain/transactions.js";
-import { type LogPlacement, type MockEventLog, buildLog } from "./logs/events.js";
+import type { MockEventLog } from "./logs/events.js";
+import { type LogPlacement, buildLog } from "./logs/placement.js";
 import { refuseUnencodable } from "./shared/errors.js";
 import { withoutUndefined } from "./shared/values.js";
 import type { TransactionStore } from "./transactions/store.js";

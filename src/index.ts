@@ -66,14 +66,9 @@ export type {
 } from "./contracts/types.js";
 export type { MockBlock } from "./chain/blocks.js";
 export type { MockFeeHistory, MockFees } from "./chain/fees.js";
-export type {
-  EmittedLog,
-  EventArgs,
-  LogPlacement,
-  MockContractEvents,
-  MockEventLog,
-} from "./logs/events.js";
+export type { EmittedLog, EventArgs, MockContractEvents, MockEventLog } from "./logs/events.js";
 export { contractEvents } from "./logs/events.js";
+export type { LogPlacement } from "./logs/placement.js";
 export type {
   BuiltTransaction,
   MockTransaction,

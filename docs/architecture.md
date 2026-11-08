@@ -23,8 +23,9 @@ shared → mocking → chain → logs → transactions → contracts → actions
   fees) and the node's shapes for blocks, transactions, receipts and errors,
   and for request params (`params.ts`: read to the Ethereum JSON-RPC spec,
   refused as invalid params where it rules them out).
-- **`logs/`:** a log's content (`contract.events`, `testLog`) and how
-  `eth_getLogs` filters match logs.
+- **`logs/`:** a log's content (`contract.events`, `testLog`), placing
+  content as a complete log for `mock.buildLog()`, and how `eth_getLogs`
+  filters match logs.
 - **`transactions/`:** the chain's transactions, one record each
   (`createTransactionStore`): what `mock.addTransaction` (its fields checked
   in `addTransaction.ts`) and sends put on the chain, and what

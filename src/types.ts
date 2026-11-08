@@ -21,7 +21,8 @@ import type {
 } from "./contracts/types.js";
 import type { FormatHistoryOptions } from "./history/format.js";
 import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./history/types.js";
-import type { EmittedLog, LogPlacement, MockEventLog } from "./logs/events.js";
+import type { EmittedLog, MockEventLog } from "./logs/events.js";
+import type { LogPlacement } from "./logs/placement.js";
 import type { MockFault } from "./mocking/types.js";
 import type { MockCheckpoint } from "./rpc/checks.js";
 import type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
