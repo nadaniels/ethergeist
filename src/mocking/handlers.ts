@@ -1,6 +1,7 @@
 import {
   MockNotFoundError,
   MockResolverError,
+  MockRevertError,
   MockSetupError,
   refuseUnencodable,
   removedMockError,
@@ -16,7 +17,7 @@ import {
 } from "./matching.js";
 import { isAnswer } from "./outcomes.js";
 import { checkCount } from "./setupChecks.js";
-import type { MockNodeFault, PinnedKey } from "./types.js";
+import type { Answer, MockNodeFault, PinnedKey } from "./types.js";
 import { zeroResult } from "./zeroResult.js";
 
 /** A mock's limit: `limit` answers in all, `remaining` of them left. */
@@ -41,11 +42,8 @@ export type Handler<context = never, extra = unknown> = extra & {
   pinned: unknown;
   /** How specific its pins are, for ranking: see `Specificity`. */
   specificity: Specificity;
-  /**
-   * How it answers: a resolver, or a static value wrapped in one at
-   * registration. `undefined` until `.returns()` or another answer.
-   */
-  resolver: ((context: context) => unknown) | undefined;
+  /** How it answers: see `Answer`. `undefined` until it's given one. */
+  answer: Answer<context> | undefined;
   /**
    * How many calls it answered since registration or the last
    * `clearCalls()`.
@@ -75,8 +73,8 @@ export type Handler<context = never, extra = unknown> = extra & {
  * `spend`, which counts a use if what it would answer is given after all.
  */
 export type FoundMock = {
-  /** Its resolver, to read what's marked on it, not to call. */
-  resolver: object;
+  /** Its answer, to read, not to run. */
+  answer: Answer;
   spend: () => void;
 };
 
@@ -84,7 +82,7 @@ export type FoundMock = {
 export function foundMock(handler: Handler | undefined): FoundMock | undefined {
   if (handler === undefined) return undefined;
   return {
-    resolver: handler.resolver!,
+    answer: handler.answer!,
     spend() {
       countUse(handler);
     },
@@ -106,6 +104,8 @@ function countUse(handler: Pick<Handler, "usedCount" | "remaining">): void {
  */
 export type Builder = {
   returns(value?: unknown): void;
+  /** Only where its engine gives `createBuilder` a `revertError`. */
+  reverts?(spec?: unknown): void;
   fails(fault: MockNodeFault): void;
   once(): Builder;
   times(count: number): Builder;
@@ -117,15 +117,6 @@ export type Builder = {
  * (`MockNotFoundError`). Its context's `revert()` and `fail()` throw these.
  */
 const isDeliberate = (error: unknown) => isAnswer(error) || error instanceof MockNotFoundError;
-
-/**
- * Whether `resolver` is one `.returns(value)` made for a static value,
- * marked `isStatic` as a send mock's `.reverts()` marks its resolver
- * `revert`. It's the mock's, not the user's: a setup error from encoding its
- * value at a request (a check that needs the call or the chain) is thrown as
- * it is, not as a resolver error.
- */
-const isStatic = (resolver: object) => "isStatic" in resolver && resolver.isStatic === true;
 
 /**
  * `fn` with a `calls` getter, as `mock.actions.x` and a contract's functions
@@ -167,7 +158,7 @@ export function createHandlers<context, extra>() {
       ...extra,
       pinned,
       specificity: ranked,
-      resolver: undefined,
+      answer: undefined,
       usedCount: 0,
       isDefault,
       limit: undefined,
@@ -182,30 +173,45 @@ export function createHandlers<context, extra>() {
    * `handler`'s builder, for the function or action `name`. `prepare` checks
    * a static answer at registration, so one that can't be encoded fails
    * there, not inside a request, and returns what the mock answers with.
+   * With `engine.revertError`, it has `.reverts(spec)`, reverting with what
+   * `revertError` makes of `spec` at registration, so a spec that can't be
+   * encoded throws there and changes nothing.
    */
   function createBuilder(
     handler: Handler<context, extra>,
     name: string,
     prepare: (value: unknown) => unknown,
+    engine: { revertError?(spec?: unknown): MockRevertError } = {},
   ): Builder {
+    /**
+     * Gives `handler` the answer `make` makes. A removed mock throws first,
+     * before anything is checked or prepared.
+     */
+    function setAnswer(make: () => Answer<context>) {
+      if (handler.removed) throw removedMockError();
+      handler.answer = make();
+    }
     const builder: Builder = {
       returns(value: unknown = zeroResult) {
-        if (handler.removed) throw removedMockError();
-        if (typeof value === "function") {
+        setAnswer(() => {
+          if (typeof value !== "function")
+            return {
+              kind: "static",
+              prepared: refuseUnencodable(`.returns() for "${name}"`, () => prepare(value)),
+            };
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the types check a resolver's signature, which can't be checked at runtime
-          handler.resolver = value as Handler<context>["resolver"];
-          return;
-        }
-        const answer = refuseUnencodable(`.returns() for "${name}"`, () => prepare(value));
-        handler.resolver = Object.assign(() => answer, { isStatic: true });
+          return { kind: "resolver", resolve: value as (context: context) => unknown };
+        });
       },
       /**
        * Fails every matching call with `fault`. Any node's refusal passes
        * here: the names are typed only where a node can refuse with them.
        */
       fails(fault: MockNodeFault) {
-        checkFault(fault);
-        builder.returns(() => fail(fault));
+        setAnswer(() => {
+          checkFault(fault);
+          return { kind: "fault", fault };
+        });
       },
       once: () => builder.times(1),
       times(count: number) {
@@ -214,6 +220,10 @@ export function createHandlers<context, extra>() {
         return builder;
       },
     };
+    if (engine.revertError !== undefined)
+      builder.reverts = (spec?: unknown) => {
+        setAnswer(() => ({ kind: "revert", error: engine.revertError!(spec) }));
+      };
     return builder;
   }
 
@@ -239,7 +249,7 @@ export function createHandlers<context, extra>() {
     missed: ReadonlyMap<Handler<context, extra>, PinnedKey>;
   } {
     const canAnswer = (handler: Handler<context, extra>) =>
-      handler.resolver !== undefined && handler.remaining !== 0;
+      handler.answer !== undefined && handler.remaining !== 0;
     const { best, missed } = bestMatch(
       candidates.filter((handler) => canAnswer(handler)),
       differs,
@@ -254,24 +264,32 @@ export function createHandlers<context, extra>() {
   }
 
   /**
-   * Answers with `handler`, counting the use: its resolver's value, encoded.
-   * What it throws becomes a resolver error named `name`, unless it's an
-   * answer itself, like a revert or a fault (see `isDeliberate`), or a static
-   * value's setup error, thrown as it is.
+   * Answers with `handler`, counting the use: its answer, encoded. A revert,
+   * the mock's own or a resolver's `revert()`, answers `reverted` where it's
+   * given (a send is mined reverted), and is thrown otherwise. What a
+   * resolver throws becomes a resolver error named `name`, unless it's an
+   * answer itself (see `isDeliberate`). A static value's setup error, from
+   * encoding it at the request (a check that needs the call or the chain),
+   * is the mock's, thrown as it is.
    */
   async function answerWith<answer>(
     handler: Handler<context, extra>,
     context: context,
     encode: (value: unknown) => answer,
     name: string,
+    reverted?: unknown,
   ): Promise<answer> {
     countUse(handler);
-    const resolver = handler.resolver!;
+    const given = handler.answer!;
     try {
-      return encode(await resolver(context));
+      if (given.kind === "static") return encode(given.prepared);
+      if (given.kind === "revert") throw given.error;
+      if (given.kind === "fault") return fail(given.fault);
+      return encode(await given.resolve(context));
     } catch (error) {
+      if (error instanceof MockRevertError && reverted !== undefined) return encode(reverted);
       if (isDeliberate(error)) throw error;
-      if (error instanceof MockSetupError && isStatic(resolver)) throw error;
+      if (error instanceof MockSetupError && given.kind === "static") throw error;
       throw new MockResolverError(name, error);
     }
   }
@@ -310,14 +328,14 @@ export function createHandlers<context, extra>() {
       describeUnused: (list: Handler<context, extra>[]) => string[],
     ): Required<PartSnapshot> {
       const saved = handlers.map(
-        (handler) => [handler, handler.resolver, handler.limit, handler.remaining] as const,
+        (handler) => [handler, handler.answer, handler.limit, handler.remaining] as const,
       );
       return {
         restore() {
           for (const handler of handlers.slice(saved.length)) handler.removed = true;
           handlers.length = saved.length;
-          for (const [handler, resolver, limit, remaining] of saved)
-            Object.assign(handler, { resolver, limit, remaining });
+          for (const [handler, answer, limit, remaining] of saved)
+            Object.assign(handler, { answer, limit, remaining });
         },
         unusedSince: () => describeUnused(unused(handlers.slice(saved.length))),
       };

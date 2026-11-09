@@ -17,6 +17,7 @@ import {
   encodeWriteOutcome,
   extendWriteBuilder,
   impliedBy,
+  minedReverted,
 } from "../transactions/writeOutcome.js";
 import { isPlainTransfer, pinTransaction, sendCall } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
@@ -62,11 +63,12 @@ export type MockSendTransactionBuilder = WithLimits<
  *
  * An answered send is mined in a new block, which its receipt,
  * transaction, block and logs answer from (see `mock.transactions`); a
- * reverted one is mined too. A send refused with `.fails()` or `fail()`,
- * or not answered, leaves the chain as it was. A mock without `.reverts()`
- * also answers the transaction's estimate when no estimate mock does,
- * without running it or using it up: 100,000 gas, or 21,000 for a plain
- * transfer to an address without code.
+ * reverted one is mined too. Concurrent sends are mined in the order
+ * they're answered, which isn't always the order they were sent. A send
+ * refused with `.fails()` or `fail()`, or not answered, leaves the chain as
+ * it was. A mock without `.reverts()` also answers the transaction's
+ * estimate when no estimate mock does, without running it or using it up:
+ * 100,000 gas, or 21,000 for a plain transfer to an address without code.
  *
  * The Sync method answers with the chain's receipt, not a
  * `getTransactionReceipt` mock's; the send is mined at once, so its
@@ -204,11 +206,10 @@ export function sendTransaction({
       const hash = sentBefore(call);
       return hash === undefined ? undefined : answerFor(call, hash);
     },
+    revertError: (spec?: RevertSpec) => createRevertError([], spec),
+    reverted: minedReverted,
     extendBuilder(builder) {
-      extendWriteBuilder(builder, {
-        revertError: (spec?: RevertSpec) => createRevertError([], spec),
-        whileSending: transactions.whileSending,
-      });
+      extendWriteBuilder(builder, transactions.whileSending);
     },
     contractTurn(call) {
       const called = contractCall({ registry, state }, call);

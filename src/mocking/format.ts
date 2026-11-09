@@ -2,7 +2,7 @@ import { isHex } from "viem";
 
 import { isPlainObject } from "../shared/values.js";
 import { type Matcher, isMatcher } from "./matchers.js";
-import type { PinnedKey } from "./types.js";
+import type { Answer, PinnedKey } from "./types.js";
 
 /**
  * A call for messages, e.g. `balanceOf(0x…)` or
@@ -21,11 +21,12 @@ export function formatCall(name: string, args: unknown, options: FormatOptions =
 }
 
 /**
- * A mock as messages name it: its call, what else it pins, its limit, and
- * whether it's still without an answer, e.g. `balanceOf(*) once`,
- * `transfer(*) { from: 0x… }` or `getBalance() without an answer`.
+ * A mock as messages name it: its call, what else it pins, whether it
+ * reverts or fails, its limit, and whether it's still without an answer,
+ * e.g. `balanceOf(*) once`, `transfer(*) { from: 0x… } reverts`,
+ * `getBalance(*) fails once` or `getBalance() without an answer`.
  */
-export const describeMock = (
+export function describeMock(
   name: string,
   mock: {
     pinned: unknown;
@@ -33,12 +34,15 @@ export const describeMock = (
     pins?: object | undefined;
     limit: number | undefined;
     remaining: number | undefined;
-    resolver: unknown;
+    answer: Answer | undefined;
   },
-) =>
-  `${formatCall(name, mock.pinned)}${mock.pins ? ` ${formatValue(mock.pins)}` : ""}${formatLimit(mock.limit, mock.remaining)}${
-    mock.resolver === undefined ? " without an answer" : ""
-  }`;
+): string {
+  const pins = mock.pins ? ` ${formatValue(mock.pins)}` : "";
+  const kind = mock.answer?.kind;
+  const verb = kind === "revert" ? " reverts" : kind === "fault" ? " fails" : "";
+  const unanswered = mock.answer === undefined ? " without an answer" : "";
+  return `${formatCall(name, mock.pinned)}${pins}${verb}${formatLimit(mock.limit, mock.remaining)}${unanswered}`;
+}
 
 /**
  * A mock's limit for messages, after its call: ` once`, ` 3 times, 1 left`,

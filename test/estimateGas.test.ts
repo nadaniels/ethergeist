@@ -318,6 +318,20 @@ describe("estimateGas reverts", () => {
       mock.assertAllUsed();
     });
   });
+
+  test("a miss says which registered mocks revert or fail", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ to: bob }).reverts();
+    mock.actions.estimateGas({ to: alice }).once().fails("timeout");
+
+    const error = await rejectionOf(
+      client.estimateGas({ account: alice, to: testAddress("carol"), data: "0x1234" }),
+    );
+
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
+      `Registered:\n  estimateGas({ to: ${bob} }) reverts  ← to didn't match\n  estimateGas({ to: ${alice} }) fails once  ← to didn't match`,
+    );
+  });
 });
 
 describe("estimateGas unmocked", () => {

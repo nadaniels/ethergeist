@@ -189,7 +189,7 @@ describe("retries past a limited fault", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        "  balanceOf(*) once, used up",
+        "  balanceOf(*) fails once, used up",
         "This is viem retrying after a `.once()`/`.times(n)` fault (this transport's " +
           "`retryCount` is 3); each attempt used up an answer. Register a mock to answer " +
           "after it, or use `.fails()` without a limit to fail every attempt.",

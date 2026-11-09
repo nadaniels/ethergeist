@@ -343,9 +343,13 @@ describe("restore() checks", () => {
 
     usdc.read.balanceOf().fails("network");
     mock.contract({ abi: erc20Abi, address: DAI, defaults: { read: { decimals: 18 } } });
-    expectThrows(MockCheckError, `1 mock(s) answered no call:\n  - balanceOf(*) on ${USDC}`, () => {
-      baseline.restore({ assertAllUsed: true });
-    });
+    expectThrows(
+      MockCheckError,
+      `1 mock(s) answered no call:\n  - balanceOf(*) fails on ${USDC}`,
+      () => {
+        baseline.restore({ assertAllUsed: true });
+      },
+    );
   });
 
   test("a checkpoint after per-test setup exempts its fallbacks", async () => {

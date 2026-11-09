@@ -27,6 +27,7 @@ import {
   type MockWriteOutcome,
   encodeWriteOutcome,
   extendWriteBuilder,
+  minedReverted,
 } from "../transactions/writeOutcome.js";
 import { encodeAnswer, createRevertError } from "./answers.js";
 import { type AddTransaction, createContractApi } from "./createContractApi.js";
@@ -195,10 +196,12 @@ export function createMockContract<const abi extends Abi>(
         `The contract at ${label} was removed by restore() or reset(); register it again.`,
       );
   }
+  /** What `.reverts(spec)` and a resolver's `revert(spec)` revert with. */
+  const revertError = (spec?: RevertSpec) => createRevertError(abi, spec);
   /** Handed to every resolver. */
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the generic only narrows what callers pass; createRevertError takes any RevertSpec
   const revert = ((spec?: RevertSpec) => {
-    throw createRevertError(abi, spec);
+    throw revertError(spec);
   }) as RevertFn<Abi>;
 
   const { functionsIn, functionsBySelector, notInNamespaceError, findFunction } =
@@ -233,27 +236,18 @@ export function createMockContract<const abi extends Abi>(
       // `transfer([bob, 5n])`.
       { isDefault, ranked: specificity(pins === undefined ? pinned : [pinned ?? [], pins]) },
     );
-    const builder = mocks.createBuilder(handler, abiItem.name, (value) => {
-      if (namespace === "write") return encodeWriteOutcome(value, false);
-      encodeAnswer(handler, value);
-      return value;
-    });
-    if (namespace === "write") {
-      extendWriteBuilder(builder, {
-        revertError: (spec?: RevertSpec) => createRevertError(abi, spec),
-        whileSending,
-      });
-      return builder;
-    }
-    return Object.assign(builder, {
-      reverts(spec?: RevertSpec) {
-        // Built now, so a bad spec throws here and changes nothing.
-        const error = createRevertError(abi, spec);
-        builder.returns(() => {
-          throw error;
-        });
+    const builder = mocks.createBuilder(
+      handler,
+      abiItem.name,
+      (value) => {
+        if (namespace === "write") return encodeWriteOutcome(value, false);
+        encodeAnswer(handler, value);
+        return value;
       },
-    });
+      { revertError },
+    );
+    if (namespace === "write") extendWriteBuilder(builder, whileSending);
+    return builder;
   }
 
   for (const namespace of ["read", "simulate", "estimateGas", "write"] as const)
@@ -492,7 +486,10 @@ export function createMockContract<const abi extends Abi>(
     );
   }
 
-  /** Answers `call` with `handler`, its answer checked by `encode`. */
+  /**
+   * Answers `call` with `handler`, its answer checked by `encode`. A `write`
+   * mock's revert is mined reverted.
+   */
   const run = <answer>(
     handler: Handler,
     call: MockCall,
@@ -503,6 +500,7 @@ export function createMockContract<const abi extends Abi>(
       { ...call, revert, fail },
       (value) => encode(handler, value),
       call.functionName,
+      handler.namespace === "write" ? minedReverted : undefined,
     );
 
   /**

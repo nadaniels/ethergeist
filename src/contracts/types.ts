@@ -483,8 +483,10 @@ export type MockContract<abi extends Abi> = {
    * (`eth_sendTransaction`, `eth_sendRawTransaction` or its Sync form) as
    * viem's `writeContract()` and `writeContractSync()` send them. A mock
    * answers with what the chain did, and the transaction is mined in a new
-   * block: see `MockContractWriteAnswers`. These mocks answer before
-   * `mock.actions.sendTransaction`, which answers what they don't.
+   * block: see `MockContractWriteAnswers`. Concurrent sends are mined in
+   * the order they're answered, which isn't always the order they were
+   * sent. These mocks answer before `mock.actions.sendTransaction`, which
+   * answers what they don't.
    *
    * A mock without `.reverts()` also answers the transaction's estimate with
    * 100,000 gas when no estimate mock does, without running it or using it

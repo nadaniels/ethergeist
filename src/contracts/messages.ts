@@ -11,7 +11,7 @@ import {
   formatReceived,
 } from "../mocking/format.js";
 import { mismatches } from "../mocking/matching.js";
-import type { PinnedKey } from "../mocking/types.js";
+import type { Answer, PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import { type Pins, pinMismatches } from "./functions.js";
 import type { MockCall, MockNamespace } from "./types.js";
@@ -23,7 +23,7 @@ type Mock = {
   pins: Pins | undefined;
   limit: number | undefined;
   remaining: number | undefined;
-  resolver: unknown;
+  answer: Answer | undefined;
 };
 
 /**
@@ -88,7 +88,7 @@ export function unusedLine(
 ): string {
   const name = mock.abiItem.name;
   const after =
-    mock.resolver === undefined
+    mock.answer === undefined
       ? formatNoAnswer(".returns(), .reverts() or .fails()")
       : formatReceived(
           name,

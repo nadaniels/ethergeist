@@ -1,3 +1,5 @@
+import type { MockRevertError } from "../shared/errors.js";
+
 /**
  * A fault: a request that fails before a node answers it, or with a
  * JSON-RPC error. The client gets the error it would get from a node
@@ -126,3 +128,14 @@ export type MockEstimateAnswers<context> = {
  * of the whole params, e.g. `getBalance(match.where(…))`.
  */
 export type PinnedKey = number | string | null;
+
+/**
+ * How a mock answers: `.returns(value)`'s value, as its engine prepared it
+ * at registration; `.returns(resolver)`'s resolver; `.reverts()`'s error;
+ * or `.fails()`'s fault.
+ */
+export type Answer<context = never> =
+  | { kind: "static"; prepared: unknown }
+  | { kind: "resolver"; resolve: (context: context) => unknown }
+  | { kind: "revert"; error: MockRevertError }
+  | { kind: "fault"; fault: MockNodeFault };

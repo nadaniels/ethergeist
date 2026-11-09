@@ -22,7 +22,7 @@ import { checkNoMatchers, firstMismatch, mismatches } from "../mocking/matching.
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
-import { MockNotFoundError } from "../shared/errors.js";
+import { MockNotFoundError, type MockRevertError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, createRecordList } from "../shared/records.js";
 import { leftOut } from "../shared/values.js";
@@ -70,13 +70,15 @@ type Encoding<call extends object> = {
  * the JSON-RPC answer `commit` makes of it (the answer itself, without one).
  *
  * Members are listed in the order they run: registration's first, then a
- * request's. At registration: `pin`, then `extendBuilder`, then for a static
- * answer `pinnedCall` and `encode` (`zero` for one left out). At a request:
- * `decode`, then `known`, which skips to `view` when it answers. Otherwise
- * `contractTurn`, `preempt` and the contract's turn, then this table's mocks
- * are matched (`actual`), and the one that answers gets `extendContext` and
- * `encode`. Without one, `fallback` answers, then the contract's miss, then
- * "No mock for" with `hint` or `hintFor`. `commit` and `view` come last.
+ * request's. At registration: `pin`, then `extendBuilder`, then `revertError`
+ * for `.reverts()`, or for a static answer `pinnedCall` and `encode` (`zero`
+ * for one left out). At a request: `decode`, then `known`, which skips to
+ * `view` when it answers. Otherwise `contractTurn`, `preempt` and the
+ * contract's turn, then this table's mocks are matched (`actual`), and the
+ * one that answers gets `extendContext`, then `encode` of its answer or, for
+ * a revert, of `reverted`. Without one, `fallback` answers, then the contract's
+ * miss, then "No mock for" with `hint` or `hintFor`. `commit` and `view`
+ * come last.
  *
  * Members are methods, whose parameters TypeScript checks both ways, so a
  * `Definition<BalanceCall>` is a `Definition`: the table holds every action's
@@ -93,6 +95,11 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
    * send's `.emits()`.
    */
   extendBuilder?(builder: Builder): void;
+  /**
+   * What `.reverts(spec)` and a resolver's `revert(spec)` revert with;
+   * without it, a mock has neither.
+   */
+  revertError?(spec?: unknown): MockRevertError;
   /**
    * What the pins settle of the call, for checking a static answer at
    * registration, so a mismatch fails at `.returns()`. It leaves out what
@@ -133,7 +140,7 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
    * itself.
    */
   actual?(pinned: unknown, call: call): unknown;
-  /** Adds to what a resolver gets, beyond the call and `fail`. */
+  /** Adds to what a resolver gets, beyond the call, `fail` and `revert`. */
   extendContext?(context: object, call: call): void;
   /**
    * Validates a value in viem's types and converts it to its JSON-RPC form.
@@ -141,6 +148,12 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
    * at each request: see `Encoding`.
    */
   encode(value: unknown, at: Encoding<call>): answer;
+  /**
+   * What a revert answers instead of being thrown, a mock's `.reverts()` or
+   * a resolver's `revert()`: a send's is mined reverted. It's a value in
+   * viem's types, encoded as a mock's answer is.
+   */
+  reverted?: unknown;
   /**
    * The answer when no mock matches, or `undefined` to report the call as
    * unhandled.
@@ -234,21 +247,27 @@ export function createTable(
 
   /**
    * The builder methods that answer, named for a mock registered without
-   * one. Set from a built builder, since only it knows whether the
-   * action's `extendBuilder` added `.reverts()`.
+   * one.
    */
-  let answers = ".returns() or .fails()";
+  const answers =
+    definition.revertError === undefined
+      ? ".returns() or .fails()"
+      : ".returns(), .reverts() or .fails()";
 
   function register(params: unknown) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
     const handler = mocks.register(pinned, undefined);
-    const builder = mocks.createBuilder(handler, definition.name, (value) => {
-      const registered = new Registered(value, currentBlock());
-      encode(registered, undefined, definition.pinnedCall?.(pinned) ?? {});
-      return registered;
-    });
+    const builder = mocks.createBuilder(
+      handler,
+      definition.name,
+      (value) => {
+        const registered = new Registered(value, currentBlock());
+        encode(registered, undefined, definition.pinnedCall?.(pinned) ?? {});
+        return registered;
+      },
+      definition,
+    );
     definition.extendBuilder?.(builder);
-    if ("reverts" in builder) answers = ".returns(), .reverts() or .fails()";
     return builder;
   }
 
@@ -257,7 +276,7 @@ export function createTable(
     list.map(
       (handler) =>
         `${describeMock(definition.name, handler)}${
-          handler.resolver === undefined
+          handler.answer === undefined
             ? formatNoAnswer(answers)
             : formatReceived(definition.name, received(handler), calls.total)
         }`,
@@ -365,12 +384,19 @@ export function createTable(
     }
 
     const context = { ...call, fail };
+    if (definition.revertError !== undefined)
+      Object.assign(context, {
+        revert(spec?: unknown): never {
+          throw definition.revertError!(spec);
+        },
+      });
     definition.extendContext?.(context, call);
     return await mocks.answerWith(
       handler,
       context,
       (value) => encode(value, call, call),
       definition.name,
+      definition.reverted,
     );
   }
 

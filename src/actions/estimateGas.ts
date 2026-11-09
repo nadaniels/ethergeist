@@ -127,24 +127,7 @@ export const estimateGas = ({
   zero: undefined,
   encode: (value) => encodeGas(value, "estimateGas's answer"),
   view: viewQuantity,
-  extendContext(context) {
-    Object.assign(context, {
-      revert(spec?: RevertSpec): never {
-        throw createRevertError([], spec);
-      },
-    });
-  },
-  extendBuilder(builder) {
-    Object.assign(builder, {
-      // Made at registration, so a spec viem can't encode throws here.
-      reverts(spec?: RevertSpec) {
-        const error = createRevertError([], spec);
-        builder.returns(() => {
-          throw error;
-        });
-      },
-    });
-  },
+  revertError: (spec?: RevertSpec) => createRevertError([], spec),
   contractTurn(call) {
     const { to, data, from, value, blockNumber } = call;
     if (to === undefined || data === undefined || data === "0x") return undefined;
