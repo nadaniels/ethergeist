@@ -497,7 +497,8 @@ export function createTransactionStore({
         (block === "pending" || (mined !== undefined && mined.blockNumber <= block))
       );
     });
-    return Math.max(0, ...sent.map(({ fields }) => (fields.nonce ?? 0) + 1));
+    // A record with a `from` always has a nonce: `add` fills it in.
+    return Math.max(0, ...sent.map(({ fields }) => fields.nonce! + 1));
   }
 
   return {

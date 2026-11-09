@@ -78,6 +78,9 @@ describe("JSON-RPC error faults", () => {
     const error = expectCause(await rejectionOf(decimals()), LimitExceededRpcError);
     expect(error.code).toBe(LimitExceededRpcError.code);
     expect(mock.history).toHaveLength(4);
+    expect(mock.formatHistory()).toContain(
+      `✗ fault: RPC error ${LimitExceededRpcError.code} (limit exceeded) (failRequests)`,
+    );
   });
 
   test("a known code viem doesn't retry fails on the first attempt", async () => {

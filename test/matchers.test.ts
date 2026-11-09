@@ -234,6 +234,17 @@ describe("match.where()", () => {
     expect(predicate).not.toHaveBeenCalled();
   });
 
+  test("a predicate that throws while an unused mock's calls are listed counts as a mismatch", async () => {
+    const { mock, usdc, allowance } = setup();
+    // `bob` doesn't match `carol`, so matching never runs the predicate; listing the call does.
+    usdc.read.allowance([match.where(throwsBoom), bob]).returns(1n);
+    await rejectionOf(allowance(alice, carol));
+
+    expectThrows(MockCheckError, `allowance(${alice}, ${carol})  ← owner didn't match`, () => {
+      mock.assertAllUsed();
+    });
+  });
+
   test("a predicate that throws is reported as unhandled, naming it", async () => {
     const { mock, usdc, balanceOf } = setup();
     usdc.read.balanceOf([match.where(throwsBoom)]).returns(1n);

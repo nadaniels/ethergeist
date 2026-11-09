@@ -1070,7 +1070,7 @@ describe("mock.actions.getLogs", () => {
   test("an answer that isn't a list of logs fails at registration", () => {
     const { mock } = setup();
 
-    expectThrows(MockSetupError, "getLogs answers a list of logs; got object.", () => {
+    expectThrows(MockSetupError, "getLogs's answer must be a list; got { logs: [] }.", () => {
       // @ts-expect-error -- getLogs answers a list
       mock.actions.getLogs().returns({ logs: [] });
     });
@@ -1089,14 +1089,23 @@ describe("mock.actions.getLogs", () => {
   test("refuses log content: nothing would place it", () => {
     const { mock, usdc } = setup();
 
-    expectThrows(
-      MockSetupError,
-      "getLogs answers placed logs, e.g. from mock.logs or mock.buildLog(); log 0 has no position.",
-      () => {
-        // @ts-expect-error -- content, not a placed log
-        mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: bob })]);
-      },
-    );
+    const error = expectThrows(MockSetupError, "log 0 in getLogs's answer has no position.", () => {
+      // @ts-expect-error -- content, not a placed log
+      mock.actions.getLogs().returns([usdc.events.Transfer({ from: alice, to: bob })]);
+    });
+    expect(error.metaMessages).toEqual([
+      "Answer placed logs, e.g. from mock.logs or mock.buildLog().",
+    ]);
+  });
+
+  test("refuses a log placed only in part", () => {
+    const { mock, usdc } = setup();
+    const content = usdc.events.Transfer({ from: alice, to: bob });
+
+    expectThrows(MockSetupError, "log 0 in getLogs's answer has no position.", () => {
+      // @ts-expect-error -- a block number alone doesn't place a log
+      mock.actions.getLogs().returns([{ ...content, blockNumber: 9n }]);
+    });
   });
 
   test("refuses a blockTimestamp that isn't a bigint", () => {
@@ -1105,7 +1114,7 @@ describe("mock.actions.getLogs", () => {
 
     expectThrows(
       MockSetupError,
-      "getLogs log 0's blockTimestamp must be a non-negative bigint; got 0x5.",
+      "blockTimestamp of log 0 in getLogs's answer must be a non-negative bigint; got 0x5.",
       () => {
         // @ts-expect-error -- a log's blockTimestamp is a bigint
         mock.actions.getLogs().returns([{ ...log, blockTimestamp: "0x5" }]);
