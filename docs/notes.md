@@ -960,7 +960,7 @@ features land; tick them off as pages get written.
       `defaults`.
 - [ ] Other `afterEach` hooks that throw can still skip the restore. Explain
       when a `beforeEach` backstop is safe: only when the previous restore
-      didn't run, since an unconditional one wipes nested suites' setup.
+      didn't run, since an unconditional one removes nested suites' setup.
 - [ ] The whole pattern as copyable code, Vitest and Jest side by side (the
       hooks are the same; `node:test` names them `before`/`afterEach`):
       `checkpoint()` in `beforeAll`, `restore({ checks })` in `afterEach`, and
@@ -971,7 +971,8 @@ features land; tick them off as pages get written.
       prints always, or behind an env flag.
 - [ ] Say plainly that the conditional backstop prevents one failure turning
       into many, but doesn't make nesting safe: an outer per-test restore
-      still wipes a nested describe's `beforeAll` setup after its first test.
+      still removes a nested describe's `beforeAll` setup after its first
+      test.
 - [ ] `checkpoint()` throws on unanswered requests since the last clear, and
       tests that trigger a missing mock on purpose need `clearCalls()`.
 - [ ] `clearCalls()` isn't a per-test reset. It's Vitest's `mockClear()`:
@@ -986,11 +987,12 @@ features land; tick them off as pages get written.
     checkpoint's restore or `reset()` invalidated it, with the usual cause:
     a parent describe's per-test restore;
   - the mock remembers what the last `restore()` or `reset()` removed
-    (contracts and transactions; the next one replaces it). "No mocked
-    contract at …" for an address it removed says so, with the layout as
-    a condition ("If this test is in a nested describe, …"), since a flat
-    file that forgot to register it gets the same error: in the nested
-    layout, that's the nested describe's second test;
+    (contracts, mocks and transactions; the next one replaces it). "No
+    mocked contract at …" for an address it removed says so, and a "No
+    mock for …" lists the removed mocks that match the call; both then give
+    the layout as a condition ("If this test is in a nested describe, …"),
+    since a flat file that forgot to register it gets the same error: in
+    the nested layout, that's the nested describe's second test;
   - restore at one level only per test, so describes that restore an outer
     checkpoint per test are siblings of describes with their own setup, not
     parents of them;
@@ -1024,9 +1026,10 @@ features land; tick them off as pages get written.
       not-found errors for a hash the last restore removed say so (as do
       a call, estimate or send to a contract it removed), and
       `assertNoUnhandled` (on its own or in `restore()`) ends with a line
-      when a request it lists got one of these hints (this one, or the
-      removed-contract one), so exactly what they cover: a request missing
-      what the last restore removed and that isn't back.
+      when a request it lists got one of these hints (this one, the
+      removed-contract one or the removed mocks), so exactly what they
+      cover: a request missing what the last restore removed and that isn't
+      back.
 - [ ] A hash the chain doesn't know isn't an instant failure either: viem's
       receipt wait retries it the same way, so under Vitest's 5 s default
       the test times out before viem rejects. `mock.unhandled` (or history

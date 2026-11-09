@@ -1,5 +1,6 @@
 import { isHex } from "viem";
 
+import { nestedRestoreHint, removedMocksHeader } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import { type Matcher, isMatcher } from "./matchers.js";
 import type { Answer, PinnedKey } from "./types.js";
@@ -20,23 +21,23 @@ export function formatCall(name: string, args: unknown, options: FormatOptions =
   return `${name}(${list.join(", ")})`;
 }
 
+/** What messages read of a mock to describe it: see `describeMock`. */
+type DescribedMock = {
+  pinned: unknown;
+  /** A contract's mock's `from` and `value`, if it pins them. */
+  pins?: object | undefined;
+  limit: number | undefined;
+  remaining: number | undefined;
+  answer: Answer | undefined;
+};
+
 /**
  * A mock as messages name it: its call, what else it pins, whether it
  * reverts or fails, its limit, and whether it's still without an answer,
  * e.g. `balanceOf(*) once`, `transfer(*) { from: 0x… } reverts`,
  * `getBalance(*) fails once` or `getBalance() without an answer`.
  */
-export function describeMock(
-  name: string,
-  mock: {
-    pinned: unknown;
-    /** A contract's mock's `from` and `value`, if it pins them. */
-    pins?: object | undefined;
-    limit: number | undefined;
-    remaining: number | undefined;
-    answer: Answer | undefined;
-  },
-): string {
+export function describeMock(name: string, mock: DescribedMock): string {
   const pins = mock.pins ? ` ${formatValue(mock.pins)}` : "";
   const kind = mock.answer?.kind;
   const verb = kind === "revert" ? " reverts" : kind === "fault" ? " fails" : "";
@@ -88,8 +89,38 @@ export type ReceivedCall = { call: string; differs: string | undefined };
  * args or params didn't match the call, if one didn't. It can follow "used
  * up" or "without an answer": that mock wouldn't have matched either.
  */
-export const formatMissReason = (differs: string | undefined) =>
+const formatMissReason = (differs: string | undefined) =>
   differs === undefined ? "" : `  ← ${differs} didn't match`;
+
+/**
+ * A miss's lines for the mocks of `name` it tried, each with where it first
+ * differed from the call (`missed`), as `keyName` names the arg or param.
+ */
+export function missedLines<mock extends DescribedMock>(
+  name: string,
+  mocks: readonly mock[],
+  missed: ReadonlyMap<mock, PinnedKey>,
+  keyName: (mock: mock, key: PinnedKey) => string,
+): string[] {
+  return mocks.map((mock) => {
+    const key = missed.get(mock);
+    const reason = formatMissReason(key === undefined ? undefined : keyName(mock, key));
+    return `  ${describeMock(name, mock)}${reason}`;
+  });
+}
+
+/**
+ * A miss's lines for the mocks of `name` the last restore removed that match
+ * the call, with the layout that often causes it; none if there are none.
+ */
+export function removedLines(name: string, removed: readonly DescribedMock[]): string[] {
+  if (removed.length === 0) return [];
+  return [
+    removedMocksHeader,
+    ...removed.map((mock) => `  ${describeMock(name, mock)}`),
+    nestedRestoreHint,
+  ];
+}
 
 /**
  * The line under an unused mock without an answer, in place of the calls it

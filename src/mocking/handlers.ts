@@ -136,6 +136,8 @@ export function withCalls<fn extends (...args: never[]) => unknown>(
  */
 export function createHandlers<context, extra>() {
   const handlers: Handler<context, extra>[] = [];
+  /** The mocks the last `restore()` or `reset()` removed, for misses. */
+  let lastRemoved: Handler<context, extra>[] = [];
 
   /** Registers a mock pinning `pinned`, without an answer yet. */
   function register(
@@ -228,26 +230,30 @@ export function createHandlers<context, extra>() {
   }
 
   /**
-   * The best of `candidates` that can answer and matches: the most specific;
-   * among equally specific ones, see `bestMatch`. A handler can answer when
-   * it has an answer and answers left; one that can't steps aside for the
-   * rest, however specific. `differs` gives where a handler's pins first
-   * differ from the call (see `firstMismatch`), or `undefined` when it
-   * matches. `name` names the function or action when a predicate throws.
+   * The best of the candidates (the mocks `isCandidate` picks) that can
+   * answer and matches: the most specific; among equally specific ones, see
+   * `bestMatch`. A handler can answer when it has an answer and answers
+   * left; one that can't steps aside for the rest, however specific.
+   * `differs` gives where a handler's pins first differ from the call (see
+   * `firstMismatch`), or `undefined` when it matches. `name` names the
+   * function or action when a predicate throws.
    *
-   * `missed` says where each handler that didn't answer first differs from
-   * the call, for messages: as matching found it for those that were tried,
-   * and by exact values only for those that couldn't answer, so no predicate
-   * runs for the message.
+   * On a miss, for messages, no predicate runs: `missed` says where each
+   * candidate that didn't answer first differs from the call (as matching
+   * found it for those that were tried, by exact values for the rest), and
+   * `removed` lists the candidates the last restore removed that match it by
+   * exact values.
    */
   function findAnswering(
-    candidates: readonly Handler<context, extra>[],
+    isCandidate: (handler: Handler<context, extra>) => boolean,
     differs: (handler: Handler<context, extra>, options: MatchOptions) => PinnedKey | undefined,
     name: string,
   ): {
     handler: Handler<context, extra> | undefined;
     missed: ReadonlyMap<Handler<context, extra>, PinnedKey>;
+    removed: readonly Handler<context, extra>[];
   } {
+    const candidates = handlers.filter((handler) => isCandidate(handler));
     const canAnswer = (handler: Handler<context, extra>) =>
       handler.answer !== undefined && handler.remaining !== 0;
     const { best, missed } = bestMatch(
@@ -255,12 +261,15 @@ export function createHandlers<context, extra>() {
       differs,
       name,
     );
-    if (best === undefined)
-      for (const handler of candidates) {
-        const key = canAnswer(handler) ? undefined : differs(handler, { predicates: false });
-        if (key !== undefined) missed.set(handler, key);
-      }
-    return { handler: best, missed };
+    if (best !== undefined) return { handler: best, missed, removed: [] };
+    for (const handler of candidates) {
+      const key = canAnswer(handler) ? undefined : differs(handler, { predicates: false });
+      if (key !== undefined) missed.set(handler, key);
+    }
+    const removed = lastRemoved.filter(
+      (handler) => isCandidate(handler) && differs(handler, { predicates: false }) === undefined,
+    );
+    return { handler: undefined, missed, removed };
   }
 
   /**
@@ -322,7 +331,8 @@ export function createHandlers<context, extra>() {
     },
     /**
      * Saves the registered mocks and their answers and limits. `restore()`
-     * removes mocks registered since; `unusedSince` reports their unused ones.
+     * removes mocks registered since, and keeps them as the last removed, for
+     * misses; `unusedSince` reports their unused ones.
      */
     snapshot(
       describeUnused: (list: Handler<context, extra>[]) => string[],
@@ -332,7 +342,8 @@ export function createHandlers<context, extra>() {
       );
       return {
         restore() {
-          for (const handler of handlers.slice(saved.length)) handler.removed = true;
+          lastRemoved = handlers.slice(saved.length);
+          for (const handler of lastRemoved) handler.removed = true;
           handlers.length = saved.length;
           for (const [handler, answer, limit, remaining] of saved)
             Object.assign(handler, { answer, limit, remaining });

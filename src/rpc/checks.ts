@@ -7,8 +7,7 @@ import {
   MockNotFoundError,
   MockSetupError,
   nestedRestoreHint,
-  removedContractNote,
-  removedTransactionNote,
+  removalNotes,
 } from "../shared/errors.js";
 import type { RecordList } from "../shared/records.js";
 import type { Checkpoints } from "./checkpoints.js";
@@ -21,12 +20,10 @@ import type { Checkpoints } from "./checkpoints.js";
 function unhandledFailure(unhandled: RecordList<UnhandledRequest>): string[] {
   if (unhandled.total === 0) return [];
   const removed = unhandled.kept.some(({ error }) =>
-    (error.metaMessages ?? []).some(
-      (line) => line === removedContractNote || line === removedTransactionNote,
-    ),
+    (error.metaMessages ?? []).some((line) => removalNotes.includes(line)),
   )
-    ? "\nSome name a contract or transaction the last restore() or reset() removed: a " +
-      "request from an earlier test, like a receipt wait, may still be running."
+    ? "\nSome name what the last restore() or reset() removed: a request from an earlier " +
+      "test, like a receipt wait, may still be running."
     : "";
   return [
     `The mock couldn't answer ${countOf(unhandled)}:\n${unhandledLines(unhandled)}${removed}`,
@@ -226,8 +223,8 @@ export function createChecks({
  * Checkpoints nest as a stack: restoring one invalidates every checkpoint
  * taken after it, and `mock.reset()` invalidates them all. Restore at one
  * level per test. Vitest runs an outer `afterEach` after a nested describe's
- * own, so an outer per-test restore wipes the nested describe's suite setup
- * and invalidates its checkpoints. Keep describes that restore an outer
+ * own, so an outer per-test restore removes the nested describe's suite
+ * setup and invalidates its checkpoints. Keep describes that restore an outer
  * checkpoint per test beside describes with their own suite setup, not
  * around them. A describe with its own suite setup takes a checkpoint on
  * each side of it: `outer = mock.checkpoint()`, its setup, then

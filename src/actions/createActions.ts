@@ -2,7 +2,7 @@ import { isAddress } from "viem";
 
 import { withoutTrailingNulls } from "../chain/params.js";
 import { withCalls } from "../mocking/handlers.js";
-import { MockRpcError, removedContractNote, removedTransactionNote } from "../shared/errors.js";
+import { MockRpcError, removedContractLines, removedTransactionNote } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import type { RecordLimit } from "../shared/records.js";
 import { createMethods } from "./methods.js";
@@ -24,22 +24,22 @@ export function createActions(
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
   const names = Object.keys(typedActions) as ActionName[];
   /**
-   * The note for a miss on what the last restore removed: a hash lookup's
-   * transaction, or the contract an estimate or send is to. It's keyed on the
-   * call's `hash` and `to`, which only those actions have, so a new action
-   * that names something else `hash` or `to` gets the note too.
+   * The lines for a miss on what the last restore removed: a hash lookup's
+   * transaction, or the contract an estimate or send is to. They're keyed on
+   * the call's `hash` and `to`, which only those actions have, so a new
+   * action that names something else `hash` or `to` gets them too.
    */
-  const removedNote = (call: object) =>
+  const removedTargetLines = (call: object): readonly string[] =>
     "hash" in call &&
     typeof call.hash === "string" &&
     chain.transactions.removedByLastRestore(call.hash)
-      ? removedTransactionNote
+      ? [removedTransactionNote]
       : "to" in call &&
           typeof call.to === "string" &&
           isAddress(call.to) &&
           chain.registry.removedByLastRestore(call.to)
-        ? removedContractNote
-        : undefined;
+        ? removedContractLines
+        : [];
   const currentBlock = () => chain.state.blockNumber;
   // Asked only while answering, once every table is made.
   const context: ActionsContext = {
@@ -52,7 +52,7 @@ export function createActions(
       name,
       createTable(typedActions[name].define(context), recordLimit, {
         currentBlock,
-        notFoundNote: removedNote,
+        notFoundLines: removedTargetLines,
       }),
     ]),
   ) as Record<ActionName, Table>;

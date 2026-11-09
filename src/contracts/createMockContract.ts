@@ -288,9 +288,13 @@ export function createMockContract<const abi extends Abi>(
       const namespace = reads.includes(abiItem) ? "read" : "simulate";
       decoded = { namespace, selector, abiItem, call };
       receive(decoded);
-      const { handler, missed } = match(decoded);
+      const { handler, missed, removed } = match(decoded);
       if (!handler)
-        throw missError(call, namespace, label, { registered: candidates(decoded), missed });
+        throw missError(call, namespace, label, {
+          registered: candidates(decoded),
+          missed,
+          removed,
+        });
       const hex = await run(handler, call, namespace);
       const value = decodeFunctionResult({ abi: [abiItem], functionName: abiItem.name, data: hex });
       report(record({ type: "result", value }));
@@ -351,7 +355,8 @@ export function createMockContract<const abi extends Abi>(
         record.outcome = failureOutcome(error, abi);
       },
       miss() {
-        const registered = { registered: candidates(decoded), missed: matchOnce().missed };
+        const { missed, removed } = matchOnce();
+        const registered = { registered: candidates(decoded), missed, removed };
         // Only an estimate with `from` is a send's, which `write` mocks imply.
         if (namespace !== "estimateGas" || call.from === undefined)
           return missError(call, namespace, label, registered);
@@ -359,10 +364,11 @@ export function createMockContract<const abi extends Abi>(
         // matched: matched again for their reasons, so their predicates run a
         // second time.
         const writes = { ...decoded, namespace: "write" as const };
-        const { missed: writesMissed } = match(writes);
+        const writesMatched = match(writes);
         return missError(call, namespace, label, registered, {
           registered: candidates(writes),
-          missed: writesMissed,
+          missed: writesMatched.missed,
+          removed: writesMatched.removed,
         });
       },
       record,
@@ -459,11 +465,13 @@ export function createMockContract<const abi extends Abi>(
     return lists.flat().toSorted((a, b) => (order.get(a) ?? 0) - (order.get(b) ?? 0));
   }
 
+  /** Whether `handler` is in the call's namespace, for its function. */
+  const isFor = ({ namespace, selector }: Decoded, handler: Handler) =>
+    handler.namespace === namespace && handler.selector === selector;
+
   /** The handlers in the call's namespace for its function. */
-  const candidates = ({ namespace, selector }: Decoded) =>
-    mocks.handlers.filter(
-      (handler) => handler.namespace === namespace && handler.selector === selector,
-    );
+  const candidates = (decoded: Decoded) =>
+    mocks.handlers.filter((handler) => isFor(decoded, handler));
 
   /**
    * The handler that answers `decoded`, matched on its args, then its `from`
@@ -472,7 +480,7 @@ export function createMockContract<const abi extends Abi>(
   function match(decoded: Decoded) {
     const { call } = decoded;
     return mocks.findAnswering(
-      candidates(decoded),
+      (handler) => isFor(decoded, handler),
       (handler, options) => {
         const arg = firstMismatch(handler.pinned, call.args, options);
         return arg === undefined ? firstPinMismatch(handler.pins, call, options) : arg;

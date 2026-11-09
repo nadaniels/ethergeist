@@ -7,10 +7,11 @@ import {
   type ReceivedCall,
   describeMock,
   formatCall,
-  formatMissReason,
   formatNoAnswer,
   formatMismatch,
   formatReceived,
+  missedLines,
+  removedLines,
 } from "../mocking/format.js";
 import {
   type Builder,
@@ -225,10 +226,10 @@ type TableOptions = {
   /** The block current now, e.g. `state.blockNumber`. */
   currentBlock: () => bigint;
   /**
-   * A first line for the error when nothing answers `call`, where the call
-   * says why.
+   * The first lines for the error when nothing answers `call`, where the
+   * call says why.
    */
-  notFoundNote?: (call: object) => string | undefined;
+  notFoundLines?: (call: object) => readonly string[];
 };
 
 /**
@@ -238,7 +239,7 @@ type TableOptions = {
 export function createTable(
   definition: Definition,
   recordLimit: RecordLimit,
-  { currentBlock, notFoundNote }: TableOptions,
+  { currentBlock, notFoundLines }: TableOptions,
 ) {
   const mocks = createHandlers<ActionContext<object>, unknown>();
   const calls = createRecordList<object>(recordLimit);
@@ -342,7 +343,7 @@ export function createTable(
    */
   const match = (call: object) =>
     mocks.findAnswering(
-      mocks.handlers,
+      () => true,
       (candidate, options) =>
         firstMismatch(candidate.pinned, actualOf(candidate.pinned, call), options),
       definition.name,
@@ -362,23 +363,21 @@ export function createTable(
     }
     const answered = turn?.answer();
     if (answered) return await answered;
-    const { handler, missed } = match(call);
+    const { handler, missed, removed } = match(call);
     if (!handler) {
       const fallback = definition.fallback?.(call);
       if (fallback !== undefined) return fallback;
       if (turn) throw turn.miss();
-      const registered = mocks.handlers.map((mock) => {
-        const key = missed.get(mock);
-        const reason = formatMissReason(key === undefined ? undefined : paramName(key));
-        return `  ${describeMock(definition.name, mock)}${reason}`;
-      });
-      const note = notFoundNote?.(call);
+      const registered = missedLines(definition.name, mocks.handlers, missed, (_, key) =>
+        paramName(key),
+      );
       throw new MockNotFoundError(`No mock for ${formatCall(definition.name, shown(call))}.`, {
         metaMessages: [
-          ...(note === undefined ? [] : [note]),
+          ...(notFoundLines?.(call) ?? []),
           ...(registered.length > 0
             ? ["Registered:", ...registered]
             : [`Mock it with ${definition.hintFor?.(call) ?? definition.hint}.`]),
+          ...removedLines(definition.name, removed),
         ],
       });
     }
