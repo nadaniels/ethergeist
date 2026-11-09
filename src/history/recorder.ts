@@ -9,17 +9,13 @@ import {
   isAddress,
 } from "viem";
 
+import type { ActionReport } from "../actions/table.js";
 import type { ActionName } from "../actions/typedActions.js";
 import type { Reporter, MockTaggedCall } from "../contracts/types.js";
 import { formatValue } from "../mocking/format.js";
 import { type FaultOutcome, failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
-import {
-  type MockError,
-  MockInternalError,
-  MockRevertError,
-  MockSetupError,
-  summaryOf,
-} from "../shared/errors.js";
+import type { MockFault } from "../mocking/types.js";
+import { MockInternalError, MockRevertError, MockSetupError, summaryOf } from "../shared/errors.js";
 import { createRecordList, type RecordLimit } from "../shared/records.js";
 import { isPlainObject } from "../shared/values.js";
 import { type FormatContext, type HistoryView, formatEntry } from "./format.js";
@@ -30,7 +26,7 @@ import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./types.js"
  * contract's record decoded it, with the contract's ABI, or else as
  * `failureOutcome` gives it.
  */
-export function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
+function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
   const record =
     entry.type === "call" ? entry.call : entry.type === "action" ? entry.contract : undefined;
   if (error instanceof MockRevertError && record?.outcome.type === "revert") return record.outcome;
@@ -41,7 +37,7 @@ export function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome 
  * Where contract calls report their records: the entry's call, or its
  * batch's slots.
  */
-export function reporterFor(entry: MockHistoryEntry): Reporter {
+function reporterFor(entry: MockHistoryEntry): Reporter {
   if (entry.type === "multicall")
     return {
       batch(id) {
@@ -64,7 +60,7 @@ export function reporterFor(entry: MockHistoryEntry): Reporter {
  * contract call's decoded result, or a multicall's decoded results. Any
  * other answer stays as JSON-RPC: an action's value comes from its table.
  */
-export function valueOf(entry: MockHistoryEntry, rpc: unknown): unknown {
+function valueOf(entry: MockHistoryEntry, rpc: unknown): unknown {
   if (entry.type === "builtIn" && isHex(rpc))
     return entry.method === "eth_chainId" ? hexToNumber(rpc) : hexToBigInt(rpc);
   if (entry.type === "call")
@@ -76,6 +72,30 @@ export function valueOf(entry: MockHistoryEntry, rpc: unknown): unknown {
 
 /** What the mock records about requests: see `createRecorder`. */
 export type Recorder = ReturnType<typeof createRecorder>;
+
+/**
+ * A request's history entry while it's answered: the parts that answer the
+ * request report to it, and it records how the request ended.
+ */
+export type Recording = {
+  entry: MockHistoryEntry;
+  /** Where the request's contract calls report their records. */
+  reporter: Reporter;
+  /**
+   * Hears an action's report: its decoded call, the contract's record if
+   * the contract had a turn, and the answer's value in viem's types.
+   */
+  reportAction: (report: ActionReport) => void;
+  /** Records a `failRequests()` fault as how the request ended. */
+  fault: (fault: MockFault) => void;
+  /**
+   * Records how the request ended, its answer or what it threw, and logs it
+   * when `debug` is on. A request the mock couldn't answer is also added to
+   * `unhandled`. A `debug` function that throws is a setup error, thrown
+   * once it's recorded.
+   */
+  settle: (ended: { rpc: unknown } | { error: unknown }) => void;
+};
 
 /**
  * What the mock records about requests: each one as received and how it
@@ -133,6 +153,64 @@ export function createRecorder({
         ? undefined
         : debug;
 
+  /** The recording of `request`, whose history entry is `entry`. */
+  function recordingOf(request: RpcRequest, entry: MockHistoryEntry): Recording {
+    let actionOutcome: MockOutcome | undefined;
+
+    /** Records `outcome` on the entry, and logs it when `debug` is on. */
+    function end(outcome: MockOutcome) {
+      entry.outcome = outcome;
+      if (log === undefined) return;
+      let line: string;
+      try {
+        line = formatEntry(view, entry, formatContext);
+      } catch (error) {
+        throw new MockInternalError(error);
+      }
+      try {
+        log(line, entry);
+      } catch (error) {
+        throw new MockSetupError(`The debug function threw: ${summaryOf(error)}`, {
+          cause: error instanceof Error ? error : undefined,
+        });
+      }
+    }
+
+    return {
+      entry,
+      reporter: reporterFor(entry),
+      reportAction({ call, outcome, contract }) {
+        if (entry.type !== "action") return;
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the table for entry.action decoded it
+        entry.call = call as typeof entry.call;
+        if (contract) {
+          // A record the contract's turn settled keeps its outcome: a revert
+          // decoded by its ABI, or its own view of the answer.
+          if (contract.outcome.type === "pending") contract.outcome = outcome;
+          entry.contract = contract;
+        }
+        actionOutcome = outcome;
+      },
+      fault(fault) {
+        end({ type: "fault", fault, source: "failRequests" });
+      },
+      settle(ended) {
+        if ("error" in ended) {
+          const outcome = outcomeOf(entry, ended.error);
+          // Recorded because callers can swallow these: app code with a
+          // fallback, or viem's multicall turning a failed batch into
+          // per-call failures. First, so a throwing `debug` can't skip it.
+          if (outcome.type === "unhandled") unhandled.add({ ...request, error: outcome.error });
+          end(outcome);
+          return;
+        }
+        const value =
+          actionOutcome?.type === "result" ? actionOutcome.value : valueOf(entry, ended.rpc);
+        end({ type: "result", value });
+      },
+    };
+  }
+
   /**
    * A history entry for a request, typed by what it asks for; details fill
    * in as it's answered.
@@ -157,15 +235,15 @@ export function createRecorder({
   return {
     history,
     calls,
-    /** Requests the mock couldn't answer; added to with `markUnhandled()`. */
+    /** Requests the mock couldn't answer; added to as they're settled. */
     unhandled,
     /** The history, for formatting: see `HistoryView`. */
     view,
     /**
      * Records a request as received, marked a retry if it repeats one that
-     * just faulted, and returns its history entry.
+     * just faulted, and returns its recording.
      */
-    start(request: RpcRequest): MockHistoryEntry {
+    start(request: RpcRequest): Recording {
       const entry = entryFor(request.method, request.params);
       // viem retries only once the attempt before has failed, so its outcome
       // is known by now.
@@ -174,35 +252,7 @@ export function createRecorder({
       last = entry;
       history.add(entry);
       numbers.set(entry, { number: history.total, clears });
-      return entry;
-    },
-    /**
-     * Records how a request ended, and logs it when `debug` is on. A `debug`
-     * function that throws is a setup error, thrown once it's recorded.
-     */
-    settle(entry: MockHistoryEntry, outcome: MockOutcome) {
-      entry.outcome = outcome;
-      if (log === undefined) return;
-      let line: string;
-      try {
-        line = formatEntry(view, entry, formatContext);
-      } catch (error) {
-        throw new MockInternalError(error);
-      }
-      try {
-        log(line, entry);
-      } catch (error) {
-        throw new MockSetupError(`The debug function threw: ${summaryOf(error)}`, {
-          cause: error instanceof Error ? error : undefined,
-        });
-      }
-    },
-    /**
-     * Records a request the mock couldn't answer, for `unhandled` and
-     * `assertNoUnhandled()`.
-     */
-    markUnhandled(request: RpcRequest, error: MockError) {
-      unhandled.add({ ...request, error });
+      return recordingOf(request, entry);
     },
     /** Records a decoded contract call, tagged, from any contract. */
     onCall: (call: MockTaggedCall) => {

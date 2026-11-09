@@ -169,8 +169,9 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
 };
 
 /**
- * What a table tells the rpc about a call it answered, for history. A call a
- * registered contract had a turn at also has the contract's record of it.
+ * What a table tells history about a call it answered. A call a registered
+ * contract had a turn at also has the contract's record of it, which takes
+ * `outcome` if the contract's turn didn't settle it.
  */
 export type ActionReport = {
   call: object;
@@ -288,7 +289,6 @@ export function createTable(
     const turn = known === undefined ? definition.contractTurn?.(call) : undefined;
     const reportAs = (outcome: MockOutcome) => {
       const contract = turn?.record;
-      if (contract?.outcome.type === "pending") contract.outcome = outcome;
       report({ call, outcome, ...(contract && { contract }) });
     };
     try {
