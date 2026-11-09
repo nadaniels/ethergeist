@@ -157,6 +157,15 @@ describe("getFeeHistory", () => {
     );
   });
 
+  test("a count of 0 is answered before the refusals, as on reth", async () => {
+    const { mock } = setup();
+
+    expect(await feeHistoryRaw(mock, ["0x0", "0x14", [75, 25]])).toEqual({
+      gasUsedRatio: [],
+      oldestBlock: "0x0",
+    });
+  });
+
   test("a newest block past the head is refused, in reth's words", async () => {
     const { mock, client } = setup();
 
@@ -168,16 +177,22 @@ describe("getFeeHistory", () => {
     ).toEqual({ code: -32602, message: "request beyond head block: requested 12, head 10" });
   });
 
-  test("percentiles out of order or past 100 are refused", async () => {
+  test("percentiles 0 and 100, and equal ones, are answered", async () => {
+    const { client } = setup();
+
+    for (const rewardPercentiles of [[0], [100], [0, 100], [50, 50]])
+      expect((await client.getFeeHistory({ blockCount: 1, rewardPercentiles })).reward).toEqual([
+        rewardPercentiles.map(() => 0n),
+      ]);
+  });
+
+  test("percentiles out of order, below 0 or past 100 are refused", async () => {
     const { mock, client } = setup();
 
-    for (const rewardPercentiles of [[75, 25], [101], [-1]])
+    for (const rewardPercentiles of [[75, 25], [101], [50, 101], [-1], [-1, 50], [100.5]])
       expect(
         await refusal(mock, client.getFeeHistory({ blockCount: 1, rewardPercentiles })),
       ).toEqual({ code: -32602, message: "invalid reward percentiles" });
-    await expect(
-      client.getFeeHistory({ blockCount: 1, rewardPercentiles: [50, 50] }),
-    ).resolves.toBeDefined();
   });
 
   test("a mock's fields merge over the generated history", async () => {
@@ -262,18 +277,25 @@ describe("getFeeHistory", () => {
     );
   });
 
-  test("history shows the call and the answer in viem's types", async () => {
+  test("history shows the call and the answer as viem returns it", async () => {
     const { mock, client } = setup();
+    mock.actions.getFeeHistory().returns({ reward: [[parseGwei("2")]] });
 
-    await client.getFeeHistory({ blockCount: 1, rewardPercentiles: [] });
+    const history = await client.getFeeHistory({ blockCount: 1, rewardPercentiles: [50] });
     expect(mock.history[0]).toMatchObject({
       type: "action",
       action: "getFeeHistory",
-      outcome: {
-        type: "result",
-        value: { oldestBlock: 10n, baseFeePerGas: [parseGwei("10"), parseGwei("10")] },
-      },
+      outcome: { type: "result" },
     });
+    // viem leaves out the blob fields, so history does too.
+    expect(mock.history[0]).toHaveProperty("outcome.value", history);
+  });
+
+  test("history shows a count of 0, which viem can't read, without its base fees", async () => {
+    const { mock } = setup();
+
+    await feeHistoryRaw(mock, ["0x0", "latest"]);
+    expect(mock.history[0]).toHaveProperty("outcome.value", { gasUsedRatio: [], oldestBlock: 0n });
   });
 });
 

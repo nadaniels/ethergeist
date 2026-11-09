@@ -1,6 +1,7 @@
 import { type FeeHistory, numberToHex, parseGwei } from "viem";
 
 import { checkAmount, checkFields } from "../mocking/setupChecks.js";
+import { withoutUndefined } from "../shared/values.js";
 
 /**
  * The fees generated blocks and fee requests answer with, as
@@ -111,5 +112,5 @@ export function toRpcFeeHistory(history: MockFeeHistory) {
     oldestBlock: history.oldestBlock === undefined ? undefined : numberToHex(history.oldestBlock),
     reward: history.reward?.map(hexList),
   };
-  return Object.fromEntries(Object.entries(fields).filter(([, value]) => value !== undefined));
+  return withoutUndefined(fields);
 }
