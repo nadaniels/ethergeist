@@ -4,12 +4,6 @@
  */
 export type RecordLimit = { limit: number; onDrop: () => void };
 
-/**
- * A limit that keeps everything, for parts made outside a mock, e.g. in unit
- * tests.
- */
-export const unlimited: RecordLimit = { limit: Infinity, onDrop() {} };
-
 /** A list of requests: see `createRecordList`. */
 export type RecordList<entry> = ReturnType<typeof createRecordList<entry>>;
 

@@ -22,12 +22,7 @@ import { checkNoRunnerMatchers, firstMismatch, specificity } from "../mocking/ma
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
-import {
-  type RecordLimit,
-  type RecordList,
-  createRecordList,
-  unlimited,
-} from "../shared/records.js";
+import { type RecordLimit, type RecordList, createRecordList } from "../shared/records.js";
 import {
   type MockWriteOutcome,
   encodeWriteOutcome,
@@ -157,24 +152,19 @@ export function createMockContract<const abi extends Abi>(
      * Called with every decoded call, tagged, so `mock.calls` lists them
      * across contracts.
      */
-    onCall?: (call: MockTaggedCall) => void;
+    onCall: (call: MockTaggedCall) => void;
     /** Places a transaction: `mock.addTransaction()`. */
-    addTransaction?: AddTransaction;
+    addTransaction: AddTransaction;
     /** How many calls each list keeps: the contract's, and each function's. */
-    recordLimit?: RecordLimit;
+    recordLimit: RecordLimit;
     /**
      * Runs a `write` mock's resolver, refusing `mock.addTransaction()` in
      * it.
      */
-    whileSending?: <result>(run: () => result) => result;
-  } = {},
+    whileSending: <result>(run: () => result) => result;
+  },
 ): InternalMockContract<abi> {
-  const {
-    onCall = () => {},
-    addTransaction = () => ({ logs: [] }),
-    recordLimit = unlimited,
-    whileSending = <result>(run: () => result) => run(),
-  } = hooks;
+  const { onCall, addTransaction, recordLimit, whileSending } = hooks;
   const { abi, name, defaults = {} } = parameters;
   const address = getAddress(parameters.address);
   const label = formatContract(address, name);
@@ -302,7 +292,9 @@ export function createMockContract<const abi extends Abi>(
       outcome,
     });
     try {
-      const { selector, abiItem, call } = decode(data, context);
+      const found = decode(data, context);
+      if (found instanceof MockNotFoundError) throw found;
+      const { selector, abiItem, call } = found;
       const namespace = functionsIn.read.includes(abiItem) ? "read" : "simulate";
       decoded = { namespace, selector, abiItem, call };
       receive(decoded);
@@ -403,12 +395,8 @@ export function createMockContract<const abi extends Abi>(
     data: Hex,
     context: CallContext,
   ): Decoded | MockNotFoundError {
-    try {
-      return { ...decode(data, context), namespace };
-    } catch (error) {
-      if (error instanceof MockNotFoundError) return error;
-      throw error;
-    }
+    const found = decode(data, context);
+    return found instanceof MockNotFoundError ? found : { ...found, namespace };
   }
 
   /**
@@ -418,10 +406,10 @@ export function createMockContract<const abi extends Abi>(
   type Decoded = { namespace: MockNamespace; selector: Hex; abiItem: AbiFunction; call: MockCall };
 
   /**
-   * Decodes a call to one of the contract's functions; throws if none has
-   * its selector, or its function can't decode it.
+   * Decodes a call to one of the contract's functions, or says why it can't:
+   * none has its selector, or its function can't decode it.
    */
-  function decode(data: Hex, context: CallContext): Omit<Decoded, "namespace"> {
+  function decode(data: Hex, context: CallContext): Omit<Decoded, "namespace"> | MockNotFoundError {
     const selector = slice(data, 0, 4);
     const abiItem = functionsBySelector.get(selector);
     if (abiItem)
@@ -433,7 +421,7 @@ export function createMockContract<const abi extends Abi>(
           call: { ...context, address, functionName: abiItem.name, args },
         };
       } catch {}
-    throw new MockNotFoundError(
+    return new MockNotFoundError(
       `No function with selector ${selector} on mocked contract ${label}.`,
     );
   }

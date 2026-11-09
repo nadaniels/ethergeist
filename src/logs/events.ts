@@ -236,9 +236,8 @@ export function encodeEventLog(
     abi.filter((item): item is AbiEvent => item.type === "event" && item.name === eventName),
   );
   const [only] = overloads;
-  if (only === undefined) throw new MockSetupError(`No event "${eventName}" on this ABI.`);
   const emitter = getAddress(address);
-  if (overloads.length === 1)
+  if (only !== undefined && overloads.length === 1)
     return refuseUnencodable(`Event "${eventName}"`, () => encodeWith(only, emitter, args));
 
   const fits = overloads.flatMap((event) => {
