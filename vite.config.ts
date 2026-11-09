@@ -16,6 +16,13 @@ export default defineConfig({
   test: {
     include: ["src/**/*.test.ts", "test/**/*.test.ts"],
     typecheck: { include: ["src/**/*.test-d.ts", "test/**/*.test-d.ts"] },
+    coverage: {
+      provider: "v8",
+      include: ["src/**/*.ts"],
+      exclude: ["src/**/*.test.ts", "src/**/*.test-d.ts"],
+      reporter: [["text", { skipFull: true }], "html"],
+      reportsDirectory: "reports/coverage",
+    },
   },
   staged: {
     "*": "vp check --fix",
