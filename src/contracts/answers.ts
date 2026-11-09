@@ -9,14 +9,13 @@ import {
 import { formatAbiItem } from "viem/utils";
 
 import { formatValue } from "../mocking/format.js";
-import { encodeGas } from "../mocking/gas.js";
 import { checkNoMatchers } from "../mocking/matching.js";
 import { checkHex, checkList } from "../mocking/setupChecks.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { builtinErrors, fillZeros } from "../shared/abiValues.js";
 import { MockRevertError, MockSetupError, refuseUnencodable } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-import type { MockNamespace, RevertSpec } from "./types.js";
+import type { RevertSpec } from "./types.js";
 
 /**
  * A function mock's answer as viem's encoder takes it: named outputs become a
@@ -34,23 +33,10 @@ function normalizeResult(outputs: readonly AbiParameter[], value: unknown): unkn
 }
 
 /**
- * A contract mock's answer as JSON-RPC: a call's return data, as `eth_call`
- * answers it, or an estimate's gas as a quantity.
- */
-export function encodeAnswer(
-  { namespace, abiItem }: { namespace: MockNamespace; abiItem: AbiFunction },
-  value: unknown,
-): Hex {
-  return namespace === "estimateGas"
-    ? encodeGas(value, `estimateGas.${abiItem.name}'s answer`)
-    : encodeResult(abiItem, value, `${namespace}.${abiItem.name}'s answer`);
-}
-
-/**
  * `value` as `abiItem`'s encoded return data, as `eth_call` answers. `what`
  * names it for messages.
  */
-function encodeResult(abiItem: AbiFunction, value: unknown, what: string): Hex {
+export function encodeResult(abiItem: AbiFunction, value: unknown, what: string): Hex {
   checkNoMatchers(value, what);
   return encodeFunctionResult({
     abi: [abiItem],

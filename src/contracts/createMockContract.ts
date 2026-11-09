@@ -23,16 +23,12 @@ import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, type RecordList, createRecordList } from "../shared/records.js";
-import {
-  type MockWriteOutcome,
-  encodeWriteOutcome,
-  extendWriteBuilder,
-  minedReverted,
-} from "../transactions/writeOutcome.js";
-import { encodeAnswer, createRevertError } from "./answers.js";
+import type { MockWriteOutcome } from "../transactions/writeOutcome.js";
+import { createRevertError } from "./answers.js";
 import { type AddTransaction, createContractApi } from "./createContractApi.js";
 import { type Pins, createFunctions, firstPinMismatch, pinArgs, pinCall } from "./functions.js";
 import { formatContract, missError, unusedLine } from "./messages.js";
+import { type AnswerIn, answersIn } from "./namespaces.js";
 import type {
   MockCallRecord,
   CallContext,
@@ -204,8 +200,8 @@ export function createMockContract<const abi extends Abi>(
     throw revertError(spec);
   }) as RevertFn<Abi>;
 
-  const { functionsIn, functionsBySelector, notInNamespaceError, findFunction } =
-    createFunctions(abi);
+  const functions = createFunctions(abi);
+  const { reads, functionsIn, functionsBySelector, notInNamespaceError, findFunction } = functions;
 
   /**
    * Registers a mock of `functionName` in `namespace`, pinning `args` and
@@ -236,17 +232,17 @@ export function createMockContract<const abi extends Abi>(
       // `transfer([bob, 5n])`.
       { isDefault, ranked: specificity(pins === undefined ? pinned : [pinned ?? [], pins]) },
     );
+    const answers = answersIn[namespace];
     const builder = mocks.createBuilder(
       handler,
       abiItem.name,
       (value) => {
-        if (namespace === "write") encodeWriteOutcome(value, false);
-        else encodeAnswer(handler, value);
+        answers.encode(abiItem, value);
         return value;
       },
       { revertError },
     );
-    if (namespace === "write") extendWriteBuilder(builder, whileSending);
+    answers.extendBuilder?.(builder, whileSending);
     return builder;
   }
 
@@ -263,7 +259,7 @@ export function createMockContract<const abi extends Abi>(
     abi,
     address,
     name,
-    functions: { functionsIn, notInNamespaceError },
+    functions,
     register,
     calls: () => calls.kept,
     callsTo,
@@ -289,13 +285,13 @@ export function createMockContract<const abi extends Abi>(
       const found = decode(data, context);
       if (found instanceof MockNotFoundError) throw found;
       const { selector, abiItem, call } = found;
-      const namespace = functionsIn.read.includes(abiItem) ? "read" : "simulate";
+      const namespace = reads.includes(abiItem) ? "read" : "simulate";
       decoded = { namespace, selector, abiItem, call };
       receive(decoded);
       const { handler, missed } = match(decoded);
       if (!handler)
         throw missError(call, namespace, label, { registered: candidates(decoded), missed });
-      const hex = await run(handler, call, encodeAnswer);
+      const hex = await run(handler, call, namespace);
       const value = decodeFunctionResult({ abi: [abiItem], functionName: abiItem.name, data: hex });
       report(record({ type: "result", value }));
       return hex;
@@ -307,17 +303,16 @@ export function createMockContract<const abi extends Abi>(
 
   /**
    * Prepares the contract's turn at an action's call of `data` in
-   * `namespace`: see `ContractTurn`. `encode` checks a mock's answer, and
-   * `view` makes it the record's value. Without `view`, the record takes the
-   * request's answer, as a `write` record takes its send's hash.
+   * `namespace`: see `ContractTurn`. `view` makes a mock's answer the
+   * record's value. Without `view`, the record takes the request's answer, as
+   * a `write` record takes its send's hash.
    */
-  function turn<answer>(
-    namespace: "estimateGas" | "write",
+  function turn<namespace extends "estimateGas" | "write">(
+    namespace: namespace,
     data: Hex,
     context: CallContext,
-    encode: (handler: Handler, value: unknown) => answer,
-    view?: (answered: answer) => unknown,
-  ): ContractTurn<answer> {
+    view?: (answered: AnswerIn<namespace>) => unknown,
+  ): ContractTurn<AnswerIn<namespace>> {
     const record: MockCallRecord = {
       address,
       name,
@@ -341,7 +336,7 @@ export function createMockContract<const abi extends Abi>(
       answer() {
         const { handler } = matchOnce();
         if (!handler) return undefined;
-        return run(handler, call, encode).then(
+        return run(handler, call, namespace).then(
           (answered) => {
             if (view) record.outcome = { type: "result", value: view(answered) };
             return answered;
@@ -487,21 +482,24 @@ export function createMockContract<const abi extends Abi>(
   }
 
   /**
-   * Answers `call` with `handler`, its answer checked by `encode`. A `write`
-   * mock's revert is mined reverted.
+   * Answers `call` with `handler`, as its namespace answers: see `answersIn`.
+   * `namespace` is the handler's, passed so the answer's type comes from the
+   * call site.
    */
-  const run = <answer>(
+  function run<namespace extends MockNamespace>(
     handler: Handler,
     call: MockCall,
-    encode: (handler: Handler, value: unknown) => answer,
-  ): Promise<answer> =>
-    mocks.answerWith(
+    namespace: namespace,
+  ): Promise<AnswerIn<namespace>> {
+    const answers = answersIn[namespace];
+    return mocks.answerWith(
       handler,
       { ...call, revert, fail },
-      (value) => encode(handler, value),
+      (value) => answers.encode(handler.abiItem, value),
       call.functionName,
-      handler.namespace === "write" ? minedReverted : undefined,
+      answers.reverted,
     );
+  }
 
   /**
    * Unused mocks, each with its contract and the calls its function received
@@ -518,10 +516,8 @@ export function createMockContract<const abi extends Abi>(
     label,
     matches: (other) => other === address,
     resolve,
-    estimate: (data, context) =>
-      turn("estimateGas", data, context, encodeAnswer, (hex) => hexToBigInt(hex)),
-    write: (data, context) =>
-      turn("write", data, context, (_, value) => encodeWriteOutcome(value, false)),
+    estimate: (data, context) => turn("estimateGas", data, context, (hex) => hexToBigInt(hex)),
+    write: (data, context) => turn("write", data, context),
     writeMock,
     clearCalls() {
       calls.clear();

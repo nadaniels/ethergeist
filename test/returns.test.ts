@@ -328,6 +328,29 @@ describe("zeroResult", () => {
     ).toBe(zeroAddress);
   });
 
+  test("an untyped resolver that returns nothing answers zero values, not a send's outcome", async () => {
+    const { mock, client } = setup();
+    const flagsAbi = parseAbi([
+      "function paused() view returns (bool)",
+      "function pause() returns (bool)",
+    ]);
+    const flags = mock.contract({ abi: flagsAbi, address: STORE });
+    // oxlint-disable typescript/no-unsafe-type-assertion -- what a JavaScript caller can pass
+    flags.read.paused().returns((() => undefined) as never);
+    flags.simulate.pause().returns((() => undefined) as never);
+    // oxlint-enable typescript/no-unsafe-type-assertion
+
+    expect(
+      await client.readContract({ abi: flagsAbi, address: STORE, functionName: "paused" }),
+    ).toBe(false);
+    const { result } = await client.simulateContract({
+      abi: flagsAbi,
+      address: STORE,
+      functionName: "pause",
+    });
+    expect(result).toBe(false);
+  });
+
   test("works in defaults and from resolvers", async () => {
     const { mock, client } = setup();
     let live = false;

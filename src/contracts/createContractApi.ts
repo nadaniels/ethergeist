@@ -26,7 +26,7 @@ export function createContractApi<const abi extends Abi>({
   abi,
   address,
   name,
-  functions: { functionsIn, notInNamespaceError },
+  functions: { reads, writes, functionsIn, notInNamespaceError },
   register,
   calls,
   callsTo,
@@ -37,6 +37,8 @@ export function createContractApi<const abi extends Abi>({
   address: Address;
   name: string | undefined;
   functions: {
+    reads: readonly AbiFunction[];
+    writes: readonly AbiFunction[];
     functionsIn: Record<MockNamespace, readonly AbiFunction[]>;
     notInNamespaceError: (namespace: MockNamespace, functionName: string) => Error;
   };
@@ -74,7 +76,7 @@ export function createContractApi<const abi extends Abi>({
     // An untyped caller reaching for the other namespace's functions gets a
     // pointer to the right one, not "is not a function". Hidden from
     // `Object.keys`.
-    for (const { name: functionName } of functionsIn[namespace === "read" ? "simulate" : "read"]) {
+    for (const { name: functionName } of namespace === "read" ? writes : reads) {
       if (Object.hasOwn(entries, functionName)) continue;
       Object.defineProperty(entries, functionName, {
         value: () => {

@@ -607,6 +607,9 @@ describe("registration", () => {
       // The types allow it: `partial` takes the resolver function's type from `.returns()`.
       usdc.read.balanceOf([alice]).returns(match.partial({}));
     });
+    expectThrows(MockSetupError, "match.any() can't go in simulate.transfer's answer", () => {
+      usdc.simulate.transfer([bob, 1n]).returns(match.any());
+    });
 
     usdc.read.balanceOf([bob]).returns(() => match.any());
     const error = expectCause(await rejectionOf(balanceOf(bob)), MockResolverError);

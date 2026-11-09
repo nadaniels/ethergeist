@@ -19,9 +19,10 @@ import { isPlainObject } from "../shared/values.js";
 import type { MockCall, MockNamespace } from "./types.js";
 
 /**
- * A contract's functions by namespace, as its mocks find them: view and pure
- * functions under `read`, nonpayable and payable ones under `simulate`,
- * `estimateGas` and `write`, by name and overload, or by selector.
+ * A contract's functions by kind (`reads`, view and pure; `writes`,
+ * nonpayable and payable) and by namespace, as its mocks find them: reads
+ * under `read`, writes under `simulate`, `estimateGas` and `write`, by name
+ * and overload, or by selector.
  */
 export function createFunctions(abi: Abi) {
   const functionsOf = (mutabilities: readonly string[]) =>
@@ -31,18 +32,16 @@ export function createFunctions(abi: Abi) {
           item.type === "function" && mutabilities.includes(item.stateMutability),
       ),
     );
+  const reads = functionsOf(["view", "pure"]);
   const writes = functionsOf(["nonpayable", "payable"]);
   const functionsIn = {
-    read: functionsOf(["view", "pure"]),
+    read: reads,
     simulate: writes,
     estimateGas: writes,
     write: writes,
   };
   const functionsBySelector = new Map(
-    [...functionsIn.read, ...functionsIn.simulate].map((abiItem) => [
-      toFunctionSelector(abiItem),
-      abiItem,
-    ]),
+    [...reads, ...writes].map((abiItem) => [toFunctionSelector(abiItem), abiItem]),
   );
 
   /**
@@ -104,7 +103,7 @@ export function createFunctions(abi: Abi) {
     );
   }
 
-  return { functionsIn, functionsBySelector, notInNamespaceError, findFunction };
+  return { reads, writes, functionsIn, functionsBySelector, notInNamespaceError, findFunction };
 }
 
 function listSignatures(functions: readonly AbiFunction[]): string {
