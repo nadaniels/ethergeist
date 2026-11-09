@@ -240,8 +240,8 @@ export function createMockContract<const abi extends Abi>(
       handler,
       abiItem.name,
       (value) => {
-        if (namespace === "write") return encodeWriteOutcome(value, false);
-        encodeAnswer(handler, value);
+        if (namespace === "write") encodeWriteOutcome(value, false);
+        else encodeAnswer(handler, value);
         return value;
       },
       { revertError },

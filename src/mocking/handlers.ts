@@ -269,8 +269,8 @@ export function createHandlers<context, extra>() {
    * given (a send is mined reverted), and is thrown otherwise. What a
    * resolver throws becomes a resolver error named `name`, unless it's an
    * answer itself (see `isDeliberate`). A static value's setup error, from
-   * encoding it at the request (a check that needs the call or the chain),
-   * is the mock's, thrown as it is.
+   * encoding it at the request (a check that needs the call or the chain,
+   * or a value changed after `.returns()`), is the mock's, thrown as it is.
    */
   async function answerWith<answer>(
     handler: Handler<context, extra>,

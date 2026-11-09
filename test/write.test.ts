@@ -23,6 +23,7 @@ import {
   MockCheckError,
   MockNotFoundError,
   MockResolverError,
+  type MockRpc,
   MockSetupError,
   createMockRpc,
   match,
@@ -285,6 +286,48 @@ describe("a write mock", () => {
     });
 
     expect(mock.transactions.map(({ receipt }) => receipt.gasUsed)).toEqual([4n, 5n]);
+  });
+
+  // The sendTransaction case already held its outcome as given: it's here so
+  // the send paths keep one rule.
+  test.each([
+    {
+      registered: "a write mock",
+      register: (mock: MockRpc, outcome: { gasUsed: bigint }) => {
+        mock.contract({ abi: erc20Abi, address: USDC }).write.transfer().returns(outcome);
+      },
+    },
+    {
+      registered: "defaults.write",
+      register: (mock: MockRpc, outcome: { gasUsed: bigint }) => {
+        mock.contract({ abi: erc20Abi, address: USDC, defaults: { write: { transfer: outcome } } });
+      },
+    },
+    {
+      registered: "a sendTransaction mock",
+      register: (mock: MockRpc, outcome: { gasUsed: bigint }) => {
+        mock.actions.sendTransaction({ to: USDC }).returns(outcome);
+      },
+    },
+  ])("$registered holds a static outcome as given", async ({ register }) => {
+    const mock = createMockRpc();
+    const wallet = createWalletClient({
+      account: alice,
+      chain: mock.chain,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+    const outcome = { gasUsed: 21_000n };
+    register(mock, outcome);
+    outcome.gasUsed = 50_000n;
+
+    await wallet.writeContract({
+      address: USDC,
+      abi: erc20Abi,
+      functionName: "transfer",
+      args: [bob, 1n],
+    });
+
+    expect(mock.transactions.map(({ receipt }) => receipt.gasUsed)).toEqual([50_000n]);
   });
 
   test("answers before a send mock for the same to, which answers what it doesn't", async () => {
