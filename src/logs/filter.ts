@@ -95,9 +95,7 @@ export function topicsMatch(filter: readonly LogsTopic[], topics: readonly Hash[
   if (filter.length > topics.length) return false;
   return filter.every((wanted, i) => {
     if (wanted === null || (Array.isArray(wanted) && wanted.length === 0)) return true;
-    const topic = topics[i];
-    if (topic === undefined) return false;
-    const lower = lowercase(topic);
+    const lower = lowercase(topics[i]!);
     return Array.isArray(wanted) ? wanted.includes(lower) : wanted === lower;
   });
 }
