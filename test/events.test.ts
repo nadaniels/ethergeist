@@ -212,6 +212,15 @@ describe("contract.events", () => {
     );
   });
 
+  test("named inputs take their args as an object", () => {
+    const { usdc } = setup();
+
+    expectThrows(MockSetupError, 'Event "Transfer" takes its args as an object, by name.', () =>
+      // @ts-expect-error -- Transfer's inputs are named
+      usdc.events.Transfer([alice, bob, 1n]),
+    );
+  });
+
   test("anonymous events have no signature topic", () => {
     const mock = createMockRpc();
     const contract = mock.contract({ abi: unnamedAbi, address: SHAPES });

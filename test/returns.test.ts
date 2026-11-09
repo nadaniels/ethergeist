@@ -235,6 +235,24 @@ describe("partial structs", () => {
       await client.readContract({ abi: storeAbi, address: STORE, functionName: "summary" }),
     ).toEqual([3n, { ...emptyPosition, owner: alice }]);
   });
+
+  test("a tuple with unnamed components is zero by position", async () => {
+    const { mock, client } = setup();
+    const abi = [
+      {
+        type: "function",
+        name: "pair",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ type: "tuple", components: [{ type: "uint256" }, { type: "address" }] }],
+      },
+    ] as const;
+    const pair = mock.contract({ abi, address: STORE });
+    const read = () => client.readContract({ abi, address: STORE, functionName: "pair" });
+    pair.read.pair().returns();
+
+    expect(await read()).toEqual([0n, zeroAddress]);
+  });
 });
 
 describe("zeroResult", () => {

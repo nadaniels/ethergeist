@@ -1,4 +1,5 @@
 import {
+  InvalidAddressError,
   InvalidInputRpcError,
   InvalidParamsRpcError,
   type LogTopic,
@@ -1055,6 +1056,24 @@ describe("mock.actions.getLogs", () => {
     expect(await client.getLogs({ address: USDC, fromBlock: 5n })).toEqual([]);
     await rejectionOf(client.getLogs({ address: USDC, fromBlock: 1n }));
     expect(mock.actions.getLogs.calls.map((call) => call.fromBlock)).toEqual([5n, 1n]);
+  });
+
+  test("a pinned list of addresses matches in any casing, and a malformed one fails at registration", async () => {
+    const { mock, client } = setup();
+    mock.actions.getLogs({ address: [lowercase(USDC), DAI] }).fails(rangeTooLarge);
+
+    await rejectionOf(client.getLogs({ address: [USDC, DAI] }));
+    expect(await client.getLogs({ address: [USDC] })).toEqual([]);
+    expect(() => mock.actions.getLogs({ address: [USDC, "0x12"] })).toThrow(InvalidAddressError);
+  });
+
+  test("an answer that isn't a list of logs fails at registration", () => {
+    const { mock } = setup();
+
+    expectThrows(MockSetupError, "getLogs answers a list of logs; got object.", () => {
+      // @ts-expect-error -- getLogs answers a list
+      mock.actions.getLogs().returns({ logs: [] });
+    });
   });
 
   test("assertAllUsed() reports an unused mock with the filters it received", async () => {
