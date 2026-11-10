@@ -62,7 +62,7 @@ export type MockSendTransactionBuilder = WithLimits<
  * transaction, block and logs answer from (see `mock.transactions`); a
  * reverted one is mined too. Concurrent sends are mined in the order
  * they're answered, which isn't always the order they were sent. A send
- * refused with `.fails()` or `fail()`, or not answered, leaves the chain as
+ * failed with `.fails()` or `fail()`, or not answered, leaves the chain as
  * it was. A mock without `.reverts()` also answers the transaction's
  * estimate when no estimate mock does, without running it or using it up:
  * 100,000 gas, or 21,000 for a plain transfer to an address without code.

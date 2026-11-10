@@ -233,7 +233,6 @@ export function createTransactionStore({
       Object.freeze(log.topics);
       return Object.freeze(log);
     });
-    // Copies, so the caller's objects can't change the chain afterwards.
     const fields = { ...record.fields };
     const receipt = { ...record.receipt };
     if (fields.from !== undefined) {
@@ -275,8 +274,8 @@ export function createTransactionStore({
   /**
    * Runs a send mock's resolver, refusing `addTransaction` (and so
    * `contract.emit`) in it up to its first `await`: it would place a
-   * transaction of its own, mid-send. Code elsewhere
-   * (a demo's ticker) can still add one while a resolver waits.
+   * transaction of its own, mid-send. Code elsewhere (a demo's ticker) can
+   * still add one while a resolver waits.
    */
   function whileSending<result>(run: () => result): result {
     const outer = sending;

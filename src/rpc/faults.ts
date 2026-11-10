@@ -24,7 +24,7 @@ export type FailRequestsOptions = {
  *
  * A checkpoint's `restore()` puts an earlier fault's `count`, and the requests
  * it has left to fail, back as they were at the checkpoint. A fault that a
- * `restore()` or `reset()` removes no longer fails requests. Its `clear()`
+ * `restore()` or `reset()` removes stops failing requests. Its `clear()`
  * then does nothing, and its `count` keeps its last value.
  */
 export type MockFaultHandle = {

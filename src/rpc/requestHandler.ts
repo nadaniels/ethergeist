@@ -56,8 +56,6 @@ export function createRequestHandler({
     try {
       rpc = await answer(request, recording);
     } catch (caught) {
-      // Anything that isn't an answer or one of the mock's errors is a bug in
-      // the mock, wrapped: thrown as is, viem would retry it with backoff.
       const error = withRetryHint(
         isAnswer(caught) ? caught : asMockError(caught),
         recording.entry,

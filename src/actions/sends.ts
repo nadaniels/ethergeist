@@ -152,8 +152,6 @@ export function createSends(
     const answerFor = (hash: Hash) => (raw?.sync === true ? transactions.receiptFor(hash)! : hash);
 
     const repeated = minedHash();
-    // A repeated raw send gives no contract a turn. Otherwise the turn is
-    // prepared before anything answers, so the call is recorded first.
     const called = repeated === undefined ? contractCalled(call, state.blockNumber) : undefined;
     const turn = called?.contract.turn("write", called.data, called.context);
     return await reportAnswer(

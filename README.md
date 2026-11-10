@@ -510,7 +510,7 @@ const config = createConfig({
   with its name rather than as a `waitFor` timeout.
 - wagmi's `mock` connector sends its own transactions over HTTP, not through
   the transport, so this covers reads and simulations. Writes through a wallet
-  need the EIP-1193 provider, planned for 0.2.0.
+  need an EIP-1193 provider, which is planned.
 
 ## Stability
 

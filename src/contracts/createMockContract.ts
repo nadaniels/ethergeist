@@ -83,7 +83,7 @@ export type ContractTurn<answer = unknown> = {
 export type InternalMockContract<abi extends Abi = Abi> = {
   /** Its public API, as `mock.contract()` returns it. */
   contract: MockContract<abi>;
-  /** The contract for messages: its name and address, or just the address. */
+  /** The contract for messages: its name and address, or the address alone. */
   label: string;
   /**
    * Whether this contract is registered at `address`, which must be
@@ -188,7 +188,7 @@ export function createMockContract<const abi extends Abi>(
   /** What `.reverts(spec)` and a resolver's `revert(spec)` revert with. */
   const revertError = (spec?: RevertSpec) => createRevertError(abi, spec);
   /** Handed to every resolver. */
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the generic only narrows what callers pass; createRevertError takes any RevertSpec
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- createRevertError takes any RevertSpec, which the generic only narrows
   const revert = ((spec?: RevertSpec) => {
     throw revertError(spec);
   }) as RevertFn<Abi>;
@@ -221,8 +221,6 @@ export function createMockContract<const abi extends Abi>(
     const handler = mocks.register(
       pinned,
       { namespace, abiItem, selector: toFunctionSelector(abiItem), pins },
-      // Pins count like args: `transfer([bob, 5n], { from })` beats
-      // `transfer([bob, 5n])`.
       { isDefault, ranked: specificity(pins === undefined ? pinned : [pinned ?? [], pins]) },
     );
     const answers = answersIn[namespace];
@@ -338,12 +336,10 @@ export function createMockContract<const abi extends Abi>(
       miss() {
         const { missed, removed } = matchOnce();
         const registered = { registered: candidates(decoded), missed, removed };
-        // Only an estimate with `from` is a send's, which `write` mocks imply.
         if (namespace !== "estimateGas" || call.from === undefined)
           return missError(call, namespace, label, registered);
-        // The `write` mocks that would have implied the estimate, had one
-        // matched: matched again for their reasons, so their predicates run a
-        // second time.
+        // The `write` mocks are matched again for the reasons they missed, so
+        // their predicates run a second time.
         const writes = { ...decoded, namespace: "write" as const };
         const writesMatched = match(writes);
         return missError(call, namespace, label, registered, {

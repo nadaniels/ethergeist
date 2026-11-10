@@ -193,9 +193,7 @@ export function createRecorder({
       settle(ended) {
         if ("error" in ended) {
           const outcome = outcomeOf(entry, ended.error);
-          // Recorded because callers can swallow these: app code with a
-          // fallback, or viem's multicall turning a failed batch into
-          // per-call failures. First, so a throwing `debug` can't skip it.
+          // Added first, so a `debug` function that throws can't skip it.
           if (outcome.type === "unhandled") unhandled.add({ ...request, error: outcome.error });
           end(outcome);
           return;
@@ -235,8 +233,8 @@ export function createRecorder({
     /** The history, for formatting: see `HistoryView`. */
     view,
     /**
-     * Records a request as received, marked a retry if it repeats one that
-     * just faulted, and returns its recording.
+     * Records a request as received, marked a retry if the request before
+     * it faulted and this one repeats it, and returns its recording.
      */
     start(request: RpcRequest): Recording {
       const entry = entryFor(request.method, request.params);
@@ -265,15 +263,14 @@ export function createRecorder({
 
 /**
  * The fault `entry` retries: `previous`'s, if it faulted and `entry` is the
- * same request.
+ * same request. Requests are compared as printed, so a rare false match
+ * (`[1n]` and `["1n"]`) mislabels a history line and nothing else.
  */
 function retriedFault(
   previous: MockHistoryEntry,
   entry: MockHistoryEntry,
 ): FaultOutcome | undefined {
   if (previous.outcome.type !== "fault") return undefined;
-  // Only labels the history, so a rare false match (`[1n]` and `["1n"]` print
-  // alike) costs a wrong "(retry)" and nothing else.
   const same =
     previous.method === entry.method && formatValue(previous.params) === formatValue(entry.params);
   return same ? previous.outcome : undefined;
