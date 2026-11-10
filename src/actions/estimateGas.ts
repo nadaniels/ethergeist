@@ -13,7 +13,7 @@ import type {
 } from "../mocking/types.js";
 import { withoutUndefined } from "../shared/values.js";
 import { blockAt, pinTransaction, sendCall } from "./codec.js";
-import type { MockDefinition } from "./table.js";
+import type { MockDefinition } from "./mockSet.js";
 import type { ActionContext, EstimateGasCall, SendTransactionCall } from "./types.js";
 
 /**

@@ -43,7 +43,8 @@ shared → mocking → chain → logs → transactions → contracts → actions
   above `transactions/`; it owns `MockCallRecord`, the record of a call it
   answered.
 - **`actions/`:** typed actions (`mock.actions.getBalance`, …), one file each,
-  and raw `mock.method()` mocks. A table (`table.ts`) answers each of them:
+  and raw `mock.method()` mocks. Each action's or raw method's mocks are a
+  mock set (`mockSet.ts`), and a table (`table.ts`) answers its requests:
   it decodes the call and answers with the mock that matches, or else the
   action's fallback. The two exceptions are sends and their estimates,
   answered in `sends.ts` (see [Sends and estimates](#sends-and-estimates)).
@@ -227,8 +228,9 @@ outcome. A new rule for a send or an estimate (what answers first, what a
 mock implies) is an edit to those functions, not a new hook on
 `Definition`.
 
-- The mocks are mock sets (`createMockSet` in `table.ts`), which a table is
-  built on too: registering, matching, answering with a mock, and the miss.
+- The mocks are mock sets (`createMockSet` in `mockSet.ts`), which a table
+  is built on too: registering, matching, answering with a mock, and the
+  miss.
   `estimateGas.ts` and `sendTransaction.ts` keep their public types, their
   mocks' `MockDefinition` and their decoders.
 - `createSends` returns the two actions in a table's shape, so

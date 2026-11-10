@@ -16,7 +16,8 @@ import {
   minedReverted,
 } from "../transactions/writes.js";
 import { pinTransaction, sendCall } from "./codec.js";
-import type { ActionsContext, MockDefinition } from "./table.js";
+import type { MockDefinition } from "./mockSet.js";
+import type { ActionsContext } from "./table.js";
 import type { ActionContext, SendTransactionCall } from "./types.js";
 
 /**

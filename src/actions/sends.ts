@@ -7,14 +7,9 @@ import type { RecordLimit } from "../shared/records.js";
 import type { MockWriteOutcome } from "../transactions/writes.js";
 import { isPlainTransfer, viewQuantity } from "./codec.js";
 import { decodeEstimateGas, estimateGas } from "./estimateGas.js";
+import { type MockSetOptions, createMockSet } from "./mockSet.js";
 import { decodeSend, sendTransaction } from "./sendTransaction.js";
-import {
-  type ActionReport,
-  type ActionsContext,
-  type MockSetOptions,
-  createMockSet,
-  reportAnswer,
-} from "./table.js";
+import { type ActionReport, type ActionsContext, reportAnswer } from "./table.js";
 import type { SendTransactionCall } from "./types.js";
 
 /**
