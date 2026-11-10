@@ -406,6 +406,23 @@ describe("debug", () => {
     }
     expect(logged).toEqual([`#1 eth_chainId → 1`]);
   });
+
+  test("false logs nothing, and the request is answered and recorded as without it", async () => {
+    const mock = createMockRpc({ debug: false });
+    const logged: unknown[] = [];
+    const original = console.log;
+    console.log = (...args: unknown[]) => {
+      logged.push(...args);
+    };
+    try {
+      expect(await mock.publicClient().getChainId()).toBe(1);
+    } finally {
+      console.log = original;
+    }
+    expect(logged).toEqual([]);
+    expect(mock.history.map((entry) => entry.outcome)).toEqual([{ type: "result", value: 1 }]);
+  });
+
   test("a function that throws fails the request once, as setup, not as the mock's bug", async () => {
     const mock = createMockRpc({
       debug: () => {
