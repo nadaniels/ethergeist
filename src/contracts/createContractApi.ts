@@ -31,7 +31,7 @@ export function createContractApi<const abi extends Abi>({
   calls,
   callsTo,
   addTransaction,
-  assertAttached,
+  checkAttached,
 }: {
   abi: abi;
   address: Address;
@@ -55,7 +55,7 @@ export function createContractApi<const abi extends Abi>({
   /** Places a transaction: `mock.addTransaction()`. */
   addTransaction: AddTransaction;
   /** Throws if the contract was removed. */
-  assertAttached: () => void;
+  checkAttached: () => void;
 }): MockContract<abi> {
   /**
    * A namespace's functions by name, each registering its mocks. Overloads
@@ -106,7 +106,7 @@ export function createContractApi<const abi extends Abi>({
       events.map((eventName) => [
         eventName,
         (args?: unknown, options: unknown = {}) => {
-          assertAttached();
+          checkAttached();
           const log = encodeEventLog(abi, address, eventName, args);
           const checked = checkFields(
             options,

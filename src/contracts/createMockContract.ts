@@ -179,7 +179,7 @@ export function createMockContract<const abi extends Abi>(
   let received = 0;
   let detached = false;
   /** Throws if `restore()` or `reset()` removed this contract. */
-  function assertAttached() {
+  function checkAttached() {
     if (detached)
       throw new MockSetupError(
         `The contract at ${label} was removed by restore() or reset(); register it again.`,
@@ -211,7 +211,7 @@ export function createMockContract<const abi extends Abi>(
      */
     asDefault?: { abiItem: AbiFunction },
   ) {
-    assertAttached();
+    checkAttached();
     const abiItem = asDefault?.abiItem ?? findFunction(namespace, functionName, args);
     const isDefault = asDefault !== undefined;
 
@@ -255,7 +255,7 @@ export function createMockContract<const abi extends Abi>(
     calls: () => calls.kept,
     callsTo,
     addTransaction,
-    assertAttached,
+    checkAttached,
   });
 
   /**
