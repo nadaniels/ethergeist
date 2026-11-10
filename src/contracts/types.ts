@@ -668,7 +668,11 @@ export type MockCallRecord = {
    * `namespace`.
    */
   call: MockCall | undefined;
-  /** How it was answered: see `MockOutcome`. */
+  /**
+   * How it was answered: see `MockOutcome`. In an estimate or a send, it's
+   * how the request ended, whichever mock answered it. A revert is decoded
+   * against the contract's ABI.
+   */
   outcome: MockOutcome;
 };
 

@@ -12,7 +12,9 @@ import {
   TipAboveFeeCapError,
   createPublicClient,
   type Address,
+  type Hex,
   createWalletClient,
+  encodeErrorResult,
   encodeFunctionData,
   erc20Abi,
   keccak256,
@@ -29,6 +31,7 @@ import {
   MockNotFoundError,
   MockResolverError,
   MockSetupError,
+  type MockRpc,
   createMockRpc,
   testAddress,
 } from "../src/index.js";
@@ -739,6 +742,36 @@ describe("contract estimates answered by action mocks", () => {
       },
     });
   });
+
+  test.each([
+    [
+      ".reverts()",
+      (mock: MockRpc, data: Hex) => {
+        mock.actions.estimateGas().reverts({ data });
+      },
+    ],
+    [
+      "a resolver's revert()",
+      (mock: MockRpc, data: Hex) => {
+        mock.actions.estimateGas().returns(({ revert }) => revert({ data }));
+      },
+    ],
+  ] as const)(
+    "reverting with %s, the revert is decoded against the contract's ABI in history",
+    async (_, revertWith) => {
+      const { mock, transfer } = tokenSetup();
+      const data = encodeErrorResult({ abi: tokenAbi, errorName: "Paused", args: [bob] });
+      revertWith(mock, data);
+
+      await rejectionOf(transfer());
+
+      const outcome = { type: "revert", data, errorName: "Paused", args: [bob] };
+      expect(mock.history[0]).toMatchObject({
+        outcome,
+        contract: { namespace: "estimateGas", outcome },
+      });
+    },
+  );
 });
 
 describe("contract estimate mocks", () => {

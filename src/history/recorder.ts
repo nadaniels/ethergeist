@@ -83,7 +83,7 @@ export type Recording = {
   reporter: Reporter;
   /**
    * Hears an action's report: its decoded call, the contract's record if
-   * the contract had a turn, and the answer's value in viem's types.
+   * the contract had a turn, and the answer in viem's types if it answered.
    */
   reportAction: (report: ActionReport) => void;
   /** Records a `failRequests()` fault as how the request ended. */
@@ -155,7 +155,7 @@ export function createRecorder({
 
   /** The recording of `request`, whose history entry is `entry`. */
   function recordingOf(request: RpcRequest, entry: MockHistoryEntry): Recording {
-    let actionOutcome: MockOutcome | undefined;
+    let actionOutcome: ActionReport["outcome"];
 
     /** Records `outcome` on the entry, and logs it when `debug` is on. */
     function end(outcome: MockOutcome) {
@@ -183,12 +183,7 @@ export function createRecorder({
         if (entry.type !== "action") return;
         // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the table for entry.action decoded it
         entry.call = call as typeof entry.call;
-        if (contract) {
-          // A record the contract's turn settled keeps its outcome: a revert
-          // decoded by its ABI, or its own view of the answer.
-          if (contract.outcome.type === "pending") contract.outcome = outcome;
-          entry.contract = contract;
-        }
+        if (contract) entry.contract = contract;
         actionOutcome = outcome;
       },
       fault(fault) {
@@ -204,8 +199,7 @@ export function createRecorder({
           end(outcome);
           return;
         }
-        const value =
-          actionOutcome?.type === "result" ? actionOutcome.value : valueOf(entry, ended.rpc);
+        const value = actionOutcome === undefined ? valueOf(entry, ended.rpc) : actionOutcome.value;
         end({ type: "result", value });
       },
     };

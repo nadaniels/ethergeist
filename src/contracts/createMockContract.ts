@@ -6,7 +6,6 @@ import {
   decodeFunctionData,
   decodeFunctionResult,
   getAddress,
-  hexToBigInt,
   slice,
   toFunctionSelector,
 } from "viem";
@@ -59,8 +58,8 @@ type Handler = MockHandler<Context, ContractFunction>;
 /**
  * A contract's turn at an action's call (an estimate or a send of one of its
  * functions), ahead of the action's own mocks, prepared when the call
- * arrives: the call is decoded and recorded then, and answered only if it
- * gets its turn.
+ * arrives: the call is decoded and added to the contract's calls then. It's
+ * answered only if it gets its turn.
  */
 export type ContractTurn<answer = unknown> = {
   /** Answers with the best matching mock; `undefined` when none matches. */
@@ -71,16 +70,11 @@ export type ContractTurn<answer = unknown> = {
    */
   miss(): MockNotFoundError;
   /**
-   * Records `error` as the contract's outcome, a revert decoded by its ABI,
-   * when another answer comes before its turn (see `Definition.preempt`).
+   * The call's record in its namespace, for history, with how its request
+   * ended: `ended` is the request's outcome, or what it threw. A revert is
+   * decoded against the contract's ABI, whichever mock raised it.
    */
-  preempted(error: unknown): void;
-  /**
-   * The call, in its namespace, for history: its outcome is the contract's
-   * when the call is preempted, its mock fails, or it answers with a `view`,
-   * and otherwise the request's.
-   */
-  record: MockCallRecord;
+  record(ended: { outcome: MockOutcome } | { error: unknown }): MockCallRecord;
 };
 
 /**
@@ -267,20 +261,30 @@ export function createMockContract<const abi extends Abi>(
     assertAttached,
   });
 
+  /**
+   * The record of a call in `namespace` that ended with `outcome`; `decoded`
+   * is the call, `undefined` when it didn't decode.
+   */
+  const recordOf = (
+    namespace: MockNamespace | undefined,
+    decoded: Pick<Decoded, "abiItem" | "call"> | undefined,
+    outcome: MockOutcome,
+  ): MockCallRecord => ({
+    address,
+    name,
+    namespace,
+    abiItem: decoded?.abiItem,
+    call: decoded?.call,
+    outcome,
+  });
+
   async function resolve(
     data: Hex,
     context: CallContext,
     report: (record: MockCallRecord) => void,
   ): Promise<Hex> {
     let decoded: Decoded | undefined;
-    const record = (outcome: MockOutcome): MockCallRecord => ({
-      address,
-      name,
-      namespace: decoded?.namespace,
-      abiItem: decoded?.abiItem,
-      call: decoded?.call,
-      outcome,
-    });
+    const record = (outcome: MockOutcome) => recordOf(decoded?.namespace, decoded, outcome);
     try {
       const found = decode(data, context);
       if (found instanceof MockNotFoundError) throw found;
@@ -307,52 +311,33 @@ export function createMockContract<const abi extends Abi>(
 
   /**
    * Prepares the contract's turn at an action's call of `data` in
-   * `namespace`: see `ContractTurn`. `view` makes a mock's answer the
-   * record's value. Without `view`, the record takes the request's answer, as
-   * a `write` record takes its send's hash.
+   * `namespace`: see `ContractTurn`.
    */
   function turn<namespace extends "estimateGas" | "write">(
     namespace: namespace,
     data: Hex,
     context: CallContext,
-    view?: (answered: AnswerIn<namespace>) => unknown,
   ): ContractTurn<AnswerIn<namespace>> {
-    const record: MockCallRecord = {
-      address,
-      name,
-      namespace,
-      abiItem: undefined,
-      call: undefined,
-      outcome: { type: "pending" },
-    };
     const decoded = decodeIn(namespace, data, context);
+    const found = decoded instanceof MockNotFoundError ? undefined : decoded;
+    const record: ContractTurn["record"] = (ended) =>
+      recordOf(
+        namespace,
+        found,
+        "error" in ended ? failureOutcome(ended.error, abi) : ended.outcome,
+      );
     if (decoded instanceof MockNotFoundError)
-      return { answer: () => undefined, miss: () => decoded, preempted() {}, record };
+      return { answer: () => undefined, miss: () => decoded, record };
     receive(decoded);
-    const { abiItem, call } = decoded;
-    record.abiItem = abiItem;
-    record.call = call;
-    // Matched when the turn comes, once: an estimate preempted first (see
-    // `Definition.preempt`) runs none of these mocks' predicates.
+    const { call } = decoded;
+    // Matched when the turn comes, once: an estimate that `Definition.preempt`
+    // reverts first runs none of these mocks' predicates.
     let matched: ReturnType<typeof match> | undefined;
     const matchOnce = () => (matched ??= match(decoded));
     return {
       answer() {
         const { handler } = matchOnce();
-        if (!handler) return undefined;
-        return run(handler, call, namespace).then(
-          (answered) => {
-            if (view) record.outcome = { type: "result", value: view(answered) };
-            return answered;
-          },
-          (error: unknown) => {
-            record.outcome = failureOutcome(error, abi);
-            throw error;
-          },
-        );
-      },
-      preempted(error) {
-        record.outcome = failureOutcome(error, abi);
+        return handler && run(handler, call, namespace);
       },
       miss() {
         const { missed, removed } = matchOnce();
@@ -524,7 +509,7 @@ export function createMockContract<const abi extends Abi>(
     label,
     matches: (other) => other === address,
     resolve,
-    estimate: (data, context) => turn("estimateGas", data, context, (hex) => hexToBigInt(hex)),
+    estimate: (data, context) => turn("estimateGas", data, context),
     write: (data, context) => turn("write", data, context),
     writeMock,
     clearCalls() {

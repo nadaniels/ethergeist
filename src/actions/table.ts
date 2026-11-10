@@ -20,7 +20,6 @@ import {
   foundMock,
 } from "../mocking/handlers.js";
 import { checkNoMatchers, firstMismatch, mismatches } from "../mocking/matching.js";
-import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockNotFoundError, type MockRevertError } from "../shared/errors.js";
@@ -183,14 +182,18 @@ export type Definition<call extends object = object, rpc = unknown, answer = rpc
 };
 
 /**
- * What a table tells history about a call it answered. A call a registered
- * contract had a turn at also has the contract's record of it, which takes
- * `outcome` if the contract's turn didn't settle it.
+ * What a table tells history about a call, however it ended. A call a
+ * registered contract had a turn at also has the contract's record of it.
  */
 export type ActionReport = {
   call: object;
-  outcome: MockOutcome;
-  contract?: MockCallRecord;
+  /**
+   * The call's outcome when it was answered, with the answer in viem's
+   * types. Left out when the call threw: the request's error says how it
+   * ended.
+   */
+  outcome?: { type: "result"; value: unknown };
+  contract?: MockCallRecord | undefined;
 };
 
 /** The mocks and calls of one action or raw method: see `createTable`. */
@@ -307,16 +310,16 @@ export function createTable(
     calls.add(call);
     const known = definition.known?.(call);
     const turn = known === undefined ? definition.contractTurn?.(call) : undefined;
-    const reportAs = (outcome: MockOutcome) => {
-      const contract = turn?.record;
-      report({ call, outcome, ...(contract && { contract }) });
-    };
     try {
       const rpc = known ?? (await answerAndCommit(call, turn));
-      reportAs({ type: "result", value: definition.view ? definition.view(rpc) : rpc });
+      const outcome = {
+        type: "result" as const,
+        value: definition.view ? definition.view(rpc) : rpc,
+      };
+      report({ call, outcome, contract: turn?.record({ outcome }) });
       return rpc;
     } catch (error) {
-      reportAs(failureOutcome(error));
+      report({ call, contract: turn?.record({ error }) });
       throw error;
     }
   }
@@ -355,12 +358,7 @@ export function createTable(
   }
 
   async function answerCall(call: object, turn: ContractTurn | undefined): Promise<unknown> {
-    try {
-      definition.preempt?.(call);
-    } catch (error) {
-      turn?.preempted(error);
-      throw error;
-    }
+    definition.preempt?.(call);
     const answered = turn?.answer();
     if (answered) return await answered;
     const { handler, missed, removed } = match(call);

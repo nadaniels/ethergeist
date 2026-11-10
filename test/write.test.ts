@@ -1305,6 +1305,31 @@ describe("writes in history", () => {
     );
   });
 
+  test("a write its mock answers but that can't be placed is recorded as the refusal, on the entry and the contract's record", async () => {
+    const { mock, usdc, wallet } = setup();
+    usdc.write.transfer().returns();
+    const raw = await wallet.signTransaction(
+      await wallet.prepareTransactionRequest({
+        to: USDC,
+        data: encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [bob, 5n] }),
+      }),
+    );
+    mock.addTransaction({ logs: [testLog("noise")], hash: keccak256(raw), blockNumber: 15n });
+
+    const error = await rejectionOf(
+      mock.request({ method: "eth_sendRawTransaction", params: [raw] }),
+    );
+
+    const refused = expectCause(error, MockSetupError);
+    expect(refused.shortMessage).toContain("is already in mock.transactions");
+    const outcome = { type: "unhandled", error: refused };
+    expect(mock.history.at(-1)).toMatchObject({
+      method: "eth_sendRawTransaction",
+      outcome,
+      contract: { namespace: "write", call: { functionName: "transfer" }, outcome },
+    });
+  });
+
   test("a send to no contract is its call, with where it was mined", async () => {
     const { mock, wallet } = setup("node");
 
