@@ -6,7 +6,7 @@ import type { MockTransaction } from "../chain/transactions.js";
 import type { EmittedLog } from "../logs/events.js";
 import type { LogsCall } from "../logs/filter.js";
 import type { MockReceipt } from "../transactions/store.js";
-import { estimateGas, type MockEstimateGasAction } from "./estimateGas.js";
+import type { MockEstimateGasAction } from "./estimateGas.js";
 import { estimateMaxPriorityFeePerGas } from "./estimateMaxPriorityFeePerGas.js";
 import { getBalance } from "./getBalance.js";
 import { getBlobBaseFee } from "./getBlobBaseFee.js";
@@ -19,7 +19,7 @@ import { getStorageAt } from "./getStorageAt.js";
 import { getTransaction } from "./getTransaction.js";
 import { getTransactionCount, type TransactionCountContext } from "./getTransactionCount.js";
 import { getTransactionReceipt } from "./getTransactionReceipt.js";
-import { type MockSendTransactionAction, sendTransaction } from "./sendTransaction.js";
+import type { MockSendTransactionAction } from "./sendTransaction.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type {
   ActionCalls,
@@ -36,8 +36,9 @@ import type {
 } from "./types.js";
 
 /**
- * Every typed action: its definition, and the JSON-RPC methods it answers.
- * An action is added here, in `MockActions`, and in `ActionCalls`.
+ * Every typed action a table answers: its definition, and the JSON-RPC
+ * methods it answers. An action is added here, in `MockActions`, and in
+ * `ActionCalls`.
  */
 export const typedActions = {
   getBalance: { define: getBalance, methods: ["eth_getBalance"] },
@@ -58,20 +59,24 @@ export const typedActions = {
   getFeeHistory: { define: getFeeHistory, methods: ["eth_feeHistory"] },
   getTransactionCount: { define: getTransactionCount, methods: ["eth_getTransactionCount"] },
   getStorageAt: { define: getStorageAt, methods: ["eth_getStorageAt"] },
-  estimateGas: { define: estimateGas, methods: ["eth_estimateGas"] },
-  sendTransaction: {
-    define: sendTransaction,
-    methods: ["eth_sendTransaction", "eth_sendRawTransaction", "eth_sendRawTransactionSync"],
-  },
 } satisfies {
-  [name in keyof ActionCalls]: {
+  [name in Exclude<keyof ActionCalls, keyof typeof sendsMethods>]: {
     define: (context: ActionsContext) => Definition<ActionCalls[name]>;
     methods: readonly string[];
   };
 };
 
+/**
+ * The JSON-RPC methods of the two typed actions no table answers: sends and
+ * their estimates, which `createSends` answers.
+ */
+export const sendsMethods = {
+  estimateGas: ["eth_estimateGas"],
+  sendTransaction: ["eth_sendTransaction", "eth_sendRawTransaction", "eth_sendRawTransactionSync"],
+} as const;
+
 /** A typed action's name, e.g. `"getBalance"`. */
-export type ActionName = keyof typeof typedActions;
+export type ActionName = keyof ActionCalls;
 
 /** Mocks for viem's public actions, answering with values in viem's types. */
 export type MockActions = {

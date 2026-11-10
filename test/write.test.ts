@@ -553,6 +553,42 @@ describe("the estimate a write mock implies", () => {
     );
   });
 
+  test("a write mock's predicate that throws fails the estimate, which is still the contract's call", async () => {
+    const { mock, client, usdc } = setup();
+    usdc.write
+      .transfer([
+        bob,
+        match.where((amount: bigint) => {
+          if (amount > 100n) throw new Error("too large");
+          return true;
+        }, "small"),
+      ])
+      .returns();
+
+    const error = await rejectionOf(
+      client.estimateContractGas({
+        account: alice,
+        address: USDC,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [bob, 500n],
+      }),
+    );
+
+    expect(expectCause(error, MockResolverError).shortMessage).toBe(
+      'Matcher where(small) for "transfer" threw: too large',
+    );
+    expect(usdc.estimateGas.transfer.calls).toMatchObject([{ args: [bob, 500n], from: alice }]);
+    expect(mock.history.at(-1)).toMatchObject({
+      action: "estimateGas",
+      contract: {
+        namespace: "estimateGas",
+        call: { functionName: "transfer" },
+        outcome: { type: "unhandled" },
+      },
+    });
+  });
+
   test("an estimate's miss lists only its own overload's write mocks", async () => {
     const { mock, wallet } = setup();
     const vault = mock.contract({ abi: vaultAbi, address: VAULT, name: "Vault" });

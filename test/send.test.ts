@@ -264,6 +264,22 @@ describe("a raw send (local account)", () => {
     expect(usdc.calls).toHaveLength(1);
   });
 
+  test("a repeat is still one of the action's calls", async () => {
+    const { mock, wallet } = localSetup();
+    const raw = await wallet.signTransaction(
+      await wallet.prepareTransactionRequest({ to: bob, value: 1n }),
+    );
+
+    await mock.request({ method: "eth_sendRawTransaction", params: [raw] });
+    await mock.request({ method: "eth_sendRawTransaction", params: [raw] });
+
+    expect(mock.actions.sendTransaction.calls).toMatchObject([
+      { to: bob, nonce: 0 },
+      { to: bob, nonce: 0 },
+    ]);
+    expect(mock.transactions).toHaveLength(1);
+  });
+
   test("the same bytes sent twice at once are one transaction", async () => {
     const { mock, wallet } = localSetup();
     const raw = await wallet.signTransaction(
@@ -640,6 +656,17 @@ describe("a send that's refused changes nothing", () => {
     );
     expect(mock.transactions).toEqual([]);
     expect(mock.blockNumber).toBe(10n);
+  });
+
+  test("a refused send, or one no mock answers, is still one of the action's calls", async () => {
+    const { mock, wallet } = nodeSetup();
+    mock.actions.sendTransaction({ to: bob }).fails("insufficientFunds");
+
+    await rejectionOf(wallet.sendTransaction({ to: bob, value: 7n }));
+    await rejectionOf(wallet.sendTransaction({ to: carol, data: "0x12" }));
+
+    expect(mock.actions.sendTransaction.calls.map(({ to }) => to)).toEqual([bob, carol]);
+    expect(mock.transactions).toEqual([]);
   });
 
   test("malformed data is refused as invalid params: no transaction, the nonce unchanged", async () => {
@@ -1280,6 +1307,41 @@ describe("eth_sendRawTransactionSync (EIP-7966, a local account's *Sync sends)",
     expect(mock.transactions).toEqual([]);
     expect(mock.blockNumber).toBe(10n);
     expect((await wallet.sendTransactionSync({ to: bob })).blockNumber).toBe(11n);
+  });
+});
+
+describe("an eth_sendTransaction and other requests made at once reach their mocks in the order they were made", () => {
+  test("a send made before its estimate takes a .once().reverts() mock: it's mined reverted, and nothing answers the estimate", async () => {
+    const { mock } = setup();
+    mock.actions.sendTransaction({ to: bob }).once().reverts("paused");
+    const transaction = { from: alice, to: bob, data: "0x12" };
+
+    const [hash, estimateError] = await Promise.all([
+      mock.request({ method: "eth_sendTransaction", params: [transaction] }),
+      rejectionOf(mock.request({ method: "eth_estimateGas", params: [transaction] })),
+    ]);
+
+    expect(mock.transactions).toMatchObject([{ hash, receipt: { status: "reverted" } }]);
+    expectCause(estimateError, MockNotFoundError);
+  });
+
+  test("a balance read made after a send gets what the send's resolver left", async () => {
+    const { mock } = setup();
+    let balance = 10n;
+    mock.actions.sendTransaction({ to: bob }).returns(({ value }) => {
+      balance -= value;
+    });
+    mock.actions.getBalance({ address: alice }).returns(() => balance);
+
+    const [, read] = await Promise.all([
+      mock.request({
+        method: "eth_sendTransaction",
+        params: [{ from: alice, to: bob, value: "0x3" }],
+      }),
+      mock.request({ method: "eth_getBalance", params: [alice, "latest"] }),
+    ]);
+
+    expect(read).toBe("0x7");
   });
 });
 

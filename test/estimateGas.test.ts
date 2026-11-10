@@ -155,6 +155,19 @@ describe("estimateGas", () => {
     ]);
   });
 
+  test("an estimate that reverts, fails or isn't answered is still one of its calls", async () => {
+    const { mock, client } = setup();
+    const carol = testAddress("carol");
+    mock.actions.estimateGas({ to: bob }).reverts("paused");
+    mock.actions.estimateGas({ to: alice }).fails("insufficientFunds");
+
+    await rejectionOf(client.estimateGas({ account: alice, to: bob }));
+    await rejectionOf(client.estimateGas({ account: bob, to: alice }));
+    await rejectionOf(client.estimateGas({ account: alice, to: carol, data: "0x12" }));
+
+    expect(mock.actions.estimateGas.calls.map(({ to }) => to)).toEqual([bob, alice, carol]);
+  });
+
   test("a pinned mock answers before one without pins", async () => {
     const { mock, client } = setup();
     mock.actions.estimateGas({ from: alice }).returns(50_000n);
@@ -573,6 +586,23 @@ describe("contract estimates", () => {
       ["estimateGas", "mint"],
     ]);
     expect(mock.calls).toEqual(token.calls);
+  });
+
+  test("an estimate at a block is the contract's call at that block", async () => {
+    const { client, token } = tokenSetup();
+    token.estimateGas.transfer().returns(({ blockNumber }) => 60_000n + blockNumber);
+
+    const gas = await client.estimateContractGas({
+      abi: tokenAbi,
+      address: token.address,
+      functionName: "transfer",
+      args: [bob, 1n],
+      account: alice,
+      blockNumber: 4n,
+    });
+
+    expect(gas).toBe(60_004n);
+    expect(token.estimateGas.transfer.calls).toMatchObject([{ blockNumber: 4n }]);
   });
 
   test("reverts decode against the contract's ABI, as viem decodes a node's", async () => {

@@ -6,9 +6,9 @@ import { MockRpcError, removedContractLines, removedTransactionNote } from "../s
 import type { PartSnapshot } from "../shared/parts.js";
 import type { RecordLimit } from "../shared/records.js";
 import { createMethods } from "./methods.js";
-import { impliedEstimate } from "./sendTransaction.js";
+import { createSends } from "./sends.js";
 import { type ActionReport, type Table, createTable, type ActionsContext } from "./table.js";
-import { type MockActions, type ActionName, typedActions } from "./typedActions.js";
+import { type MockActions, type ActionName, sendsMethods, typedActions } from "./typedActions.js";
 
 /** The typed actions and raw methods: see `createActions`. */
 export type Actions = ReturnType<typeof createActions>;
@@ -17,12 +17,7 @@ export type Actions = ReturnType<typeof createActions>;
  * The typed actions (`mock.actions`) and raw methods (`mock.method()`): their
  * mocks, and answering the requests they're for.
  */
-export function createActions(
-  chain: Omit<ActionsContext, "impliedEstimate">,
-  recordLimit: RecordLimit,
-) {
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
-  const names = Object.keys(typedActions) as ActionName[];
+export function createActions(chain: ActionsContext, recordLimit: RecordLimit) {
   /**
    * The lines for a miss on what the last restore removed: a hash lookup's
    * transaction, or the contract an estimate or send is to. They're keyed on
@@ -41,38 +36,42 @@ export function createActions(
         ? removedContractLines
         : [];
   const currentBlock = () => chain.state.blockNumber;
-  // Asked only while answering, once every table is made.
-  const context: ActionsContext = {
-    ...chain,
-    impliedEstimate: (sent) => impliedEstimate(chain, typed.sendTransaction.findMock, sent),
-  };
+  const options = { currentBlock, notFoundLines: removedTargetLines };
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
+  const tableNames = Object.keys(typedActions) as (keyof typeof typedActions)[];
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- one table per name, as built
-  const typed = Object.fromEntries(
-    names.map((name) => [
+  const tableActions = Object.fromEntries(
+    tableNames.map((name) => [
       name,
-      createTable(typedActions[name].define(context), recordLimit, {
-        currentBlock,
-        notFoundLines: removedTargetLines,
-      }),
+      createTable(typedActions[name].define(chain), recordLimit, options),
     ]),
-  ) as Record<ActionName, Table>;
-  const typedMethods = new Map<string, ActionName>(
-    names.flatMap((name) => typedActions[name].methods.map((method) => [method, name] as const)),
-  );
+  ) as Record<keyof typeof typedActions, Table>;
+  /**
+   * Every typed action: a table, or for sends and their estimates, the
+   * action `createSends` gives in a table's shape.
+   */
+  const typed: Record<ActionName, Table> = {
+    ...tableActions,
+    ...createSends(chain, recordLimit, options),
+  };
+  const typedMethods = new Map<string, ActionName>([
+    ...tableNames.flatMap((name) =>
+      typedActions[name].methods.map((method) => [method, name] as const),
+    ),
+    ...sendsMethods.estimateGas.map((method) => [method, "estimateGas"] as const),
+    ...sendsMethods.sendTransaction.map((method) => [method, "sendTransaction"] as const),
+  ]);
   const methods = createMethods((method) => typedMethods.get(method), recordLimit, currentBlock);
 
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- built from the tables at runtime, in the shape MockActions describes
   const actions = Object.fromEntries(
-    names.map((name) => {
-      const table = typed[name];
-      return [
-        name,
-        withCalls(
-          (params?: unknown) => table.register(params),
-          () => [...table.calls.kept],
-        ),
-      ];
-    }),
+    Object.entries(typed).map(([name, table]) => [
+      name,
+      withCalls(
+        (params?: unknown) => table.register(params),
+        () => [...table.calls.kept],
+      ),
+    ]),
   ) as unknown as MockActions;
 
   const tables = () => [...Object.values(typed), ...methods.tables()];

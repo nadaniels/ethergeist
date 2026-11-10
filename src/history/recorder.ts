@@ -58,7 +58,8 @@ function reporterFor(entry: MockHistoryEntry): Reporter {
 /**
  * A request's answer in viem's types, for history: a built-in's number, a
  * contract call's decoded result, or a multicall's decoded results. Any
- * other answer stays as JSON-RPC: an action's value comes from its table.
+ * other answer stays as JSON-RPC: an action's value comes with its report
+ * (see `ActionReport`).
  */
 function valueOf(entry: MockHistoryEntry, rpc: unknown): unknown {
   if (entry.type === "builtIn" && isHex(rpc))
@@ -181,7 +182,7 @@ export function createRecorder({
       reporter: reporterFor(entry),
       reportAction({ call, outcome, contract }) {
         if (entry.type !== "action") return;
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the table for entry.action decoded it
+        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- entry.action's decoder made it
         entry.call = call as typeof entry.call;
         if (contract) entry.contract = contract;
         actionOutcome = outcome;

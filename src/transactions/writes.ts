@@ -3,11 +3,11 @@ import { type Address, getAddress } from "viem";
 import { checkStatus } from "../chain/receipts.js";
 import { type MockLogContent, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
-import type { Builder, FoundMock } from "../mocking/handlers.js";
+import type { Builder } from "../mocking/handlers.js";
 import { checkAmount, checkFields } from "../mocking/setupChecks.js";
 import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
-import { type MockRevertError, MockSetupError } from "../shared/errors.js";
+import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 
 /**
@@ -162,23 +162,4 @@ export function extendWriteBuilder(
       returns({ logs: [logs].flat() });
     },
   });
-}
-
-/**
- * A send mock's implied estimate: the estimate of a send it would answer.
- * A `.reverts()` mock reverts it, and `spend` counts the use; any other
- * mock implies gas, without running or being used up. `undefined` when no
- * send mock would answer.
- */
-export type ImpliedEstimate = { reverts: MockRevertError; spend: () => void } | "gas" | undefined;
-
-/**
- * What `found`, the send mock that would answer a send, implies for its
- * estimate: see `ImpliedEstimate`. Only `.reverts()` reverts it: a
- * resolver's `revert()` runs only at the send.
- */
-export function impliedBy(found: FoundMock | undefined): ImpliedEstimate {
-  if (found === undefined) return undefined;
-  const { answer, spend } = found;
-  return answer.kind === "revert" ? { reverts: answer.error, spend } : "gas";
 }

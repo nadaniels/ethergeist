@@ -39,12 +39,17 @@ shared → mocking → chain → logs → transactions → contracts → actions
 - **`contracts/`:** mocked contracts, their registry, and `eth_call`
   dispatch, multicall included; a contract also takes a turn at the
   estimates and sends of its functions, ahead of the action's own mocks
-  (`ContractTurn`). It emits logs, so it sits above `transactions/`; it
-  owns `MockCallRecord`, the record of a call it answered.
+  (`turn()`, which prepares a `ContractTurn`). It emits logs, so it sits
+  above `transactions/`; it owns `MockCallRecord`, the record of a call it
+  answered.
 - **`actions/`:** typed actions (`mock.actions.getBalance`, …), one file each,
-  and raw `mock.method()` mocks. Receipts, transactions, blocks and `getLogs`
-  read the transaction store and `estimateGas` asks contracts first, so it
-  sits above both.
+  and raw `mock.method()` mocks. A table (`table.ts`) answers each of them:
+  it decodes the call and answers with the mock that matches, or else the
+  action's fallback. The two exceptions are sends and their estimates,
+  answered in `sends.ts` (see [Sends and estimates](#sends-and-estimates)).
+  Receipts, transactions, blocks and `getLogs` read the transaction store,
+  and sends and their estimates give a contract its turn first, so it sits
+  above both.
 - **`history/`:** what the mock received and how it answered: the recorder,
   history entries, and formatting.
 - **`rpc/`:** the request pipeline (`createRequestHandler`, a
@@ -175,12 +180,10 @@ everything, then mutate.
 ## Adding an action
 
 1. Add its file in `actions/`, named for the action (`getGasPrice.ts`). It
-   exports a function that takes the `ActionsContext` (`state`, `registry`,
-   `transactions`, and `impliedEstimate`, what the send mocks imply for a
-   send's estimate) and returns its `Definition<call, rpc>`: how to decode
-   the call, encode and view answers, and what to answer when it isn't
-   mocked (`fallback`), or, rarely, an answer that comes before any mock's
-   (`preempt`: an estimate reverts for its send's `.reverts()` mock).
+   exports a function that takes the `ActionsContext` (`state`, `registry`
+   and `transactions`) and returns its `Definition<call, rpc>`: how to
+   decode the call, encode and view answers, and what to answer when it
+   isn't mocked (`fallback`).
    `call` is its decoded call's type and `rpc` its JSON-RPC answer's, so its
    members get them typed, without casts. `encode` checks a static answer at
    registration and encodes it again at each request, so beside the value it
@@ -198,18 +201,65 @@ everything, then mutate.
    winning (methods may disagree); its answer places its parts (a receipt
    its logs, a block its transactions), and nothing else is derived; and
    each answer is one a node could send, as an object.
-   An action that changes the chain (a send) answers in two steps: `encode`
-   checks the answer, as at registration, and `commit` places it on the
-   chain once it's chosen, answering the JSON-RPC value; its `Definition`
-   takes that answer's type as a third parameter.
 2. Add it to the `typedActions` catalog in `actions/typedActions.ts`, with the
    JSON-RPC methods it answers.
 3. Add its mock's type, with its documentation, to `MockActions` in the same
    file.
 4. Add its decoded call's type to `ActionCalls` in `actions/types.ts`. History
-   entries and `mock.calls` are typed from it, and the catalog checks that the
-   definition decodes to it.
+   entries and `mock.calls` are typed from it, and the catalog checks that
+   each definition it lists decodes to it.
 5. Export any new public types from `index.ts`.
+
+## Sends and estimates
+
+`estimateGas` and `sendTransaction` aren't table actions. A table has one
+rule: decode the call, then answer with the mock that matches, or else the
+fallback. A send and its estimate have an order of answers instead: a
+registered contract's turn, a send mock's `.reverts()` before any estimate
+mock, the gas a send mock implies, a repeated raw send, and placing the
+transaction.
+
+`createSends` in `actions/sends.ts` holds both actions' mocks and two
+functions, `answerEstimate` and `answerSend`. Each is the order of answers,
+read top to bottom, and its doc comment lists the steps; `answerSend`
+continues in `outcomeOf`, under it, for the steps that choose a send's
+outcome. A new rule for a send or an estimate (what answers first, what a
+mock implies) is an edit to those functions, not a new hook on
+`Definition`.
+
+- The mocks are mock sets (`createMockSet` in `table.ts`), which a table is
+  built on too: registering, matching, answering with a mock, and the miss.
+  `estimateGas.ts` and `sendTransaction.ts` keep their public types, their
+  mocks' `MockDefinition` and their decoders.
+- `createSends` returns the two actions in a table's shape, so
+  `createActions` handles all fourteen alike: registration, `.calls`,
+  `clearCalls()`, unused mocks, snapshots and answering. Their JSON-RPC
+  methods are in `sendsMethods`, beside the `typedActions` catalog.
+- Both functions tell history how the call ended through `reportAnswer`, as
+  a table does.
+
+The two functions keep these rules:
+
+- a contract's turn is prepared before anything answers, so its call is
+  recorded however the request ends;
+- a mock's predicates run only while it's in contention, and once per
+  estimate, except at a contract's estimate miss, where its `write` mocks
+  are matched again for the reasons they missed;
+- a send that's refused or not answered places nothing and takes no nonce;
+- a repeated raw send asks no mock and gives no contract a turn;
+- a send awaits its outcome before it's placed, a plain transfer's too, so
+  the same bytes sent twice at once both get that far, and only one is
+  placed;
+- an estimate waits a microtask between decoding its call and recording
+  it, as a table does and as an `eth_sendTransaction` takes to decode, so
+  those requests made at once reach their mocks in the order they were
+  made. A raw send takes longer, to recover its signer, so the order
+  doesn't hold against one.
+
+The trade-off is more code for the order in one place: `sends.ts` spells
+out the steps a table's hooks would share (match, answer, miss), and in
+return the order isn't spread over the table, two definitions and the
+contract.
 
 ## Adding state
 

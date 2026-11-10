@@ -22,7 +22,6 @@ import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, type RecordList, createRecordList } from "../shared/records.js";
-import type { MockWriteOutcome } from "../transactions/writes.js";
 import { createRevertError } from "./answers.js";
 import { type AddTransaction, createContractApi } from "./createContractApi.js";
 import { type Pins, createFunctions, firstPinMismatch, pinArgs, pinCall } from "./functions.js";
@@ -97,15 +96,15 @@ export type InternalMockContract<abi extends Abi = Abi> = {
    */
   resolve(data: Hex, context: CallContext, report: (record: MockCallRecord) => void): Promise<Hex>;
   /**
-   * Prepares the contract's turn at an estimate of `data`: see
-   * `ContractTurn`.
+   * Prepares the contract's turn at an estimate of `data`, in
+   * `"estimateGas"`, or at a send of it, in `"write"`: see `ContractTurn`.
+   * An estimate's turn answers gas, and a send's what the chain did.
    */
-  estimate(data: Hex, context: CallContext): ContractTurn<Hex>;
-  /**
-   * Prepares the contract's turn at a send of `data`, answering what the
-   * chain did.
-   */
-  write(data: Hex, context: CallContext): ContractTurn<MockWriteOutcome>;
+  turn<namespace extends "estimateGas" | "write">(
+    namespace: namespace,
+    data: Hex,
+    context: CallContext,
+  ): ContractTurn<AnswerIn<namespace>>;
   /**
    * The `write` mock that would answer a send of `data` now, if any, found
    * without answering or recording it: nothing runs, and no use is counted
@@ -309,10 +308,7 @@ export function createMockContract<const abi extends Abi>(
     }
   }
 
-  /**
-   * Prepares the contract's turn at an action's call of `data` in
-   * `namespace`: see `ContractTurn`.
-   */
+  /** See `InternalMockContract.turn`. */
   function turn<namespace extends "estimateGas" | "write">(
     namespace: namespace,
     data: Hex,
@@ -330,8 +326,8 @@ export function createMockContract<const abi extends Abi>(
       return { answer: () => undefined, miss: () => decoded, record };
     receive(decoded);
     const { call } = decoded;
-    // Matched when the turn comes, once: an estimate that `Definition.preempt`
-    // reverts first runs none of these mocks' predicates.
+    // Matched when the turn comes, once: an estimate that its send's
+    // `.reverts()` mock reverts first runs none of these mocks' predicates.
     let matched: ReturnType<typeof match> | undefined;
     const matchOnce = () => (matched ??= match(decoded));
     return {
@@ -509,8 +505,7 @@ export function createMockContract<const abi extends Abi>(
     label,
     matches: (other) => other === address,
     resolve,
-    estimate: (data, context) => turn("estimateGas", data, context),
-    write: (data, context) => turn("write", data, context),
+    turn,
     writeMock,
     clearCalls() {
       calls.clear();
