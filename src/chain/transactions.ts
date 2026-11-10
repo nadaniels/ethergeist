@@ -301,7 +301,7 @@ export const encodeTransaction = (state: ChainState, transaction: TransactionFie
   toRpcTransaction(transaction, {
     hash,
     blockNumber: state.blockNumber,
-    chainId: state.chainId,
+    chainId: state.chain.id,
     feesAt: state.feesAt,
     timestampAt: state.timestampAt,
   });

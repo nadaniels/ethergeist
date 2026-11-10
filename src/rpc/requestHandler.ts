@@ -75,7 +75,7 @@ export function createRequestHandler({
   async function answer({ method, params }: RpcRequest, recording: Recording): Promise<unknown> {
     switch (method) {
       case "eth_chainId":
-        return numberToHex(state.chainId);
+        return numberToHex(state.chain.id);
       case "eth_blockNumber":
         return numberToHex(state.blockNumber);
       case "eth_call":

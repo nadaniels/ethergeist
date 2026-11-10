@@ -211,7 +211,7 @@ export function createTransactionStore({
     const number = blockNumber ?? state.blockNumber + 1n;
     const earlier = inBlock(number);
     const index = earlier.length;
-    const hash = record.hash ?? testHash(`tx:${state.chainId}:${number}:${index}`);
+    const hash = record.hash ?? testHash(`tx:${state.chain.id}:${number}:${index}`);
     if (find(hash) !== undefined)
       throw new MockSetupError(`Transaction ${hash} is already in mock.transactions.`, {
         metaMessages: [

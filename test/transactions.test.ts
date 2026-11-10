@@ -68,6 +68,19 @@ describe("getTransaction", () => {
     expect(transaction).toEqual(mock.buildTransaction({ hash, from: alice, to: bob, value: 1n }));
   });
 
+  test("is on the mock's chain: its chain id, and a legacy one's v derived from it", async () => {
+    const mock = createMockRpc({ chain: base });
+    const client = createPublicClient({ chain: base, transport: mock.transport() });
+    mock.actions.getTransaction({ hash }).returns({});
+    mock.actions.getTransaction({ hash: testHash("tx-2") }).returns({ type: "legacy" });
+
+    expect(await client.getTransaction({ hash })).toMatchObject({ chainId: 8453 });
+    expect(await client.getTransaction({ hash: testHash("tx-2") })).toMatchObject({
+      chainId: 8453,
+      v: 8453n * 2n + 35n,
+    });
+  });
+
   test("unmocked hashes aren't answered; null is no such transaction", async () => {
     const { mock, client } = setup();
     mock.actions.getTransaction({ hash }).returns(null);
