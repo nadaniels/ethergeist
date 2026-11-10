@@ -7,7 +7,7 @@ import {
   encodeWriteOutcome,
   extendWriteBuilder,
   minedReverted,
-} from "../transactions/writeOutcome.js";
+} from "../transactions/writes.js";
 import { encodeResult } from "./answers.js";
 import type { MockNamespace } from "./types.js";
 

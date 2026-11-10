@@ -3,7 +3,7 @@ import { formatTransactionReceipt } from "viem";
 import { hashParam } from "../chain/params.js";
 import type { toRpcReceipt } from "../chain/receipts.js";
 import { checkObject } from "../mocking/setupChecks.js";
-import { pinnedHash } from "./decode.js";
+import { pinnedHash } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ReceiptCall } from "./types.js";
 

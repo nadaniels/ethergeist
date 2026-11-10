@@ -32,7 +32,7 @@ import type {
 import type { zeroResult } from "../mocking/zeroResult.js";
 import type { PartialStructs } from "../shared/abiValues.js";
 import type { AddTransactionParameters } from "../transactions/addTransaction.js";
-import type { MockWriteAnswers, MockWriteOutcome } from "../transactions/writeOutcome.js";
+import type { MockWriteAnswers, MockWriteOutcome } from "../transactions/writes.js";
 
 /**
  * A contract's events by name, each placing its log as a transaction of its

@@ -12,8 +12,8 @@ import type {
   WithLimits,
 } from "../mocking/types.js";
 import { withoutUndefined } from "../shared/values.js";
-import type { ImpliedEstimate } from "../transactions/writeOutcome.js";
-import { blockAt, isPlainTransfer, pinTransaction, sendCall, viewQuantity } from "./decode.js";
+import type { ImpliedEstimate } from "../transactions/writes.js";
+import { blockAt, isPlainTransfer, pinTransaction, sendCall, viewQuantity } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext, EstimateGasCall, SendTransactionCall } from "./types.js";
 

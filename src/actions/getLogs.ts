@@ -6,7 +6,7 @@ import { type LogsCall, decodeLogsCall } from "../logs/filter.js";
 import { checkAmount, checkList } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
-import { pinAddress } from "./decode.js";
+import { pinAddress } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext } from "./types.js";
 

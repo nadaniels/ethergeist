@@ -1,4 +1,4 @@
-import { decodeAddressAtBlock, encodeQuantity, pinAddress, viewQuantity } from "./decode.js";
+import { decodeAddressAtBlock, encodeQuantity, pinAddress, viewQuantity } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { BalanceCall } from "./types.js";
 

@@ -3,7 +3,7 @@ import { type Hex, isHex, pad, size } from "viem";
 import { formatValue } from "../mocking/format.js";
 import { invalidParams, MockSetupError } from "../shared/errors.js";
 import { isPlainObject, lowercase } from "../shared/values.js";
-import { decodeAddressAtBlock, pinAddress } from "./decode.js";
+import { decodeAddressAtBlock, pinAddress } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { StorageCall } from "./types.js";
 

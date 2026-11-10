@@ -28,7 +28,7 @@ import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, createRecordList } from "../shared/records.js";
 import { leftOut } from "../shared/values.js";
 import type { TransactionStore } from "../transactions/store.js";
-import type { ImpliedEstimate } from "../transactions/writeOutcome.js";
+import type { ImpliedEstimate } from "../transactions/writes.js";
 import type { ActionContext, SendTransactionCall } from "./types.js";
 
 /**

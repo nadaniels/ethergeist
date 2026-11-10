@@ -5,7 +5,7 @@ import { type ResolveBlock, numberParam } from "../chain/params.js";
 import { formatValue } from "../mocking/format.js";
 import { checkAmount, checkFields, checkList } from "../mocking/setupChecks.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
-import { blockAt } from "./decode.js";
+import { blockAt } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { FeeHistoryCall } from "./types.js";
 

@@ -4,7 +4,7 @@ import { numberOfBlockHash, toRpcBlock } from "../chain/blocks.js";
 import { hashParam } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
 import { checkObject } from "../mocking/setupChecks.js";
-import { blockAt } from "./decode.js";
+import { blockAt } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { BlockCall } from "./types.js";
 

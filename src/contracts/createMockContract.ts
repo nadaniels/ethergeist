@@ -23,7 +23,7 @@ import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, type RecordList, createRecordList } from "../shared/records.js";
-import type { MockWriteOutcome } from "../transactions/writeOutcome.js";
+import type { MockWriteOutcome } from "../transactions/writes.js";
 import { createRevertError } from "./answers.js";
 import { type AddTransaction, createContractApi } from "./createContractApi.js";
 import { type Pins, createFunctions, firstPinMismatch, pinArgs, pinCall } from "./functions.js";

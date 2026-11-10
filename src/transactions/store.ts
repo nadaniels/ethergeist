@@ -24,7 +24,7 @@ import { impliedGas } from "../mocking/gas.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
 import { testHash } from "../shared/testValues.js";
 import { type AddTransactionParameters, checkAddTransaction } from "./addTransaction.js";
-import type { MockWriteOutcome } from "./writeOutcome.js";
+import type { MockWriteOutcome } from "./writes.js";
 
 /**
  * A placed transaction, as `mock.transactions` lists it: the facts it was
