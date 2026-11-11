@@ -8,7 +8,6 @@ import { checkAmount, checkFields } from "../mocking/setupChecks.js";
 import type { MockFault, MockRefusalAnswers, SendErrorName } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
 
 /**
  * What the chain did with a send, as a send mock answers it. The rest of its
@@ -52,6 +51,10 @@ export type MockWriteAnswers<context, revertSpec> = MockRefusalAnswers<SendError
    * Answers every matching call with `outcome`: see `MockWriteOutcome`. A
    * resolver returns one, or nothing for a success; it runs at the send, as
    * the transaction is mined.
+   *
+   * `mock.addTransaction()` and `contract.emit` are refused in a resolver up
+   * to its first `await`, and after it they place a transaction of their
+   * own. Return the send's logs in its outcome.
    */
   returns(
     outcome:
@@ -126,35 +129,11 @@ export function encodeWriteOutcome(
  */
 export const minedReverted: MockWriteOutcome = { status: "reverted" };
 
-/** A resolver with `emit`, answering its outcome with what it emitted. */
-const withWriteContext =
-  (resolver: (context: object) => unknown) =>
-  async (context: object): Promise<unknown> => {
-    const emitted: MockLogContent[] = [];
-    const emit = (logs: MockLogContent | readonly MockLogContent[]) => {
-      emitted.push(...[logs].flat());
-    };
-    const outcome = await resolver({ ...context, emit });
-    if (outcome === undefined) return { logs: emitted };
-    const logs: unknown = isPlainObject(outcome) ? (outcome.logs ?? []) : undefined;
-    if (!isPlainObject(outcome) || !Array.isArray(logs)) return outcome;
-    const returned: unknown[] = logs;
-    return { ...outcome, logs: [...emitted, ...returned] };
-  };
-
-/**
- * Gives a send mock's builder `.emits()`, and its resolvers `emit` (see
- * `WriteResolverContext` and `SendTransactionContext`).
- */
+/** Gives a send mock's builder `.emits()`. */
 export function extendWriteBuilder(builder: Builder): void {
-  const returns = builder.returns.bind(builder);
   Object.assign(builder, {
-    returns(value?: unknown) {
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the types guarantee a resolver's signature
-      returns(typeof value === "function" ? withWriteContext(value as () => unknown) : value);
-    },
     emits(logs: MockLogContent | readonly MockLogContent[]) {
-      returns({ logs: [logs].flat() });
+      builder.returns({ logs: [logs].flat() });
     },
   });
 }

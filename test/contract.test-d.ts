@@ -4,7 +4,6 @@ import { describe, expectTypeOf, test } from "vite-plus/test";
 import {
   type CreateMockContractParameters,
   type MockBatch,
-  type MockLogContent,
   type ContractDefaults,
   type MockFault,
   type MockNamespace,
@@ -13,6 +12,7 @@ import {
   type NodeErrorName,
   createMockRpc,
   match,
+  testLog,
   zeroResult,
 } from "../src/index.js";
 
@@ -398,17 +398,19 @@ describe("write", () => {
     token.write.transfer().once().refuses("insufficientFunds");
     token.write.transfer().fails("timeout");
     token.write.transfer().reverts({ errorName: "Paused", args: [USDC] });
-    token.write.transfer().returns(({ args, from, emit, revert }) => {
+    token.write.transfer().returns(({ args, from, revert }) => {
       expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
       expectTypeOf(from).toEqualTypeOf<Address>();
-      expectTypeOf(emit).toEqualTypeOf<
-        (logs: MockLogContent | readonly MockLogContent[]) => void
-      >();
-      emit(token.events.Transfer({ from, to: args[0], value: args[1] }));
-      // @ts-expect-error -- not a log: no address, topics or data
-      emit({ logIndex: 0 });
       if (args[1] > 5n) revert({ errorName: "Paused", args: [from] });
+      return {
+        logs: [token.events.Transfer({ from, to: args[0], value: args[1] }), testLog("noise")],
+      };
     });
+    token.write.transfer().returns((context) => {
+      expectTypeOf(context).not.toHaveProperty("emit");
+    });
+    // @ts-expect-error -- not a log: no address, topics or data
+    token.write.transfer().returns(() => ({ logs: [{ logIndex: 0 }] }));
     token.write.transfer().returns(() => Promise.resolve({ logs: [] }));
     expectTypeOf(token.write.transfer.calls[0]!.from).toEqualTypeOf<Address>();
 

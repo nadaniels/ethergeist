@@ -159,13 +159,13 @@ features land; tick them off as pages get written.
     value: nothing on chain reads that, and `simulate` has its own mock.
     `write.transfer().returns(true)` is a type error. A call to a contract
     has no `contractAddress`.
-  - Resolvers get the call (`from` is the sender) and `emit(logs)`, which
-    adds logs to the transaction; `mock.addTransaction()` and
-    `contract.emit` are refused inside one (up to its first `await`; code
-    elsewhere can still add transactions while it waits), as they would
-    place a transaction of their own mid-send. `revert(spec)` mines
-    it reverted, dropping what it emitted. Send mocks' resolvers get both
-    too.
+  - Resolvers get the call (`from` is the sender) and return the outcome,
+    logs included (`return { logs: [usdc.events.Transfer(args)] }`), as a
+    static answer does. `mock.addTransaction()` and `contract.emit` are
+    refused inside one (up to its first `await`; code elsewhere can still
+    add transactions while it waits), as they would place a transaction of
+    their own mid-send. `revert(spec)` mines it reverted.
+    `mock.actions.sendTransaction` resolvers answer the same way.
   - The estimate: a matching write mock answers the transaction's
     `eth_estimateGas` with 100,000 gas when no estimate mock of the
     contract's does (`estimateGas.fn()`, `defaults.estimateGas`; an
@@ -741,13 +741,12 @@ features land; tick them off as pages get written.
   - `.returns()` takes what the chain did, not an ABI value:
     `{ logs, status, gasUsed, effectiveGasPrice, contractAddress }`, all
     optional; the rest of the receipt comes from where it's mined.
-    `.emits(log)` or `.emits([a, b])` is `.returns({ logs: [a, b] })`, and a
-    resolver's `emit()` takes either too; `.returns({ status:
-    "reverted" })` mines it reverted (no logs). `.reverts(spec)` reverts the
-    estimate, before any estimate mock, so a local account throws before
-    sending, and mines it
-    reverted if it's sent anyway (`gas` set, or a node's account). A
-    resolver returns the same, or nothing for a success.
+    `.emits(log)` or `.emits([a, b])` is `.returns({ logs: [a, b] })`;
+    `.returns({ status: "reverted" })` mines it reverted (no logs).
+    `.reverts(spec)` reverts the estimate, before any estimate mock, so a
+    local account throws before sending, and mines it reverted if it's sent
+    anyway (`gas` set, or a node's account). A resolver returns the same, or
+    nothing for a success.
   - Only a registered contract's `write` mocks answer sends of its
     functions (section 3, "Writes"); `sendTransaction` mocks answer the
     rest, ETH sent to the contract without data and a selector not on its
@@ -1141,13 +1140,13 @@ features land; tick them off as pages get written.
     const token = mock.contract({ abi: tokenAbi, address: TOKEN, name: "Token" });
     const balances = new Map([[alice, parseEther("10")]]);
     token.read.balanceOf().returns(({ args: [who] }) => balances.get(who) ?? 0n);
-    token.write.transfer().returns(({ from, args: [to, amount], emit, revert }) => {
+    token.write.transfer().returns(({ from, args: [to, amount], revert }) => {
       const have = balances.get(from) ?? 0n;
       if (have < amount)
         revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
-      emit(token.events.Transfer({ from, to, value: amount }));
       balances.set(from, have - amount);
       balances.set(to, (balances.get(to) ?? 0n) + amount);
+      return { logs: [token.events.Transfer({ from, to, value: amount })] };
     });
     ```
   - The app's `writeContract` then `readContract` sees the balances move,
@@ -1176,11 +1175,11 @@ features land; tick them off as pages get written.
       changes nothing; an `estimateGas` mock's resolver, like a simulate's,
       runs per estimate and only answers.
 - [ ] Change state last, after every `revert()`, `fail()` and `refuse()`
-      check. `revert()` mines the transaction reverted and drops what was
-      emitted, but the mock can't undo the closure: a change made before it
-      stays. A resolver that throws, `fail()`s or `refuse()`s puts nothing
-      on the chain, yet keeps what it changed too, so the app's next attempt
-      starts from a ledger that already moved.
+      check. `revert()` mines the transaction reverted, but the mock can't
+      undo the closure: a change made before it stays. A resolver that
+      throws, `fail()`s or `refuse()`s puts nothing on the chain, yet keeps
+      what it changed too, so the app's next attempt starts from a ledger
+      that already moved.
 - [ ] Native balances: `mock.actions.getBalance().returns(({ address }) =>
       native.get(address) ?? 0n)`, and a payable write's resolver moves
       `value` (`vault.write.deposit().returns(({ from, value }) => { … })`).

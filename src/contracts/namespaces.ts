@@ -29,7 +29,7 @@ type NamespaceAnswers<answer> = {
    * as given and encoded again when it answers.
    */
   encode: (abiItem: AbiFunction, value: unknown) => answer;
-  /** Adds to a mock's builder: a send's `.emits()` and resolver `emit`. */
+  /** Adds to a mock's builder: a send's `.emits()`. */
   extendBuilder?: (builder: Builder) => void;
   /**
    * What a revert answers instead of being thrown, encoded as a mock's answer

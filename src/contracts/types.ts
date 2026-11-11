@@ -13,12 +13,7 @@ import type {
   AbiParameterToPrimitiveType,
 } from "viem";
 
-import type {
-  EmittedLog,
-  EventArgsParameter,
-  MockContractEvents,
-  MockLogContent,
-} from "../logs/events.js";
+import type { EmittedLog, EventArgsParameter, MockContractEvents } from "../logs/events.js";
 import type { MockOutcome } from "../mocking/outcomes.js";
 import type {
   SimulateErrorName,
@@ -335,24 +330,16 @@ export type MockEstimateGasFunction<
 
 /**
  * What a contract function's `write` resolver gets: the call's fields,
- * `fail`, `refuse`, and `emit` and `revert`, which answer the transaction as
- * it's mined.
+ * `fail`, `refuse` and `revert`.
  */
 export type WriteResolverContext<abi extends Abi, args> = ResolverContext<abi, args> &
   RefusalContext<SendErrorName> & {
     /** The sender: a send always has one. */
     from: Address;
     /**
-     * Adds a log, or logs, to the transaction, placed when it's mined, as
-     * `.emits()` does. `mock.addTransaction()` and `contract.emit` would
-     * place a separate transaction: they're refused in this resolver up to its
-     * first `await`, and after it they place one.
-     */
-    emit: (logs: MockLogContent | readonly MockLogContent[]) => void;
-    /**
-     * Mines the transaction reverted, e.g. `revert("paused")`, dropping what
-     * it emitted. A resolver runs only at the send, so the estimate doesn't
-     * revert: see `.reverts()` for that.
+     * Mines the transaction reverted, e.g. `revert("paused")`. A resolver
+     * runs only at the send, so the estimate doesn't revert: see `.reverts()`
+     * for that.
      */
     revert: RevertFn<abi>;
   };
@@ -522,7 +509,8 @@ export type MockContract<abi extends Abi> = {
    * Emits one of the contract's events as a transaction of its own, e.g.
    * `emit.Transfer({ from, to, value })`, for viem's `getLogs()`, watchers
    * and receipts to find, and returns the placed log: see
-   * `MockContractEmit`.
+   * `MockContractEmit`. In a send mock's resolver, return `{ logs }` built
+   * with `events` instead.
    */
   emit: MockContractEmit<abi>;
 };

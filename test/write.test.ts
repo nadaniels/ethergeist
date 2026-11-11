@@ -167,26 +167,24 @@ describe("a write mock", () => {
     });
   });
 
-  test("a resolver gets the call and answers with its emit(), its outcome, or both", async () => {
-    const { usdc, mock, transfer } = setup();
+  test("a resolver gets the call and answers with its outcome, or nothing for a success", async () => {
+    const { usdc, mock, client, transfer } = setup();
     const resolver = vi.fn(
       ({
         from,
         args: [to, value],
-        emit,
       }: {
         from: `0x${string}`;
         args: readonly [`0x${string}`, bigint];
-        emit: (logs: ReturnType<typeof usdc.events.Transfer>) => void;
       }) => {
-        emit(usdc.events.Transfer({ from, to, value }));
         if (value > 6n) return { gasUsed: 2n };
-        return value > 5n ? { logs: [testLog("noise")], gasUsed: 1n } : undefined;
+        if (value > 5n) return { logs: [usdc.events.Transfer({ from, to, value })], gasUsed: 1n };
+        return undefined;
       },
     );
     usdc.write.transfer().returns(resolver);
 
-    await transfer(5n);
+    const hash = await transfer(5n);
     await transfer(6n);
     await transfer(7n);
 
@@ -197,16 +195,20 @@ describe("a write mock", () => {
       args: [bob, 5n],
       value: 0n,
     });
-    expect(mock.transactions.map(({ logs }) => logs.length)).toEqual([1, 2, 1]);
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      status: "success",
+      logs: [],
+    });
+    expect(mock.transactions.map(({ logs }) => logs.length)).toEqual([0, 1, 0]);
     expect(mock.transactions.map(({ receipt }) => receipt.gasUsed)).toEqual([undefined, 1n, 2n]);
   });
 
   test("a payable write's value and an overload, by its args", async () => {
     const { mock, client, wallet, from } = setup();
     const vault = mock.contract({ abi: vaultAbi, address: VAULT });
-    vault.write.deposit().returns(({ value, emit }) => {
-      emit(vault.events.Deposit({ from, value }));
-    });
+    vault.write.deposit().returns(({ value }) => ({
+      logs: [vault.events.Deposit({ from, value })],
+    }));
     vault.write.withdraw([1n, bob]).returns({ gasUsed: 2n });
     vault.write.withdraw([1n]).returns({ gasUsed: 1n });
 
@@ -996,11 +998,11 @@ describe("reverts", () => {
     },
   );
 
-  test("a resolver's revert() mines it reverted, dropping what it emitted; its estimate passes", async () => {
+  test("a resolver's revert() mines it reverted; its estimate passes", async () => {
     const { mock, client, usdc, transfer } = setup();
-    usdc.write.transfer().returns(({ from, args: [to, value], emit, revert }) => {
-      emit(usdc.events.Transfer({ from, to, value }));
+    usdc.write.transfer().returns(({ from, args: [to, value], revert }) => {
       if (value > 5n) revert("too much");
+      return { logs: [usdc.events.Transfer({ from, to, value })] };
     });
 
     const hash = await transfer(6n);
@@ -1372,10 +1374,7 @@ describe("registration refusals", () => {
 
   test("a resolver's outcome is checked at the send, changing nothing", async () => {
     const { mock, usdc, transfer } = setup();
-    usdc.write.transfer().returns(({ emit }) => {
-      emit(testLog("noise"));
-      return { status: "reverted" };
-    });
+    usdc.write.transfer().returns(() => ({ status: "reverted", logs: [testLog("noise")] }));
 
     const error = await rejectionOf(transfer());
 
@@ -1394,30 +1393,27 @@ describe("registration refusals", () => {
     {
       name: "a log without an address",
       outcome: { logs: [{ topics: [], data: "0x" }] },
-      message: "A send's log 1 isn't a log; got { topics: [], data: 0x }.",
+      message: "A send's log 0 isn't a log; got { topics: [], data: 0x }.",
     },
     {
       name: "a log whose topics aren't a list",
       outcome: { logs: [{ address: USDC, topics: 5, data: "0x" }] },
-      message: `A send's log 1 isn't a log; got { address: ${USDC}, topics: 5, data: 0x }.`,
+      message: `A send's log 0 isn't a log; got { address: ${USDC}, topics: 5, data: 0x }.`,
     },
     {
-      name: "logs that aren't a list, after emit()",
+      name: "logs that aren't a list",
       outcome: { logs: 5 },
       message: "A send's logs must be a list; got 5.",
     },
     {
-      name: "a value that isn't an outcome, after emit()",
+      name: "a value that isn't an outcome",
       outcome: true,
       message: "Expected an object for a send's outcome; got true.",
     },
   ])("a resolver's outcome with $name is refused at the send", async ({ outcome, message }) => {
     const { mock, usdc, transfer } = setup();
-    usdc.write.transfer().returns(({ emit }) => {
-      emit(testLog("noise"));
-      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what an untyped resolver might return
-      return outcome as never;
-    });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what an untyped resolver might return
+    usdc.write.transfer().returns(() => outcome as never);
 
     const error = await rejectionOf(transfer());
 
@@ -1425,7 +1421,7 @@ describe("registration refusals", () => {
     expect(mock.transactions).toEqual([]);
   });
 
-  test("adding a transaction in a write's resolver is refused, pointing at the resolver's emit()", async () => {
+  test("adding a transaction in a write's resolver is refused, pointing at returning its logs", async () => {
     const { mock, usdc, transfer } = setup();
     usdc.write.transfer().returns(() => {
       usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
@@ -1453,8 +1449,8 @@ describe("registration refusals", () => {
         "mock.addTransaction() and contract.emit can't run while a send mock's resolver answers a send.",
       );
       expect(refused.metaMessages).toEqual([
-        "Use the resolver's emit(), which adds logs to the transaction it answers; these " +
-          "would place a transaction of their own mid-send.",
+        "They would place a transaction of their own, mid-send.",
+        "For the send's own logs, return them from the resolver: return { logs: [contract.events.Transfer(args)] }.",
       ]);
     }
     expect(mock.transactions).toEqual([]);
@@ -1485,11 +1481,11 @@ describe("adding a transaction while a write's resolver waits", () => {
 });
 
 describe("a send mock's resolver", () => {
-  test("gets emit() and revert() too", async () => {
+  test("answers with its outcome's logs, or reverts with revert()", async () => {
     const { mock, client, wallet } = setup();
-    mock.actions.sendTransaction({ to: bob }).returns(({ value, emit, revert }) => {
-      emit(testLog("paid"));
+    mock.actions.sendTransaction({ to: bob }).returns(({ value, revert }) => {
       if (value > 1n) revert("too much");
+      return { logs: [testLog("paid")] };
     });
 
     const paid = await wallet.sendTransaction({ to: bob, value: 1n });
@@ -1522,13 +1518,13 @@ describe("state the test owns (controlled mocks)", () => {
     const token = mock.contract({ abi: tokenAbi, address: TOKEN, name: "Token" });
     const balances = new Map([[sender, 10n]]);
     token.read.balanceOf().returns(({ args: [who] }) => balances.get(who) ?? 0n);
-    token.write.transfer().returns(({ from, args: [to, amount], emit, revert }) => {
+    token.write.transfer().returns(({ from, args: [to, amount], revert }) => {
       const have = balances.get(from) ?? 0n;
       if (have < amount)
         revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
-      emit(token.events.Transfer({ from, to, value: amount }));
       balances.set(from, have - amount);
       balances.set(to, (balances.get(to) ?? 0n) + amount);
+      return { logs: [token.events.Transfer({ from, to, value: amount })] };
     });
     const balanceOf = (who: Address) =>
       client.readContract({
