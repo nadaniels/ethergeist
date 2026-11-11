@@ -14,7 +14,6 @@ import {
   type EstimateGasCall,
   type LogsCall,
   type LogsContext,
-  type MockLogContent,
   type RpcValue,
   type SendTransactionCall,
   type StorageCall,
@@ -296,16 +295,15 @@ describe("getLogs", () => {
     // @ts-expect-error -- nor can a resolver refuse a send with it
     mock.actions.sendTransaction().returns(({ refuse }) => refuse("gasExceedsAllowance"));
     mock.actions.sendTransaction().returns(() => {});
-    mock.actions.sendTransaction().returns(({ emit, revert }) => {
-      expectTypeOf(emit).toEqualTypeOf<
-        (logs: MockLogContent | readonly MockLogContent[]) => void
-      >();
-      emit(testLog("noise"));
-      emit([testLog("a"), testLog("b")]);
-      // @ts-expect-error -- not a log: no address, topics or data
-      emit({ logIndex: 0 });
-      revert("paused");
+    mock.actions.sendTransaction().returns(({ from, value, revert }) => {
+      if (value > 1n) revert("paused");
+      return { logs: [usdc.events.Transfer({ from, to: alice, value }), testLog("noise")] };
     });
+    mock.actions.sendTransaction().returns((context) => {
+      expectTypeOf(context).not.toHaveProperty("emit");
+    });
+    // @ts-expect-error -- not a log: no address, topics or data
+    mock.actions.sendTransaction().returns(() => ({ logs: [{ logIndex: 0 }] }));
     expectTypeOf(mock.actions.sendTransaction.calls).toEqualTypeOf<SendTransactionCall[]>();
     // @ts-expect-error -- a send mock answers with its outcome, not an ABI value
     mock.actions.sendTransaction().returns(true);

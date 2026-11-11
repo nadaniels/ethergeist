@@ -429,15 +429,12 @@ describe("eth_sendTransaction (node account)", () => {
 });
 
 describe("send mocks", () => {
-  test("emit one log, or a list, and a resolver's emit() takes either", async () => {
+  test(".emits() takes one log, or a list", async () => {
     const { mock, wallet } = nodeSetup();
     const [one, two, three] = [testLog("one"), testLog("two"), testLog("three")];
     mock.actions.sendTransaction({ to: alice }).once().emits(one);
     mock.actions.sendTransaction({ to: bob }).once().emits([]);
-    mock.actions.sendTransaction({ to: carol }).returns(({ emit }) => {
-      emit(two);
-      emit([three]);
-    });
+    mock.actions.sendTransaction({ to: carol }).emits([two, three]);
 
     await wallet.sendTransaction({ to: alice });
     await wallet.sendTransaction({ to: bob });

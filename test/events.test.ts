@@ -643,11 +643,9 @@ describe("a log's content is checked wherever it's placed", () => {
     expect(placed.mock.transactions).toEqual([]);
   });
 
-  test.each(bad)("a resolver's emit() of $name is refused at the send", async ({ log, says }) => {
+  test.each(bad)("a resolver's log with $name is refused at the send", async ({ log, says }) => {
     const { mock, usdc } = setup();
-    usdc.write.transfer().returns(({ emit }) => {
-      emit(log);
-    });
+    usdc.write.transfer().returns(() => ({ logs: [log] }));
 
     const wallet = createWalletClient({
       account: alice,

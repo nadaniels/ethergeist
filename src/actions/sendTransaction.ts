@@ -4,7 +4,6 @@ import { transactionParam } from "../chain/params.js";
 import { decodeRawTransaction, sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
 import type { RevertFn, RevertSpec } from "../contracts/types.js";
-import type { MockLogContent } from "../logs/events.js";
 import type { RefusalContext, SendErrorName, WithLimits } from "../mocking/types.js";
 import { invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
@@ -21,23 +20,15 @@ import type { ActionContext, SendTransactionCall } from "./types.js";
 
 /**
  * What a `sendTransaction` resolver gets: the call's fields, `fail`,
- * `refuse`, and `emit` and `revert`, which answer the transaction as it's
- * mined.
+ * `refuse`, and `revert`.
  */
 export type SendTransactionContext = ActionContext<SendTransactionCall> &
   RefusalContext<SendErrorName> & {
     /**
-     * Adds a log, or logs, to the transaction, placed when it's mined, as
-     * `.emits()` does. `mock.addTransaction()` and `contract.emit` would
-     * place a separate transaction: they're refused in this resolver up to its
-     * first `await`, and after it they place one.
-     */
-    emit: (logs: MockLogContent | readonly MockLogContent[]) => void;
-    /**
-     * Mines the transaction reverted, e.g. `revert("paused")`, dropping what
-     * it emitted. Without an ABI, it takes a reason, a panic code, raw data or
-     * nothing: see `RevertSpec`. A resolver runs only at the send, so the
-     * estimate doesn't revert: see `.reverts()` for that.
+     * Mines the transaction reverted, e.g. `revert("paused")`. Without an
+     * ABI, it takes a reason, a panic code, raw data or nothing: see
+     * `RevertSpec`. A resolver runs only at the send, so the estimate doesn't
+     * revert: see `.reverts()` for that.
      */
     revert: RevertFn<readonly []>;
   };

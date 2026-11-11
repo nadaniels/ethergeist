@@ -215,8 +215,7 @@ export type MockActions = {
    *
    * A mock answers with what the chain did: see `MockWriteAnswers`.
    * `.refuses()` refuses a send by name, e.g. `"nonceTooLow"`, and a
-   * resolver also gets `refuse`, `emit` and `revert` (see
-   * `SendTransactionContext`).
+   * resolver also gets `refuse` and `revert` (see `SendTransactionContext`).
    * For how a send is mined, its estimate, and raw sends, see
    * `MockSendTransactionAction`.
    */

@@ -297,8 +297,9 @@ export function createTransactionStore({
         "mock.addTransaction() and contract.emit can't run while a send mock's resolver answers a send.",
         {
           metaMessages: [
-            "Use the resolver's emit(), which adds logs to the transaction it answers; these " +
-              "would place a transaction of their own mid-send.",
+            "They would place a transaction of their own, mid-send.",
+            "For the send's own logs, return them from the resolver: " +
+              "return { logs: [contract.events.Transfer(args)] }.",
           ],
         },
       );
