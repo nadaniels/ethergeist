@@ -9,12 +9,7 @@ import {
   missedLines,
   removedLines,
 } from "../mocking/format.js";
-import {
-  type Builder,
-  type Handler as MockHandler,
-  createHandlers,
-  foundMock,
-} from "../mocking/handlers.js";
+import { type Builder, type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
 import {
   type MatchOptions,
   checkNoMatchers,
@@ -143,6 +138,13 @@ class Registered {
   }
 }
 
+/**
+ * An action's mocks as a miss lists them, a line each: every registered one,
+ * with what it missed on, and those the last restore removed that match the
+ * call.
+ */
+type MissListing = { registered: readonly string[]; removed: readonly string[] };
+
 /** What a mock set needs beside its definition: see `createMockSet`. */
 export type MockSetOptions = {
   /** The block current now, e.g. `state.blockNumber`. */
@@ -158,8 +160,9 @@ export type MockSetOptions = {
  * One action's mocks and the calls it received, kept to `recordLimit`:
  * registering mocks, finding the one that answers a call (`match`),
  * answering with it (`answerWith`), and the error when nothing answers
- * (`missError`). Decoding the call, and what answers when no mock does, are
- * its caller's: a table's, or sends and their estimates'.
+ * (`missError`), which can also list another action's mocks, from that
+ * action's `missListing`. Decoding the call, and what answers when no mock
+ * does, are its caller's: a table's, or sends and their estimates'.
  */
 export function createMockSet<answer>(
   definition: MockDefinition<object, answer>,
@@ -270,28 +273,49 @@ export function createMockSet<answer>(
   }
 
   /**
+   * This action's mocks as a miss lists them, from what `match` gave for a
+   * call: see `MissListing`. Built from the match, so no predicate runs
+   * again; another action's miss lists them as `others`.
+   */
+  const missListing = ({ missed, removed }: ReturnType<typeof match>): MissListing => ({
+    registered: missedLines(definition.name, mocks.handlers, missed, (_, key) => paramName(key)),
+    removed: removed.map((handler) => `  ${describeMock(definition.name, handler)}`),
+  });
+
+  /**
    * The error for a call nothing answers, from what `match` gave for it. It
    * lists the mocks that missed the call, or without any, says where to
    * register one: `hint`, the definition's by default. The caller's
    * `before` lines come between the `notFoundLines` and that list or hint.
+   * `others` are another action's mocks, as its `missListing` gives them:
+   * the registered ones come next, under `header`, and the ones the last
+   * restore removed follow this action's, under one header.
    */
   function missError(
     call: object,
-    { missed, removed }: ReturnType<typeof match>,
+    found: ReturnType<typeof match>,
     {
       hint = definition.hint,
       before = [],
-    }: { hint?: string | undefined; before?: readonly string[] } = {},
+      others,
+    }: {
+      hint?: string | undefined;
+      before?: readonly string[];
+      others?: { header: string; listing: MissListing } | undefined;
+    } = {},
   ): MockNotFoundError {
-    const registered = missedLines(definition.name, mocks.handlers, missed, (_, key) =>
-      paramName(key),
-    );
+    const own = missListing(found);
     return new MockNotFoundError(`No mock for ${formatCall(definition.name, shown(call))}.`, {
       metaMessages: [
         ...(notFoundLines?.(call) ?? []),
         ...before,
-        ...(registered.length > 0 ? ["Registered:", ...registered] : [`Mock it with ${hint}.`]),
-        ...removedLines(definition.name, removed),
+        ...(own.registered.length > 0
+          ? ["Registered:", ...own.registered]
+          : [`Mock it with ${hint}.`]),
+        ...(others !== undefined && others.listing.registered.length > 0
+          ? [others.header, ...others.listing.registered]
+          : []),
+        ...removedLines([...own.removed, ...(others?.listing.removed ?? [])]),
       ],
     });
   }
@@ -300,12 +324,8 @@ export function createMockSet<answer>(
     register,
     match,
     answerWith,
+    missListing,
     missError,
-    /**
-     * The mock that would answer `call` now, if any, found without answering
-     * it: nothing runs, and no use is counted until `spend` counts one.
-     */
-    findMock: (call: object) => foundMock(match(call).handler),
     /**
      * The mocks that match `call` by exact values and can answer, a line
      * each, for a registered contract's miss, where they aren't in

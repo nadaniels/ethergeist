@@ -110,16 +110,13 @@ export function missedLines<mock extends DescribedMock>(
 }
 
 /**
- * A miss's lines for the mocks of `name` the last restore removed that match
- * the call, with the layout that often causes it; none if there are none.
+ * A miss's block for the mocks the last restore removed that match the call,
+ * given as their lines (`removed`), under a header and with the layout that
+ * often causes it; none if there are none.
  */
-export function removedLines(name: string, removed: readonly DescribedMock[]): string[] {
+export function removedLines(removed: readonly string[]): string[] {
   if (removed.length === 0) return [];
-  return [
-    removedMocksHeader,
-    ...removed.map((mock) => `  ${describeMock(name, mock)}`),
-    nestedRestoreHint,
-  ];
+  return [removedMocksHeader, ...removed, nestedRestoreHint];
 }
 
 /**

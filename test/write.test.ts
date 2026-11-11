@@ -885,10 +885,19 @@ describe("action mocks answer the rest of what's sent to a registered contract",
 
           const error = await rejectionOf(wallet.sendTransaction({ to: USDC, data }));
 
+          // A local account's estimate is its send's, so it lists the send mocks too.
+          const sendLines = {
+            local: [
+              "sendTransaction mocks, which imply the estimate of a send they match:",
+              `  sendTransaction({ to: ${bob} })  ← to didn't match`,
+            ],
+            node: [],
+          };
           expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
             notAFunction,
             "Registered:",
             `  ${misses[account]}({ to: ${bob} })  ← to didn't match`,
+            ...sendLines[account],
           ]);
           expect(mock.transactions).toEqual([]);
         },

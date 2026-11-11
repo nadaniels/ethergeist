@@ -256,7 +256,10 @@ The two functions keep these rules:
   the action mocks that match the transaction by exact values
   (`matchingLines`), which runs none of their predicates and counts no
   use: `sends.ts` builds those lines and the turn's `miss()` appends them,
-  so `contracts/` names no action;
+  so `contracts/` names no action. The actions' estimate miss lists the
+  `sendTransaction` mocks from the match its estimate already made
+  (`missListing`, passed to the estimate's `missError`), so it runs none of
+  their predicates again;
 - a send that's refused or not answered places nothing and takes no nonce;
 - a repeated raw send asks no mock and gives no contract a turn;
 - a send awaits its outcome before it's placed, a plain transfer's too, so

@@ -3,6 +3,7 @@ import { type Address, type Hash, type Hex, formatTransactionReceipt, numberToHe
 import type { ContractTurn } from "../contracts/createMockContract.js";
 import type { CallContext } from "../contracts/types.js";
 import { impliedGas } from "../mocking/gas.js";
+import { foundMock } from "../mocking/handlers.js";
 import type { RecordLimit } from "../shared/records.js";
 import type { MockWriteOutcome } from "../transactions/writes.js";
 import { isPlainTransfer, viewQuantity } from "./codec.js";
@@ -97,7 +98,9 @@ export function createSends(
    *    estimates it, even with a send mock;
    * 4. the gas a `sendTransaction` mock implies, as in step 3 above;
    * 5. the action's miss, which says when the estimate has data and is to
-   *    a registered contract.
+   *    a registered contract. For an estimate with a sender, it also lists
+   *    the `sendTransaction` mocks, each with what it missed on, and those
+   *    the last restore removed, from the match of step 1.
    */
   async function answerEstimate(
     _method: string,
@@ -133,8 +136,9 @@ export function createSends(
           ]),
         );
       }
-      // Found once, for steps 1 and 4, so its predicates run once.
-      const sendMock = sent && sendTransactionMocks.findMock(sent);
+      // Matched once, for steps 1, 4 and 5, so its predicates run once.
+      const sendMatch = sent && sendTransactionMocks.match(sent);
+      const sendMock = foundMock(sendMatch?.handler);
       if (sendMock?.answer.kind === "revert") {
         sendMock.spend();
         throw sendMock.answer.error;
@@ -143,7 +147,13 @@ export function createSends(
       if (found.handler) return await estimateGasMocks.answerWith(found.handler, call);
       if (isPlainTransfer(registry, call)) return numberToHex(21_000n);
       if (sendMock) return numberToHex(impliedGas);
-      throw estimateGasMocks.missError(call, found, { before: notAFunctionLines(called) });
+      throw estimateGasMocks.missError(call, found, {
+        before: notAFunctionLines(called),
+        others: sendMatch && {
+          header: "sendTransaction mocks, which imply the estimate of a send they match:",
+          listing: sendTransactionMocks.missListing(sendMatch),
+        },
+      });
     });
   }
 

@@ -681,10 +681,12 @@ features land; tick them off as pages get written.
     100,000 a `sendTransaction` mock implies (below). Only the side that
     owns the transaction is asked, so its miss is the one reported. The
     contract's miss names the action mocks that match the estimate or its
-    send, which don't answer it; the action's miss on data sent to a
-    registered contract says the contract is registered and that this
-    isn't a call to one of its nonpayable or payable functions. A
-    number for a contract's writes goes on the contract, per function:
+    send, which don't answer it. The action's miss, on data sent to a
+    registered contract, says the contract is registered and that this
+    isn't a call to one of its nonpayable or payable functions; for an
+    estimate with `from`, it then lists the `sendTransaction` mocks, which
+    imply the estimate of a send they match, each with what it missed on.
+    A number for a contract's writes goes on the contract, per function:
     `token.estimateGas.transfer().returns(n)` or `defaults.estimateGas`.
     An args-less `mock.actions.estimateGas().returns(100_000n)` sets no
     write's number, and `assertAllUsed()` reports it if nothing else used
@@ -849,11 +851,16 @@ features land; tick them off as pages get written.
       for the message. An estimate of a contract's function that nothing
       answers also lists the function's write mocks, with why each missed:
       a write mock that matches the send implies its estimate, so the miss
-      is usually there. An estimate without `from` is no send's, so it
-      lists none. A contract's miss also names the action mocks that match
-      the call, under "Action mocks that match, which don't answer a
-      registered contract's functions:", by exact values: their predicates
-      aren't run, and those used up or without an answer aren't listed.
+      is usually there. An estimate that's the actions' and that nothing
+      answers lists the `sendTransaction` mocks the same way, under
+      "sendTransaction mocks, which imply the estimate of a send they
+      match:", after its `estimateGas` mocks or its hint, and those the
+      last restore removed after its own. An estimate without `from` is no
+      send's, so it lists none. A contract's miss also names the action
+      mocks that match the call, under "Action mocks that match, which
+      don't answer a registered contract's functions:", by exact values:
+      their predicates aren't run, and those used up or without an answer
+      aren't listed.
 - [ ] How to read "answered no call": usage counts from the last clear
       (`clearCalls()`, `restore()`, `reset()`), so a `.times(n)` mock that
       answered before it can read "3 times, 2 left". Under each unused mock, the calls

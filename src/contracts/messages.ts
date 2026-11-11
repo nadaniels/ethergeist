@@ -71,8 +71,10 @@ export function missError(
   if (writeLines.length > 0)
     metaMessages.push("Write mocks, which imply the estimate of a send they match:", ...writeLines);
   if (metaMessages.length === 0) metaMessages.push(none);
-  const removed = [...own.removed, ...(writes?.removed ?? [])];
-  metaMessages.push(...removedLines(call.functionName, removed), ...after);
+  const removed = [...own.removed, ...(writes?.removed ?? [])].map(
+    (mock) => `  ${describeMock(call.functionName, mock)}`,
+  );
+  metaMessages.push(...removedLines(removed), ...after);
   return new MockNotFoundError(
     `No ${what} for ${formatCall(call.functionName, call.args)}${formatPins(call, pinned)} on ${label}.`,
     { metaMessages },
