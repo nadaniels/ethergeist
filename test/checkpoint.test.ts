@@ -1,4 +1,11 @@
-import { BaseError, HttpRequestError, createPublicClient, erc20Abi, getAddress } from "viem";
+import {
+  BaseError,
+  HttpRequestError,
+  createPublicClient,
+  encodeFunctionData,
+  erc20Abi,
+  getAddress,
+} from "viem";
 import { base } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vite-plus/test";
 
@@ -8,6 +15,7 @@ import {
   MockNotFoundError,
   MockSetupError,
   createMockRpc,
+  match,
   testAddress,
   testHash,
   testLog,
@@ -20,15 +28,14 @@ const NOWHERE = "0x000000000000000000000000000000000000dEaD";
 const alice = testAddress("alice");
 
 const layoutHint =
-  "The usual cause: an afterEach in a parent describe also runs after each test of a nested " +
-  "one, and one that restores or resets per test wipes the nested describe's setup. Keep the " +
-  "two describes siblings.";
+  "If this test is in a nested describe, an afterEach in a parent describe that restores or " +
+  "resets per test removes its setup; keep the two describes siblings.";
 const removedTransaction =
   "This transaction was on the chain until the last restore() or reset() removed it: " +
   "a receipt wait from an earlier test may still be polling.";
 const removedFooter =
-  "Some name a contract or transaction the last restore() or reset() removed: a request " +
-  "from an earlier test, like a receipt wait, may still be running.";
+  "Some name what the last restore() or reset() removed: a request from an earlier test, " +
+  "like a receipt wait, may still be running.";
 
 /** The `MockNotFoundError` a request rejects with. */
 const notFound = async (request: Promise<unknown>) =>
@@ -343,9 +350,13 @@ describe("restore() checks", () => {
 
     usdc.read.balanceOf().fails("network");
     mock.contract({ abi: erc20Abi, address: DAI, defaults: { read: { decimals: 18 } } });
-    expectThrows(MockCheckError, `1 mock(s) answered no call:\n  - balanceOf(*) on ${USDC}`, () => {
-      baseline.restore({ assertAllUsed: true });
-    });
+    expectThrows(
+      MockCheckError,
+      `1 mock(s) answered no call:\n  - balanceOf(*) fails on ${USDC}`,
+      () => {
+        baseline.restore({ assertAllUsed: true });
+      },
+    );
   });
 
   test("a checkpoint after per-test setup exempts its fallbacks", async () => {
@@ -437,9 +448,127 @@ describe("nesting", () => {
     expect(error.shortMessage).toBe(`No mocked contract at ${DAI}.`);
     expect(error.metaMessages?.slice(-2)).toEqual([
       "A contract was registered at this address until the last restore() or reset() removed it.",
-      "If this test is in a nested describe, an afterEach in a parent describe that restores per " +
-        "test wipes its setup; keep the two describes siblings.",
+      layoutHint,
     ]);
+  });
+
+  test("so does an action mock it removed, listed with the hint", async () => {
+    const { mock, client } = setup();
+    // The hooks in the order vitest runs them, as above.
+    const baseline = mock.checkpoint();
+    mock.actions.getBalance({ address: alice }).returns(1n);
+    const suite = mock.checkpoint();
+    expect(await client.getBalance({ address: alice })).toBe(1n);
+    suite.restore();
+    baseline.restore();
+
+    // The nested describe's second test.
+    const error = await notFound(client.getBalance({ address: alice }));
+    expect(error.metaMessages).toEqual([
+      "Mock it with mock.actions.getBalance({ address }).returns(…).",
+      "Removed by the last restore() or reset():",
+      `  getBalance({ address: ${alice} })`,
+      layoutHint,
+    ]);
+  });
+
+  test("and a function mock it removed from a contract it kept", async () => {
+    const { mock, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const baseline = mock.checkpoint();
+    usdc.read.balanceOf([alice]).returns(1n);
+    usdc.read.decimals().returns(6);
+    expect(await balanceOf()).toBe(1n);
+    baseline.restore();
+
+    const error = await notFound(balanceOf());
+    expect(error.metaMessages).toEqual([
+      'No mocks registered for "balanceOf".',
+      "Removed by the last restore() or reset():",
+      `  balanceOf(${alice})`,
+      layoutHint,
+    ]);
+  });
+
+  test("and a write mock it removed, on the estimate viem sends first", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const baseline = mock.checkpoint();
+    usdc.write.transfer([DAI, 1n]).returns();
+    baseline.restore();
+
+    // A local account's writeContract estimates the send before sending it.
+    const data = encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [DAI, 1n] });
+    const error = await notFound(
+      client.request({ method: "eth_estimateGas", params: [{ from: alice, to: USDC, data }] }),
+    );
+    expect(error.metaMessages?.slice(-3)).toEqual([
+      "Removed by the last restore() or reset():",
+      `  transfer(${DAI}, 1n)`,
+      layoutHint,
+    ]);
+  });
+
+  test("and after reset(), every typed action mock it removed", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: alice }).returns(1n);
+    mock.reset();
+
+    const error = await notFound(client.getBalance({ address: alice }));
+    expect(error.metaMessages?.slice(1, 3)).toEqual([
+      "Removed by the last restore() or reset():",
+      `  getBalance({ address: ${alice} })`,
+    ]);
+  });
+
+  test("a removed mock is matched without running its predicates", async () => {
+    const { mock, client } = setup();
+    const baseline = mock.checkpoint();
+    const asked: unknown[] = [];
+    mock.actions
+      .getBalance({ address: match.where((address) => asked.push(address) > 0, "any") })
+      .returns(1n);
+    baseline.restore();
+
+    const error = await notFound(client.getBalance({ address: alice }));
+    expect(error.metaMessages?.[1]).toBe("Removed by the last restore() or reset():");
+    expect(asked).toEqual([]);
+  });
+
+  test("a removed mock is listed only for a call it matches", async () => {
+    const { mock, client } = setup();
+    const baseline = mock.checkpoint();
+    mock.actions.getBalance({ address: alice }).returns(1n);
+    mock.actions.getBalance({ address: DAI }).returns(2n);
+    baseline.restore();
+
+    // The next test, in the same describe, misses on a call of its own.
+    const error = await notFound(client.getBalance({ address: USDC }));
+    expect(error.metaMessages).toEqual([
+      "Mock it with mock.actions.getBalance({ address }).returns(…).",
+    ]);
+  });
+
+  test("and only for the function it mocked", async () => {
+    const { mock, read } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const baseline = mock.checkpoint();
+    usdc.read.decimals().returns(6);
+    baseline.restore();
+
+    const error = await notFound(read(USDC, "symbol"));
+    expect(error.metaMessages).toEqual(['No mocks registered for "symbol".']);
+  });
+
+  test("and only until the next restore", async () => {
+    const { mock, client } = setup();
+    const baseline = mock.checkpoint();
+    mock.actions.getBalance({ address: alice }).returns(1n);
+    baseline.restore();
+    baseline.restore();
+
+    const error = await notFound(client.getBalance({ address: alice }));
+    expect(error.metaMessages).toHaveLength(1);
   });
 
   test("a contract the last restore didn't remove gets no such line", async () => {
@@ -562,8 +691,7 @@ describe("a transaction the last restore() or reset() removed", () => {
         "      Register it with contract(), or mark it empty() for an address without code.\n" +
         "      A contract was registered at this address until the last restore() or reset() " +
         "removed it.\n" +
-        "      If this test is in a nested describe, an afterEach in a parent describe that " +
-        "restores per test wipes its setup; keep the two describes siblings.\n" +
+        `      ${layoutHint}\n` +
         removedFooter,
       () => {
         baseline.restore({ assertNoUnhandled: true });
@@ -583,13 +711,28 @@ describe("a transaction the last restore() or reset() removed", () => {
     const send = await notFound(mock.request({ method: "eth_sendTransaction", params: [tx] }));
     const removedContract =
       "A contract was registered at this address until the last restore() or reset() removed it.";
-    expect(estimate.metaMessages?.[0]).toBe(removedContract);
-    expect(send.metaMessages?.[0]).toBe(removedContract);
+    expect(estimate.metaMessages?.slice(0, 2)).toEqual([removedContract, layoutHint]);
+    expect(send.metaMessages?.slice(0, 2)).toEqual([removedContract, layoutHint]);
     expect(
       thrownBy(() => {
         mock.assertNoUnhandled();
       }).message,
     ).toContain(removedFooter);
+  });
+
+  test("assertNoUnhandled says so for a mock it removed too", async () => {
+    const { mock, client } = setup();
+    const baseline = mock.checkpoint();
+    mock.actions.getBalance({ address: alice }).returns(1n);
+    baseline.restore();
+
+    // A balance refetch from the last test that lands after its restore.
+    await rejectionOf(client.getBalance({ address: alice }));
+    expect(
+      thrownBy(() => {
+        mock.assertNoUnhandled();
+      }).shortMessage,
+    ).toContain(`removes its setup; keep the two describes siblings.\n${removedFooter}`);
   });
 
   test("nor for a contract or transaction that's back since", async () => {

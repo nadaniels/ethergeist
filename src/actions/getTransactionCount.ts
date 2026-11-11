@@ -1,7 +1,7 @@
 import { hexToNumber, isHex, numberToHex } from "viem";
 
 import { checkCount } from "../mocking/setupChecks.js";
-import { decodeAddressAtBlock, pinAddress } from "./decode.js";
+import { decodeAddressAtBlock, pinAddress } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext, TransactionCountCall } from "./types.js";
 

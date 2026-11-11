@@ -95,8 +95,8 @@ export function createChainState(parameters: {
   }
 
   return {
+    /** The chain the mock stands in for: its id answers `eth_chainId`. */
     chain,
-    chainId: chain.id,
     /** Multicall3's address on this chain, checksummed, if it has one. */
     multicallAddress: multicall3 === undefined ? undefined : getAddress(multicall3),
     get blockNumber() {

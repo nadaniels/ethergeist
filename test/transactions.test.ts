@@ -68,6 +68,19 @@ describe("getTransaction", () => {
     expect(transaction).toEqual(mock.buildTransaction({ hash, from: alice, to: bob, value: 1n }));
   });
 
+  test("is on the mock's chain: its chain id, and a legacy one's v derived from it", async () => {
+    const mock = createMockRpc({ chain: base });
+    const client = createPublicClient({ chain: base, transport: mock.transport() });
+    mock.actions.getTransaction({ hash }).returns({});
+    mock.actions.getTransaction({ hash: testHash("tx-2") }).returns({ type: "legacy" });
+
+    expect(await client.getTransaction({ hash })).toMatchObject({ chainId: 8453 });
+    expect(await client.getTransaction({ hash: testHash("tx-2") })).toMatchObject({
+      chainId: 8453,
+      v: 8453n * 2n + 35n,
+    });
+  });
+
   test("unmocked hashes aren't answered; null is no such transaction", async () => {
     const { mock, client } = setup();
     mock.actions.getTransaction({ hash }).returns(null);
@@ -187,6 +200,28 @@ describe("getTransaction", () => {
     ).toEqual([
       { address: alice.toLowerCase(), chainId: 1, nonce: 3, r: "0x1", s: "0x2", yParity: 1 },
     ]);
+  });
+
+  test("an access list's addresses go out lowercase, and blob hashes are checked and lowercased", () => {
+    const { mock } = setup();
+    const slot = testHash("slot");
+    const blob = testHash("blob");
+
+    expect(
+      mock.buildTransaction({
+        type: "eip4844",
+        accessList: [{ address: alice, storageKeys: [slot] }],
+        blobVersionedHashes: [`0x${blob.slice(2).toUpperCase()}`],
+      }),
+    ).toMatchObject({
+      accessList: [{ address: lowercase(alice), storageKeys: [slot] }],
+      blobVersionedHashes: [blob],
+    });
+    expectThrows(
+      MockSetupError,
+      "A transaction's blob versioned hash must be 32 bytes; got 0x12.",
+      () => mock.buildTransaction({ type: "eip4844", blobVersionedHashes: ["0x12"] }),
+    );
   });
 
   test("a field the type doesn't have throws, at registration", () => {

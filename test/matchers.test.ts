@@ -234,6 +234,17 @@ describe("match.where()", () => {
     expect(predicate).not.toHaveBeenCalled();
   });
 
+  test("a predicate that throws while an unused mock's calls are listed counts as a mismatch", async () => {
+    const { mock, usdc, allowance } = setup();
+    // `bob` doesn't match `carol`, so matching never runs the predicate; listing the call does.
+    usdc.read.allowance([match.where(throwsBoom), bob]).returns(1n);
+    await rejectionOf(allowance(alice, carol));
+
+    expectThrows(MockCheckError, `allowance(${alice}, ${carol})  ← owner didn't match`, () => {
+      mock.assertAllUsed();
+    });
+  });
+
   test("a predicate that throws is reported as unhandled, naming it", async () => {
     const { mock, usdc, balanceOf } = setup();
     usdc.read.balanceOf([match.where(throwsBoom)]).returns(1n);
@@ -595,6 +606,9 @@ describe("registration", () => {
     expectThrows(MockSetupError, "match.partial() can't go in read.balanceOf's answer", () => {
       // The types allow it: `partial` takes the resolver function's type from `.returns()`.
       usdc.read.balanceOf([alice]).returns(match.partial({}));
+    });
+    expectThrows(MockSetupError, "match.any() can't go in simulate.transfer's answer", () => {
+      usdc.simulate.transfer([bob, 1n]).returns(match.any());
     });
 
     usdc.read.balanceOf([bob]).returns(() => match.any());

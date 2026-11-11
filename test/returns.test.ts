@@ -235,6 +235,24 @@ describe("partial structs", () => {
       await client.readContract({ abi: storeAbi, address: STORE, functionName: "summary" }),
     ).toEqual([3n, { ...emptyPosition, owner: alice }]);
   });
+
+  test("a tuple with unnamed components is zero by position", async () => {
+    const { mock, client } = setup();
+    const abi = [
+      {
+        type: "function",
+        name: "pair",
+        stateMutability: "view",
+        inputs: [],
+        outputs: [{ type: "tuple", components: [{ type: "uint256" }, { type: "address" }] }],
+      },
+    ] as const;
+    const pair = mock.contract({ abi, address: STORE });
+    const read = () => client.readContract({ abi, address: STORE, functionName: "pair" });
+    pair.read.pair().returns();
+
+    expect(await read()).toEqual([0n, zeroAddress]);
+  });
 });
 
 describe("zeroResult", () => {
@@ -308,6 +326,29 @@ describe("zeroResult", () => {
     expect(
       await client.readContract({ abi: flagsAbi, address: STORE, functionName: "owner" }),
     ).toBe(zeroAddress);
+  });
+
+  test("an untyped resolver that returns nothing answers zero values, not a send's outcome", async () => {
+    const { mock, client } = setup();
+    const flagsAbi = parseAbi([
+      "function paused() view returns (bool)",
+      "function pause() returns (bool)",
+    ]);
+    const flags = mock.contract({ abi: flagsAbi, address: STORE });
+    // oxlint-disable typescript/no-unsafe-type-assertion -- what a JavaScript caller can pass
+    flags.read.paused().returns((() => undefined) as never);
+    flags.simulate.pause().returns((() => undefined) as never);
+    // oxlint-enable typescript/no-unsafe-type-assertion
+
+    expect(
+      await client.readContract({ abi: flagsAbi, address: STORE, functionName: "paused" }),
+    ).toBe(false);
+    const { result } = await client.simulateContract({
+      abi: flagsAbi,
+      address: STORE,
+      functionName: "pause",
+    });
+    expect(result).toBe(false);
   });
 
   test("works in defaults and from resolvers", async () => {

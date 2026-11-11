@@ -16,17 +16,14 @@ import { blockHash } from "./blocks.js";
 import { nodeHash } from "./hashes.js";
 
 /**
- * A log a receipt places: its content. `topics` takes any list of hashes,
- * not only viem's non-empty tuple.
+ * A log's content, as `placeLog` takes it. `topics` takes any list of
+ * hashes, not only viem's non-empty tuple.
  */
 type ReceiptLog = Partial<Pick<Log<bigint, number, false>, "address" | "data">> & {
   topics?: readonly Hex[];
 };
 
-/**
- * Any receipt fields but its logs, which go to `completeReceipt` to be
- * placed.
- */
+/** Any receipt fields but its logs, which are placed separately. */
 export type ReceiptFields = Partial<Omit<TransactionReceipt, "logs">>;
 
 /**
@@ -52,37 +49,16 @@ export function checkStatus(
 const zeroBloom = `0x${"00".repeat(256)}` as const;
 
 /**
- * A receipt for `hash`, `receipt`'s fields over defaults: `status: "success"`
- * (zero would mean reverted), block `blockNumber` with its generated hash,
- * an `"eip1559"` type, and zero or `null` for the rest. Addresses and hashes
- * are validated, and lowercase as nodes send them. `hash` is `undefined`
- * while it isn't known yet, e.g. at registration.
- *
- * Each of `logs` is placed by the receipt: its block (with its timestamp, as
- * reth sends it), transaction and index. Its index in the block counts the
- * logs of the block's earlier transactions (`logsBefore`), as a node counts
- * them.
+ * A receipt for `hash`, `receipt`'s fields over defaults, without its logs:
+ * `status: "success"` (zero would mean reverted), block `blockNumber` with
+ * its generated hash, an `"eip1559"` type, and zero or `null` for the rest.
+ * Addresses and hashes are validated, and lowercase as nodes send them.
+ * `hash` is `undefined` while it isn't known yet, e.g. at registration.
  */
 export function completeReceipt(
   receipt: ReceiptFields,
-  {
-    hash,
-    blockNumber,
-    timestampAt,
-    logsBefore,
-    logs = [],
-  }: {
-    hash: Hash | undefined;
-    blockNumber: bigint;
-    timestampAt: (number: bigint) => bigint;
-    /**
-     * How many logs the chain's transactions before an index in a block
-     * have.
-     */
-    logsBefore: (blockNumber: bigint, transactionIndex: number) => number;
-    logs?: readonly ReceiptLog[];
-  },
-): TransactionReceipt {
+  { hash, blockNumber }: { hash: Hash | undefined; blockNumber: bigint },
+): Omit<TransactionReceipt, "logs"> {
   const number = receipt.blockNumber ?? blockNumber;
   const complete: Omit<TransactionReceipt, "logs"> = {
     blockHash: blockHash(number),
@@ -105,22 +81,7 @@ export function completeReceipt(
   complete.from = nodeAddress(complete.from);
   if (complete.to) complete.to = nodeAddress(complete.to);
   if (complete.contractAddress) complete.contractAddress = nodeAddress(complete.contractAddress);
-  const position = {
-    blockHash: complete.blockHash,
-    blockNumber: complete.blockNumber,
-    blockTimestamp: timestampAt(complete.blockNumber),
-    transactionHash: complete.transactionHash,
-    transactionIndex: complete.transactionIndex,
-  };
-  return {
-    ...complete,
-    logs: logs.map((log, i) =>
-      placeLog(log, {
-        ...position,
-        logIndex: logsBefore(complete.blockNumber, complete.transactionIndex) + i,
-      }),
-    ),
-  };
+  return complete;
 }
 
 /**

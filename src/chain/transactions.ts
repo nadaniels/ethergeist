@@ -167,7 +167,7 @@ type TransactionContext = {
  * Throws unless `transaction`'s fields are its type's, and a pending one's
  * block fields agree.
  */
-function assertTransaction(transaction: TransactionFields): MockTransactionType {
+function checkTransaction(transaction: TransactionFields): MockTransactionType {
   const type = transaction.type ?? "eip1559";
   const own = typeFields[type];
   // Untyped callers can pass any type.
@@ -222,7 +222,7 @@ function toRpcTransaction(
   transaction: TransactionFields,
   context: TransactionContext,
 ): Record<string, unknown> {
-  const type = assertTransaction(transaction);
+  const type = checkTransaction(transaction);
   const pending = transaction.blockNumber === null;
   const number = transaction.blockNumber ?? context.blockNumber;
   const { baseFeePerGas, maxPriorityFeePerGas: tip } = context.feesAt(number);
@@ -301,7 +301,7 @@ export const encodeTransaction = (state: ChainState, transaction: TransactionFie
   toRpcTransaction(transaction, {
     hash,
     blockNumber: state.blockNumber,
-    chainId: state.chainId,
+    chainId: state.chain.id,
     feesAt: state.feesAt,
     timestampAt: state.timestampAt,
   });

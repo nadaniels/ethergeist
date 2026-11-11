@@ -78,6 +78,9 @@ describe("JSON-RPC error faults", () => {
     const error = expectCause(await rejectionOf(decimals()), LimitExceededRpcError);
     expect(error.code).toBe(LimitExceededRpcError.code);
     expect(mock.history).toHaveLength(4);
+    expect(mock.formatHistory()).toContain(
+      `✗ fault: RPC error ${LimitExceededRpcError.code} (limit exceeded) (failRequests)`,
+    );
   });
 
   test("a known code viem doesn't retry fails on the first attempt", async () => {
@@ -193,6 +196,37 @@ describe("lifecycle", () => {
     mock.reset();
     mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
     expect(await decimals()).toBe(6);
+  });
+
+  test("a restore puts back a kept fault's count and the requests it has left", async () => {
+    const { mock, decimals } = setup({ retryCount: 0 });
+    const outage = mock.failRequests({ status: 503 }, { times: 3 });
+    await rejectionOf(decimals());
+    const baseline = mock.checkpoint();
+    await rejectionOf(decimals());
+    await rejectionOf(decimals());
+    expect(await decimals()).toBe(6);
+
+    baseline.restore();
+    expect(outage.count).toBe(1);
+    await rejectionOf(decimals());
+    await rejectionOf(decimals());
+    expect(await decimals()).toBe(6);
+    expect(outage.count).toBe(3);
+  });
+
+  test("a removed fault's handle: clear() does nothing and count keeps its value", async () => {
+    const { mock, decimals } = setup({ retryCount: 0 });
+    const baseline = mock.checkpoint();
+    const outage = mock.failRequests({ status: 503 });
+    await rejectionOf(decimals());
+
+    baseline.restore();
+    expect(await decimals()).toBe(6);
+    expect(() => {
+      outage.clear();
+    }).not.toThrow();
+    expect(outage.count).toBe(1);
   });
 
   test("times must be a positive integer", () => {

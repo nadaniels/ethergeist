@@ -4,7 +4,7 @@ import { numberOfBlockHash, toRpcBlock } from "../chain/blocks.js";
 import { hashParam } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
 import { checkObject } from "../mocking/setupChecks.js";
-import { blockAt } from "./decode.js";
+import { blockAt } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { BlockCall } from "./types.js";
 
@@ -60,10 +60,10 @@ export const getBlock = ({
   hint: "mock.actions.getBlock({ blockNumber }).returns(…)",
   decode: (params, method) => decodeBlock(params, method, state),
   zero: {},
-  encode(value, call) {
+  encode(value, { call, blockNumber }) {
     if (value === null) return null;
     checkObject(value, "getBlock's answer", "Or null for none.");
-    const generated = state.generateBlock(call?.blockNumber ?? state.blockNumber);
+    const generated = state.generateBlock(call?.blockNumber ?? blockNumber);
     const blockHash = call?.blockHash;
     const base = blockHash === undefined ? generated : { ...generated, hash: blockHash };
     const rpc = toRpcBlock({ ...base, ...value });

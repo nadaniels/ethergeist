@@ -26,17 +26,19 @@ export function createContractApi<const abi extends Abi>({
   abi,
   address,
   name,
-  functions: { functionsIn, notInNamespaceError },
+  functions: { reads, writes, functionsIn, notInNamespaceError },
   register,
   calls,
   callsTo,
   addTransaction,
-  assertAttached,
+  checkAttached,
 }: {
   abi: abi;
   address: Address;
   name: string | undefined;
   functions: {
+    reads: readonly AbiFunction[];
+    writes: readonly AbiFunction[];
     functionsIn: Record<MockNamespace, readonly AbiFunction[]>;
     notInNamespaceError: (namespace: MockNamespace, functionName: string) => Error;
   };
@@ -53,7 +55,7 @@ export function createContractApi<const abi extends Abi>({
   /** Places a transaction: `mock.addTransaction()`. */
   addTransaction: AddTransaction;
   /** Throws if the contract was removed. */
-  assertAttached: () => void;
+  checkAttached: () => void;
 }): MockContract<abi> {
   /**
    * A namespace's functions by name, each registering its mocks. Overloads
@@ -74,7 +76,7 @@ export function createContractApi<const abi extends Abi>({
     // An untyped caller reaching for the other namespace's functions gets a
     // pointer to the right one, not "is not a function". Hidden from
     // `Object.keys`.
-    for (const { name: functionName } of functionsIn[namespace === "read" ? "simulate" : "read"]) {
+    for (const { name: functionName } of namespace === "read" ? writes : reads) {
       if (Object.hasOwn(entries, functionName)) continue;
       Object.defineProperty(entries, functionName, {
         value: () => {
@@ -104,7 +106,7 @@ export function createContractApi<const abi extends Abi>({
       events.map((eventName) => [
         eventName,
         (args?: unknown, options: unknown = {}) => {
-          assertAttached();
+          checkAttached();
           const log = encodeEventLog(abi, address, eventName, args);
           const checked = checkFields(
             options,

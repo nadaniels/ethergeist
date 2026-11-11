@@ -5,10 +5,9 @@ import { withoutTrailingNulls } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
 import type { Dispatcher } from "../contracts/dispatch.js";
 import { retryHint } from "../history/format.js";
-import { type Recorder, outcomeOf, reporterFor, valueOf } from "../history/recorder.js";
+import type { Recorder, Recording } from "../history/recorder.js";
 import type { MockHistoryEntry, RpcRequest } from "../history/types.js";
 import { MockFailure } from "../mocking/faults.js";
-import type { MockOutcome } from "../mocking/outcomes.js";
 import { asMockError, isAnswer } from "../mocking/outcomes.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import type { Faults } from "./faults.js";
@@ -45,71 +44,42 @@ export function createRequestHandler({
     const { method, params } = given;
     // `unhandled` lists only `method` and `params`, and no `params` if none.
     const request: RpcRequest = params === undefined ? { method } : { method, params };
-    const historyEntry = recorder.start(request);
+    const recording = recorder.start(request);
 
     const fault = faults.applyTo(method);
     if (fault !== undefined) {
-      recorder.settle(historyEntry, { type: "fault", fault, source: "failRequests" });
+      recording.fault(fault);
       throw new MockFailure(fault);
     }
 
-    let answered: { rpc: unknown; value: unknown };
+    let rpc: unknown;
     try {
-      answered = await answer(request, historyEntry);
+      rpc = await answer(request, recording);
     } catch (caught) {
-      // Anything that isn't an answer or one of the mock's errors is a bug in
-      // the mock, wrapped: thrown as is, viem would retry it with backoff.
       const error = withRetryHint(
         isAnswer(caught) ? caught : asMockError(caught),
-        historyEntry,
+        recording.entry,
         retryCount,
       );
-      const outcome = outcomeOf(historyEntry, error);
-      // Recorded because callers can swallow these: app code with a fallback,
-      // or viem's multicall turning a failed batch into per-call failures.
-      // First, so a `debug` function that throws in `settle` can't skip it.
-      if (outcome.type === "unhandled") recorder.markUnhandled(request, outcome.error);
-      recorder.settle(historyEntry, outcome);
+      recording.settle({ error });
       throw error;
     }
-    // Outside the try: a throw here is `debug`'s, not the answer's.
-    recorder.settle(historyEntry, { type: "result", value: answered.value });
-    return answered.rpc;
+    // Outside the try: a throw here is history's (`debug` or its formatting),
+    // not the answer's.
+    recording.settle({ rpc });
+    return rpc;
   }
 
-  async function answer(
-    request: RpcRequest,
-    historyEntry: MockHistoryEntry,
-  ): Promise<{ rpc: unknown; value: unknown }> {
-    let actionOutcome: MockOutcome | undefined;
-    const rpc = await answerRpc(request, historyEntry, (outcome) => {
-      actionOutcome = outcome;
-    });
-    const value =
-      actionOutcome?.type === "result" ? actionOutcome.value : valueOf(historyEntry, rpc);
-    return { rpc, value };
-  }
-
-  async function answerRpc(
-    { method, params }: RpcRequest,
-    historyEntry: MockHistoryEntry,
-    onAction: (outcome: MockOutcome) => void,
-  ): Promise<unknown> {
+  async function answer({ method, params }: RpcRequest, recording: Recording): Promise<unknown> {
     switch (method) {
       case "eth_chainId":
-        return numberToHex(state.chainId);
+        return numberToHex(state.chain.id);
       case "eth_blockNumber":
         return numberToHex(state.blockNumber);
       case "eth_call":
-        return await dispatcher.call(withoutTrailingNulls(params), reporterFor(historyEntry));
+        return await dispatcher.call(withoutTrailingNulls(params), recording.reporter);
       default: {
-        const answered = actions.answer(method, params, (report) => {
-          if (historyEntry.type !== "action") return;
-          // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the table for historyEntry.action decoded it
-          historyEntry.call = report.call as typeof historyEntry.call;
-          if (report.contract) historyEntry.contract = report.contract;
-          onAction(report.outcome);
-        });
+        const answered = actions.answer(method, params, recording.reportAction);
         if (answered) return await answered;
         throw new MockNotFoundError(`RPC method "${method}" is not mocked.`, {
           metaMessages: [`Mock it with mock.method("${method}", …).returns(…).`],

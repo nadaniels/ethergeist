@@ -36,6 +36,7 @@
   },
   "scripts": {
     "test": "vp test run --typecheck --no-isolate",
+    "test:coverage": "vp test run --no-isolate --coverage",
     "typecheck": "tsc",
     "knip": "knip && knip --production --strict",
     "mutate": "stryker run",
@@ -48,6 +49,7 @@
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
     "@types/node": "^26.6.6",
+    "@vitest/coverage-v8": "catalog:",
     "knip": "^6.44.1",
     "ox": "^0.14.59",
     "publint": "^0.3.25",

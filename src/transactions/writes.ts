@@ -7,7 +7,7 @@ import type { Builder } from "../mocking/handlers.js";
 import { checkAmount, checkFields } from "../mocking/setupChecks.js";
 import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
-import { MockRevertError, MockSetupError } from "../shared/errors.js";
+import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 
 /**
@@ -121,64 +121,37 @@ export function encodeWriteOutcome(
 }
 
 /**
- * A send mock's `.reverts()` answer: mined reverted, as a send that reaches
- * the chain is. The resolver carries `error`, so the estimate of a send the
- * mock would answer reverts with it without running anything (see
- * `registeredRevert`).
+ * What a revert answers at a send, a mock's `.reverts()` or a resolver's
+ * `revert()`: mined reverted, as a send that reaches the chain is. See
+ * `answerWith`'s `reverted`.
  */
-const revertedWith = (error: MockRevertError) =>
-  Object.assign((): MockWriteOutcome => ({ status: "reverted" }), { revert: error });
+export const minedReverted: MockWriteOutcome = { status: "reverted" };
 
 /**
- * What a send mock's builder takes from its engine: see `extendWriteBuilder`.
+ * Gives a send mock's builder `.emits()`, and its resolvers `emit` (see
+ * `WriteResolverContext` and `SendTransactionContext`). `whileSending` runs
+ * a resolver, refusing `mock.addTransaction()` in it up to its first
+ * `await`.
  */
-type WriteEngine = {
-  /** What a resolver's `revert(spec)` and `.reverts(spec)` revert with. */
-  revertError(spec?: unknown): MockRevertError;
-  /**
-   * Runs a resolver, refusing `mock.addTransaction()` in it up to its first
-   * `await`.
-   */
-  whileSending<result>(run: () => result): result;
-};
-
-/**
- * Gives a send mock's builder `.emits()` and `.reverts()`, and its
- * resolvers `emit` and `revert` (see `WriteResolverContext` and
- * `SendTransactionContext`).
- */
-export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void {
+export function extendWriteBuilder(
+  builder: Builder,
+  whileSending: <result>(run: () => result) => result,
+): void {
   const returns = builder.returns.bind(builder);
-  /**
-   * A resolver with `emit` and `revert`, answering its outcome with what it
-   * emitted.
-   */
+  /** A resolver with `emit`, answering its outcome with what it emitted. */
   const withWriteContext =
     (resolver: (context: object) => unknown) =>
     async (context: object): Promise<unknown> => {
       const emitted: MockLogContent[] = [];
-      const writeContext = {
-        emit(logs: MockLogContent | readonly MockLogContent[]) {
-          emitted.push(...[logs].flat());
-        },
-        revert(spec?: unknown): never {
-          throw engine.revertError(spec);
-        },
+      const emit = (logs: MockLogContent | readonly MockLogContent[]) => {
+        emitted.push(...[logs].flat());
       };
-      try {
-        const outcome = await engine.whileSending(() => resolver({ ...context, ...writeContext }));
-        if (emitted.length === 0) return outcome;
-        if (outcome === undefined) return { logs: emitted };
-        const logs: unknown = isPlainObject(outcome) ? (outcome.logs ?? []) : undefined;
-        if (!isPlainObject(outcome) || !Array.isArray(logs)) return outcome;
-        const returned: unknown[] = logs;
-        return { ...outcome, logs: [...emitted, ...returned] };
-      } catch (error) {
-        // A revert at the send is mined: the transaction still goes on the
-        // chain.
-        if (error instanceof MockRevertError) return { status: "reverted" };
-        throw error;
-      }
+      const outcome = await whileSending(() => resolver({ ...context, emit }));
+      if (outcome === undefined) return { logs: emitted };
+      const logs: unknown = isPlainObject(outcome) ? (outcome.logs ?? []) : undefined;
+      if (!isPlainObject(outcome) || !Array.isArray(logs)) return outcome;
+      const returned: unknown[] = logs;
+      return { ...outcome, logs: [...emitted, ...returned] };
     };
   Object.assign(builder, {
     returns(value?: unknown) {
@@ -188,18 +161,5 @@ export function extendWriteBuilder(builder: Builder, engine: WriteEngine): void 
     emits(logs: MockLogContent | readonly MockLogContent[]) {
       returns({ logs: [logs].flat() });
     },
-    // The unwrapped `returns`, so the estimate still sees the resolver's
-    // `revert`.
-    reverts(spec?: unknown) {
-      returns(revertedWith(engine.revertError(spec)));
-    },
   });
 }
-
-/** The revert a send mock's `.reverts()` registered, if its resolver is one. */
-export const registeredRevert = (resolver: unknown): MockRevertError | undefined =>
-  typeof resolver === "function" &&
-  "revert" in resolver &&
-  resolver.revert instanceof MockRevertError
-    ? resolver.revert
-    : undefined;

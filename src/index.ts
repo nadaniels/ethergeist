@@ -74,7 +74,7 @@ export type {
   MockTransaction,
   MockTransactionType,
 } from "./chain/transactions.js";
-export type { MockReceipt } from "./actions/getTransactionReceipt.js";
+export type { MockReceipt } from "./transactions/store.js";
 export type { LogsCall, LogsTopic } from "./logs/filter.js";
 export type { MockCheckpoint, RestoreOptions } from "./rpc/checks.js";
 export type { MockCallRecord } from "./contracts/types.js";
@@ -107,4 +107,4 @@ export { testAddress, testHash } from "./shared/testValues.js";
 export { testLog } from "./logs/testLog.js";
 export type { AddTransactionParameters } from "./transactions/addTransaction.js";
 export type { TransactionRecord } from "./transactions/store.js";
-export type { MockWriteAnswers, MockWriteOutcome } from "./transactions/writeOutcome.js";
+export type { MockWriteAnswers, MockWriteOutcome } from "./transactions/writes.js";

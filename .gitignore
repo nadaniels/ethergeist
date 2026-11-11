@@ -6,6 +6,6 @@ dist/
 # Local planning notes, not committed for now
 docs/backlog/
 
-# Stryker (vp run mutate)
+# Stryker (vp run mutate) and coverage (vp run test:coverage)
 .stryker-tmp/
 reports/

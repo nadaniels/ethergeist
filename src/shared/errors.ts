@@ -59,29 +59,45 @@ export class MockCheckError extends MockError {
 }
 
 /**
- * The usual cause of setup a restore removed under a test: for metaMessages.
+ * The layout that often removes a test's setup under it, as a condition: for
+ * the metaMessages of an invalid checkpoint, and after a note on a removed
+ * contract or mock.
  */
 export const nestedRestoreHint =
-  "The usual cause: an afterEach in a parent describe also runs after each test of a nested " +
-  "one, and one that restores or resets per test wipes the nested describe's setup. Keep the " +
-  "two describes siblings.";
+  "If this test is in a nested describe, an afterEach in a parent describe that restores or " +
+  "resets per test removes its setup; keep the two describes siblings.";
 
-/**
- * Not-found hints for what the last `restore()` or `reset()` removed; the
- * unhandled check looks for them, to say a request may be an earlier test's.
- */
-export const removedContractNote =
+/** The not-found note for a contract the last restore removed. */
+const removedContractNote =
   "A contract was registered at this address until the last restore() or reset() removed it.";
 /**
- * After `removedContractNote` on a call: the layout that often causes it, as a
- * condition.
+ * A miss's lines for a contract the last restore removed: its note, and the
+ * layout that often causes it.
  */
-export const removedContractLayoutHint =
-  "If this test is in a nested describe, an afterEach in a parent describe that restores per " +
-  "test wipes its setup; keep the two describes siblings.";
+export const removedContractLines: readonly string[] = [removedContractNote, nestedRestoreHint];
+/**
+ * The not-found note above the mocks the last restore removed that match a
+ * call.
+ */
+export const removedMocksHeader = "Removed by the last restore() or reset():";
+/**
+ * The not-found note for a transaction the last restore removed, with its
+ * usual cause.
+ */
 export const removedTransactionNote =
   "This transaction was on the chain until the last restore() or reset() removed it: " +
   "a receipt wait from an earlier test may still be polling.";
+
+/**
+ * Every not-found note for what the last restore removed, as a line of
+ * metaMessages: the unhandled check looks for them, to say a request may be
+ * an earlier test's.
+ */
+export const removalNotes: readonly string[] = [
+  removedContractNote,
+  removedMocksHeader,
+  removedTransactionNote,
+];
 
 /** For a builder whose mock a `restore()` or `reset()` removed. */
 export const removedMockError = () =>

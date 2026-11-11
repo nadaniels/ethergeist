@@ -40,7 +40,6 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
     contracts: contracts as readonly InternalMockContract<any>[],
     /** The contract registered at `address`, if any. */
     contractAt,
-    isContract: (address: Address) => contractAt(address) !== undefined,
     isEmpty: (address: Address) => emptyAddresses.has(address),
     codeAt,
     /**

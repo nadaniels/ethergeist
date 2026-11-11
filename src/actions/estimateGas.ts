@@ -1,11 +1,10 @@
-import { type Hex, numberToHex } from "viem";
+import type { Hex } from "viem";
 
 import { type ResolveBlock, transactionParam } from "../chain/params.js";
 import { sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
 import type { RevertFn, RevertSpec } from "../contracts/types.js";
-import { encodeGas, impliedGas } from "../mocking/gas.js";
-import { type FoundMock, countUse } from "../mocking/handlers.js";
+import { encodeGas } from "../mocking/gas.js";
 import type {
   EstimateErrorName,
   MockEstimateAnswers,
@@ -13,9 +12,8 @@ import type {
   WithLimits,
 } from "../mocking/types.js";
 import { withoutUndefined } from "../shared/values.js";
-import { registeredRevert } from "../transactions/writeOutcome.js";
-import { blockAt, isPlainTransfer, pinTransaction, sendCall, viewQuantity } from "./decode.js";
-import type { ActionsContext, Definition } from "./table.js";
+import { blockAt, pinTransaction, sendCall } from "./codec.js";
+import type { MockDefinition } from "./mockSet.js";
 import type { ActionContext, EstimateGasCall, SendTransactionCall } from "./types.js";
 
 /**
@@ -63,107 +61,38 @@ export type MockEstimateGasAction = {
 };
 
 /**
- * The send each estimate with a sender is for, which send mocks are matched
- * against, and the mock `sendMock` found for it. Its type is its request's,
- * as a send's is. viem's estimate carries no `type`, so an `eip2930` send
- * without an `accessList` looks legacy.
- */
-const sends = new WeakMap<
-  EstimateGasCall,
-  { sent: SendTransactionCall; found?: { mock: FoundMock | undefined } }
->();
-
-/**
- * The mock that would answer the estimate's send, if it has one (see
- * `ActionsContext.mockFor`): found once per estimate, so its predicates run
- * once, though `refuse` and `fallback` both ask.
- */
-function sendMock(
-  call: EstimateGasCall,
-  mockFor: ActionsContext["mockFor"],
-): FoundMock | undefined {
-  const send = sends.get(call);
-  if (send === undefined) return undefined;
-  send.found ??= { mock: mockFor("sendTransaction", send.sent) };
-  return send.found.mock;
-}
-
-/**
  * The call an `eth_estimateGas` asks for: a transaction, and maybe a block.
- * Its send's type is worked out here (see `sentType`), so one a send would
- * refuse is refused however it would be answered, a registered contract's
- * own mocks included.
+ * With a sender, it's the estimate of a send: `sent`, which send mocks are
+ * matched against.
+ *
+ * The send's type is its request's, as a send's is. It's worked out for
+ * every estimate (see `sentType`), so one a send would refuse is refused
+ * however it would be answered, a registered contract's own mocks included.
+ * viem's estimate carries no `type`, so an `eip2930` send without an
+ * `accessList` looks legacy.
  */
-function decodeEstimateGas(
+export function decodeEstimateGas(
   [tx, block]: readonly unknown[],
   resolveBlock: ResolveBlock,
-): EstimateGasCall {
+): { call: EstimateGasCall; sent: SendTransactionCall | undefined } {
   const fields = transactionParam(tx);
   const type = sentType(tx, fields);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
   const call = withoutUndefined({ ...fields, ...blockAt(block, resolveBlock) }) as EstimateGasCall;
-  if (fields.from !== undefined) sends.set(call, { sent: sendCall(fields, fields.from, type) });
-  return call;
+  const sent = fields.from === undefined ? undefined : sendCall(fields, fields.from, type);
+  return { call, sent };
 }
 
 /**
- * `eth_estimateGas`. A `.reverts()` send mock that would answer the
- * transaction reverts its estimate first, before any estimate mock. Then a
- * registered contract's own mocks answer estimates of its functions, and
- * this action's mocks the rest. Unmocked, a plain transfer to an address
- * without code is 21,000 gas, as a node estimates it, even with a send mock.
- * Otherwise, a send mock that would answer the transaction implies its
- * estimate (see `impliedGas`).
+ * `mock.actions.estimateGas`'s mocks: they answer with gas, or revert the
+ * estimate.
  */
-export const estimateGas = ({
-  state,
-  registry,
-  mockFor,
-}: ActionsContext): Definition<EstimateGasCall, Hex> => ({
+export const estimateGas: MockDefinition<EstimateGasCall, Hex> = {
   name: "estimateGas",
   hint: "mock.actions.estimateGas({ to }).returns(…)",
-  decode: (params) => decodeEstimateGas(params, state.resolveBlock),
   pin: pinTransaction,
   /** No zero estimate: `encodeGas` refuses `.returns()` without a value. */
   zero: undefined,
   encode: (value) => encodeGas(value, "estimateGas's answer"),
-  view: viewQuantity,
-  extendContext(context) {
-    Object.assign(context, {
-      revert(spec?: RevertSpec): never {
-        throw createRevertError([], spec);
-      },
-    });
-  },
-  extendBuilder(builder) {
-    Object.assign(builder, {
-      // Made at registration, so a spec viem can't encode throws here.
-      reverts(spec?: RevertSpec) {
-        const error = createRevertError([], spec);
-        builder.returns(() => {
-          throw error;
-        });
-      },
-    });
-  },
-  contractTurn(call) {
-    const { to, data, from, value, blockNumber } = call;
-    if (to === undefined || data === undefined || data === "0x") return undefined;
-    return registry.contractAt(to)?.estimate(data, { from, value, blockNumber, batch: undefined });
-  },
-  /**
-   * Reverting the estimate is the send mock's answer, so it counts as a use.
-   */
-  refuse(call) {
-    const send = sendMock(call, mockFor);
-    const revert = send && registeredRevert(send.resolver);
-    if (!revert) return;
-    countUse(send);
-    throw revert;
-  },
-  /** The send mock implies the estimate without running or being used up. */
-  fallback(call) {
-    if (isPlainTransfer(registry, call)) return numberToHex(21_000n);
-    return sendMock(call, mockFor) ? numberToHex(impliedGas) : undefined;
-  },
-});
+  revertError: (spec?: RevertSpec) => createRevertError([], spec),
+};

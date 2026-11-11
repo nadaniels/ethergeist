@@ -3,11 +3,7 @@ import type { Address, Hex } from "viem";
 import { transactionParam } from "../chain/params.js";
 import type { ChainState } from "../chain/state.js";
 import { errorOutcome } from "../mocking/outcomes.js";
-import {
-  MockNotFoundError,
-  removedContractLayoutHint,
-  removedContractNote,
-} from "../shared/errors.js";
+import { MockNotFoundError, removedContractLines } from "../shared/errors.js";
 import { resolveMulticall } from "./multicall.js";
 import type { Registry } from "./registry.js";
 import type { Reporter, CallContext } from "./types.js";
@@ -66,9 +62,7 @@ export function createDispatch({ state, registry }: { state: ChainState; registr
       metaMessages: [
         `Call data: ${data}`,
         "Register it with contract(), or mark it empty() for an address without code.",
-        ...(registry.removedByLastRestore(target)
-          ? [removedContractNote, removedContractLayoutHint]
-          : []),
+        ...(registry.removedByLastRestore(target) ? removedContractLines : []),
       ],
     });
     report.call({ ...unknown, outcome: errorOutcome(error) }, context);

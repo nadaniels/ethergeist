@@ -45,6 +45,7 @@ const builtIns = new Map([
 export function createMethods(
   actionFor: (method: string) => string | undefined,
   recordLimit: RecordLimit,
+  currentBlock: () => bigint,
 ) {
   const raw = new Map<string, Table>();
 
@@ -71,7 +72,7 @@ export function createMethods(
         actual: (pinned, call) =>
           Array.isArray(pinned) ? pinned.map((_, i) => call.params[i]) : call.params,
       };
-      table = createTable(definition, recordLimit);
+      table = createTable(definition, recordLimit, { currentBlock });
       raw.set(name, table);
     }
     return table.register(params);

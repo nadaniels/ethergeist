@@ -487,7 +487,7 @@ describe("assertAllUsed()", () => {
       error = caught;
     }
     expect(String(error)).toContain("2 mock(s) answered no call");
-    expect(String(error)).toContain(`allowance(*) on ${USDC}`);
+    expect(String(error)).toContain(`allowance(*) reverts on ${USDC}`);
     expect(String(error)).toContain(`decimals(*) on ${USDC}`);
   });
 
@@ -555,6 +555,16 @@ describe("assertAllUsed()", () => {
       `  - sendTransaction({ to: ${USDC} }) without an answer\n` +
         "    give it one with .returns(), .reverts() or .fails(), or don't register it",
     );
+  });
+
+  test("says that an unused mock reverts or fails", () => {
+    const { mock } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC }).write.transfer().once().reverts();
+    mock.actions.getBalance().fails("timeout");
+
+    const message = unusedMessage(mock);
+    expect(message).toContain(`  - transfer(*) reverts once on ${USDC}\n`);
+    expect(message).toContain("  - getBalance(*) fails\n");
   });
 
   test("a raw method mock without an answer can't be given .reverts()", () => {

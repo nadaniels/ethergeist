@@ -1,14 +1,30 @@
-import { type Address, type Hash, type Hex, formatTransaction, getAddress } from "viem";
+import {
+  type Address,
+  type Hash,
+  type Hex,
+  type TransactionReceipt,
+  formatTransaction,
+  getAddress,
+  getContractAddress,
+} from "viem";
 
 import { blockHash, numberOfBlockHash } from "../chain/blocks.js";
-import { type ReceiptFields, completeReceipt, placeLog, toRpcReceipt } from "../chain/receipts.js";
+import {
+  type ReceiptFields,
+  checkStatus,
+  completeReceipt,
+  placeLog,
+  toRpcReceipt,
+} from "../chain/receipts.js";
 import type { ChainState } from "../chain/state.js";
 import { type MockTransactionType, encodeTransaction } from "../chain/transactions.js";
-import type { EmittedLog, MockLogContent } from "../logs/events.js";
+import { type EmittedLog, type MockLogContent, checkLogs } from "../logs/events.js";
 import { type LogsCall, topicsMatch } from "../logs/filter.js";
+import { impliedGas } from "../mocking/gas.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
 import { testHash } from "../shared/testValues.js";
 import { type AddTransactionParameters, checkAddTransaction } from "./addTransaction.js";
+import type { MockWriteOutcome } from "./writes.js";
 
 /**
  * A placed transaction, as `mock.transactions` lists it: the facts it was
@@ -67,6 +83,41 @@ export type TransactionRecord = {
   readonly position: Readonly<{ blockNumber: bigint; index: number }>;
 };
 
+/**
+ * A mocked receipt: any receipt fields, in viem's types, and its logs'
+ * content (see `logs`).
+ */
+export type MockReceipt = ReceiptFields & {
+  /**
+   * Its logs' content, from `contract.events`, `contractEvents()` or
+   * `testLog()`, in place of any its transaction has. The receipt places
+   * them in its block and transaction. They answer this receipt only:
+   * viem's `getLogs()` and watchers don't see them. To have them seen, place
+   * the transaction with `mock.addTransaction({ hash, logs })`. A reverted
+   * receipt with logs is refused: its own, or its mined transaction's.
+   */
+  logs?: readonly MockLogContent[];
+};
+
+/** Names a part of a mocked receipt for messages, as the user wrote it. */
+type ReceiptNames = (part: string) => string;
+
+/** Where a transaction's logs are placed: its block and its place in it. */
+type LogsPosition = Pick<
+  TransactionReceipt,
+  "blockHash" | "blockNumber" | "transactionHash" | "transactionIndex"
+>;
+
+/**
+ * What `placeSend` takes: the transaction a send asked for, with its
+ * calldata as `data`, as a request names it.
+ */
+type SentTransaction = Omit<TransactionRecord["fields"], "from" | "to" | "input"> & {
+  from: Address;
+  to: Address | null;
+  data?: Hex;
+};
+
 /** What `add` takes: a record's facts, which it places. */
 type NewRecord = Pick<TransactionRecord, "origin" | "fields" | "receipt"> & {
   /** Lowercase; left out, one the mock makes from its chain id and position. */
@@ -115,24 +166,41 @@ export function createTransactionStore({
   const inBlock = (number: bigint) =>
     records.filter((record) => record.position.blockNumber === number);
   /**
-   * How many logs the transactions before `index` in block `number` have: a
-   * log's index counts across its block.
-   */
-  const logsBefore = (number: bigint, index: number) =>
-    inBlock(number)
-      .filter((record) => record.position.index < index)
-      .reduce((count, record) => count + record.logs.length, 0);
-  /**
    * The record's position once it's on the chain; `undefined` while it
    * waits.
    */
   const minedAt = ({ position }: TransactionRecord) =>
     position.blockNumber <= state.blockNumber ? position : undefined;
+  /**
+   * `contents` placed as a transaction's logs at `position`, with block
+   * timestamps, as reth sends them. Their indexes count on from the logs of
+   * the block's earlier transactions, as a node counts them.
+   */
+  const placeLogs = (contents: readonly MockLogContent[], position: LogsPosition) => {
+    const { blockNumber, transactionIndex } = position;
+    const firstLogIndex = inBlock(blockNumber)
+      .filter((record) => record.position.index < transactionIndex)
+      .reduce((count, record) => count + record.logs.length, 0);
+    const blockTimestamp = state.timestampAt(blockNumber);
+    return contents.map((content, i) =>
+      placeLog(content, {
+        blockHash: position.blockHash,
+        blockNumber,
+        blockTimestamp,
+        transactionHash: position.transactionHash,
+        transactionIndex,
+        logIndex: firstLogIndex + i,
+      }),
+    );
+  };
 
   /**
    * Places a transaction in `blockNumber`, after what's placed there, or,
    * left out, in a newly mined block, as a send is. Checks everything first,
-   * so a refused record changes nothing, mining included.
+   * so a refused record changes nothing, mining included. A nonce left out
+   * is `from`'s next, waiting transactions included (`nonceOf`), not a
+   * `getTransactionCount` mock's. A deploy's address (only a send deploys)
+   * follows from both, unless its receipt gives one.
    */
   function add(record: NewRecord, { blockNumber }: { blockNumber?: bigint | undefined } = {}) {
     for (const log of record.logs)
@@ -143,7 +211,7 @@ export function createTransactionStore({
     const number = blockNumber ?? state.blockNumber + 1n;
     const earlier = inBlock(number);
     const index = earlier.length;
-    const hash = record.hash ?? testHash(`tx:${state.chainId}:${number}:${index}`);
+    const hash = record.hash ?? testHash(`tx:${state.chain.id}:${number}:${index}`);
     if (find(hash) !== undefined)
       throw new MockSetupError(`Transaction ${hash} is already in mock.transactions.`, {
         metaMessages: [
@@ -156,25 +224,30 @@ export function createTransactionStore({
                 "that one another hash.",
         ],
       });
-    const firstLogIndex = logsBefore(number, index);
-    const logs = record.logs.map((value, i) => {
-      const log = placeLog(value, {
-        blockHash: blockHash(number),
-        blockNumber: number,
-        blockTimestamp: state.timestampAt(number),
-        transactionHash: hash,
-        transactionIndex: index,
-        logIndex: firstLogIndex + i,
-      });
+    const logs = placeLogs(record.logs, {
+      blockHash: blockHash(number),
+      blockNumber: number,
+      transactionHash: hash,
+      transactionIndex: index,
+    }).map((log) => {
       Object.freeze(log.topics);
       return Object.freeze(log);
     });
+    const fields = { ...record.fields };
+    const receipt = { ...record.receipt };
+    if (fields.from !== undefined) {
+      fields.nonce ??= nonceOf(fields.from, "pending");
+      if (fields.to === null)
+        receipt.contractAddress ??= getContractAddress({
+          from: fields.from,
+          nonce: BigInt(fields.nonce),
+        });
+    }
     const added: TransactionRecord = Object.freeze({
       ...record,
       hash,
-      // Copies, so the caller's objects can't change the chain afterwards.
-      fields: Object.freeze({ ...record.fields }),
-      receipt: Object.freeze({ ...record.receipt }),
+      fields: Object.freeze(fields),
+      receipt: Object.freeze(receipt),
       logs: Object.freeze(logs),
       position: Object.freeze({ blockNumber: number, index }),
     });
@@ -201,8 +274,8 @@ export function createTransactionStore({
   /**
    * Runs a send mock's resolver, refusing `addTransaction` (and so
    * `contract.emit`) in it up to its first `await`: it would place a
-   * transaction of its own, mid-send. Code elsewhere
-   * (a demo's ticker) can still add one while a resolver waits.
+   * transaction of its own, mid-send. Code elsewhere (a demo's ticker) can
+   * still add one while a resolver waits.
    */
   function whileSending<result>(run: () => result): result {
     const outer = sending;
@@ -216,8 +289,7 @@ export function createTransactionStore({
 
   /**
    * Places one transaction the app didn't send, from `fields`: checked
-   * first, then in `blockNumber`, or left out, in a newly mined block. A
-   * nonce left out is `from`'s next, as a send takes it.
+   * first, then in `blockNumber`, or left out, in a newly mined block.
    */
   function addTransaction(fields: AddTransactionParameters = {}): TransactionRecord {
     if (sending)
@@ -231,13 +303,33 @@ export function createTransactionStore({
         },
       );
     const { blockNumber, ...record } = checkAddTransaction(fields);
-    const { from, nonce } = record.fields;
-    return add(
-      from === undefined || nonce !== undefined
-        ? record
-        : { ...record, fields: { ...record.fields, nonce: nonceOf(from, "pending") } },
-      { blockNumber },
-    );
+    return add(record, { blockNumber });
+  }
+
+  /**
+   * Places a send's transaction in a newly mined block: `sent` as its
+   * request asked for it, and `outcome` as what the chain did. Gas left out
+   * is `impliedGas`. `hash` is a raw send's, from its bytes; left out, the
+   * mock makes one.
+   */
+  function placeSend({
+    hash,
+    sent,
+    outcome,
+  }: {
+    hash?: Hash | undefined;
+    sent: SentTransaction;
+    outcome: MockWriteOutcome;
+  }) {
+    const { data, gas = impliedGas, ...fields } = sent;
+    const { logs = [], ...receipt } = outcome;
+    return add({
+      origin: "sent",
+      hash,
+      fields: { ...fields, ...(data && { input: data }), gas },
+      receipt,
+      logs,
+    });
   }
 
   /**
@@ -258,6 +350,98 @@ export function createTransactionStore({
       },
       record.hash,
     );
+  }
+
+  /**
+   * `receipt` completed, with `logs` placed at the position it completes
+   * with, a mock's included.
+   */
+  function receiptWith(
+    receipt: ReceiptFields,
+    logs: readonly MockLogContent[],
+    at: { hash: Hash | undefined; blockNumber: bigint },
+  ): TransactionReceipt {
+    const complete = completeReceipt(receipt, at);
+    return { ...complete, logs: placeLogs(logs, complete) };
+  }
+
+  /**
+   * A mined record's receipt, with `override`'s fields (a mock's) over it,
+   * and `logs` (a mock's content) in place of its own.
+   */
+  function receiptOf(
+    record: TransactionRecord,
+    override: ReceiptFields = {},
+    logs: readonly MockLogContent[] = record.logs,
+  ) {
+    const { position } = record;
+    // What it shares with its transaction comes from it, so the two agree.
+    const { from, to, type, gasPrice } = formatTransaction(transactionOf(record));
+    const upToIt = inBlock(position.blockNumber).slice(0, position.index + 1);
+    return receiptWith(
+      {
+        effectiveGasPrice: gasPrice ?? 0n,
+        ...record.receipt,
+        from,
+        to,
+        type,
+        gasUsed: gasUsedBy(record),
+        cumulativeGasUsed: upToIt.reduce((sum, each) => sum + gasUsedBy(each), 0n),
+        blockNumber: position.blockNumber,
+        transactionIndex: position.index,
+        ...override,
+      },
+      logs,
+      { hash: record.hash, blockNumber: position.blockNumber },
+    );
+  }
+
+  /**
+   * A mocked receipt for a hash with no mined transaction: `receipt`'s fields
+   * over zeros, in block `blockNumber` (left out, the head), with its logs'
+   * content placed in it. Logs that aren't content, are already placed, or
+   * are on a reverted receipt are refused.
+   */
+  function placedReceipt(
+    receipt: MockReceipt,
+    named: ReceiptNames,
+    {
+      hash,
+      blockNumber = state.blockNumber,
+    }: { hash?: Hash | undefined; blockNumber?: bigint | undefined } = {},
+  ): TransactionReceipt {
+    const { logs = [], ...fields } = receipt;
+    checkLogs(logs, named);
+    checkStatus(fields.status, logs, named("status"));
+    return receiptWith(fields, logs, { hash, blockNumber });
+  }
+
+  /**
+   * A mocked receipt for `hash` in its JSON-RPC form: its fields over its
+   * mined transaction's receipt, or for a hash with no mined transaction
+   * (or none yet, at registration), placed at `blockNumber`. A status that
+   * disagrees with the logs is refused, the transaction's own included.
+   */
+  function mockedReceipt(
+    receipt: MockReceipt,
+    named: ReceiptNames,
+    { hash, blockNumber }: { hash: Hash | undefined; blockNumber: bigint },
+  ) {
+    const record = hash === undefined ? undefined : find(hash);
+    const mined = record && minedAt(record);
+    if (record === undefined || mined === undefined)
+      return toRpcReceipt(placedReceipt(receipt, named, { hash, blockNumber }));
+    const { logs, ...fields } = receipt;
+    if (logs !== undefined) checkLogs(logs, named);
+    checkStatus(fields.status ?? record.receipt.status, logs ?? record.logs, named("status"), [
+      fields.status === undefined
+        ? `Transaction ${record.hash} on the chain reverted: answer this receipt without logs, ` +
+          'or add it with them and without status: "reverted", so every method agrees.'
+        : `Transaction ${record.hash} on the chain has ${record.logs.length} log(s): answer this ` +
+          'receipt without them, { status: "reverted", logs: [] }, or add it reverted, ' +
+          'mock.addTransaction({ …, status: "reverted" }), so every method agrees.',
+    ]);
+    return toRpcReceipt(receiptOf(record, fields, logs));
   }
 
   /**
@@ -312,55 +496,29 @@ export function createTransactionStore({
         (block === "pending" || (mined !== undefined && mined.blockNumber <= block))
       );
     });
-    return Math.max(0, ...sent.map(({ fields }) => (fields.nonce ?? 0) + 1));
+    // A record with a `from` always has a nonce: `add` fills it in.
+    return Math.max(0, ...sent.map(({ fields }) => fields.nonce! + 1));
   }
 
   return {
-    logsBefore,
-    add,
     addTransaction,
+    placeSend,
     whileSending,
     mine,
     logsFor,
     nonceOf,
     /**
-     * The receipt for `hash` in its JSON-RPC form, with `override`'s fields
-     * (a mock's) over it, and `logs` (a mock's content) in place of its own:
-     * `null` while its block isn't mined, and `undefined` for a hash with no
-     * placed transaction.
+     * The receipt for `hash` in its JSON-RPC form: `null` while its block
+     * isn't mined, and `undefined` for a hash with no placed transaction.
      */
-    receiptFor(hash: Hash, override: ReceiptFields = {}, logs?: readonly MockLogContent[]) {
+    receiptFor(hash: Hash) {
       const record = find(hash);
       if (record === undefined) return undefined;
       const mined = minedAt(record);
-      if (mined === undefined) return null;
-      // What it shares with its transaction comes from it, so the two agree.
-      const { from, to, type, gasPrice } = formatTransaction(transactionOf(record));
-      const upToIt = inBlock(mined.blockNumber).slice(0, mined.index + 1);
-      return toRpcReceipt(
-        completeReceipt(
-          {
-            effectiveGasPrice: gasPrice ?? 0n,
-            ...record.receipt,
-            from,
-            to,
-            type,
-            gasUsed: gasUsedBy(record),
-            cumulativeGasUsed: upToIt.reduce((sum, each) => sum + gasUsedBy(each), 0n),
-            blockNumber: mined.blockNumber,
-            transactionIndex: mined.index,
-            ...override,
-          },
-          {
-            hash: record.hash,
-            blockNumber: mined.blockNumber,
-            timestampAt: state.timestampAt,
-            logsBefore,
-            logs: logs ?? record.logs,
-          },
-        ),
-      );
+      return mined === undefined ? null : toRpcReceipt(receiptOf(record));
     },
+    mockedReceipt,
+    placedReceipt,
     /**
      * Where the transaction with `hash` is, once its block is mined;
      * `undefined` until then.

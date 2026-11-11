@@ -1,12 +1,11 @@
-import { hexToBigInt, isHex } from "viem";
+import { type Hex, hexToBigInt } from "viem";
 
 import { feeHistory, toRpcFeeHistory } from "../chain/fees.js";
 import { type ResolveBlock, numberParam } from "../chain/params.js";
 import { formatValue } from "../mocking/format.js";
 import { checkAmount, checkFields, checkList } from "../mocking/setupChecks.js";
 import { MockRpcError, MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
-import { blockAt } from "./decode.js";
+import { blockAt } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { FeeHistoryCall } from "./types.js";
 
@@ -54,21 +53,29 @@ function checkFeeHistory(given: unknown) {
   return history;
 }
 
-/** JSON-RPC quantities as bigints, leaving anything else as is. */
-const bigints = (list: unknown) =>
-  Array.isArray(list)
-    ? list.map((value: unknown) => (isHex(value) ? hexToBigInt(value) : value))
-    : list;
+/**
+ * The fields viem reads of a fee history's JSON-RPC answer: a count of 0 has
+ * no base fees, and a call without percentiles no rewards.
+ */
+type RpcFeeHistoryAnswer = {
+  baseFeePerGas?: Hex[];
+  gasUsedRatio: number[];
+  oldestBlock: Hex;
+  reward?: Hex[][];
+};
 
-/** A JSON-RPC fee history as viem's `getFeeHistory()` returns it. */
+/**
+ * A JSON-RPC fee history as viem's `getFeeHistory()` returns it: its four
+ * fields as bigints, without the blob fields viem leaves out.
+ */
 function viewFeeHistory(rpc: unknown) {
-  if (!isPlainObject(rpc)) return rpc;
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the action's own answer, from toRpcFeeHistory()
+  const history = rpc as RpcFeeHistoryAnswer;
   return {
-    ...rpc,
-    ...("baseFeePerGas" in rpc && { baseFeePerGas: bigints(rpc.baseFeePerGas) }),
-    ...("baseFeePerBlobGas" in rpc && { baseFeePerBlobGas: bigints(rpc.baseFeePerBlobGas) }),
-    ...(isHex(rpc.oldestBlock) && { oldestBlock: hexToBigInt(rpc.oldestBlock) }),
-    ...(Array.isArray(rpc.reward) && { reward: rpc.reward.map(bigints) }),
+    baseFeePerGas: history.baseFeePerGas?.map((fee) => hexToBigInt(fee)),
+    gasUsedRatio: history.gasUsedRatio,
+    oldestBlock: hexToBigInt(history.oldestBlock),
+    reward: history.reward?.map((tips) => tips.map((tip) => hexToBigInt(tip))),
   };
 }
 
@@ -109,22 +116,27 @@ export const getFeeHistory = ({ state }: ActionsContext): Definition<FeeHistoryC
     hint: "mock.actions.getFeeHistory(…).returns(…), or `fees` in createMockRpc()",
     decode: (params) => decodeFeeHistory(params, state.resolveBlock),
     zero: {},
-    encode(value, call) {
+    encode(value, { call }) {
       const history = checkFeeHistory(value);
       const derived = call === undefined ? {} : feeHistoryOf(call);
       return toRpcFeeHistory({ ...derived, ...history });
     },
     view: viewFeeHistory,
     fallback(call) {
-      const head = state.blockNumber;
-      if (call.blockCount > 0 && call.blockNumber > head)
-        throw new MockRpcError(
-          -32602,
-          `request beyond head block: requested ${call.blockNumber}, head ${head}`,
-        );
-      const percentiles = call.rewardPercentiles ?? [];
-      if (percentiles.some((p, i) => p < 0 || p > 100 || p < (percentiles[i - 1] ?? 0)))
-        throw new MockRpcError(-32602, "invalid reward percentiles");
+      // Reth answers a count of 0 before checking anything.
+      if (call.blockCount > 0) {
+        // Each percentile from 0 to 100, and none below the one before it (the
+        // first is compared with 0).
+        const percentiles = call.rewardPercentiles ?? [];
+        if (percentiles.some((p, i) => p > 100 || p < (percentiles[i - 1] ?? 0)))
+          throw new MockRpcError(-32602, "invalid reward percentiles");
+        const head = state.blockNumber;
+        if (call.blockNumber > head)
+          throw new MockRpcError(
+            -32602,
+            `request beyond head block: requested ${call.blockNumber}, head ${head}`,
+          );
+      }
       return toRpcFeeHistory(feeHistoryOf(call));
     },
   };

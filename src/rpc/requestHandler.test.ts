@@ -1,4 +1,3 @@
-// oxlint-disable import/max-dependencies -- wires the mock's parts, as createMockRpc does
 import { describe, expect, test } from "vite-plus/test";
 
 import { createActions } from "../actions/createActions.js";
@@ -12,10 +11,13 @@ import {
   MockSetupError,
   removedMockError,
 } from "../shared/errors.js";
-import { unlimited } from "../shared/records.js";
+import type { RecordLimit } from "../shared/records.js";
 import { createTransactionStore } from "../transactions/store.js";
 import { createFaults } from "./faults.js";
 import { createRequestHandler } from "./requestHandler.js";
+
+/** A limit that keeps everything. */
+const unlimited: RecordLimit = { limit: Infinity, onDrop() {} };
 
 /** The mock's request handler, with an `eth_call` that throws `thrown`. */
 function setup(thrown: unknown) {

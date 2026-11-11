@@ -6,12 +6,13 @@ import {
   formatCall,
   formatMismatch,
   formatValue,
-  formatMissReason,
   formatNoAnswer,
   formatReceived,
+  missedLines,
+  removedLines,
 } from "../mocking/format.js";
 import { mismatches } from "../mocking/matching.js";
-import type { PinnedKey } from "../mocking/types.js";
+import type { Answer, PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import { type Pins, pinMismatches } from "./functions.js";
 import type { MockCall, MockNamespace } from "./types.js";
@@ -23,21 +24,25 @@ type Mock = {
   pins: Pins | undefined;
   limit: number | undefined;
   remaining: number | undefined;
-  resolver: unknown;
+  answer: Answer | undefined;
 };
 
 /**
- * A namespace's mocks for a call's function, and the arg or pin each one
- * `missed` on.
+ * A namespace's mocks for a call's function, the arg or pin each one
+ * `missed` on, and those the last restore removed that match the call.
  */
-type Candidates = { registered: readonly Mock[]; missed: ReadonlyMap<Mock, PinnedKey> };
+type Candidates = {
+  registered: readonly Mock[];
+  missed: ReadonlyMap<Mock, PinnedKey>;
+  removed: readonly Mock[];
+};
 
 /**
  * The error for a call no mock answers, on the contract `label`: its `own`
  * namespace's mocks for its function, each with the arg it missed on, or that
  * there are none. An estimate's also lists its function's `write` mocks
  * (`writes`), which imply the estimate of a send they match, for an estimate
- * with `from`.
+ * with `from`. Last come the mocks of both that the last restore removed.
  */
 export function missError(
   call: MockCall,
@@ -47,11 +52,7 @@ export function missError(
   writes?: Candidates,
 ): MockNotFoundError {
   const describe = ({ registered, missed }: Candidates) =>
-    registered.map((mock) => {
-      const key = missed.get(mock);
-      const reason = formatMissReason(key === undefined ? undefined : argName(mock, key));
-      return `  ${describeMock(call.functionName, mock)}${reason}`;
-    });
+    missedLines(call.functionName, registered, missed, argName);
   const lines = describe(own);
   const writeLines = writes === undefined ? [] : describe(writes);
   const name = `"${call.functionName}"`;
@@ -69,6 +70,8 @@ export function missError(
   if (writeLines.length > 0)
     metaMessages.push("Write mocks, which imply the estimate of a send they match:", ...writeLines);
   if (metaMessages.length === 0) metaMessages.push(none);
+  const removed = [...own.removed, ...(writes?.removed ?? [])];
+  metaMessages.push(...removedLines(call.functionName, removed));
   return new MockNotFoundError(
     `No ${what} for ${formatCall(call.functionName, call.args)}${formatPins(call, pinned)} on ${label}.`,
     { metaMessages },
@@ -88,7 +91,7 @@ export function unusedLine(
 ): string {
   const name = mock.abiItem.name;
   const after =
-    mock.resolver === undefined
+    mock.answer === undefined
       ? formatNoAnswer(".returns(), .reverts() or .fails()")
       : formatReceived(
           name,

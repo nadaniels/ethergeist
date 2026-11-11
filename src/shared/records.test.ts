@@ -1,6 +1,6 @@
 import { describe, expect, test } from "vite-plus/test";
 
-import { createRecordList, unlimited } from "./records.js";
+import { createRecordList } from "./records.js";
 
 describe("createRecordList()", () => {
   test("keeps the most recent `limit` entries, oldest first, and counts them all", () => {
@@ -36,7 +36,7 @@ describe("createRecordList()", () => {
   });
 
   test("keeps everything without a limit", () => {
-    const list = createRecordList<number>(unlimited);
+    const list = createRecordList<number>({ limit: Infinity, onDrop() {} });
     for (let n = 0; n < 1000; n += 1) list.add(n);
 
     expect([list.kept.length, list.dropped]).toEqual([1000, 0]);

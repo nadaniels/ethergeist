@@ -3,7 +3,6 @@ import { formatTransaction, zeroHash } from "viem";
 import { hashParam } from "../chain/params.js";
 import { encodeTransaction } from "../chain/transactions.js";
 import { checkObject } from "../mocking/setupChecks.js";
-import { registeredAt, unwrapRegistered } from "./decode.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { TransactionCall } from "./types.js";
 
@@ -23,9 +22,7 @@ export const getTransaction = ({
   hint: "mock.actions.getTransaction({ hash }).returns(…)",
   decode: ([hash]) => ({ hash: hashParam(hash) }),
   zero: {},
-  fixAtRegistration: registeredAt(state),
-  encode(answer, call) {
-    const { value, blockNumber } = unwrapRegistered(answer);
+  encode(value, { call, blockNumber }) {
     if (value === null) return null;
     checkObject(value, "getTransaction's answer", "Or null for none.");
     const onChain = call && transactions.transactionFor(call.hash, value);

@@ -1,6 +1,6 @@
 import { numberToHex } from "viem";
 
-import { encodeQuantity, viewQuantity } from "./decode.js";
+import { encodeQuantity, viewQuantity } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { EmptyCall } from "./types.js";
 

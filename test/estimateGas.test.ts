@@ -12,7 +12,9 @@ import {
   TipAboveFeeCapError,
   createPublicClient,
   type Address,
+  type Hex,
   createWalletClient,
+  encodeErrorResult,
   encodeFunctionData,
   erc20Abi,
   keccak256,
@@ -29,6 +31,7 @@ import {
   MockNotFoundError,
   MockResolverError,
   MockSetupError,
+  type MockRpc,
   createMockRpc,
   testAddress,
 } from "../src/index.js";
@@ -150,6 +153,19 @@ describe("estimateGas", () => {
       [4n, undefined],
       [10n, "pending"],
     ]);
+  });
+
+  test("an estimate that reverts, fails or isn't answered is still one of its calls", async () => {
+    const { mock, client } = setup();
+    const carol = testAddress("carol");
+    mock.actions.estimateGas({ to: bob }).reverts("paused");
+    mock.actions.estimateGas({ to: alice }).fails("insufficientFunds");
+
+    await rejectionOf(client.estimateGas({ account: alice, to: bob }));
+    await rejectionOf(client.estimateGas({ account: bob, to: alice }));
+    await rejectionOf(client.estimateGas({ account: alice, to: carol, data: "0x12" }));
+
+    expect(mock.actions.estimateGas.calls.map(({ to }) => to)).toEqual([bob, alice, carol]);
   });
 
   test("a pinned mock answers before one without pins", async () => {
@@ -317,6 +333,20 @@ describe("estimateGas reverts", () => {
     expectThrows(MockCheckError, "estimateGas(*) without an answer", () => {
       mock.assertAllUsed();
     });
+  });
+
+  test("a miss says which registered mocks revert or fail", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ to: bob }).reverts();
+    mock.actions.estimateGas({ to: alice }).once().fails("timeout");
+
+    const error = await rejectionOf(
+      client.estimateGas({ account: alice, to: testAddress("carol"), data: "0x1234" }),
+    );
+
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
+      `Registered:\n  estimateGas({ to: ${bob} }) reverts  ← to didn't match\n  estimateGas({ to: ${alice} }) fails once  ← to didn't match`,
+    );
   });
 });
 
@@ -558,6 +588,23 @@ describe("contract estimates", () => {
     expect(mock.calls).toEqual(token.calls);
   });
 
+  test("an estimate at a block is the contract's call at that block", async () => {
+    const { client, token } = tokenSetup();
+    token.estimateGas.transfer().returns(({ blockNumber }) => 60_000n + blockNumber);
+
+    const gas = await client.estimateContractGas({
+      abi: tokenAbi,
+      address: token.address,
+      functionName: "transfer",
+      args: [bob, 1n],
+      account: alice,
+      blockNumber: 4n,
+    });
+
+    expect(gas).toBe(60_004n);
+    expect(token.estimateGas.transfer.calls).toMatchObject([{ blockNumber: 4n }]);
+  });
+
   test("reverts decode against the contract's ABI, as viem decodes a node's", async () => {
     const { mock, token, transfer } = tokenSetup();
     token.estimateGas.transfer().reverts({ errorName: "Paused", args: [bob] });
@@ -725,6 +772,36 @@ describe("contract estimates answered by action mocks", () => {
       },
     });
   });
+
+  test.each([
+    [
+      ".reverts()",
+      (mock: MockRpc, data: Hex) => {
+        mock.actions.estimateGas().reverts({ data });
+      },
+    ],
+    [
+      "a resolver's revert()",
+      (mock: MockRpc, data: Hex) => {
+        mock.actions.estimateGas().returns(({ revert }) => revert({ data }));
+      },
+    ],
+  ] as const)(
+    "reverting with %s, the revert is decoded against the contract's ABI in history",
+    async (_, revertWith) => {
+      const { mock, transfer } = tokenSetup();
+      const data = encodeErrorResult({ abi: tokenAbi, errorName: "Paused", args: [bob] });
+      revertWith(mock, data);
+
+      await rejectionOf(transfer());
+
+      const outcome = { type: "revert", data, errorName: "Paused", args: [bob] };
+      expect(mock.history[0]).toMatchObject({
+        outcome,
+        contract: { namespace: "estimateGas", outcome },
+      });
+    },
+  );
 });
 
 describe("contract estimate mocks", () => {
