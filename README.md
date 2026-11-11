@@ -63,8 +63,7 @@ says X: most tests, in milliseconds, without flakes, an RPC key, or a network.
 npm install -D ethergeist viem
 ```
 
-ESM only. Node 22.12 or later, or a browser; viem 2.50.3 or later; TypeScript
-5.8 or later.
+Ships as ESM only. Node 22.12+ or browser; viem 2.50.3+; TypeScript 5.8+.
 
 ## Quick Start
 
@@ -261,8 +260,8 @@ When two mocks are equally specific:
 
 - Limited mocks (`.once()`, `.times(n)`) answer before unlimited ones, in the
   order you registered them.
-- Otherwise the one registered last answers, so a test can override a shared
-  setup by registering again.
+- Otherwise the one registered last answers, so a test can override a mock from
+  shared setup by registering again with the same pins.
 
 ```ts continued
 usdc.read.balanceOf([alice]).once().returns(1n); // the next call
