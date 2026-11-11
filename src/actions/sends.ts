@@ -62,6 +62,19 @@ export function createSends(
   }
 
   /**
+   * The line that starts an action's miss on a transaction with data to a
+   * registered contract (`called`): it isn't a call to one of the contract's
+   * nonpayable or payable functions, which the contract would answer. None
+   * for any other transaction.
+   */
+  const notAFunctionLines = (called: ReturnType<typeof contractCalled>) =>
+    called === undefined
+      ? []
+      : [
+          `${called.contract.label} is a registered contract, but this transaction isn't a call to one of its nonpayable or payable functions.`,
+        ];
+
+  /**
    * Answers an `eth_estimateGas`. An estimate of a registered contract's
    * nonpayable or payable function (see `ContractTurn`) is the contract's
    * to answer, in order:
@@ -71,7 +84,10 @@ export function createSends(
    * 2. its `estimateGas` mocks and `defaults.estimateGas`;
    * 3. the gas its `write` mock implies (see `impliedGas`), without running
    *    it or using it up;
-   * 4. the contract's miss.
+   * 4. the contract's miss, which names the `estimateGas` mocks that match
+   *    the estimate and, for an estimate with a sender, the
+   *    `sendTransaction` mocks that match its send, though they don't
+   *    answer it.
    *
    * Any other estimate is the actions', in order:
    * 1. the `sendTransaction` mock that would answer the send, if it
@@ -80,7 +96,8 @@ export function createSends(
    * 3. 21,000 gas for a plain transfer to an address without code, as a node
    *    estimates it, even with a send mock;
    * 4. the gas a `sendTransaction` mock implies, as in step 3 above;
-   * 5. the action's miss.
+   * 5. the action's miss, which says when the estimate has data and is to
+   *    a registered contract.
    */
   async function answerEstimate(
     _method: string,
@@ -109,7 +126,12 @@ export function createSends(
         const answered = functionMocks.answer();
         if (answered) return await answered;
         if (writeMock) return numberToHex(impliedGas);
-        throw functionMocks.miss();
+        throw functionMocks.miss(
+          matchingActionLines([
+            ...estimateGasMocks.matchingLines(call),
+            ...(sent === undefined ? [] : sendTransactionMocks.matchingLines(sent)),
+          ]),
+        );
       }
       // Found once, for steps 1 and 4, so its predicates run once.
       const sendMock = sent && sendTransactionMocks.findMock(sent);
@@ -121,7 +143,7 @@ export function createSends(
       if (found.handler) return await estimateGasMocks.answerWith(found.handler, call);
       if (isPlainTransfer(registry, call)) return numberToHex(21_000n);
       if (sendMock) return numberToHex(impliedGas);
-      throw estimateGasMocks.missError(call, found);
+      throw estimateGasMocks.missError(call, found, { before: notAFunctionLines(called) });
     });
   }
 
@@ -168,7 +190,7 @@ export function createSends(
       },
       async () => {
         if (repeated !== undefined) return answerFor(repeated);
-        const outcome = await outcomeOf(call, turn);
+        const outcome = await outcomeOf(call, called, turn);
         // The same bytes sent twice at once both get this far, each awaiting
         // its outcome before either is placed. Only one is placed, and the
         // second is answered as the first.
@@ -182,31 +204,53 @@ export function createSends(
   /**
    * A send's outcome, step 2 of `answerSend`. A send of a registered
    * contract's nonpayable or payable function is the contract's to answer:
-   * its `write` mocks and `defaults.write`, else the contract's miss. Any
-   * other send is the actions', in order:
+   * its `write` mocks and `defaults.write`, else the contract's miss, which
+   * names the `sendTransaction` mocks that match, though they don't answer
+   * it. Any other send is the actions', in order:
    * 1. `mock.actions.sendTransaction` mocks;
    * 2. a success for a plain transfer to an address without code, as on a
    *    node;
-   * 3. the action's miss.
+   * 3. the action's miss, which says when the send has data and is to a
+   *    registered contract.
+   *
+   * `called` is the registered contract the send is to, as `contractCalled`
+   * gives it, and `turn` that contract's turn.
    */
   async function outcomeOf(
     call: SendTransactionCall,
+    called: ReturnType<typeof contractCalled>,
     turn: ContractTurn<MockWriteOutcome> | undefined,
   ): Promise<MockWriteOutcome> {
     const functionMocks = turn?.functionMocks;
     if (functionMocks) {
       const answered = functionMocks.answer();
       if (answered) return await answered;
-      throw functionMocks.miss();
+      throw functionMocks.miss(matchingActionLines(sendTransactionMocks.matchingLines(call)));
     }
     const found = sendTransactionMocks.match(call);
     if (found.handler) return await sendTransactionMocks.answerWith(found.handler, call);
     if (isPlainTransfer(registry, call)) return {};
-    throw sendTransactionMocks.missError(call, found, sendHint(call.to));
+    throw sendTransactionMocks.missError(call, found, {
+      hint: sendHint(call.to),
+      before: notAFunctionLines(called),
+    });
   }
 
   return {
     estimateGas: { ...estimateGasMocks, answer: answerEstimate },
     sendTransaction: { ...sendTransactionMocks, answer: answerSend },
   };
+}
+
+/**
+ * The lines that end a registered contract's miss: the action mocks that
+ * match its transaction (`matching`, from a mock set's `matchingLines`),
+ * which don't answer it. None when none match.
+ */
+function matchingActionLines(matching: readonly string[]): readonly string[] {
+  if (matching.length === 0) return [];
+  return [
+    "Action mocks that match, which don't answer a registered contract's functions:",
+    ...matching,
+  ];
 }

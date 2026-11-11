@@ -15,7 +15,12 @@ import {
   createHandlers,
   foundMock,
 } from "../mocking/handlers.js";
-import { checkNoMatchers, firstMismatch, mismatches } from "../mocking/matching.js";
+import {
+  type MatchOptions,
+  checkNoMatchers,
+  firstMismatch,
+  mismatches,
+} from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockNotFoundError, type MockRevertError } from "../shared/errors.js";
@@ -234,17 +239,16 @@ export function createMockSet<answer>(
     });
   }
 
+  /** Where `candidate` first differs from `call`: see `firstMismatch`. */
+  const differsFrom = (call: object) => (candidate: Handler, options: MatchOptions) =>
+    firstMismatch(candidate.pinned, actualOf(candidate.pinned, call), options);
+
   /**
    * The handler that answers `call`, and where the others missed: see
    * `findAnswering`.
    */
   const match = (call: object) =>
-    mocks.findAnswering(
-      () => true,
-      (candidate, options) =>
-        firstMismatch(candidate.pinned, actualOf(candidate.pinned, call), options),
-      definition.name,
-    );
+    mocks.findAnswering(() => true, differsFrom(call), definition.name);
 
   /** Answers `call` with `handler`, the mock `match` found for it. */
   function answerWith(handler: Handler, call: object): Promise<answer> {
@@ -268,12 +272,16 @@ export function createMockSet<answer>(
   /**
    * The error for a call nothing answers, from what `match` gave for it. It
    * lists the mocks that missed the call, or without any, says where to
-   * register one: `hint`, the definition's by default.
+   * register one: `hint`, the definition's by default. The caller's
+   * `before` lines come between the `notFoundLines` and that list or hint.
    */
   function missError(
     call: object,
     { missed, removed }: ReturnType<typeof match>,
-    hint = definition.hint,
+    {
+      hint = definition.hint,
+      before = [],
+    }: { hint?: string | undefined; before?: readonly string[] } = {},
   ): MockNotFoundError {
     const registered = missedLines(definition.name, mocks.handlers, missed, (_, key) =>
       paramName(key),
@@ -281,6 +289,7 @@ export function createMockSet<answer>(
     return new MockNotFoundError(`No mock for ${formatCall(definition.name, shown(call))}.`, {
       metaMessages: [
         ...(notFoundLines?.(call) ?? []),
+        ...before,
         ...(registered.length > 0 ? ["Registered:", ...registered] : [`Mock it with ${hint}.`]),
         ...removedLines(definition.name, removed),
       ],
@@ -297,6 +306,15 @@ export function createMockSet<answer>(
      * it: nothing runs, and no use is counted until `spend` counts one.
      */
     findMock: (call: object) => foundMock(match(call).handler),
+    /**
+     * The mocks that match `call` by exact values and can answer, a line
+     * each, for a registered contract's miss, where they aren't in
+     * contention: see `matchingByValues`.
+     */
+    matchingLines: (call: object) =>
+      mocks
+        .matchingByValues(differsFrom(call))
+        .map((handler) => `  ${describeMock(definition.name, handler)}`),
     /** The calls this action received, as they arrive. */
     calls,
     clearCalls() {

@@ -344,7 +344,7 @@ describe("a write mock", () => {
     ]);
   });
 
-  test("a send mock for the same to doesn't answer what it misses: the estimate misses, naming the arg", async () => {
+  test("a send mock for the same to doesn't answer what it misses: the estimate misses, naming the arg and the send mock", async () => {
     const { mock, usdc, transfer } = setup();
     mock.actions.sendTransaction({ to: USDC }).returns({ gasUsed: 1n });
     usdc.write.transfer([bob, 5n]).returns({ gasUsed: 2n });
@@ -355,13 +355,33 @@ describe("a write mock", () => {
     expect(notFound.shortMessage).toBe(
       `No estimateGas mock for transfer(${bob}, 6n) on USDC (${USDC}).`,
     );
-    expect(hintsOf(notFound)).toBe(
-      [
-        "Write mocks, which imply the estimate of a send they match:",
-        `  transfer(${bob}, 5n)  ← amount didn't match`,
-      ].join("\n"),
-    );
+    expect(notFound.metaMessages).toEqual([
+      "Write mocks, which imply the estimate of a send they match:",
+      `  transfer(${bob}, 5n)  ← amount didn't match`,
+      "Action mocks that match, which don't answer a registered contract's functions:",
+      `  sendTransaction({ to: ${USDC} })`,
+    ]);
     expect(mock.transactions.map(({ receipt }) => receipt.gasUsed)).toEqual([2n]);
+  });
+
+  test("a send mock for the same to doesn't answer what it misses: a node account's send misses, naming the arg and the send mock", async () => {
+    const { mock, usdc, transfer } = setup("node");
+    mock.actions.sendTransaction({ to: USDC }).returns({ gasUsed: 1n });
+    usdc.write.transfer([bob, 5n]).returns({ gasUsed: 2n });
+
+    const notFound = expectCause(await rejectionOf(transfer(6n)), MockNotFoundError);
+
+    expect(notFound.shortMessage).toBe(`No write mock for transfer(${bob}, 6n) on USDC (${USDC}).`);
+    expect(notFound.metaMessages).toEqual([
+      "Registered:",
+      `  transfer(${bob}, 5n)  ← amount didn't match`,
+      "Action mocks that match, which don't answer a registered contract's functions:",
+      `  sendTransaction({ to: ${USDC} })`,
+    ]);
+    expect(mock.transactions).toEqual([]);
+    expectThrows(MockCheckError, `sendTransaction({ to: ${USDC} })`, () => {
+      mock.assertAllUsed();
+    });
   });
 
   test("a function without a write mock isn't answered, with a hint", async () => {
@@ -654,7 +674,7 @@ describe("only a contract's mocks answer its functions", () => {
   });
 
   test.each(["local", "node"] as const)(
-    "action mocks registered before the contract don't answer its function either (%s account)",
+    "action mocks registered before the contract don't answer its function either, and its miss names them (%s account)",
     async (account) => {
       const mock = createMockRpc({ blockNumber: 10n });
       mock.actions.estimateGas().returns(80_000n);
@@ -675,28 +695,99 @@ describe("only a contract's mocks answer its functions", () => {
         }),
       );
 
+      const notFound = expectCause(error, MockNotFoundError);
       // A local account estimates first; a node's account leaves it to the node.
-      const namespace = account === "local" ? "estimateGas" : "write";
-      expect(expectCause(error, MockNotFoundError).shortMessage).toBe(
-        `No ${namespace} mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
-      );
+      if (account === "local") {
+        expect(notFound.shortMessage).toBe(
+          `No estimateGas mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
+        );
+        expect(notFound.metaMessages).toEqual([
+          `No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
+          "Action mocks that match, which don't answer a registered contract's functions:",
+          "  estimateGas(*)",
+          "  sendTransaction(*)",
+        ]);
+      } else {
+        expect(notFound.shortMessage).toBe(
+          `No write mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
+        );
+        expect(notFound.metaMessages).toEqual([
+          `No write mocks registered for "transfer"; a simulate mock doesn't answer sends.`,
+          "Action mocks that match, which don't answer a registered contract's functions:",
+          "  sendTransaction(*)",
+        ]);
+      }
       expect(mock.transactions).toEqual([]);
+      expectThrows(MockCheckError, "sendTransaction(*)", () => {
+        mock.assertAllUsed();
+      });
     },
   );
 
-  test("an estimate without from is the contract's too, missing beside an estimate action mock", async () => {
+  test("an estimate without from is the contract's too, missing beside an estimate action mock, which it names, and no send mock", async () => {
     const { mock } = setup();
     mock.actions.estimateGas().returns(80_000n);
+    mock.actions.sendTransaction().returns();
     const data = encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [bob, 5n] });
 
     const error = await rejectionOf(
       mock.request({ method: "eth_estimateGas", params: [{ to: USDC, data }] }),
     );
 
-    expect(expectCause(error, MockNotFoundError).shortMessage).toBe(
+    const notFound = expectCause(error, MockNotFoundError);
+    expect(notFound.shortMessage).toBe(
       `No estimateGas mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
     );
+    expect(notFound.metaMessages).toEqual([
+      `No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
+      "Action mocks that match, which don't answer a registered contract's functions:",
+      "  estimateGas(*)",
+    ]);
   });
+
+  test("its miss names action mocks with a predicate without running it", async () => {
+    const { mock, transfer } = setup();
+    const counted = vi.fn(() => true);
+    mock.actions.estimateGas({ to: match.where(counted, "isUsdc") }).returns(80_000n);
+    mock.actions.sendTransaction({ to: match.where(counted, "isUsdc") }).returns();
+
+    const notFound = expectCause(await rejectionOf(transfer()), MockNotFoundError);
+
+    expect(notFound.metaMessages?.slice(-3)).toEqual([
+      "Action mocks that match, which don't answer a registered contract's functions:",
+      "  estimateGas({ to: where(isUsdc) })",
+      "  sendTransaction({ to: where(isUsdc) })",
+    ]);
+    expect(counted).not.toHaveBeenCalled();
+  });
+
+  test.each(["local", "node"] as const)(
+    "its miss names no action mock that doesn't match, can't answer, or the last restore removed (%s account)",
+    async (account) => {
+      const { mock, transfer } = setup(account);
+      const checkpoint = mock.checkpoint();
+      mock.actions.estimateGas().returns(80_000n);
+      mock.actions.sendTransaction().returns();
+      checkpoint.restore();
+      mock.actions.estimateGas({ to: bob }).returns(80_000n);
+      mock.actions.sendTransaction({ to: bob }).returns();
+      mock.actions.estimateGas({ to: USDC });
+      mock.actions.sendTransaction({ to: USDC });
+      mock.actions.sendTransaction({ to: USDC, value: 0n }).once().returns();
+      await mock.request({
+        method: "eth_sendTransaction",
+        params: [{ from: alice, to: USDC, data: "0x12345678" }],
+      });
+
+      const notFound = expectCause(await rejectionOf(transfer()), MockNotFoundError);
+
+      expect(notFound.metaMessages).toEqual([
+        account === "local"
+          ? `No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`
+          : `No write mocks registered for "transfer"; a simulate mock doesn't answer sends.`,
+      ]);
+    },
+  );
 
   test("a payable function's write mock implies its estimate beside an estimate action mock", async () => {
     const { mock, wallet } = setup();
@@ -751,16 +842,59 @@ describe("action mocks answer the rest of what's sent to a registered contract",
     ]);
   });
 
-  test("unmocked, a selector not on its ABI is the action's miss", async () => {
-    const { mock, wallet } = setup("node");
+  const notAFunction = `USDC (${USDC}) is a registered contract, but this transaction isn't a call to one of its nonpayable or payable functions.`;
 
-    const error = await rejectionOf(wallet.sendTransaction({ to: USDC, data: "0x12345678" }));
+  describe.each([
+    { kind: "a selector not on its ABI", data: "0x12345678" },
+    { kind: "a function's selector, with data that doesn't decode", data: "0xa9059cbb12" },
+    {
+      kind: "a view function",
+      data: encodeFunctionData({ abi: erc20Abi, functionName: "balanceOf", args: [bob] }),
+    },
+  ] as const)(
+    "unmocked, $kind is the action's miss, which says the contract is registered",
+    ({ data }) => {
+      // A local account estimates first; a node's account leaves it to the node.
+      const misses = { local: "estimateGas", node: "sendTransaction" } as const;
 
-    const notFound = expectCause(error, MockNotFoundError);
-    expect(notFound.shortMessage).toMatch(/^No mock for sendTransaction\(/u);
-    expect(hintsOf(notFound)).toBe("Mock it with mock.actions.sendTransaction({ to }).returns(…).");
-    expect(mock.transactions).toEqual([]);
-  });
+      test.each(["local", "node"] as const)(
+        "with no action mocks (%s account)",
+        async (account) => {
+          const { mock, wallet } = setup(account);
+
+          const error = await rejectionOf(wallet.sendTransaction({ to: USDC, data }));
+
+          const notFound = expectCause(error, MockNotFoundError);
+          expect(notFound.shortMessage).toMatch(
+            new RegExp(`^No mock for ${misses[account]}\\(`, "u"),
+          );
+          expect(notFound.metaMessages).toEqual([
+            notAFunction,
+            `Mock it with mock.actions.${misses[account]}({ to }).returns(…).`,
+          ]);
+          expect(mock.transactions).toEqual([]);
+        },
+      );
+
+      test.each(["local", "node"] as const)(
+        "beside action mocks that miss, which it lists (%s account)",
+        async (account) => {
+          const { mock, wallet } = setup(account);
+          mock.actions.estimateGas({ to: bob }).returns(30_000n);
+          mock.actions.sendTransaction({ to: bob }).returns();
+
+          const error = await rejectionOf(wallet.sendTransaction({ to: USDC, data }));
+
+          expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+            notAFunction,
+            "Registered:",
+            `  ${misses[account]}({ to: ${bob} })  ← to didn't match`,
+          ]);
+          expect(mock.transactions).toEqual([]);
+        },
+      );
+    },
+  );
 
   test("a contract removed by restore() leaves its functions to action mocks", async () => {
     const { mock, wallet } = setup();

@@ -42,14 +42,15 @@ type Candidates = {
  * namespace's mocks for its function, each with the arg it missed on, or that
  * there are none. An estimate's also lists its function's `write` mocks
  * (`writes`), which imply the estimate of a send they match, for an estimate
- * with `from`. Last come the mocks of both that the last restore removed.
+ * with `from`. Then come the mocks of both that the last restore removed, and
+ * last the `after` lines of a turn's caller.
  */
 export function missError(
   call: MockCall,
   namespace: MockNamespace,
   label: string,
   own: Candidates,
-  writes?: Candidates,
+  { writes, after = [] }: { writes?: Candidates; after?: readonly string[] } = {},
 ): MockNotFoundError {
   const describe = ({ registered, missed }: Candidates) =>
     missedLines(call.functionName, registered, missed, argName);
@@ -71,7 +72,7 @@ export function missError(
     metaMessages.push("Write mocks, which imply the estimate of a send they match:", ...writeLines);
   if (metaMessages.length === 0) metaMessages.push(none);
   const removed = [...own.removed, ...(writes?.removed ?? [])];
-  metaMessages.push(...removedLines(call.functionName, removed));
+  metaMessages.push(...removedLines(call.functionName, removed), ...after);
   return new MockNotFoundError(
     `No ${what} for ${formatCall(call.functionName, call.args)}${formatPins(call, pinned)} on ${label}.`,
     { metaMessages },

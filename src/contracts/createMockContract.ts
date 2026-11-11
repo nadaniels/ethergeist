@@ -75,8 +75,11 @@ export type ContractTurn<answer = unknown> = {
          * matches.
          */
         answer(): Promise<answer> | undefined;
-        /** The error for the call when nothing answers it; built only then. */
-        miss(): MockNotFoundError;
+        /**
+         * The error for the call when nothing answers it; built only then.
+         * It ends with the `after` lines of the turn's caller.
+         */
+        miss(after: readonly string[]): MockNotFoundError;
       }
     | undefined;
   /**
@@ -347,19 +350,22 @@ export function createMockContract<const abi extends Abi>(
         const { handler } = matchOnce();
         return handler && run(handler, call, namespace);
       },
-      miss() {
+      miss(after: readonly string[]) {
         const { missed, removed } = matchOnce();
         const registered = { registered: candidates(decoded), missed, removed };
         if (namespace !== "estimateGas" || call.from === undefined)
-          return missError(call, namespace, label, registered);
+          return missError(call, namespace, label, registered, { after });
         // The `write` mocks are matched again for the reasons they missed, so
         // their predicates run a second time.
         const writes = { ...decoded, namespace: "write" as const };
         const writesMatched = match(writes);
         return missError(call, namespace, label, registered, {
-          registered: candidates(writes),
-          missed: writesMatched.missed,
-          removed: writesMatched.removed,
+          writes: {
+            registered: candidates(writes),
+            missed: writesMatched.missed,
+            removed: writesMatched.removed,
+          },
+          after,
         });
       },
     };

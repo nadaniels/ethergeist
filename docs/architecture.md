@@ -252,7 +252,11 @@ The two functions keep these rules:
   recorded however the request ends, and whichever side answers it;
 - a mock's predicates run only while it's in contention, and once per
   estimate, except at a contract's estimate miss, where its `write` mocks
-  are matched again for the reasons they missed;
+  are matched again for the reasons they missed. A contract's miss names
+  the action mocks that match the transaction by exact values
+  (`matchingLines`), which runs none of their predicates and counts no
+  use: `sends.ts` builds those lines and the turn's `miss()` appends them,
+  so `contracts/` names no action;
 - a send that's refused or not answered places nothing and takes no nonce;
 - a repeated raw send asks no mock and gives no contract a turn;
 - a send awaits its outcome before it's placed, a plain transfer's too, so

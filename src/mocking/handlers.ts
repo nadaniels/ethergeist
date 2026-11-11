@@ -229,6 +229,10 @@ export function createHandlers<context, extra>() {
     return builder;
   }
 
+  /** Whether `handler` has an answer and answers left. */
+  const canAnswer = (handler: Handler<context, extra>) =>
+    handler.answer !== undefined && handler.remaining !== 0;
+
   /**
    * The best of the candidates (the mocks `isCandidate` picks) that can
    * answer and matches: the most specific; among equally specific ones, see
@@ -254,8 +258,6 @@ export function createHandlers<context, extra>() {
     removed: readonly Handler<context, extra>[];
   } {
     const candidates = handlers.filter((handler) => isCandidate(handler));
-    const canAnswer = (handler: Handler<context, extra>) =>
-      handler.answer !== undefined && handler.remaining !== 0;
     const { best, missed } = bestMatch(
       candidates.filter((handler) => canAnswer(handler)),
       differs,
@@ -271,6 +273,19 @@ export function createHandlers<context, extra>() {
     );
     return { handler: undefined, missed, removed };
   }
+
+  /**
+   * The mocks that can answer a call and match it by exact values, for a
+   * miss elsewhere that names them, where they aren't in contention: no
+   * predicate runs, so a mock with one is listed whatever it would say.
+   * `differs` is as in `findAnswering`.
+   */
+  const matchingByValues = (
+    differs: (handler: Handler<context, extra>, options: MatchOptions) => PinnedKey | undefined,
+  ) =>
+    handlers.filter(
+      (handler) => canAnswer(handler) && differs(handler, { predicates: false }) === undefined,
+    );
 
   /**
    * Answers with `handler`, counting the use: its answer, encoded. A revert,
@@ -318,6 +333,7 @@ export function createHandlers<context, extra>() {
     register,
     createBuilder,
     findAnswering,
+    matchingByValues,
     answerWith,
     unused,
     /** Zeroes every mock's use count; limits keep what's left. */

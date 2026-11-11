@@ -712,16 +712,23 @@ describe("whose mocks answer an estimate sent to a contract", () => {
     expect(await transfer()).toBe(60_000n);
   });
 
-  test("action mocks don't answer functions the contract doesn't mock: the contract misses", async () => {
+  test("action mocks don't answer functions the contract doesn't mock: the contract misses, naming those that match", async () => {
     const { mock, token, mint } = tokenSetup({ estimateGas: { transfer: 60_000n } });
     mock.actions.estimateGas().returns(100_000n);
     mock.actions.estimateGas({ value: 1n }).fails("insufficientFunds");
+    mock.actions.estimateGas({ value: 2n }).returns(100_000n);
 
     const error = expectCause(await rejectionOf(mint(1n, 1n)), MockNotFoundError);
 
     expect(error.shortMessage).toBe(
       `No estimateGas mock for mint(1n) on Token (${token.address}).`,
     );
+    expect(error.metaMessages).toEqual([
+      `No estimateGas mocks registered for "mint"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
+      "Action mocks that match, which don't answer a registered contract's functions:",
+      "  estimateGas(*)",
+      "  estimateGas({ value: 1n }) fails",
+    ]);
     expect(mock.formatHistory()).toBe("#1 eth_estimateGas estimateGas Token.mint(1n) ✗ not mocked");
     expect(mock.history[0]).toMatchObject({
       contract: { call: { functionName: "mint" }, outcome: { type: "unhandled" } },
@@ -742,7 +749,10 @@ describe("whose mocks answer an estimate sent to a contract", () => {
     expect(await approve()).toBe(60_000n);
 
     expect(error.shortMessage).toMatch(/^No mock for estimateGas\(/u);
-    expect(hintsOf(error)).toBe("Mock it with mock.actions.estimateGas({ to }).returns(…).");
+    expect(error.metaMessages).toEqual([
+      `Token (${token.address}) is a registered contract, but this transaction isn't a call to one of its nonpayable or payable functions.`,
+      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+    ]);
     expect(mock.unhandled).toHaveLength(1);
     expect(mock.history[1]).toMatchObject({
       contract: {
@@ -796,7 +806,10 @@ describe("estimates sent to a contract that action mocks answer", () => {
 
     const notFound = expectCause(error, MockNotFoundError);
     expect(notFound.shortMessage).toMatch(/^No mock for estimateGas\(/u);
-    expect(hintsOf(notFound)).toBe("Mock it with mock.actions.estimateGas({ to }).returns(…).");
+    expect(notFound.metaMessages).toEqual([
+      `Token (${token.address}) is a registered contract, but this transaction isn't a call to one of its nonpayable or payable functions.`,
+      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+    ]);
   });
 
   test.each([

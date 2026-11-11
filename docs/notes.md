@@ -149,7 +149,8 @@ features land; tick them off as pages get written.
   - A write mock answers a send of its function (`eth_sendTransaction`,
     `eth_sendRawTransaction`) to the contract. Only write mocks and
     `defaults.write` answer it: `mock.actions.sendTransaction` doesn't,
-    so a send the write mocks miss is the contract's miss. The catch-all
+    so a send the write mocks miss is the contract's miss, which names the
+    `sendTransaction` mocks that match it. The catch-all
     for a function is an args-less `write.transfer()` or `defaults.write`.
     The transaction is mined in a new block, as every send is (section 5,
     "Sends").
@@ -678,7 +679,11 @@ features land; tick them off as pages get written.
     `.reverts()` comes first, then `mock.actions.estimateGas` mocks, then
     21000 for a plain transfer to an address without code, then the
     100,000 a `sendTransaction` mock implies (below). Only the side that
-    owns the transaction is asked, so its miss is the one reported. A
+    owns the transaction is asked, so its miss is the one reported. The
+    contract's miss names the action mocks that match the estimate or its
+    send, which don't answer it; the action's miss on data sent to a
+    registered contract says the contract is registered and that this
+    isn't a call to one of its nonpayable or payable functions. A
     number for a contract's writes goes on the contract, per function:
     `token.estimateGas.transfer().returns(n)` or `defaults.estimateGas`.
     An args-less `mock.actions.estimateGas().returns(100_000n)` sets no
@@ -737,7 +742,10 @@ features land; tick them off as pages get written.
   - Only a registered contract's `write` mocks answer sends of its
     functions (section 3, "Writes"); `sendTransaction` mocks answer the
     rest, ETH sent to the contract without data and a selector not on its
-    ABI included.
+    ABI included. Their misses say which side it was: the contract's names
+    the `sendTransaction` mocks that match, and the action's, for data
+    sent to the contract, says the contract is registered and that this
+    isn't a call to one of its nonpayable or payable functions.
   - Unmocked, a send without data to an address without code succeeds
     (sending ETH needs no mock); anything else isn't answered, with a hint:
     data to an unknown or `empty()` address, a registered contract's
@@ -842,7 +850,10 @@ features land; tick them off as pages get written.
       answers also lists the function's write mocks, with why each missed:
       a write mock that matches the send implies its estimate, so the miss
       is usually there. An estimate without `from` is no send's, so it
-      lists none.
+      lists none. A contract's miss also names the action mocks that match
+      the call, under "Action mocks that match, which don't answer a
+      registered contract's functions:", by exact values: their predicates
+      aren't run, and those used up or without an answer aren't listed.
 - [ ] How to read "answered no call": usage counts from the last clear
       (`clearCalls()`, `restore()`, `reset()`), so a `.times(n)` mock that
       answered before it can read "3 times, 2 left". Under each unused mock, the calls
