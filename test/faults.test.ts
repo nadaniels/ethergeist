@@ -1,7 +1,9 @@
 import {
   HttpRequestError,
+  InsufficientFundsError,
   InvalidInputRpcError,
   LimitExceededRpcError,
+  NonceTooLowError,
   RpcRequestError,
   TimeoutError,
   createPublicClient,
@@ -11,7 +13,14 @@ import {
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
-import { MockResolverError, MockSetupError, createMockRpc, testAddress } from "../src/index.js";
+import {
+  MockCheckError,
+  MockNotFoundError,
+  MockResolverError,
+  MockSetupError,
+  createMockRpc,
+  testAddress,
+} from "../src/index.js";
 import { expectCause, expectThrows, failureOf, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
@@ -386,6 +395,116 @@ describe(".fails()", () => {
   });
 });
 
+describe(".refuses()", () => {
+  test("is a refusal on the history entry and the contract's record, and in history", async () => {
+    const { mock, client, usdc } = setupTokens();
+    usdc.simulate.transfer().refuses("insufficientFunds");
+    usdc.estimateGas.transfer().refuses("insufficientFunds");
+    const call = { abi: erc20Abi, address: USDC, account: alice, args: [bob, 1n] } as const;
+
+    expectCause(
+      await rejectionOf(client.simulateContract({ ...call, functionName: "transfer" })),
+      InsufficientFundsError,
+    );
+    expectCause(
+      await rejectionOf(client.estimateContractGas({ ...call, functionName: "transfer" })),
+      InsufficientFundsError,
+    );
+
+    const refusal = { type: "refusal", name: "insufficientFunds" };
+    expect(mock.history).toMatchObject([
+      { outcome: refusal, call: { outcome: refusal } },
+      { outcome: refusal, contract: { outcome: refusal } },
+    ]);
+    expect(mock.formatHistory().match(/✗ refused: insufficientFunds$/gmu)).toHaveLength(2);
+    expect(mock.unhandled).toEqual([]);
+  });
+
+  // viem retries neither -32000 nor -32003, so the same request again is the
+  // app's.
+  test("isn't retried: the same request after a used-up .once() is no retry", async () => {
+    const { mock, client, usdc } = setupTokens();
+    usdc.estimateGas.transfer().once().refuses("insufficientFunds");
+    const estimate = () =>
+      client.estimateContractGas({
+        abi: erc20Abi,
+        address: USDC,
+        functionName: "transfer",
+        args: [bob, 1n],
+        account: alice,
+      });
+
+    expectCause(await rejectionOf(estimate()), InsufficientFundsError);
+    const missed = expectCause(await rejectionOf(estimate()), MockNotFoundError);
+
+    expect(mock.history).toHaveLength(2);
+    expect(mock.formatHistory()).not.toContain("(retry)");
+    expect(missed.metaMessages?.join("\n")).not.toContain("viem retrying");
+  });
+
+  test("an async resolver's refuse() refuses, after its await", async () => {
+    const { mock } = setupTokens();
+    mock.actions.sendTransaction().returns(async ({ refuse }) => {
+      await Promise.resolve();
+      return refuse("nonceTooLow");
+    });
+
+    const error = await rejectionOf(
+      mock.request({ method: "eth_sendTransaction", params: [{ from: alice, to: bob }] }),
+    );
+
+    expect(expectCause(error, RpcRequestError)).toMatchObject({
+      code: -32000,
+      details: "nonce too low",
+    });
+    expect(mock.history[0]!.outcome).toEqual({ type: "refusal", name: "nonceTooLow" });
+    expect(mock.transactions).toEqual([]);
+  });
+
+  test("a default's refuse() refuses, behind a .once() refusal", async () => {
+    const { mock, client } = setupTokens();
+    const token = mock.contract({
+      abi: erc20Abi,
+      address: testAddress("token"),
+      defaults: { estimateGas: { transfer: ({ refuse }) => refuse("feeCapTooLow") } },
+    });
+    token.estimateGas.transfer().once().refuses("insufficientFunds");
+    const estimate = () =>
+      client.estimateContractGas({
+        abi: erc20Abi,
+        address: token.address,
+        functionName: "transfer",
+        args: [bob, 1n],
+        account: alice,
+      });
+
+    expectCause(await rejectionOf(estimate()), InsufficientFundsError);
+    await rejectionOf(estimate());
+
+    expect(mock.history.map((entry) => entry.outcome)).toEqual([
+      { type: "refusal", name: "insufficientFunds" },
+      { type: "refusal", name: "feeCapTooLow" },
+    ]);
+  });
+
+  test("a later .returns() replaces it, and it replaces a fault", async () => {
+    const { mock, client } = setupTokens();
+    const fee = mock.actions.estimateGas({ to: bob });
+    fee.fails({ status: 503 });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a name an estimate's types refuse
+    fee.refuses("nonceTooLow" as never);
+    const other = mock.actions.estimateGas({ to: alice });
+    other.refuses("insufficientFunds");
+    other.returns(21_000n);
+
+    expectCause(
+      await rejectionOf(client.estimateGas({ account: alice, to: bob })),
+      NonceTooLowError,
+    );
+    expect(await client.estimateGas({ account: bob, to: alice })).toBe(21_000n);
+  });
+});
+
 describe("a fault that isn't one", () => {
   const notFaults: unknown[] = [
     undefined,
@@ -432,44 +551,56 @@ describe("a fault that isn't one", () => {
           "A fault is one of:",
           "- { status, retryAfter? }: an HTTP error response, e.g. { status: 503 };",
           "- { code, message?, data? }: a JSON-RPC error response;",
-          '- "timeout" or "network";',
-          '- a node\'s refusal by name, where one is typed, e.g. "insufficientFunds".',
+          '- "timeout" or "network".',
         ],
       }),
     );
   });
 
-  // The types allow a name only where a node can refuse with it; the check lets any through.
-  test.each([
-    { name: "insufficientFunds", code: -32003 },
-    { name: "gasExceedsAllowance", code: -32000 },
-  ])("$name where its types refuse it answers as a node's error", async ({ name, code }) => {
-    const { mock, client } = setupTokens({ retryCount: 0 });
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what a JavaScript caller can pass
-    mock.actions.getBalance().fails(name as never);
+  test.each(["insufficientFunds", "nonceTooLow"])(
+    'a refusal\'s name, "%s", is refused by .fails() on every builder, and by failRequests(), naming .refuses()',
+    (name) => {
+      const { mock, usdc } = setupTokens();
+      const builders = [
+        () => mock.actions.getBalance(),
+        () => mock.actions.estimateGas(),
+        () => mock.actions.sendTransaction(),
+        () => mock.method("eth_foo"),
+        () => usdc.read.decimals(),
+        () => usdc.simulate.transfer(),
+        () => usdc.estimateGas.transfer(),
+        () => usdc.write.transfer(),
+      ];
+      // oxlint-disable typescript/no-unsafe-type-assertion -- what a cast or JavaScript can pass
+      const registrations = [
+        ...builders.map((builder) => () => {
+          builder().fails(name as never);
+        }),
+        () => mock.failRequests(name as never),
+      ];
+      // oxlint-enable typescript/no-unsafe-type-assertion
+      for (const register of registrations) {
+        const error = expectThrows(MockSetupError, "Expected a fault", register);
+        expect(error.shortMessage).toBe(`Expected a fault; got ${name}.`);
+        expect(error.metaMessages).toEqual([
+          `"${name}" is a node's refusal: use .refuses("${name}"), or refuse("${name}") in a resolver.`,
+          "A node refuses only simulations, estimates and sends.",
+        ]);
+      }
+    },
+  );
 
-    const error = await rejectionOf(client.getBalance({ address: alice }));
-    expect(expectCause(error, RpcRequestError).code).toBe(code);
-  });
-
-  // No types guard failRequests() with a name; hex that isn't a transaction has none.
-  test("failRequests() with a name answers as a node's error, on any request", async () => {
-    const { mock, client } = setupTokens({ retryCount: 0 });
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what a JavaScript caller can pass
-    mock.failRequests("insufficientFunds" as never);
-
-    const balance = await rejectionOf(client.getBalance({ address: alice }));
-    expect(expectCause(balance, RpcRequestError).code).toBe(-32003);
-    const send = await rejectionOf(
-      client.request({ method: "eth_sendRawTransaction", params: ["0xdead"] }),
-    );
-    expect(expectCause(send, RpcRequestError)).toMatchObject({
-      code: -32003,
-      details: "insufficient funds for gas * price + value: have 0 want 0",
+  test("a refused .fails() leaves the mock without an answer", () => {
+    const { mock } = setupTokens();
+    const builder = mock.actions.estimateGas();
+    expectThrows(MockSetupError, "Expected a fault", () => {
+      // @ts-expect-error -- a refusal is `.refuses()`
+      builder.fails("insufficientFunds");
     });
-    expect(
-      mock.formatHistory().match(/✗ fault: insufficientFunds \(failRequests\)/gu),
-    ).toHaveLength(2);
+
+    expectThrows(MockCheckError, "estimateGas(*) without an answer", () => {
+      mock.assertAllUsed();
+    });
   });
 
   test("a resolver's fail() with one is a MockResolverError, and history still formats", async () => {
@@ -480,5 +611,108 @@ describe("a fault that isn't one", () => {
     const rejection = await rejectionOf(read(USDC, "decimals"));
     expect(mock.formatHistory()).toContain("✗ resolver threw: Expected a fault; got undefined.");
     expect(expectCause(rejection, MockResolverError).cause).toBeInstanceOf(MockSetupError);
+  });
+
+  test("a resolver's fail() with a refusal's name is a MockResolverError naming refuse()", async () => {
+    const { mock, client } = setupTokens({ retryCount: 0 });
+    // @ts-expect-error -- a refusal is `refuse()`
+    mock.actions.estimateGas().returns(({ fail }) => fail("insufficientFunds"));
+
+    const rejection = await rejectionOf(client.estimateGas({ account: alice, to: bob }));
+    const cause = expectCause(rejection, MockResolverError).cause;
+    expect(cause).toBeInstanceOf(MockSetupError);
+    expect(cause).toMatchObject({
+      shortMessage: "Expected a fault; got insufficientFunds.",
+      metaMessages: [
+        '"insufficientFunds" is a node\'s refusal: use .refuses("insufficientFunds"), or refuse("insufficientFunds") in a resolver.',
+        "A node refuses only simulations, estimates and sends.",
+      ],
+    });
+  });
+});
+
+describe("a refusal that isn't one", () => {
+  const notRefusals: unknown[] = [
+    undefined,
+    null,
+    "timeout",
+    "network",
+    { status: 503 },
+    { code: -32000, message: "nonce too low" },
+    "nonce too low",
+    "NonceTooLow",
+    ["nonceTooLow"],
+  ];
+
+  test.each(notRefusals)(
+    ".refuses(%o) is refused at registration, on every builder whose types offer it",
+    (refusal) => {
+      const { mock, usdc } = setupTokens();
+      const builders = [
+        () => mock.actions.estimateGas(),
+        () => mock.actions.sendTransaction(),
+        () => usdc.simulate.transfer(),
+        () => usdc.estimateGas.transfer(),
+        () => usdc.write.transfer(),
+      ];
+      // oxlint-disable typescript/no-unsafe-type-assertion -- what a cast or JavaScript can pass
+      for (const builder of builders)
+        expect(() => {
+          builder().refuses(refusal as never);
+        }).toThrow(MockSetupError);
+      // oxlint-enable typescript/no-unsafe-type-assertion
+    },
+  );
+
+  test("names what was given, and the names", () => {
+    const { usdc } = setupTokens();
+    expect(() => {
+      // @ts-expect-error -- `refuses()` takes a node's refusal by name
+      usdc.write.transfer().refuses({ status: 503 });
+    }).toThrow(
+      new MockSetupError("Expected a node's refusal by name; got { status: 503 }.", {
+        metaMessages: [
+          'A node\'s refusal is one of: "insufficientFunds", "feeCapTooLow", "tipAboveFeeCap", ' +
+            '"gasExceedsAllowance", "intrinsicGasTooLow", "nonceTooLow", "nonceTooHigh", ' +
+            '"alreadyKnown".',
+          "For a fault, use .fails(), or fail() in a resolver.",
+        ],
+      }),
+    );
+  });
+
+  test("a .refuses() left without a value is refused too", () => {
+    const { mock } = setupTokens();
+    expectThrows(MockSetupError, "Expected a node's refusal by name; got undefined.", () => {
+      // @ts-expect-error -- `refuses()` takes a node's refusal by name
+      mock.actions.sendTransaction().refuses();
+    });
+  });
+
+  test("a resolver's refuse() with a fault is a MockResolverError naming fail()", async () => {
+    const { mock, client } = setupTokens({ retryCount: 0 });
+    // @ts-expect-error -- a fault is `fail()`
+    mock.actions.estimateGas().returns(({ refuse }) => refuse({ status: 503 }));
+
+    const rejection = await rejectionOf(client.estimateGas({ account: alice, to: bob }));
+    expect(mock.formatHistory()).toContain(
+      "✗ resolver threw: Expected a node's refusal by name; got { status: 503 }.",
+    );
+    expect(expectCause(rejection, MockResolverError).cause).toBeInstanceOf(MockSetupError);
+  });
+
+  // The types allow a name only where a node can refuse with it; the check
+  // lets any through.
+  test.each([
+    { name: "nonceTooLow", code: -32000 },
+    { name: "intrinsicGasTooLow", code: -32000 },
+  ])("$name where its types refuse it answers as a node's error", async ({ name, code }) => {
+    const { mock, client } = setupTokens({ retryCount: 0 });
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what a cast can pass
+    mock.actions.estimateGas().refuses(name as never);
+
+    const error = await rejectionOf(client.estimateGas({ account: alice, to: bob }));
+    expect(expectCause(error, RpcRequestError).code).toBe(code);
+    expect(mock.history[0]!.outcome).toEqual({ type: "refusal", name });
   });
 });

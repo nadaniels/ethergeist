@@ -283,9 +283,10 @@ export type MockRpc = {
   /**
    * Throws if a mock never answered a call: its pins are wrong and a broader
    * mock answered instead, the app doesn't make the call it stands for, or
-   * it was registered without an answer (`.returns()`, `.reverts()` or
-   * `.fails()`), so it never could. A contract's `defaults` aren't checked:
-   * they're shared setup for the whole suite, which one test may not use.
+   * it was registered without an answer (`.returns()`, `.reverts()`,
+   * `.fails()` or `.refuses()`), so it never could. A contract's `defaults`
+   * aren't checked: they're shared setup for the whole suite, which one test
+   * may not use.
    *
    * For other shared setup (actions, `mock.method()`, pinned mocks), take a
    * checkpoint after registering it and use `restore({ assertAllUsed: true })`,

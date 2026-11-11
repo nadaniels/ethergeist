@@ -160,7 +160,7 @@ describe("estimateGas", () => {
     const { mock, client } = setup();
     const carol = testAddress("carol");
     mock.actions.estimateGas({ to: bob }).reverts("paused");
-    mock.actions.estimateGas({ to: alice }).fails("insufficientFunds");
+    mock.actions.estimateGas({ to: alice }).refuses("insufficientFunds");
 
     await rejectionOf(client.estimateGas({ account: alice, to: bob }));
     await rejectionOf(client.estimateGas({ account: bob, to: alice }));
@@ -407,7 +407,7 @@ describe("named node errors", () => {
   // Reth sends "EVM error: OutOfFunds" here, which viem only names from 2.57.12.
   test('"insufficientFunds" without fees is the balance check too, which every viem names', async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas({ from: alice }).fails("insufficientFunds");
+    mock.actions.estimateGas({ from: alice }).refuses("insufficientFunds");
 
     const error = await refusal(mock, client.estimateGas({ account: alice, to: bob, value: 1n }));
 
@@ -420,7 +420,7 @@ describe("named node errors", () => {
 
   test('"insufficientFunds" with fees is the balance check, with the value wanted', async () => {
     const { mock, wallet } = walletSetup();
-    mock.actions.estimateGas().fails("insufficientFunds");
+    mock.actions.estimateGas().refuses("insufficientFunds");
 
     const error = await refusal(mock, wallet.prepareTransactionRequest({ to: bob, value: 7n }));
 
@@ -433,8 +433,8 @@ describe("named node errors", () => {
 
   test('"feeCapTooLow" and "tipAboveFeeCap" are reth\'s, which viem names', async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas({ to: bob }).fails("feeCapTooLow");
-    mock.actions.estimateGas({ to: alice }).returns(({ fail }) => fail("tipAboveFeeCap"));
+    mock.actions.estimateGas({ to: bob }).refuses("feeCapTooLow");
+    mock.actions.estimateGas({ to: alice }).returns(({ refuse }) => refuse("tipAboveFeeCap"));
 
     const feeCap = await refusal(mock, client.estimateGas({ account: alice, to: bob }));
     const tip = await refusal(mock, client.estimateGas({ account: bob, to: alice }));
@@ -453,7 +453,7 @@ describe("named node errors", () => {
 
   test("gasExceedsAllowance names the request's gas, or the node's cap; viem takes it for a revert", async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas().fails("gasExceedsAllowance");
+    mock.actions.estimateGas().refuses("gasExceedsAllowance");
 
     // viem never sends `gas` with an estimate: the app's own request does.
     const capped = await rejectionOf(
@@ -477,20 +477,20 @@ describe("named node errors", () => {
 
   test("history shows the name", async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas().fails("insufficientFunds");
+    mock.actions.estimateGas().refuses("insufficientFunds");
 
     await rejectionOf(client.estimateGas({ account: alice, to: bob }));
 
     expect(mock.formatHistory()).toBe(
       "#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, " +
-        "blockNumber: 10n, blockTag: latest }) ✗ fault: insufficientFunds",
+        "blockNumber: 10n, blockTag: latest }) ✗ refused: insufficientFunds",
     );
   });
 
   test("simulate mocks take them too: eth_call refuses the same way", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
-    usdc.simulate.transfer().fails("insufficientFunds");
+    usdc.simulate.transfer().refuses("insufficientFunds");
 
     const error = await rejectionOf(
       client.simulateContract({
@@ -509,8 +509,8 @@ describe("named node errors", () => {
   test("simulate mocks take a gas cap's refusals: too little to run, or below the base cost", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
-    usdc.simulate.transfer([bob, 1n]).fails("gasExceedsAllowance");
-    usdc.simulate.transfer([bob, 2n]).returns(({ fail }) => fail("intrinsicGasTooLow"));
+    usdc.simulate.transfer([bob, 1n]).refuses("gasExceedsAllowance");
+    usdc.simulate.transfer([bob, 2n]).returns(({ refuse }) => refuse("intrinsicGasTooLow"));
     const simulate = (amount: bigint) =>
       client.simulateContract({
         abi: erc20Abi,
@@ -622,10 +622,10 @@ describe("contract estimates", () => {
     );
   });
 
-  test("named node errors and faults fail the estimate", async () => {
+  test("a refusal refuses the estimate, and a fault fails it", async () => {
     const { mock, token, transfer, mint } = tokenSetup();
-    token.estimateGas.mint([1n]).fails("insufficientFunds");
-    token.estimateGas.mint([2n]).returns(({ fail }) => fail("gasExceedsAllowance"));
+    token.estimateGas.mint([1n]).refuses("insufficientFunds");
+    token.estimateGas.mint([2n]).returns(({ refuse }) => refuse("gasExceedsAllowance"));
     token.estimateGas.transfer().returns(({ fail }) => fail({ status: 503 }));
 
     expectCause(await rejectionOf(mint(1n, 1n)), InsufficientFundsError);
@@ -685,7 +685,7 @@ describe("whose mocks answer an estimate sent to a contract", () => {
   test("a contract's mocks answer estimates of its functions, and action mocks don't", async () => {
     const { mock, token, transfer } = tokenSetup();
     token.estimateGas.transfer().returns(65_000n);
-    mock.actions.estimateGas({ from: alice }).fails("insufficientFunds");
+    mock.actions.estimateGas({ from: alice }).refuses("insufficientFunds");
     mock.actions.estimateGas({ to: token.address }).returns(1n);
 
     expect(await transfer()).toBe(65_000n);
@@ -715,7 +715,7 @@ describe("whose mocks answer an estimate sent to a contract", () => {
   test("action mocks don't answer functions the contract doesn't mock: the contract misses, naming those that match", async () => {
     const { mock, token, mint } = tokenSetup({ estimateGas: { transfer: 60_000n } });
     mock.actions.estimateGas().returns(100_000n);
-    mock.actions.estimateGas({ value: 1n }).fails("insufficientFunds");
+    mock.actions.estimateGas({ value: 1n }).refuses("insufficientFunds");
     mock.actions.estimateGas({ value: 2n }).returns(100_000n);
 
     const error = expectCause(await rejectionOf(mint(1n, 1n)), MockNotFoundError);
@@ -727,7 +727,7 @@ describe("whose mocks answer an estimate sent to a contract", () => {
       `No estimateGas mocks registered for "mint"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       "  estimateGas(*)",
-      "  estimateGas({ value: 1n }) fails",
+      "  estimateGas({ value: 1n }) refuses",
     ]);
     expect(mock.formatHistory()).toBe("#1 eth_estimateGas estimateGas Token.mint(1n) ✗ not mocked");
     expect(mock.history[0]).toMatchObject({

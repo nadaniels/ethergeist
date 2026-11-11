@@ -413,6 +413,22 @@ describe("a write mock", () => {
 });
 
 describe("the estimate a write mock implies", () => {
+  test("a .refuses() mock implies it too, and refuses only the send", async () => {
+    const { mock, usdc, transfer } = setup();
+    usdc.write.transfer().once().refuses("nonceTooLow");
+
+    expectCause(await rejectionOf(transfer()), NonceTooLowError);
+
+    const sent = mock.history.filter(
+      ({ method }) => method === "eth_estimateGas" || method.startsWith("eth_send"),
+    );
+    expect(sent.map(({ method, outcome }) => [method, outcome])).toEqual([
+      ["eth_estimateGas", { type: "result", value: 100_000n }],
+      ["eth_sendRawTransaction", { type: "refusal", name: "nonceTooLow" }],
+    ]);
+    expect(mock.transactions).toEqual([]);
+  });
+
   test("is 100,000 gas, without running the mock or using it up, and is an estimateGas call", async () => {
     const { mock, client, usdc } = setup();
     const resolver = vi.fn(() => ({}));
@@ -649,12 +665,12 @@ describe("only a contract's mocks answer its functions", () => {
   test("an estimate action mock's refusal doesn't reach a write, which is sent at 100,000 and leaves it unused", async () => {
     const { mock, usdc, transfer } = setup();
     usdc.write.transfer().returns();
-    mock.actions.estimateGas().fails("insufficientFunds");
+    mock.actions.estimateGas().refuses("insufficientFunds");
 
     await transfer();
 
     expect(mock.transactions).toMatchObject([{ fields: { gas: 100_000n } }]);
-    expectThrows(MockCheckError, "estimateGas(*) fails", () => {
+    expectThrows(MockCheckError, "estimateGas(*) refuses", () => {
       mock.assertAllUsed();
     });
   });
@@ -1030,11 +1046,11 @@ describe("reverts", () => {
   });
 
   test.each(["local", "node"] as const)(
-    "a node's refusal, by .fails() or a resolver's fail(), changes nothing (%s account)",
+    "a node's refusal, by .refuses() or a resolver's refuse(), changes nothing (%s account)",
     async (account) => {
       const { mock, usdc, transfer } = setup(account);
-      usdc.write.transfer([bob, 5n]).fails("insufficientFunds");
-      usdc.write.transfer([bob, 6n]).returns(({ fail }) => fail("insufficientFunds"));
+      usdc.write.transfer([bob, 5n]).refuses("insufficientFunds");
+      usdc.write.transfer([bob, 6n]).returns(({ refuse }) => refuse("insufficientFunds"));
 
       expectCause(await rejectionOf(transfer(5n)), InsufficientFundsError);
       expectCause(await rejectionOf(transfer(6n)), InsufficientFundsError);
@@ -1058,8 +1074,8 @@ describe("reverts", () => {
     "$name is the transaction pool's refusal, viem's $errorClass.name ($account account)",
     async ({ account, name, errorClass }) => {
       const { mock, client, usdc, from, transfer } = setup(account);
-      usdc.write.transfer([bob, 5n]).fails(name);
-      usdc.write.transfer([bob, 6n]).returns(({ fail }) => fail(name));
+      usdc.write.transfer([bob, 5n]).refuses(name);
+      usdc.write.transfer([bob, 6n]).returns(({ refuse }) => refuse(name));
 
       expectCause(await rejectionOf(transfer(5n)), errorClass);
       expectCause(await rejectionOf(transfer(6n)), errorClass);
@@ -1110,7 +1126,7 @@ describe("a write's .reverts() reverts its estimate before any estimate mock", (
       defaults: { estimateGas: { transfer: 60_000n, approve: 46_000n } },
     });
     usdc.estimateGas.transferFrom().returns(65_000n);
-    usdc.estimateGas.approve([alice, 1n]).fails("insufficientFunds");
+    usdc.estimateGas.approve([alice, 1n]).refuses("insufficientFunds");
     usdc.write.transfer().reverts("paused");
     usdc.write.transferFrom().reverts("paused");
     usdc.write.approve().reverts("paused");
@@ -1656,7 +1672,7 @@ describe("writes in history", () => {
     const { mock, usdc, transfer } = setup("node");
     usdc.write.transfer([bob, 5n]).returns({ status: "reverted" });
     usdc.write.transfer([bob, 6n]).reverts();
-    usdc.write.transfer([bob, 7n]).fails("nonceTooLow");
+    usdc.write.transfer([bob, 7n]).refuses("nonceTooLow");
     usdc.write.transfer([bob, 8n]).returns();
 
     await transfer(5n);
@@ -1669,7 +1685,7 @@ describe("writes in history", () => {
       [
         "#2 eth_sendTransaction write USDC.transfer(0x4292…207f, 5n) → 0x340f…155f (mined in block 11n, reverted)",
         "#4 eth_sendTransaction write USDC.transfer(0x4292…207f, 6n) → 0x7bff…b2a9 (mined in block 12n, reverted)",
-        "#6 eth_sendTransaction write USDC.transfer(0x4292…207f, 7n) ✗ fault: nonceTooLow",
+        "#6 eth_sendTransaction write USDC.transfer(0x4292…207f, 7n) ✗ refused: nonceTooLow",
         // viem tries the wallet's method after a node's refusal.
         "#7 wallet_sendTransaction({ data: 0xa905…0007, from: 0xa41f…2D9e, to: 0x99d9…bfC7 }) ✗ rpc error -32601: the method wallet_sendTransaction does not exist/is not available",
         "#9 eth_sendTransaction write USDC.transfer(0x4292…207f, 8n) → 0x3b1a…6563 (mined in block 13n, 0 logs)",

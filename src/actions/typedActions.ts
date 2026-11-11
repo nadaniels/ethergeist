@@ -200,7 +200,7 @@ export type MockActions = {
    * 21,000 gas, as a node estimates it, even with a send mock. Otherwise, a
    * `sendTransaction` mock that would answer the transaction implies
    * 100,000 gas, and anything else isn't answered.
-   * `.fails()` takes a node's refusal by name, e.g. `"insufficientFunds"`.
+   * `.refuses()` refuses an estimate by name, e.g. `"insufficientFunds"`.
    */
   estimateGas: MockEstimateGasAction;
   /**
@@ -214,8 +214,9 @@ export type MockActions = {
    * and anything else isn't answered.
    *
    * A mock answers with what the chain did: see `MockWriteAnswers`.
-   * `.fails()` takes a node's refusal by name, e.g. `"nonceTooLow"`, and a
-   * resolver also gets `emit` and `revert` (see `SendTransactionContext`).
+   * `.refuses()` refuses a send by name, e.g. `"nonceTooLow"`, and a
+   * resolver also gets `refuse`, `emit` and `revert` (see
+   * `SendTransactionContext`).
    * For how a send is mined, its estimate, and raw sends, see
    * `MockSendTransactionAction`.
    */

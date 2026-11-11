@@ -541,7 +541,7 @@ describe("assertAllUsed()", () => {
     expect(message).not.toContain("another mock answered it");
   });
 
-  test("an estimate or send mock without an answer can also be given .reverts()", () => {
+  test("an estimate or send mock without an answer can also be given .reverts() or .refuses()", () => {
     const { mock } = setup();
     mock.actions.estimateGas({ to: USDC });
     mock.actions.sendTransaction({ to: USDC });
@@ -549,12 +549,27 @@ describe("assertAllUsed()", () => {
     const message = unusedMessage(mock);
     expect(message).toContain(
       `  - estimateGas({ to: ${USDC} }) without an answer\n` +
-        "    give it one with .returns(), .reverts() or .fails(), or don't register it",
+        "    give it one with .returns(), .reverts(), .fails() or .refuses(), or don't register it",
     );
     expect(message).toContain(
       `  - sendTransaction({ to: ${USDC} }) without an answer\n` +
-        "    give it one with .returns(), .reverts() or .fails(), or don't register it",
+        "    give it one with .returns(), .reverts(), .fails() or .refuses(), or don't register it",
     );
+  });
+
+  test("a contract's simulate, estimateGas or write mock without an answer can also be given .refuses()", () => {
+    const { mock } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.simulate.transfer();
+    usdc.estimateGas.approve();
+    usdc.write.transferFrom();
+
+    const message = unusedMessage(mock);
+    for (const functionName of ["transfer", "approve", "transferFrom"])
+      expect(message).toContain(
+        `  - ${functionName}(*) without an answer on ${USDC}\n` +
+          "    give it one with .returns(), .reverts(), .fails() or .refuses(), or don't register it",
+      );
   });
 
   test("says that an unused mock reverts or fails", () => {

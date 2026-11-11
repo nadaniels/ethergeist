@@ -5,7 +5,7 @@ import { decodeRawTransaction, sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
 import type { RevertFn, RevertSpec } from "../contracts/types.js";
 import type { MockLogContent } from "../logs/events.js";
-import type { MockNodeFault, SendErrorName, WithLimits } from "../mocking/types.js";
+import type { RefusalContext, SendErrorName, WithLimits } from "../mocking/types.js";
 import { invalidParams } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 import {
@@ -21,28 +21,27 @@ import type { ActionsContext } from "./table.js";
 import type { ActionContext, SendTransactionCall } from "./types.js";
 
 /**
- * What a `sendTransaction` resolver gets: the call's fields, `fail`, and
- * `emit` and `revert`, which answer the transaction as it's mined.
+ * What a `sendTransaction` resolver gets: the call's fields, `fail`,
+ * `refuse`, and `emit` and `revert`, which answer the transaction as it's
+ * mined.
  */
-export type SendTransactionContext = ActionContext<
-  SendTransactionCall,
-  MockNodeFault<SendErrorName>
-> & {
-  /**
-   * Adds a log, or logs, to the transaction, placed when it's mined, as
-   * `.emits()` does. `mock.addTransaction()` and `contract.emit` would
-   * place a separate transaction: they're refused in this resolver up to its
-   * first `await`, and after it they place one.
-   */
-  emit: (logs: MockLogContent | readonly MockLogContent[]) => void;
-  /**
-   * Mines the transaction reverted, e.g. `revert("paused")`, dropping what
-   * it emitted. Without an ABI, it takes a reason, a panic code, raw data or
-   * nothing: see `RevertSpec`. A resolver runs only at the send, so the
-   * estimate doesn't revert: see `.reverts()` for that.
-   */
-  revert: RevertFn<readonly []>;
-};
+export type SendTransactionContext = ActionContext<SendTransactionCall> &
+  RefusalContext<SendErrorName> & {
+    /**
+     * Adds a log, or logs, to the transaction, placed when it's mined, as
+     * `.emits()` does. `mock.addTransaction()` and `contract.emit` would
+     * place a separate transaction: they're refused in this resolver up to its
+     * first `await`, and after it they place one.
+     */
+    emit: (logs: MockLogContent | readonly MockLogContent[]) => void;
+    /**
+     * Mines the transaction reverted, e.g. `revert("paused")`, dropping what
+     * it emitted. Without an ABI, it takes a reason, a panic code, raw data or
+     * nothing: see `RevertSpec`. A resolver runs only at the send, so the
+     * estimate doesn't revert: see `.reverts()` for that.
+     */
+    revert: RevertFn<readonly []>;
+  };
 
 /**
  * A send mock, as `mock.actions.sendTransaction()` returns it: it answers
@@ -64,10 +63,11 @@ export type MockSendTransactionBuilder = WithLimits<
  * transaction, block and logs answer from (see `mock.transactions`); a
  * reverted one is mined too. Concurrent sends are mined in the order
  * they're answered, which isn't always the order they were sent. A send
- * failed with `.fails()` or `fail()`, or not answered, leaves the chain as
- * it was. A mock without `.reverts()` also answers the transaction's
- * estimate when no estimate mock does, without running it or using it up:
- * 100,000 gas, or 21,000 for a plain transfer to an address without code.
+ * failed or refused (`.fails()`, `.refuses()`, or `fail()` or `refuse()` in
+ * a resolver), or not answered, leaves the chain as it was. A mock without
+ * `.reverts()` also answers the transaction's estimate when no estimate
+ * mock does, without running it or using it up: 100,000 gas, or 21,000 for
+ * a plain transfer to an address without code.
  *
  * The Sync method answers with the chain's receipt, not a
  * `getTransactionReceipt` mock's; the send is mined at once, so its

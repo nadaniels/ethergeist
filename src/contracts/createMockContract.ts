@@ -10,7 +10,7 @@ import {
   toFunctionSelector,
 } from "viem";
 
-import { fail } from "../mocking/faults.js";
+import { fail, refuse } from "../mocking/faults.js";
 import {
   type FoundMock,
   type Handler as MockHandler,
@@ -19,6 +19,7 @@ import {
 } from "../mocking/handlers.js";
 import { checkNoRunnerMatchers, firstMismatch, specificity } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
+import type { NodeErrorName, RefusalContext } from "../mocking/types.js";
 import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, type RecordList, createRecordList } from "../shared/records.js";
@@ -40,7 +41,11 @@ import type {
   MockTaggedCall,
 } from "./types.js";
 
-type Context = ResolverContext<Abi, readonly unknown[]>;
+/**
+ * What every resolver gets: the types offer `refuse` only where a node can
+ * refuse.
+ */
+type Context = ResolverContext<Abi, readonly unknown[]> & RefusalContext<NodeErrorName>;
 
 /**
  * What a contract's mock adds to the engine's: which function it's for, in
@@ -497,7 +502,7 @@ export function createMockContract<const abi extends Abi>(
     const answers = answersIn[namespace];
     return mocks.answerWith(
       handler,
-      { ...call, revert, fail },
+      { ...call, revert, fail, refuse },
       (value) => answers.encode(handler.abiItem, value),
       call.functionName,
       answers.reverted,

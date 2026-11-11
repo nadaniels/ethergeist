@@ -191,18 +191,16 @@ export type ActionCalls = {
 };
 
 /**
- * What an action's resolver gets: the call's fields, and `fail`. The `fault`
- * parameter is what `fail` takes, a `MockFault`, or also a node's refusal by
- * name (`MockNodeFault`) where a node can refuse.
+ * What an action's resolver gets: the call's fields, and `fail`. Where a
+ * node can refuse (estimates, sends), it also gets `refuse` (see
+ * `RefusalContext`).
  */
-export type ActionContext<call, fault = MockFault> = call & {
+export type ActionContext<call> = call & {
   /**
    * Fails the request this call is in with a fault, e.g.
-   * `fail({ status: 503 })`: see `MockFault` for the kinds. Where a node can
-   * refuse (estimates, sends), it also takes a node's refusal by name, e.g.
-   * `fail("insufficientFunds")`.
+   * `fail({ status: 503 })`: see `MockFault` for the kinds.
    */
-  fail: (fault: fault) => never;
+  fail: (fault: MockFault) => never;
 };
 
 /**

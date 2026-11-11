@@ -25,7 +25,8 @@ import type {
   EstimateErrorName,
   MockEstimateAnswers,
   MockFault,
-  MockNodeFault,
+  MockRefusalAnswers,
+  RefusalContext,
   SendErrorName,
   WithLimits,
 } from "../mocking/types.js";
@@ -53,13 +54,6 @@ export type MockContractEmit<abi extends Abi> = {
 
 type ReadMutability = "pure" | "view";
 type WriteMutability = "nonpayable" | "payable";
-/**
- * What a namespace's mocks can fail with: a node refuses only transactions by
- * name.
- */
-type FaultOf<mutability> = [mutability] extends [ReadMutability]
-  ? MockFault
-  : MockNodeFault<SimulateErrorName>;
 
 /** The Multicall3 `aggregate3` batch a call arrived in, and its place in it. */
 export type MockBatch = {
@@ -165,11 +159,10 @@ export type RevertFn<abi extends Abi> = <
 
 /**
  * What a contract function's resolver gets: the call's fields (see
- * `MockCall`), `revert` and `fail`. The `fault` parameter is what `fail`
- * takes, a `MockFault`, or also a node's refusal by name (`MockNodeFault`)
- * where a node can refuse.
+ * `MockCall`), `revert` and `fail`. In `simulate`, `estimateGas` and
+ * `write`, it also gets `refuse` (see `RefusalContext`).
  */
-export type ResolverContext<abi extends Abi, args, fault = MockFault> = MockCall<args> & {
+export type ResolverContext<abi extends Abi, args> = MockCall<args> & {
   /**
    * Reverts this call, e.g. `revert("paused")` or
    * `revert({ errorName, args })`. See `RevertSpec` for the forms.
@@ -177,26 +170,35 @@ export type ResolverContext<abi extends Abi, args, fault = MockFault> = MockCall
   revert: RevertFn<abi>;
   /**
    * Fails the request this call is in with a fault, e.g.
-   * `fail({ status: 503 })`: see `MockFault` for the kinds. In `simulate`,
-   * `estimateGas` and `write`, it also takes a node's refusal by name, e.g.
-   * `fail("insufficientFunds")`.
+   * `fail({ status: 503 })`: see `MockFault` for the kinds.
    */
-  fail: (fault: fault) => never;
+  fail: (fault: MockFault) => never;
 };
+
+/**
+ * What a `read` or `simulate` resolver gets: in `simulate`, also `refuse`,
+ * since a node can refuse the call.
+ */
+type ContextOf<abi extends Abi, args, mutability> = [mutability] extends [ReadMutability]
+  ? ResolverContext<abi, args>
+  : ResolverContext<abi, args> & RefusalContext<SimulateErrorName>;
 
 /**
  * A static answer, or a resolver: a function that answers each call, sync or
  * async.
  */
-type Resolver<abi extends Abi, args, result, fault = MockFault> =
-  | result
-  | ((context: ResolverContext<abi, args, fault>) => result | Promise<result>);
+type Resolver<result, context> = result | ((context: context) => result | Promise<result>);
 
 /**
  * How a contract function's mock answers: `.returns()`, `.reverts()` or
- * `.fails()`.
+ * `.fails()`. A resolver gets `context`.
  */
-export type MockFunctionAnswers<abi extends Abi, args, result, fault = MockFault> = {
+export type MockFunctionAnswers<
+  abi extends Abi,
+  args,
+  result,
+  context = ResolverContext<abi, args>,
+> = {
   /**
    * Answers every matching call with the function's zero values, as
    * `.returns(zeroResult)` does.
@@ -208,27 +210,32 @@ export type MockFunctionAnswers<abi extends Abi, args, result, fault = MockFault
    * fields out, which are zero, and a function whose outputs, two or more,
    * are all named also takes them as an object.
    */
-  returns(value: Resolver<abi, args, result, fault>): void;
+  returns(value: Resolver<result, context>): void;
   /** Reverts every matching call. See `RevertSpec` for the forms. */
   reverts<errorName extends ContractErrorName<abi> = ContractErrorName<abi>>(
     spec?: RevertSpec<abi, errorName>,
   ): void;
   /**
    * Fails every matching call: the request it's in fails with `fault`, a
-   * multicall's whole batch included. See `MockFault` for the kinds. In
-   * `simulate`, it also takes a node's refusal by name, e.g.
-   * `"insufficientFunds"` (see `NodeErrorName`).
+   * multicall's whole batch included. See `MockFault` for the kinds.
    */
-  fails(fault: fault): void;
+  fails(fault: MockFault): void;
 };
 
 /**
  * A contract function's mock, as `read` and `simulate` return it:
- * `.returns()`, `.reverts()` or `.fails()` to answer, and `.once()` or
- * `.times()` to limit it (see `WithLimits`).
+ * `.returns()`, `.reverts()` or `.fails()` to answer, in `simulate` also
+ * `.refuses()` (see `MockRefusalAnswers`), and `.once()` or `.times()` to
+ * limit it (see `WithLimits`).
  */
-export type MockFunctionBuilder<abi extends Abi, args, result, fault = MockFault> = WithLimits<
-  MockFunctionAnswers<abi, args, result, fault>
+export type MockFunctionBuilder<
+  abi extends Abi,
+  args,
+  result,
+  mutability extends ReadMutability | WriteMutability = ReadMutability,
+> = WithLimits<
+  MockFunctionAnswers<abi, args, result, ContextOf<abi, args, mutability>> &
+    ([mutability] extends [ReadMutability] ? unknown : MockRefusalAnswers<SimulateErrorName>)
 >;
 
 /**
@@ -278,7 +285,7 @@ export type MockContractFunction<
       functionName,
       ContractFunctionReturnType<abi, mutability, functionName, args>
     >,
-    FaultOf<mutability>
+    mutability
   >;
   /**
    * Every call to this function the mock received, in order: the last
@@ -288,11 +295,11 @@ export type MockContractFunction<
 };
 
 /**
- * How a contract function's estimate mock answers: with gas, `.reverts()` or
- * `.fails()`.
+ * How a contract function's estimate mock answers: with gas, `.reverts()`,
+ * `.fails()` or `.refuses()`.
  */
 export type MockContractEstimateAnswers<abi extends Abi, args> = MockEstimateAnswers<
-  ResolverContext<abi, args, MockNodeFault<EstimateErrorName>>
+  ResolverContext<abi, args> & RefusalContext<EstimateErrorName>
 > & {
   /**
    * Reverts every matching call, as a `simulate` mock reverts a call.
@@ -328,30 +335,27 @@ export type MockEstimateGasFunction<
 
 /**
  * What a contract function's `write` resolver gets: the call's fields,
- * `fail`, and `emit` and `revert`, which answer the transaction as it's
- * mined.
+ * `fail`, `refuse`, and `emit` and `revert`, which answer the transaction as
+ * it's mined.
  */
-export type WriteResolverContext<abi extends Abi, args> = ResolverContext<
-  abi,
-  args,
-  MockNodeFault<SendErrorName>
-> & {
-  /** The sender: a send always has one. */
-  from: Address;
-  /**
-   * Adds a log, or logs, to the transaction, placed when it's mined, as
-   * `.emits()` does. `mock.addTransaction()` and `contract.emit` would
-   * place a separate transaction: they're refused in this resolver up to its
-   * first `await`, and after it they place one.
-   */
-  emit: (logs: MockLogContent | readonly MockLogContent[]) => void;
-  /**
-   * Mines the transaction reverted, e.g. `revert("paused")`, dropping what
-   * it emitted. A resolver runs only at the send, so the estimate doesn't
-   * revert: see `.reverts()` for that.
-   */
-  revert: RevertFn<abi>;
-};
+export type WriteResolverContext<abi extends Abi, args> = ResolverContext<abi, args> &
+  RefusalContext<SendErrorName> & {
+    /** The sender: a send always has one. */
+    from: Address;
+    /**
+     * Adds a log, or logs, to the transaction, placed when it's mined, as
+     * `.emits()` does. `mock.addTransaction()` and `contract.emit` would
+     * place a separate transaction: they're refused in this resolver up to its
+     * first `await`, and after it they place one.
+     */
+    emit: (logs: MockLogContent | readonly MockLogContent[]) => void;
+    /**
+     * Mines the transaction reverted, e.g. `revert("paused")`, dropping what
+     * it emitted. A resolver runs only at the send, so the estimate doesn't
+     * revert: see `.reverts()` for that.
+     */
+    revert: RevertFn<abi>;
+  };
 
 /**
  * How a contract function's `write` mock answers: as `MockWriteAnswers`
@@ -539,10 +543,8 @@ type OverloadsReturnType<
 
 type NamespaceDefaults<abi extends Abi, mutability extends ReadMutability | WriteMutability> = {
   [functionName in ContractFunctionName<abi, mutability>]?: Resolver<
-    abi,
-    ContractFunctionArgs<abi, mutability, functionName>,
     MockReturnType<abi, functionName, OverloadsReturnType<abi, mutability, functionName>>,
-    FaultOf<mutability>
+    ContextOf<abi, ContractFunctionArgs<abi, mutability, functionName>, mutability>
   >;
 };
 
@@ -571,11 +573,8 @@ export type ContractDefaults<abi extends Abi> = {
     [functionName in ContractFunctionName<abi, WriteMutability>]?:
       | bigint
       | ((
-          context: ResolverContext<
-            abi,
-            ContractFunctionArgs<abi, WriteMutability, functionName>,
-            MockNodeFault<EstimateErrorName>
-          >,
+          context: ResolverContext<abi, ContractFunctionArgs<abi, WriteMutability, functionName>> &
+            RefusalContext<EstimateErrorName>,
         ) => bigint | Promise<bigint>);
   };
   /**

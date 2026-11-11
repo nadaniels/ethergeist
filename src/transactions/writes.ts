@@ -5,7 +5,7 @@ import { type MockLogContent, checkLogs } from "../logs/events.js";
 import { formatValue } from "../mocking/format.js";
 import type { Builder } from "../mocking/handlers.js";
 import { checkAmount, checkFields } from "../mocking/setupChecks.js";
-import type { MockNodeFault, SendErrorName } from "../mocking/types.js";
+import type { MockFault, MockRefusalAnswers, SendErrorName } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
@@ -41,10 +41,11 @@ export type MockWriteOutcome = {
 };
 
 /**
- * How a send mock answers: with what the chain did, or a node's refusal.
- * `revertSpec` is what `.reverts()` takes.
+ * How a send mock answers: with what the chain did, a fault, or a node's
+ * refusal (see `MockRefusalAnswers`). `revertSpec` is what `.reverts()`
+ * takes.
  */
-export type MockWriteAnswers<context, revertSpec> = {
+export type MockWriteAnswers<context, revertSpec> = MockRefusalAnswers<SendErrorName> & {
   /** Answers every matching call as a success, without logs. */
   returns(): void;
   /**
@@ -72,11 +73,9 @@ export type MockWriteAnswers<context, revertSpec> = {
   reverts(spec?: revertSpec): void;
   /**
    * Fails every matching call: the request it's in fails with `fault`, and
-   * the chain is left as it was. See `MockFault` for the kinds. It also
-   * takes a node's refusal by name, e.g. `"nonceTooLow"` (see
-   * `NodeErrorName`).
+   * the chain is left as it was. See `MockFault` for the kinds.
    */
-  fails(fault: MockNodeFault<SendErrorName>): void;
+  fails(fault: MockFault): void;
 };
 
 const outcomeFields = new Set([

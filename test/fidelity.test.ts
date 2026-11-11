@@ -520,10 +520,10 @@ function estimate(transport: Transport, fields: object) {
   return client.estimateGas({ account: unfunded, to: recipient, ...fields });
 }
 
-/** The error a mock answers an estimate with when it `.fails(name)`. */
+/** The error a mock answers an estimate with when it `.refuses(name)`. */
 function mockedRefusal(name: (typeof namedErrors)[number]["name"], fields: object) {
   const mock = createMockRpc();
-  mock.actions.estimateGas().fails(name);
+  mock.actions.estimateGas().refuses(name);
   return rejectionOf(estimate(mock.transport(noRetries), fields));
 }
 

@@ -58,7 +58,7 @@ describe("architecture", () => {
         "shared/errors.ts",
         ["extends BaseError", "new Error(", "extends BaseError", "extends BaseError"],
       ],
-      ["mocking/faults.ts", ["extends Error"]],
+      ["mocking/faults.ts", ["extends Error", "extends Error"]],
       ["mocking/matching.ts", ["extends Error"]],
     ]);
     const plain = files

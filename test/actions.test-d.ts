@@ -209,16 +209,18 @@ describe("getLogs", () => {
     mock.actions.getTransactionCount().returns(1n);
   });
 
-  test("estimates pin a transaction, answer gas, and fail with node errors by name", () => {
+  test("estimates pin a transaction, answer gas, and refuse by name", () => {
     mock.actions.estimateGas({ from: alice, to: alice, value: 1n, data: "0x" }).returns(21_000n);
     // @ts-expect-error -- the sender is `from`, as the request has it
     mock.actions.estimateGas({ account: alice });
-    mock.actions.estimateGas().once().fails("insufficientFunds");
-    mock.actions.estimateGas().returns(({ maxFeePerGas, nonce, fail }) => {
+    mock.actions.estimateGas().once().refuses("insufficientFunds");
+    mock.actions.estimateGas().returns(({ maxFeePerGas, nonce, refuse }) => {
       expectTypeOf(maxFeePerGas).toEqualTypeOf<bigint | undefined>();
       expectTypeOf(nonce).toEqualTypeOf<number | undefined>();
-      return fail("feeCapTooLow");
+      return refuse("feeCapTooLow");
     });
+    mock.actions.estimateGas().fails({ status: 503 });
+    mock.actions.estimateGas().returns(({ fail }) => fail("timeout"));
     expectTypeOf(mock.actions.estimateGas.calls).toEqualTypeOf<EstimateGasCall[]>();
     // @ts-expect-error -- an estimate is a bigint
     mock.actions.estimateGas().returns(21_000);
@@ -226,12 +228,18 @@ describe("getLogs", () => {
     mock.actions.estimateGas().returns(zeroResult);
     // @ts-expect-error -- there's no default estimate either
     mock.actions.estimateGas().once().returns();
+    mock.actions.estimateGas().refuses("gasExceedsAllowance");
+    mock.actions.estimateGas().returns(({ refuse }) => refuse("gasExceedsAllowance"));
+    // @ts-expect-error -- a refusal is `.refuses()`
     mock.actions.estimateGas().fails("gasExceedsAllowance");
+    // @ts-expect-error -- and `refuse()` in a resolver
     mock.actions.estimateGas().returns(({ fail }) => fail("gasExceedsAllowance"));
+    // @ts-expect-error -- `refuses()` takes no fault
+    mock.actions.estimateGas().refuses("timeout");
     // @ts-expect-error -- an estimate doesn't check the nonce
-    mock.actions.estimateGas().fails("nonceTooLow");
+    mock.actions.estimateGas().refuses("nonceTooLow");
     // @ts-expect-error -- an estimate reports too little gas as exceeding the allowance
-    mock.actions.estimateGas().returns(({ fail }) => fail("intrinsicGasTooLow"));
+    mock.actions.estimateGas().returns(({ refuse }) => refuse("intrinsicGasTooLow"));
     mock.actions.estimateGas({ to: alice }).reverts();
     mock.actions.estimateGas().reverts("paused");
     mock.actions.estimateGas().once().reverts({ panic: 0x11 });
@@ -246,7 +254,13 @@ describe("getLogs", () => {
     mock.actions.estimateGas().returns(({ revert }) => revert({ data: "0xdeadbeef" }));
     // @ts-expect-error -- without an ABI, there are no custom errors
     mock.actions.estimateGas().returns(({ revert }) => revert({ errorName: "Paused" }));
-    // @ts-expect-error -- a node doesn't refuse a balance read by name
+    // @ts-expect-error -- a node doesn't refuse a balance read
+    mock.actions.getBalance().refuses("insufficientFunds");
+    mock.actions.getBalance().returns((context) => {
+      expectTypeOf(context).not.toHaveProperty("refuse");
+      return 1n;
+    });
+    // @ts-expect-error -- a refusal isn't a fault
     mock.actions.getBalance().fails("insufficientFunds");
   });
 
@@ -259,23 +273,28 @@ describe("getLogs", () => {
     mock.actions.sendTransaction().returns();
     mock.actions.sendTransaction().reverts("paused");
     mock.actions.sendTransaction().reverts({ panic: 0x11 });
-    mock.actions.sendTransaction().fails("insufficientFunds");
-    mock.actions.sendTransaction().returns(({ from, to, nonce, type, fail }) => {
+    mock.actions.sendTransaction().refuses("insufficientFunds");
+    mock.actions.sendTransaction().fails("network");
+    mock.actions.sendTransaction().returns(({ from, to, nonce, type, refuse }) => {
       expectTypeOf(from).toEqualTypeOf<Address>();
       expectTypeOf(to).toEqualTypeOf<Address | null>();
       expectTypeOf(nonce).toEqualTypeOf<number | undefined>();
       expectTypeOf(type).toEqualTypeOf<"legacy" | "eip2930" | "eip1559" | "eip4844" | "eip7702">();
-      if (nonce === 1) return fail("tipAboveFeeCap");
-      if (nonce === 2) return fail("nonceTooHigh");
+      if (nonce === 1) return refuse("tipAboveFeeCap");
+      if (nonce === 2) return refuse("nonceTooHigh");
       return { status: "reverted" };
     });
+    mock.actions.sendTransaction().refuses("nonceTooLow");
+    mock.actions.sendTransaction().refuses("alreadyKnown");
+    mock.actions.sendTransaction().once().refuses("intrinsicGasTooLow");
+    // @ts-expect-error -- a refusal is `.refuses()`
     mock.actions.sendTransaction().fails("nonceTooLow");
-    mock.actions.sendTransaction().fails("alreadyKnown");
-    mock.actions.sendTransaction().once().fails("intrinsicGasTooLow");
+    // @ts-expect-error -- and `refuse()` in a resolver
+    mock.actions.sendTransaction().returns(({ fail }) => fail("nonceTooLow"));
     // @ts-expect-error -- a send with too little gas is mined, and runs out
-    mock.actions.sendTransaction().fails("gasExceedsAllowance");
-    // @ts-expect-error -- nor can a resolver fail a send with it
-    mock.actions.sendTransaction().returns(({ fail }) => fail("gasExceedsAllowance"));
+    mock.actions.sendTransaction().refuses("gasExceedsAllowance");
+    // @ts-expect-error -- nor can a resolver refuse a send with it
+    mock.actions.sendTransaction().returns(({ refuse }) => refuse("gasExceedsAllowance"));
     mock.actions.sendTransaction().returns(() => {});
     mock.actions.sendTransaction().returns(({ emit, revert }) => {
       expectTypeOf(emit).toEqualTypeOf<

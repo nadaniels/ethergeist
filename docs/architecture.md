@@ -17,9 +17,10 @@ shared → mocking → chain → logs → transactions → contracts → actions
   [Adding state](#adding-state)).
 - **`mocking/`:** the mock engine that contracts and actions share
   (`handlers.ts`: registering mocks, picking the most specific match, limits
-  and usage), plus matching, matchers, faults (`MockFailure`), `zeroResult`,
-  outcomes (`MockOutcome`: how a mock answered, which history records), and
-  the shared setup checks (`setupChecks.ts`).
+  and usage), plus matching, matchers, faults and refusals by name
+  (`MockFailure`, `MockRefusal`, and their checks), `zeroResult`, outcomes
+  (`MockOutcome`: how a mock answered, which history records), and the
+  shared setup checks (`setupChecks.ts`).
 - **`chain/`:** the chain's own state (`createChainState`: block number, clock,
   fees) and the node's shapes for blocks, transactions, receipts and errors,
   and for request params (`params.ts`: read to the Ethereum JSON-RPC spec,
@@ -76,16 +77,17 @@ up, move it down to where both can use it, as `MockOutcome` moved to
 ### Clients and errors
 
 `createRequestHandler` knows nothing about viem. It throws answers, which
-`isAnswer` in `mocking/outcomes.ts` names (`MockFailure` for faults,
-`MockRevertError`, `MockRpcError` for a node's refusal), or the mock's own
-errors for what it couldn't answer: the `MockError` family in
-`shared/errors.ts`. Anything else thrown while answering is a bug in the mock,
-or a value its types don't allow that no check caught. It's wrapped in
-`MockInternalError` (`asMockError`), so it's recorded as unhandled
-and isn't retried. An adapter turns answers into its client's errors:
-`toViemError` in `viem/errors.ts` for viem. Support for another client (wagmi,
-ethers) is a new adapter folder beside `viem/`, not a change to the layers
-under it.
+`isAnswer` in `mocking/outcomes.ts` names, or the mock's own errors for what
+it couldn't answer: the `MockError` family in `shared/errors.ts`. The answers
+are `MockFailure` for faults, `MockRevertError` for reverts, `MockRefusal`
+for a node's refusal by name (the adapter words it from the request's
+params), and `MockRpcError` for a node's own JSON-RPC error. Anything else
+thrown while answering is a bug in the mock, or a value its types don't allow
+that no check caught. It's wrapped in `MockInternalError` (`asMockError`), so
+it's recorded as unhandled and isn't retried. An adapter turns answers into
+its client's errors: `toViemError` in `viem/errors.ts` for viem. Support for
+another client (wagmi, ethers) is a new adapter folder beside `viem/`, not a
+change to the layers under it.
 
 The mock's errors:
 
@@ -131,7 +133,7 @@ The mock's errors:
    `MockWriteOutcome`), what it records of the requests it gets
    (`MockHistoryEntry`, `MockCallRecord`, `MockOutcome`, `MockBatch`), what
    it builds for you (`MockLogContent`), and types made from these
-   (`MockNodeFault`, `MockTaggedCall`). It keeps `Mock` when it's also a
+   (`MockTaggedCall`). It keeps `Mock` when it's also a
    parameter (`buildReceipt(MockReceipt)`, `failRequests(MockFault)`).
    **None on what you hand the mock**: parameter, option and context types
    (`RestoreOptions`, `ContractDefaults`, `EventArgs`, `RevertSpec`,

@@ -186,7 +186,7 @@ features land; tick them off as pages get written.
     mock then sets its number) and mines it reverted for any client. A resolver's
     `revert()` runs only at the send, so it's always mined reverted: for an
     estimate-time revert, add `estimateGas.fn(args).reverts(spec)`.
-    `.fails("insufficientFunds")` (or `"nonceTooLow"`, and the other names
+    `.refuses("insufficientFunds")` (or `"nonceTooLow"`, and the other names
     a send takes) is the node refusing the send: nothing goes on the chain.
   - `simulate` is separate: wagmi's simulate-then-write needs both
     registered, and the `eth_call` wagmi replays for a reverted receipt
@@ -207,21 +207,27 @@ features land; tick them off as pages get written.
   - A used-up mock steps aside; with nothing behind it, the call isn't
     mocked, and "Registered:" shows `once, used up`.
   - Each multicall sub-call uses an answer.
-  - A request a mock answered uses its answer even when it then fails: a
-    `.fails()`, a resolver that throws, or a send refused after its mock
-    answered (a log at an `empty()` address). The chain doesn't change, but
-    the `.once()` is spent. That's what makes `.once().fails(…)` then a
-    normal mock test a retry.
+  - A request a mock answered uses its answer even when it then fails or
+    is refused: a `.fails()` or `.refuses()`, a resolver that throws, or a
+    send refused after its mock answered (a log at an `empty()` address).
+    The chain doesn't change, but the `.once()` is spent. That's what makes
+    `.once().fails(…)` then a normal mock test a retry.
   - `clearCalls()` keeps counts; `restore()` refills them, so a baseline
     `.once()` is fresh in every test.
   - `assertAllUsed()`: answering at least once counts as used; messages show
     what's left (`3 times, 2 left`).
 
-## 4. Failures: `.fails()` vs `.reverts()`
+## 4. Failures: `.fails()`, `.refuses()` and `.reverts()`
 
 - [ ] A fault is a network failure. It throws `HttpRequestError`,
       `RpcRequestError` or `TimeoutError`, viem retries it by its own rules,
       and it fails a whole multicall batch.
+- [ ] A refusal is the node declining a transaction before running it,
+      by name: `.refuses(name)`, and `refuse(name)` in a resolver. It
+      throws viem's class for it (below), is never retried, and history
+      records it as its own outcome, `✗ refused: nonceTooLow`. `.fails()`
+      takes only faults: a name there is a setup error that points at
+      `.refuses()`.
 - [ ] A revert is the contract refusing. It throws
       `ContractFunctionRevertedError`, is never retried, and fails only its
       own result in a multicall.
@@ -247,13 +253,13 @@ features land; tick them off as pages get written.
       so viem gives no `ContractFunctionRevertedError` there; the mock, like
       reth, does.
 - [ ] A node's refusals by name, where a node refuses a transaction:
-      `.fails("insufficientFunds" | "feeCapTooLow" | "tipAboveFeeCap")` (and
-      `fail(name)` in resolvers) on `estimateGas`, `simulate`, `write` and
-      `sendTransaction` mocks. Each sends reth's code and message, which is
-      what viem names them by (`InsufficientFundsError`, `FeeCapTooLowError`,
-      `TipAboveFeeCapError`); writing the text by hand gets you
-      `UnknownNodeError` if it's off. Each name is typed where a node says
-      it:
+      `.refuses("insufficientFunds" | "feeCapTooLow" | "tipAboveFeeCap")`
+      (and `refuse(name)` in resolvers) on `estimateGas`, `simulate`,
+      `write` and `sendTransaction` mocks. Each sends reth's code and
+      message, which is what viem names them by (`InsufficientFundsError`,
+      `FeeCapTooLowError`, `TipAboveFeeCapError`); writing the text by hand
+      gets you `UnknownNodeError` if it's off. Each name is typed where a
+      node says it:
   - On sends only (`write`, `mock.actions.sendTransaction`), as a node's
     transaction pool refuses them: `"nonceTooLow"` and `"alreadyKnown"` (a
     double submit), both viem's `NonceTooLowError`, which apps handle by
@@ -271,16 +277,17 @@ features land; tick them off as pages get written.
     mined and runs out, `.returns({ status: "reverted", gasUsed })`
     with its gas limit.
   - Replacement underpriced, underpriced and exceeds block gas limit stay
-    `.fails({ code: -32000, message })`: viem shows them as a generic
-    `InvalidInputRpcError`, so a name adds nothing.
+    faults, `.fails({ code: -32000, message })`: viem shows them as a
+    generic `InvalidInputRpcError`, so a name adds nothing.
   - `"insufficientFunds"` is reth's balance check, `insufficient funds for
     gas * price + value: have 0 want <value>`, with or without fees. Reth
     sends `EVM error: OutOfFunds` for a request without fees, which viem
     names `InsufficientFundsError` only from 2.57.12; the balance check's
     wording, every viem does. The balance it reports is always 0: it
     doesn't read `getBalance` mocks.
-  - Not on reads or other actions, where no node says them. For anything
-    else a node says, `fails({ code, message })`.
+  - Not on reads or other actions, where no node says them: their types
+    have no `.refuses()`. For anything else a node says,
+    `.fails({ code, message })`.
   - Assert the class, e.g. `err.walk((e) => e instanceof
     InsufficientFundsError)`, not the code or text: those are reth's, and
     other clients send other codes and wordings that viem names the same.
@@ -628,7 +635,7 @@ features land; tick them off as pages get written.
     sender count up; with one, it's taken as given. Added without a
     `from`, it counts for no one.
   - Nonces are taken as sent, unchecked: a raw transaction with nonce 5
-    makes the next count 6. A node's refusal is `.fails("nonceTooLow")`.
+    makes the next count 6. A node's refusal is `.refuses("nonceTooLow")`.
   - An `eth_sendTransaction` without a nonce takes the chain's count, as
     a wallet fills it, whatever `getTransactionCount` mocks answer; to
     send a specific one, pass `nonce`.
@@ -690,8 +697,8 @@ features land; tick them off as pages get written.
     `token.estimateGas.transfer().returns(n)` or `defaults.estimateGas`.
     An args-less `mock.actions.estimateGas().returns(100_000n)` sets no
     write's number, and `assertAllUsed()` reports it if nothing else used
-    it. To fail an estimate of a contract's function, fail it there:
-    `token.estimateGas.transfer().fails("insufficientFunds")`.
+    it. To refuse an estimate of a contract's function, refuse it there:
+    `token.estimateGas.transfer().refuses("insufficientFunds")`.
   - Estimating with a local account first prepares the transaction, which
     asks for the nonce: the chain's count answers it.
   - A write or send mock that would answer the transaction implies its
@@ -729,8 +736,8 @@ features land; tick them off as pages get written.
     poll, and `getTransaction` answers from the moment of the send. Any of
     them can still be mocked over it. There's no mode that answers a hash
     without a transaction: a hash the chain doesn't know hangs every
-    client's polling. Only a refusal (`.fails()`, a send nothing answers)
-    leaves the chain as it was.
+    client's polling. Only a send that's failed or refused (`.fails()`,
+    `.refuses()`, a send nothing answers) leaves the chain as it was.
   - `.returns()` takes what the chain did, not an ABI value:
     `{ logs, status, gasUsed, effectiveGasPrice, contractAddress }`, all
     optional; the rest of the receipt comes from where it's mined.
@@ -790,7 +797,7 @@ features land; tick them off as pages get written.
     support. viem retries an `eth_sendTransaction` that fails with
     `-32000`, `-32602`, `-32601` or `-32004` as `wallet_sendTransaction`;
     refused, it rethrows the send's own error, so a test's
-    `mock.actions.sendTransaction().fails(…)` is what the app sees.
+    `mock.actions.sendTransaction().refuses(…)` is what the app sees.
     viem remembers the refusal per client, so it retries only once.
     `sendCalls` with `experimental_fallback` sends each call with
     `eth_sendTransaction` instead; without it, it rejects as unsupported.
@@ -944,14 +951,14 @@ features land; tick them off as pages get written.
       A send's outcome is the request's, its hash, even when it was mined
       reverted: `(mined in block 12n, reverted)`. The mined state is looked
       up on the chain as the line is formatted, never copied into the entry.
-      A refused send (`.fails()`, not mocked) shows its refusal and placed
-      nothing. An implied estimate is an `estimateGas` call, recorded by what
-      was asked; `assertAllUsed()` counts a write mock used by its send, not
-      by the estimate it implied (a `.reverts()` one's revert of the
-      estimate is its answer, so that counts). Show the whole sequence of a viem local
-      account's write (`eth_fillTransaction` refused, nonce, block, tip,
-      estimate, send) as the example: it explains requests the app didn't
-      write itself.
+      A send that's failed or refused (`.fails()`, `.refuses()`, not
+      mocked) shows how, and placed nothing. An implied estimate is an
+      `estimateGas` call, recorded by what was asked; `assertAllUsed()`
+      counts a write mock used by its send, not by the estimate it implied
+      (a `.reverts()` one's revert of the estimate is its answer, so that
+      counts). Show the whole sequence of a viem local account's write
+      (`eth_fillTransaction` refused, nonce, block, tip, estimate, send) as
+      the example: it explains requests the app didn't write itself.
 - [ ] `historyLimit` (default 1,000 per list, `Infinity` for no limit):
       every record (`history`, `calls`, `unhandled`, each action's and
       function's `.calls`) keeps its last N; each function and each overload
@@ -1165,12 +1172,12 @@ features land; tick them off as pages get written.
       write mock implies doesn't run its resolver, so estimating first
       changes nothing; an `estimateGas` mock's resolver, like a simulate's,
       runs per estimate and only answers.
-- [ ] Change state last, after every `revert()` and `fail()` check.
-      `revert()` mines the transaction reverted and drops what was emitted,
-      but the mock can't undo the closure: a change made before it stays. A
-      resolver that throws, or `fail()`s, puts nothing on the chain, yet
-      keeps what it changed too, so the app's next attempt starts from a
-      ledger that already moved.
+- [ ] Change state last, after every `revert()`, `fail()` and `refuse()`
+      check. `revert()` mines the transaction reverted and drops what was
+      emitted, but the mock can't undo the closure: a change made before it
+      stays. A resolver that throws, `fail()`s or `refuse()`s puts nothing
+      on the chain, yet keeps what it changed too, so the app's next attempt
+      starts from a ledger that already moved.
 - [ ] Native balances: `mock.actions.getBalance().returns(({ address }) =>
       native.get(address) ?? 0n)`, and a payable write's resolver moves
       `value` (`vault.write.deposit().returns(({ from, value }) => { … })`).

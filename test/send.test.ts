@@ -650,9 +650,9 @@ describe("send mocks", () => {
 });
 
 describe("a send that's refused changes nothing", () => {
-  test(".fails() with a node's refusal: no transaction, no block", async () => {
+  test(".refuses(): no transaction, no block", async () => {
     const { mock, wallet } = localSetup();
-    mock.actions.sendTransaction().fails("insufficientFunds");
+    mock.actions.sendTransaction().refuses("insufficientFunds");
 
     const error = await rejectionOf(wallet.sendTransaction({ to: bob, value: 7n }));
 
@@ -666,7 +666,7 @@ describe("a send that's refused changes nothing", () => {
 
   test("a refused send, or one no mock answers, is still one of the action's calls", async () => {
     const { mock, wallet } = nodeSetup();
-    mock.actions.sendTransaction({ to: bob }).fails("insufficientFunds");
+    mock.actions.sendTransaction({ to: bob }).refuses("insufficientFunds");
 
     await rejectionOf(wallet.sendTransaction({ to: bob, value: 7n }));
     await rejectionOf(wallet.sendTransaction({ to: carol, data: "0x12" }));
@@ -707,7 +707,7 @@ describe("a send that's refused changes nothing", () => {
     "$name is geth's message, viem's $errorClass.name ($account account)",
     async ({ account, name, errorClass, message }) => {
       const { mock, client, wallet } = account === "local" ? localSetup() : nodeSetup();
-      mock.actions.sendTransaction().fails(name);
+      mock.actions.sendTransaction().refuses(name);
 
       const error = await rejectionOf(wallet.sendTransaction({ to: bob }));
 
@@ -1229,7 +1229,7 @@ describe("nonces follow sends", () => {
 
   test("a refused send takes no nonce", async () => {
     const { mock, wallet } = nodeSetup();
-    mock.actions.sendTransaction({ to: bob }).once().fails("insufficientFunds");
+    mock.actions.sendTransaction({ to: bob }).once().refuses("insufficientFunds");
 
     await rejectionOf(wallet.sendTransaction({ to: bob }));
     await wallet.sendTransaction({ to: bob });
@@ -1333,7 +1333,7 @@ describe("eth_sendRawTransactionSync (EIP-7966, a local account's *Sync sends)",
 
   test("a refusal fails the send and changes nothing", async () => {
     const { mock, client, wallet } = localSetup();
-    mock.actions.sendTransaction().fails("nonceTooLow");
+    mock.actions.sendTransaction().refuses("nonceTooLow");
 
     const error = await rejectionOf(wallet.sendTransactionSync({ to: bob, value: 5n }));
 

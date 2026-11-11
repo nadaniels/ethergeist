@@ -414,16 +414,24 @@ outage.clear();
 usdc.read.balanceOf().fails({ status: 429, retryAfter: 1 });
 ```
 
-Estimates, simulations, and sends also take a node's refusals by name, each
-where a node can give it, and viem sorts them into its own error classes (e.g.
-`NonceTooLowError`): `"insufficientFunds"`,
-`"nonceTooLow"`, `"nonceTooHigh"`, `"alreadyKnown"`, `"feeCapTooLow"`,
-`"tipAboveFeeCap"`, `"intrinsicGasTooLow"`, and `"gasExceedsAllowance"`.
+A node can also refuse an estimate, a simulation, or a send before running it:
+`.refuses()` does that by name, and `refuse()` in a resolver. Each name is
+available where a node can give it, and viem sorts them into its own error
+classes (e.g. `NonceTooLowError`): `"insufficientFunds"`, `"nonceTooLow"`,
+`"nonceTooHigh"`, `"alreadyKnown"`, `"feeCapTooLow"`, `"tipAboveFeeCap"`,
+`"intrinsicGasTooLow"`, and `"gasExceedsAllowance"`.
 
 ```ts continued
-usdc.write.transfer().fails("insufficientFunds");
-mock.actions.sendTransaction().fails("nonceTooLow");
+usdc.write.transfer().refuses("insufficientFunds");
+mock.actions.sendTransaction().refuses("nonceTooLow");
+let attempts = 0;
+usdc.write.approve().returns(({ refuse }) => {
+  if (++attempts === 1) refuse("nonceTooLow"); // the app's retry goes through
+});
 ```
+
+`.fails()` takes only faults, so a hand-written `{ code, message }` is a fault
+too, even when it words a refusal that has no name.
 
 ## History and Checks
 

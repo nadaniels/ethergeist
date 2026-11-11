@@ -1,4 +1,4 @@
-import { fail } from "../mocking/faults.js";
+import { fail, refuse } from "../mocking/faults.js";
 import {
   type ReceivedCall,
   describeMock,
@@ -94,7 +94,10 @@ export type MockDefinition<call extends object = object, answer = unknown> = {
    * itself.
    */
   actual?(pinned: unknown, call: call): unknown;
-  /** Adds to what a resolver gets, beyond the call, `fail` and `revert`. */
+  /**
+   * Adds to what a resolver gets, beyond the call, `fail`, `revert` and
+   * `refuse`.
+   */
   extendContext?(context: object, call: call): void;
   /**
    * Validates a value in viem's types and converts it to its JSON-RPC form.
@@ -176,12 +179,13 @@ export function createMockSet<answer>(
 
   /**
    * The builder methods that answer, named for a mock registered without
-   * one.
+   * one. Only estimates and sends run a transaction, so they're the actions
+   * with `.reverts()`, and the ones whose types offer `.refuses()`.
    */
   const answers =
     definition.revertError === undefined
       ? ".returns() or .fails()"
-      : ".returns(), .reverts() or .fails()";
+      : ".returns(), .reverts(), .fails() or .refuses()";
 
   function register(params: unknown) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
@@ -255,7 +259,7 @@ export function createMockSet<answer>(
 
   /** Answers `call` with `handler`, the mock `match` found for it. */
   function answerWith(handler: Handler, call: object): Promise<answer> {
-    const context = { ...call, fail };
+    const context = { ...call, fail, refuse };
     if (definition.revertError !== undefined)
       Object.assign(context, {
         revert(spec?: unknown): never {

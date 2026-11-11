@@ -31,16 +31,22 @@ type DescribedMock = {
   answer: Answer | undefined;
 };
 
+/** What `describeMock` says of a mock's answer, where it says anything. */
+const answerVerbs: Partial<Record<Answer["kind"], string>> = {
+  revert: " reverts",
+  fault: " fails",
+  refusal: " refuses",
+};
+
 /**
  * A mock as messages name it: its call, what else it pins, whether it
- * reverts or fails, its limit, and whether it's still without an answer,
- * e.g. `balanceOf(*) once`, `transfer(*) { from: 0x… } reverts`,
+ * reverts, fails or refuses, its limit, and whether it's still without an
+ * answer, e.g. `balanceOf(*) once`, `transfer(*) { from: 0x… } reverts`,
  * `getBalance(*) fails once` or `getBalance() without an answer`.
  */
 export function describeMock(name: string, mock: DescribedMock): string {
   const pins = mock.pins ? ` ${formatValue(mock.pins)}` : "";
-  const kind = mock.answer?.kind;
-  const verb = kind === "revert" ? " reverts" : kind === "fault" ? " fails" : "";
+  const verb = mock.answer === undefined ? "" : (answerVerbs[mock.answer.kind] ?? "");
   const unanswered = mock.answer === undefined ? " without an answer" : "";
   return `${formatCall(name, mock.pinned)}${pins}${verb}${formatLimit(mock.limit, mock.remaining)}${unanswered}`;
 }

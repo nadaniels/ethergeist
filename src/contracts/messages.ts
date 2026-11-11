@@ -19,6 +19,7 @@ import type { MockCall, MockNamespace } from "./types.js";
 
 /** A contract's mock, as messages describe it. */
 type Mock = {
+  namespace: MockNamespace;
   abiItem: AbiFunction;
   pinned: unknown;
   pins: Pins | undefined;
@@ -95,7 +96,11 @@ export function unusedLine(
   const name = mock.abiItem.name;
   const after =
     mock.answer === undefined
-      ? formatNoAnswer(".returns(), .reverts() or .fails()")
+      ? formatNoAnswer(
+          mock.namespace === "read"
+            ? ".returns(), .reverts() or .fails()"
+            : ".returns(), .reverts(), .fails() or .refuses()",
+        )
       : formatReceived(
           name,
           calls.map((call) => received(mock, call)),
