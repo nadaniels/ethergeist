@@ -30,7 +30,7 @@ export function createSends(
 ) {
   const { state, registry, transactions } = context;
   const estimateGasMocks = createMockSet(estimateGas, recordLimit, options);
-  const sendTransactionMocks = createMockSet(sendTransaction(context), recordLimit, options);
+  const sendTransactionMocks = createMockSet(sendTransaction, recordLimit, options);
 
   /**
    * The registered contract a transaction with data is sent to, with the
@@ -201,7 +201,7 @@ export function createSends(
       },
       async () => {
         if (repeated !== undefined) return answerFor(repeated);
-        const outcome = await outcomeOf(call, called, turn);
+        const outcome = await transactions.whileSending(() => outcomeOf(call, called, turn));
         // The same bytes sent twice at once both get this far, each awaiting
         // its outcome before either is placed. Only one is placed, and the
         // second is answered as the first.
@@ -226,6 +226,12 @@ export function createSends(
    *
    * `called` is the registered contract the send is to, as `contractCalled`
    * gives it, and `turn` that contract's turn.
+   *
+   * `answerSend` runs this inside the store's `whileSending`, which refuses
+   * `mock.addTransaction()` in a mock's resolver up to its first `await`.
+   * Both sides call the resolver before their own first `await`, through
+   * the mock engine's `answerWith`. An `await` before the call, here or
+   * there, would end the refusal before the resolver runs.
    */
   async function outcomeOf(
     call: SendTransactionCall,

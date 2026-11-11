@@ -30,7 +30,7 @@ type NamespaceAnswers<answer> = {
    */
   encode: (abiItem: AbiFunction, value: unknown) => answer;
   /** Adds to a mock's builder: a send's `.emits()` and resolver `emit`. */
-  extendBuilder?: (builder: Builder, whileSending: <result>(run: () => result) => result) => void;
+  extendBuilder?: (builder: Builder) => void;
   /**
    * What a revert answers instead of being thrown, encoded as a mock's answer
    * is: a send is mined reverted.

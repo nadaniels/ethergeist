@@ -126,32 +126,28 @@ export function encodeWriteOutcome(
  */
 export const minedReverted: MockWriteOutcome = { status: "reverted" };
 
+/** A resolver with `emit`, answering its outcome with what it emitted. */
+const withWriteContext =
+  (resolver: (context: object) => unknown) =>
+  async (context: object): Promise<unknown> => {
+    const emitted: MockLogContent[] = [];
+    const emit = (logs: MockLogContent | readonly MockLogContent[]) => {
+      emitted.push(...[logs].flat());
+    };
+    const outcome = await resolver({ ...context, emit });
+    if (outcome === undefined) return { logs: emitted };
+    const logs: unknown = isPlainObject(outcome) ? (outcome.logs ?? []) : undefined;
+    if (!isPlainObject(outcome) || !Array.isArray(logs)) return outcome;
+    const returned: unknown[] = logs;
+    return { ...outcome, logs: [...emitted, ...returned] };
+  };
+
 /**
  * Gives a send mock's builder `.emits()`, and its resolvers `emit` (see
- * `WriteResolverContext` and `SendTransactionContext`). `whileSending` runs
- * a resolver, refusing `mock.addTransaction()` in it up to its first
- * `await`.
+ * `WriteResolverContext` and `SendTransactionContext`).
  */
-export function extendWriteBuilder(
-  builder: Builder,
-  whileSending: <result>(run: () => result) => result,
-): void {
+export function extendWriteBuilder(builder: Builder): void {
   const returns = builder.returns.bind(builder);
-  /** A resolver with `emit`, answering its outcome with what it emitted. */
-  const withWriteContext =
-    (resolver: (context: object) => unknown) =>
-    async (context: object): Promise<unknown> => {
-      const emitted: MockLogContent[] = [];
-      const emit = (logs: MockLogContent | readonly MockLogContent[]) => {
-        emitted.push(...[logs].flat());
-      };
-      const outcome = await whileSending(() => resolver({ ...context, emit }));
-      if (outcome === undefined) return { logs: emitted };
-      const logs: unknown = isPlainObject(outcome) ? (outcome.logs ?? []) : undefined;
-      if (!isPlainObject(outcome) || !Array.isArray(logs)) return outcome;
-      const returned: unknown[] = logs;
-      return { ...outcome, logs: [...emitted, ...returned] };
-    };
   Object.assign(builder, {
     returns(value?: unknown) {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the types guarantee a resolver's signature

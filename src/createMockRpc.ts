@@ -82,7 +82,6 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
       const internal = createMockContract(contractParameters, {
         onCall: recorder.onCall,
         addTransaction: transactions.addTransaction,
-        whileSending: transactions.whileSending,
         recordLimit,
       });
       registry.add(internal);
