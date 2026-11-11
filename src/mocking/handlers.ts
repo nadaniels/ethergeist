@@ -300,6 +300,9 @@ export function createHandlers<context, extra>() {
    * answer itself (see `isDeliberate`). A static value's setup error, from
    * encoding it at the request (a check that needs the call or the chain,
    * or a value changed after `.returns()`), is the mock's, thrown as it is.
+   *
+   * A resolver is called before the first `await`: a send relies on it to
+   * refuse `mock.addTransaction()` in its mock's resolver.
    */
   async function answerWith<answer>(
     handler: Handler<context, extra>,

@@ -268,6 +268,15 @@ The two functions keep these rules:
   their predicates again;
 - a send that's refused or not answered places nothing and takes no nonce;
 - a repeated raw send asks no mock and gives no contract a turn;
+- a send's outcome is chosen inside the store's `whileSending`, which
+  refuses `mock.addTransaction()` and `contract.emit` until `outcomeOf`
+  first awaits, so a send mock's resolver can't place a transaction of its
+  own before its first `await`. It relies on both sides calling the
+  resolver synchronously from `outcomeOf`, the contract's through
+  `functionMocks.answer()` and the actions' through
+  `sendTransactionMocks.answerWith()`, and both through the mock engine's
+  `answerWith` in `mocking/handlers.ts`: an `await` before the call, in
+  any of them, would end the refusal before the resolver runs;
 - a send awaits its outcome before it's placed, a plain transfer's too, so
   the same bytes sent twice at once both get that far, and only one is
   placed;

@@ -266,16 +266,16 @@ export function createTransactionStore({
   }
 
   /**
-   * Whether a send mock's resolver is running, up to its first `await`:
-   * adding a transaction is refused then.
+   * Whether a send's outcome is being chosen (see `whileSending`): adding a
+   * transaction is refused then.
    */
   let sending = false;
 
   /**
-   * Runs a send mock's resolver, refusing `addTransaction` (and so
-   * `contract.emit`) in it up to its first `await`: it would place a
-   * transaction of its own, mid-send. Code elsewhere (a demo's ticker) can
-   * still add one while a resolver waits.
+   * Runs `run`, which chooses a send's outcome, refusing `addTransaction`
+   * (and so `contract.emit`) until `run` first awaits: a send mock's
+   * resolver would place a transaction of its own, mid-send. Code elsewhere
+   * (a demo's ticker) can still add one while a send waits.
    */
   function whileSending<result>(run: () => result): result {
     const outer = sending;

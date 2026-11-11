@@ -166,14 +166,9 @@ export function createMockContract<const abi extends Abi>(
     addTransaction: AddTransaction;
     /** How many calls each list keeps: the contract's, and each function's. */
     recordLimit: RecordLimit;
-    /**
-     * Runs a `write` mock's resolver, refusing `mock.addTransaction()` in
-     * it.
-     */
-    whileSending: <result>(run: () => result) => result;
   },
 ): InternalMockContract<abi> {
-  const { onCall, addTransaction, recordLimit, whileSending } = hooks;
+  const { onCall, addTransaction, recordLimit } = hooks;
   const { abi, name, defaults = {} } = parameters;
   const address = getAddress(parameters.address);
   const label = formatContract(address, name);
@@ -252,7 +247,7 @@ export function createMockContract<const abi extends Abi>(
       },
       { revertError },
     );
-    answers.extendBuilder?.(builder, whileSending);
+    answers.extendBuilder?.(builder);
     return builder;
   }
 

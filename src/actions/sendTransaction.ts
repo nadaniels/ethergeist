@@ -17,7 +17,6 @@ import {
 } from "../transactions/writes.js";
 import { pinTransaction, sendCall } from "./codec.js";
 import type { MockDefinition } from "./mockSet.js";
-import type { ActionsContext } from "./table.js";
 import type { ActionContext, SendTransactionCall } from "./types.js";
 
 /**
@@ -121,9 +120,7 @@ export async function decodeSend(
  * did with the send (see `MockWriteOutcome`), and a revert is mined
  * reverted.
  */
-export const sendTransaction = ({
-  transactions,
-}: ActionsContext): MockDefinition<SendTransactionCall, MockWriteOutcome> => ({
+export const sendTransaction: MockDefinition<SendTransactionCall, MockWriteOutcome> = {
   name: "sendTransaction",
   hint: "mock.actions.sendTransaction({ to }).returns(…)",
   pin: pinTransaction,
@@ -138,7 +135,5 @@ export const sendTransaction = ({
     encodeWriteOutcome(value, to === undefined ? undefined : to === null),
   revertError: (spec?: RevertSpec) => createRevertError([], spec),
   reverted: minedReverted,
-  extendBuilder(builder) {
-    extendWriteBuilder(builder, transactions.whileSending);
-  },
-});
+  extendBuilder: extendWriteBuilder,
+};
