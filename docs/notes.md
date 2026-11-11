@@ -873,9 +873,12 @@ features land; tick them off as pages get written.
       answered before it can read "3 times, 2 left". Under each unused mock, the calls
       its function received (up to 3, then a count) and the first arg, field
       or param that didn't match, by its ABI name; "matches; another mock
-      answered it" for a shadowed mock; "received no calls" when the app never
-      made it. Args that matched show as `…`, so the line shows what differed
-      (the whole call when everything matched). Show an example.
+      answered it" for a shadowed mock; "matches; it's to a registered
+      contract's function, which action mocks don't answer" under an action
+      mock, for an estimate or a send that was the contract's, answered or
+      not; "received no calls" when the app never made it. Args that
+      matched show as `…`, so the line shows what differed (the whole call
+      when everything matched). Show an example.
 - [ ] The mock's own errors, all `MockError`s (viem's `BaseError`), each
       with a stable `code` viem doesn't retry: `MockSetupError` (the mock's
       API called wrong: a bad value or option, a removed mock, or a static

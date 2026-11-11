@@ -252,6 +252,10 @@ The two functions keep these rules:
 
 - a contract's turn is prepared before anything answers, so its call is
   recorded however the request ends, and whichever side answers it;
+- a call that's the contract's is marked in its action's mock set
+  (`markForContract`), since the action receives it too: under an unused
+  action mock that matches it, `assertAllUsed()` says action mocks don't
+  answer a registered contract's functions, not that another mock answered;
 - a mock's predicates run only while it's in contention, and once per
   estimate, except at a contract's estimate miss, where its `write` mocks
   are matched again for the reasons they missed. A contract's miss names

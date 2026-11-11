@@ -88,7 +88,15 @@ export function formatMismatch(
  * A call an unused mock's function received, and where it first differs from
  * the mock.
  */
-export type ReceivedCall = { call: string; differs: string | undefined };
+export type ReceivedCall = {
+  call: string;
+  differs: string | undefined;
+  /**
+   * Whether the call was a registered contract's to answer, under an
+   * action's mock.
+   */
+  forContract?: boolean;
+};
 
 /**
  * What follows a registered mock in a "No mock for" message: which of its
@@ -134,9 +142,17 @@ export function removedLines(removed: readonly string[]): string[] {
 export const formatNoAnswer = (answers: string) =>
   `\n    give it one with ${answers}, or don't register it`;
 
+/** Why a call an unused mock's function received wasn't the mock's use. */
+function formatReceivedReason({ differs, forContract }: ReceivedCall): string {
+  if (differs !== undefined) return `${differs} didn't match`;
+  if (forContract === true)
+    return "matches; it's to a registered contract's function, which action mocks don't answer";
+  return "matches; another mock answered it";
+}
+
 /**
  * The lines under an unused mock, for messages: the calls its function did
- * receive (up to 3) and where each first differs, or that it received none.
+ * receive (up to 3) and why each wasn't its use, or that it received none.
  */
 export function formatReceived(
   name: string,
@@ -145,11 +161,9 @@ export function formatReceived(
   total = received.length,
 ): string {
   if (total === 0) return `\n    received no calls to ${name}`;
-  const lines = received.slice(0, 3).map(({ call, differs }) => {
-    const why =
-      differs === undefined ? "matches; another mock answered it" : `${differs} didn't match`;
-    return `\n      ${call}  ← ${why}`;
-  });
+  const lines = received
+    .slice(0, 3)
+    .map((entry) => `\n      ${entry.call}  ← ${formatReceivedReason(entry)}`);
   if (received.length > 3) lines.push(`\n      … ${received.length - 3} more`);
   const count = total === 1 ? "1 call" : `${total} calls`;
   const kept =

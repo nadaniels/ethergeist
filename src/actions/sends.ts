@@ -120,6 +120,7 @@ export function createSends(
     return await reportAnswer({ call, turn, report, view: viewQuantity }, async () => {
       const functionMocks = turn?.functionMocks;
       if (called && functionMocks) {
+        estimateGasMocks.markForContract(call);
         // Found once, for steps 1 and 3, so its predicates run once.
         const writeMock = sent && called.contract.writeMock(called.data, called.context);
         if (writeMock?.answer.kind === "revert") {
@@ -233,6 +234,7 @@ export function createSends(
   ): Promise<MockWriteOutcome> {
     const functionMocks = turn?.functionMocks;
     if (functionMocks) {
+      sendTransactionMocks.markForContract(call);
       const answered = functionMocks.answer();
       if (answered) return await answered;
       throw functionMocks.miss(matchingActionLines(sendTransactionMocks.matchingLines(call)));

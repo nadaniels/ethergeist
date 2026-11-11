@@ -174,6 +174,12 @@ export function createMockSet<answer>(
 ) {
   const mocks = createHandlers<ActionContext<object>, unknown>();
   const calls = createRecordList<object>(recordLimit);
+  /**
+   * The calls received that were a registered contract's to answer, which
+   * these mocks weren't in contention for. Weak, so a call that `calls`
+   * drops or clears is forgotten with it.
+   */
+  const forContract = new WeakSet<object>();
   const actualOf = (pinned: unknown, call: object) =>
     definition.actual === undefined ? call : definition.actual(pinned, call);
 
@@ -226,6 +232,7 @@ export function createMockSet<answer>(
       return {
         call: formatMismatch(definition.name, shown(call), mismatched),
         differs: key === undefined ? undefined : paramName(key),
+        forContract: forContract.has(call),
       };
     });
   }
@@ -341,6 +348,13 @@ export function createMockSet<answer>(
         .map((handler) => `  ${describeMock(definition.name, handler)}`),
     /** The calls this action received, as they arrive. */
     calls,
+    /**
+     * Marks `call`, one this action received, as a registered contract's to
+     * answer, for an unused mock's lines.
+     */
+    markForContract(call: object) {
+      forContract.add(call);
+    },
     clearCalls() {
       calls.clear();
       mocks.clearUsage();
