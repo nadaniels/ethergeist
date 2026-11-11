@@ -8,7 +8,7 @@ import { encodeGas } from "../mocking/gas.js";
 import type {
   EstimateErrorName,
   MockEstimateAnswers,
-  MockNodeFault,
+  RefusalContext,
   WithLimits,
 } from "../mocking/types.js";
 import { withoutUndefined } from "../shared/values.js";
@@ -17,24 +17,22 @@ import type { MockDefinition } from "./mockSet.js";
 import type { ActionContext, EstimateGasCall, SendTransactionCall } from "./types.js";
 
 /**
- * What an `estimateGas` resolver gets: the call's fields, `fail`, and
- * `revert`, which reverts the estimate as `.reverts()` does.
+ * What an `estimateGas` resolver gets: the call's fields, `fail`, `refuse`,
+ * and `revert`, which reverts the estimate as `.reverts()` does.
  */
-export type EstimateGasContext = ActionContext<
-  EstimateGasCall,
-  MockNodeFault<EstimateErrorName>
-> & {
-  /**
-   * Reverts the estimate, e.g. `revert("paused")`. Without an ABI, it takes
-   * a reason, a panic code, raw data or nothing: see `RevertSpec`.
-   */
-  revert: RevertFn<readonly []>;
-};
+export type EstimateGasContext = ActionContext<EstimateGasCall> &
+  RefusalContext<EstimateErrorName> & {
+    /**
+     * Reverts the estimate, e.g. `revert("paused")`. Without an ABI, it takes
+     * a reason, a panic code, raw data or nothing: see `RevertSpec`.
+     */
+    revert: RevertFn<readonly []>;
+  };
 
 /**
  * An estimate's mock, as `mock.actions.estimateGas()` returns it:
- * `.returns()` with gas, `.reverts()` or `.fails()` to answer, and `.once()`
- * or `.times()` to limit it (see `WithLimits`).
+ * `.returns()` with gas, `.reverts()`, `.fails()` or `.refuses()` to answer,
+ * and `.once()` or `.times()` to limit it (see `WithLimits`).
  */
 export type MockEstimateBuilder<context> = WithLimits<
   MockEstimateAnswers<context> & {
@@ -49,7 +47,9 @@ export type MockEstimateBuilder<context> = WithLimits<
 
 /**
  * Like `MockAction`, for `estimateGas`, with `MockEstimateBuilder`'s
- * answers.
+ * answers. Its mocks answer estimates of anything but a registered
+ * contract's nonpayable and payable functions, which only the contract's
+ * own mocks answer.
  */
 export type MockEstimateGasAction = {
   (params?: Partial<EstimateGasCall>): MockEstimateBuilder<EstimateGasContext>;

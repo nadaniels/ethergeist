@@ -17,9 +17,10 @@ shared → mocking → chain → logs → transactions → contracts → actions
   [Adding state](#adding-state)).
 - **`mocking/`:** the mock engine that contracts and actions share
   (`handlers.ts`: registering mocks, picking the most specific match, limits
-  and usage), plus matching, matchers, faults (`MockFailure`), `zeroResult`,
-  outcomes (`MockOutcome`: how a mock answered, which history records), and
-  the shared setup checks (`setupChecks.ts`).
+  and usage), plus matching, matchers, faults and refusals by name
+  (`MockFailure`, `MockRefusal`, and their checks), `zeroResult`, outcomes
+  (`MockOutcome`: how a mock answered, which history records), and the
+  shared setup checks (`setupChecks.ts`).
 - **`chain/`:** the chain's own state (`createChainState`: block number, clock,
   fees) and the node's shapes for blocks, transactions, receipts and errors,
   and for request params (`params.ts`: read to the Ethereum JSON-RPC spec,
@@ -38,9 +39,10 @@ shared → mocking → chain → logs → transactions → contracts → actions
   `mock.buildLog()`'s), so a log's index counts across its block in one place.
 - **`contracts/`:** mocked contracts, their registry, and `eth_call`
   dispatch, multicall included; a contract also takes a turn at the
-  estimates and sends of its functions, ahead of the action's own mocks
-  (`turn()`, which prepares a `ContractTurn`). It emits logs, so it sits
-  above `transactions/`; it owns `MockCallRecord`, the record of a call it
+  estimates and sends to it with data (`turn()`, which prepares a
+  `ContractTurn`), where its mocks alone answer a call to one of its
+  functions in that namespace. It emits logs, so it sits above
+  `transactions/`; it owns `MockCallRecord`, the record of a call it
   answered.
 - **`actions/`:** typed actions (`mock.actions.getBalance`, …), one file each,
   and raw `mock.method()` mocks. Each action's or raw method's mocks are a
@@ -49,8 +51,8 @@ shared → mocking → chain → logs → transactions → contracts → actions
   action's fallback. The two exceptions are sends and their estimates,
   answered in `sends.ts` (see [Sends and estimates](#sends-and-estimates)).
   Receipts, transactions, blocks and `getLogs` read the transaction store,
-  and sends and their estimates give a contract its turn first, so it sits
-  above both.
+  and sends and their estimates give a registered contract its turn, so it
+  sits above both.
 - **`history/`:** what the mock received and how it answered: the recorder,
   history entries, and formatting.
 - **`rpc/`:** the request pipeline (`createRequestHandler`, a
@@ -75,16 +77,17 @@ up, move it down to where both can use it, as `MockOutcome` moved to
 ### Clients and errors
 
 `createRequestHandler` knows nothing about viem. It throws answers, which
-`isAnswer` in `mocking/outcomes.ts` names (`MockFailure` for faults,
-`MockRevertError`, `MockRpcError` for a node's refusal), or the mock's own
-errors for what it couldn't answer: the `MockError` family in
-`shared/errors.ts`. Anything else thrown while answering is a bug in the mock,
-or a value its types don't allow that no check caught. It's wrapped in
-`MockInternalError` (`asMockError`), so it's recorded as unhandled
-and isn't retried. An adapter turns answers into its client's errors:
-`toViemError` in `viem/errors.ts` for viem. Support for another client (wagmi,
-ethers) is a new adapter folder beside `viem/`, not a change to the layers
-under it.
+`isAnswer` in `mocking/outcomes.ts` names, or the mock's own errors for what
+it couldn't answer: the `MockError` family in `shared/errors.ts`. The answers
+are `MockFailure` for faults, `MockRevertError` for reverts, `MockRefusal`
+for a node's refusal by name (the adapter words it from the request's
+params), and `MockRpcError` for a node's own JSON-RPC error. Anything else
+thrown while answering is a bug in the mock, or a value its types don't allow
+that no check caught. It's wrapped in `MockInternalError` (`asMockError`), so
+it's recorded as unhandled and isn't retried. An adapter turns answers into
+its client's errors: `toViemError` in `viem/errors.ts` for viem. Support for
+another client (wagmi, ethers) is a new adapter folder beside `viem/`, not a
+change to the layers under it.
 
 The mock's errors:
 
@@ -130,7 +133,7 @@ The mock's errors:
    `MockWriteOutcome`), what it records of the requests it gets
    (`MockHistoryEntry`, `MockCallRecord`, `MockOutcome`, `MockBatch`), what
    it builds for you (`MockLogContent`), and types made from these
-   (`MockNodeFault`, `MockTaggedCall`). It keeps `Mock` when it's also a
+   (`MockTaggedCall`). It keeps `Mock` when it's also a
    parameter (`buildReceipt(MockReceipt)`, `failRequests(MockFault)`).
    **None on what you hand the mock**: parameter, option and context types
    (`RestoreOptions`, `ContractDefaults`, `EventArgs`, `RevertSpec`,
@@ -216,17 +219,22 @@ everything, then mutate.
 `estimateGas` and `sendTransaction` aren't table actions. A table has one
 rule: decode the call, then answer with the mock that matches, or else the
 fallback. A send and its estimate have an order of answers instead: a
-registered contract's turn, a send mock's `.reverts()` before any estimate
-mock, the gas a send mock implies, a repeated raw send, and placing the
-transaction.
+send mock's `.reverts()` before any estimate mock, the gas a send mock
+implies, a repeated raw send, and placing the transaction. And they take
+two sides: a transaction is the contract's when its `to` is a registered
+contract and its data decodes to one of that contract's functions in the
+request's namespace (`estimateGas` or `write`, so not a view function),
+and the actions' otherwise. Only one side is asked, each with its own
+order, and neither falls through to the other.
 
 `createSends` in `actions/sends.ts` holds both actions' mocks and two
 functions, `answerEstimate` and `answerSend`. Each is the order of answers,
-read top to bottom, and its doc comment lists the steps; `answerSend`
-continues in `outcomeOf`, under it, for the steps that choose a send's
-outcome. A new rule for a send or an estimate (what answers first, what a
-mock implies) is an edit to those functions, not a new hook on
-`Definition`.
+read top to bottom, a block for each side, and its doc comment lists the
+steps; `answerSend` continues in `outcomeOf`, under it, for the steps that
+choose a send's outcome. The contract says which side a transaction is: its
+turn has `functionMocks` only for a call that's the contract's. A new rule
+for a send or an estimate (what answers first, what a mock implies) is an
+edit to those functions, not a new hook on `Definition`.
 
 - The mocks are mock sets (`createMockSet` in `mockSet.ts`), which a table
   is built on too: registering, matching, answering with a mock, and the
@@ -243,10 +251,21 @@ mock implies) is an edit to those functions, not a new hook on
 The two functions keep these rules:
 
 - a contract's turn is prepared before anything answers, so its call is
-  recorded however the request ends;
+  recorded however the request ends, and whichever side answers it;
+- a call that's the contract's is marked in its action's mock set
+  (`markForContract`), since the action receives it too: under an unused
+  action mock that matches it, `assertAllUsed()` says action mocks don't
+  answer a registered contract's functions, not that another mock answered;
 - a mock's predicates run only while it's in contention, and once per
   estimate, except at a contract's estimate miss, where its `write` mocks
-  are matched again for the reasons they missed;
+  are matched again for the reasons they missed. A contract's miss names
+  the action mocks that match the transaction by exact values
+  (`matchingLines`), which runs none of their predicates and counts no
+  use: `sends.ts` builds those lines and the turn's `miss()` appends them,
+  so `contracts/` names no action. The actions' estimate miss lists the
+  `sendTransaction` mocks from the match its estimate already made
+  (`missListing`, passed to the estimate's `missError`), so it runs none of
+  their predicates again;
 - a send that's refused or not answered places nothing and takes no nonce;
 - a repeated raw send asks no mock and gives no contract a turn;
 - a send awaits its outcome before it's placed, a plain transfer's too, so

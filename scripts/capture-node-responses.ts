@@ -135,7 +135,7 @@ const cases: Case[] = [
       params: [usdc, "0x0", numberToHex(head.number - 2n)],
     }),
   },
-  // Named node errors and gas assumptions: what `.fails("insufficientFunds")`
+  // Named node errors and gas assumptions: what `.refuses("insufficientFunds")`
   // and the others imitate, and the 21000 a plain transfer is estimated at.
   {
     name: "estimate-gas-insufficient-funds",

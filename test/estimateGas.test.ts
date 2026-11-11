@@ -23,7 +23,7 @@ import {
   toHex,
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
   MockCheckError,
@@ -33,6 +33,7 @@ import {
   MockSetupError,
   type MockRpc,
   createMockRpc,
+  match,
   testAddress,
 } from "../src/index.js";
 import { expectCause, expectThrows, hintsOf, rejectionOf } from "./utils.js";
@@ -159,7 +160,7 @@ describe("estimateGas", () => {
     const { mock, client } = setup();
     const carol = testAddress("carol");
     mock.actions.estimateGas({ to: bob }).reverts("paused");
-    mock.actions.estimateGas({ to: alice }).fails("insufficientFunds");
+    mock.actions.estimateGas({ to: alice }).refuses("insufficientFunds");
 
     await rejectionOf(client.estimateGas({ account: alice, to: bob }));
     await rejectionOf(client.estimateGas({ account: bob, to: alice }));
@@ -406,7 +407,7 @@ describe("named node errors", () => {
   // Reth sends "EVM error: OutOfFunds" here, which viem only names from 2.57.12.
   test('"insufficientFunds" without fees is the balance check too, which every viem names', async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas({ from: alice }).fails("insufficientFunds");
+    mock.actions.estimateGas({ from: alice }).refuses("insufficientFunds");
 
     const error = await refusal(mock, client.estimateGas({ account: alice, to: bob, value: 1n }));
 
@@ -419,7 +420,7 @@ describe("named node errors", () => {
 
   test('"insufficientFunds" with fees is the balance check, with the value wanted', async () => {
     const { mock, wallet } = walletSetup();
-    mock.actions.estimateGas().fails("insufficientFunds");
+    mock.actions.estimateGas().refuses("insufficientFunds");
 
     const error = await refusal(mock, wallet.prepareTransactionRequest({ to: bob, value: 7n }));
 
@@ -432,8 +433,8 @@ describe("named node errors", () => {
 
   test('"feeCapTooLow" and "tipAboveFeeCap" are reth\'s, which viem names', async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas({ to: bob }).fails("feeCapTooLow");
-    mock.actions.estimateGas({ to: alice }).returns(({ fail }) => fail("tipAboveFeeCap"));
+    mock.actions.estimateGas({ to: bob }).refuses("feeCapTooLow");
+    mock.actions.estimateGas({ to: alice }).returns(({ refuse }) => refuse("tipAboveFeeCap"));
 
     const feeCap = await refusal(mock, client.estimateGas({ account: alice, to: bob }));
     const tip = await refusal(mock, client.estimateGas({ account: bob, to: alice }));
@@ -452,7 +453,7 @@ describe("named node errors", () => {
 
   test("gasExceedsAllowance names the request's gas, or the node's cap; viem takes it for a revert", async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas().fails("gasExceedsAllowance");
+    mock.actions.estimateGas().refuses("gasExceedsAllowance");
 
     // viem never sends `gas` with an estimate: the app's own request does.
     const capped = await rejectionOf(
@@ -476,20 +477,20 @@ describe("named node errors", () => {
 
   test("history shows the name", async () => {
     const { mock, client } = setup();
-    mock.actions.estimateGas().fails("insufficientFunds");
+    mock.actions.estimateGas().refuses("insufficientFunds");
 
     await rejectionOf(client.estimateGas({ account: alice, to: bob }));
 
     expect(mock.formatHistory()).toBe(
       "#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, " +
-        "blockNumber: 10n, blockTag: latest }) ✗ fault: insufficientFunds",
+        "blockNumber: 10n, blockTag: latest }) ✗ refused: insufficientFunds",
     );
   });
 
   test("simulate mocks take them too: eth_call refuses the same way", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
-    usdc.simulate.transfer().fails("insufficientFunds");
+    usdc.simulate.transfer().refuses("insufficientFunds");
 
     const error = await rejectionOf(
       client.simulateContract({
@@ -508,8 +509,8 @@ describe("named node errors", () => {
   test("simulate mocks take a gas cap's refusals: too little to run, or below the base cost", async () => {
     const { mock, client } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
-    usdc.simulate.transfer([bob, 1n]).fails("gasExceedsAllowance");
-    usdc.simulate.transfer([bob, 2n]).returns(({ fail }) => fail("intrinsicGasTooLow"));
+    usdc.simulate.transfer([bob, 1n]).refuses("gasExceedsAllowance");
+    usdc.simulate.transfer([bob, 2n]).returns(({ refuse }) => refuse("intrinsicGasTooLow"));
     const simulate = (amount: bigint) =>
       client.simulateContract({
         abi: erc20Abi,
@@ -621,10 +622,10 @@ describe("contract estimates", () => {
     );
   });
 
-  test("named node errors and faults fail the estimate", async () => {
+  test("a refusal refuses the estimate, and a fault fails it", async () => {
     const { mock, token, transfer, mint } = tokenSetup();
-    token.estimateGas.mint([1n]).fails("insufficientFunds");
-    token.estimateGas.mint([2n]).returns(({ fail }) => fail("gasExceedsAllowance"));
+    token.estimateGas.mint([1n]).refuses("insufficientFunds");
+    token.estimateGas.mint([2n]).returns(({ refuse }) => refuse("gasExceedsAllowance"));
     token.estimateGas.transfer().returns(({ fail }) => fail({ status: 503 }));
 
     expectCause(await rejectionOf(mint(1n, 1n)), InsufficientFundsError);
@@ -680,14 +681,25 @@ describe("contract estimates", () => {
   });
 });
 
-describe("estimate precedence", () => {
-  test("a contract's mocks answer estimates of its functions before action mocks", async () => {
+describe("whose mocks answer an estimate sent to a contract", () => {
+  test("a contract's mocks answer estimates of its functions, and action mocks don't", async () => {
     const { mock, token, transfer } = tokenSetup();
     token.estimateGas.transfer().returns(65_000n);
-    mock.actions.estimateGas({ from: alice }).fails("insufficientFunds");
+    mock.actions.estimateGas({ from: alice }).refuses("insufficientFunds");
     mock.actions.estimateGas({ to: token.address }).returns(1n);
 
     expect(await transfer()).toBe(65_000n);
+  });
+
+  test("answered by the contract, an estimate leaves action estimate mocks unmatched", async () => {
+    const { mock, token, transfer, mint } = tokenSetup({ estimateGas: { mint: 60_000n } });
+    const counted = vi.fn(() => true);
+    token.estimateGas.transfer().returns(65_000n);
+    mock.actions.estimateGas({ to: match.where(counted) }).returns(1n);
+
+    expect(await transfer()).toBe(65_000n);
+    expect(await mint(1n)).toBe(60_000n);
+    expect(counted).not.toHaveBeenCalled();
   });
 
   test("defaults answer too, and a contract mock overrides them", async () => {
@@ -700,24 +712,30 @@ describe("estimate precedence", () => {
     expect(await transfer()).toBe(60_000n);
   });
 
-  test("action mocks answer functions the contract doesn't mock, by their own rules", async () => {
-    const { mock, mint } = tokenSetup({ estimateGas: { transfer: 60_000n } });
+  test("action mocks don't answer functions the contract doesn't mock: the contract misses, naming those that match", async () => {
+    const { mock, token, mint } = tokenSetup({ estimateGas: { transfer: 60_000n } });
     mock.actions.estimateGas().returns(100_000n);
-    mock.actions.estimateGas({ value: 1n }).fails("insufficientFunds");
+    mock.actions.estimateGas({ value: 1n }).refuses("insufficientFunds");
+    mock.actions.estimateGas({ value: 2n }).returns(100_000n);
 
-    expect(await mint(1n)).toBe(100_000n);
-    expectCause(await rejectionOf(mint(1n, 1n)), InsufficientFundsError);
-    expect(mock.formatHistory()).toBe(
-      "#1 eth_estimateGas estimateGas Token.mint(1n) → 100000n\n" +
-        "#2 eth_estimateGas estimateGas Token.mint(1n) ✗ fault: insufficientFunds",
+    const error = expectCause(await rejectionOf(mint(1n, 1n)), MockNotFoundError);
+
+    expect(error.shortMessage).toBe(
+      `No estimateGas mock for mint(1n) on Token (${token.address}).`,
     );
-    // The contract didn't answer, so its record has the request's outcome.
+    expect(error.metaMessages).toEqual([
+      `No estimateGas mocks registered for "mint"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
+      "Action mocks that match, which don't answer a registered contract's functions:",
+      "  estimateGas(*)",
+      "  estimateGas({ value: 1n }) refuses",
+    ]);
+    expect(mock.formatHistory()).toBe("#1 eth_estimateGas estimateGas Token.mint(1n) ✗ not mocked");
     expect(mock.history[0]).toMatchObject({
-      contract: { call: { functionName: "mint" }, outcome: { type: "result", value: 100_000n } },
+      contract: { call: { functionName: "mint" }, outcome: { type: "unhandled" } },
     });
   });
 
-  test("a function not on the contract's ABI falls through to action mocks", async () => {
+  test("a function not on the contract's ABI is the action mocks' to answer", async () => {
     const { mock, client, token } = tokenSetup();
     const approve = () =>
       client.estimateGas({
@@ -730,9 +748,11 @@ describe("estimate precedence", () => {
     mock.actions.estimateGas({ to: token.address }).returns(60_000n);
     expect(await approve()).toBe(60_000n);
 
-    expect(error.shortMessage).toBe(
-      `No function with selector 0x095ea7b3 on mocked contract Token (${token.address}).`,
-    );
+    expect(error.shortMessage).toMatch(/^No mock for estimateGas\(/u);
+    expect(error.metaMessages).toEqual([
+      `Token (${token.address}) is a registered contract, but this transaction isn't a call to one of its nonpayable or payable functions.`,
+      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+    ]);
     expect(mock.unhandled).toHaveLength(1);
     expect(mock.history[1]).toMatchObject({
       contract: {
@@ -749,7 +769,7 @@ describe("estimate precedence", () => {
   });
 });
 
-describe("contract estimates answered by action mocks", () => {
+describe("estimates sent to a contract that action mocks answer", () => {
   test("are still the contract's calls, tagged, even of a view function", async () => {
     const { mock, client, token } = tokenSetup();
     mock.actions.estimateGas({ to: token.address }).returns(30_000n);
@@ -773,6 +793,25 @@ describe("contract estimates answered by action mocks", () => {
     });
   });
 
+  test("unmocked, an estimate of a view function is the action's miss", async () => {
+    const { client, token } = tokenSetup();
+
+    const error = await rejectionOf(
+      client.estimateGas({
+        account: alice,
+        to: token.address,
+        data: encodeFunctionData({ abi: tokenAbi, functionName: "balanceOf", args: [bob] }),
+      }),
+    );
+
+    const notFound = expectCause(error, MockNotFoundError);
+    expect(notFound.shortMessage).toMatch(/^No mock for estimateGas\(/u);
+    expect(notFound.metaMessages).toEqual([
+      `Token (${token.address}) is a registered contract, but this transaction isn't a call to one of its nonpayable or payable functions.`,
+      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+    ]);
+  });
+
   test.each([
     [
       ".reverts()",
@@ -789,11 +828,17 @@ describe("contract estimates answered by action mocks", () => {
   ] as const)(
     "reverting with %s, the revert is decoded against the contract's ABI in history",
     async (_, revertWith) => {
-      const { mock, transfer } = tokenSetup();
+      const { mock, client, token } = tokenSetup();
       const data = encodeErrorResult({ abi: tokenAbi, errorName: "Paused", args: [bob] });
       revertWith(mock, data);
 
-      await rejectionOf(transfer());
+      await rejectionOf(
+        client.estimateGas({
+          account: alice,
+          to: token.address,
+          data: encodeFunctionData({ abi: tokenAbi, functionName: "balanceOf", args: [bob] }),
+        }),
+      );
 
       const outcome = { type: "revert", data, errorName: "Paused", args: [bob] };
       expect(mock.history[0]).toMatchObject({

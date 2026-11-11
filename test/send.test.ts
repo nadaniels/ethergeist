@@ -1,4 +1,5 @@
 import {
+  type Address,
   ExecutionRevertedError,
   InsufficientFundsError,
   IntrinsicGasTooLowError,
@@ -27,7 +28,9 @@ import {
   MockNotFoundError,
   MockResolverError,
   MockSetupError,
+  contractEvents,
   createMockRpc,
+  match,
   testAddress,
   testHash,
   testLog,
@@ -449,8 +452,11 @@ describe("send mocks", () => {
 
   test("answer with what the chain did: logs, status, gas", async () => {
     const { mock, client, wallet } = nodeSetup();
-    const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
-    const transfer = usdc.events.Transfer({ from: alice, to: bob, value: 5n });
+    const transfer = contractEvents({ abi: erc20Abi, address: USDC }).Transfer({
+      from: alice,
+      to: bob,
+      value: 5n,
+    });
     mock.actions.sendTransaction({ to: USDC }).emits([transfer, testLog("noise")]);
     mock.actions.sendTransaction({ to: bob }).returns({
       status: "reverted",
@@ -644,9 +650,9 @@ describe("send mocks", () => {
 });
 
 describe("a send that's refused changes nothing", () => {
-  test(".fails() with a node's refusal: no transaction, no block", async () => {
+  test(".refuses(): no transaction, no block", async () => {
     const { mock, wallet } = localSetup();
-    mock.actions.sendTransaction().fails("insufficientFunds");
+    mock.actions.sendTransaction().refuses("insufficientFunds");
 
     const error = await rejectionOf(wallet.sendTransaction({ to: bob, value: 7n }));
 
@@ -660,7 +666,7 @@ describe("a send that's refused changes nothing", () => {
 
   test("a refused send, or one no mock answers, is still one of the action's calls", async () => {
     const { mock, wallet } = nodeSetup();
-    mock.actions.sendTransaction({ to: bob }).fails("insufficientFunds");
+    mock.actions.sendTransaction({ to: bob }).refuses("insufficientFunds");
 
     await rejectionOf(wallet.sendTransaction({ to: bob, value: 7n }));
     await rejectionOf(wallet.sendTransaction({ to: carol, data: "0x12" }));
@@ -701,7 +707,7 @@ describe("a send that's refused changes nothing", () => {
     "$name is geth's message, viem's $errorClass.name ($account account)",
     async ({ account, name, errorClass, message }) => {
       const { mock, client, wallet } = account === "local" ? localSetup() : nodeSetup();
-      mock.actions.sendTransaction().fails(name);
+      mock.actions.sendTransaction().refuses(name);
 
       const error = await rejectionOf(wallet.sendTransaction({ to: bob }));
 
@@ -824,7 +830,6 @@ describe("sends unmocked", () => {
 describe("the estimate a send mock implies", () => {
   test("is 100,000 gas, without running the mock or using it up", async () => {
     const { mock, wallet } = localSetup();
-    mock.contract({ abi: erc20Abi, address: USDC });
     const resolver = vi.fn(() => ({}));
     mock.actions.sendTransaction({ to: USDC }).once().returns(resolver);
 
@@ -842,6 +847,19 @@ describe("the estimate a send mock implies", () => {
     await wallet.sendTransaction(request);
     expect(resolver).toHaveBeenCalledTimes(1);
     expect(mock.transactions[0]!.fields.gas).toBe(100_000n);
+  });
+
+  test("a .once() mock implies it and is still there to answer the send", async () => {
+    const { mock, wallet } = localSetup();
+    const resolver = vi.fn(() => ({}));
+    mock.actions.sendTransaction({ to: bob }).once().returns(resolver);
+
+    await wallet.sendTransaction({ to: bob, data: "0x12" });
+
+    expect(mock.history.map(({ method }) => method)).toContain("eth_estimateGas");
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(mock.transactions).toMatchObject([{ fields: { gas: 100_000n } }]);
+    mock.assertAllUsed();
   });
 
   test("an estimate mock answers first, and a plain transfer to an address without code is 21000", async () => {
@@ -884,6 +902,18 @@ describe("the estimate a send mock implies", () => {
     expect(mock.transactions).toMatchObject([{ fields: { gas: 80_000n } }]);
     expect(mock.transactions[0]!.receipt).toEqual({});
     mock.assertAllUsed();
+  });
+
+  test("a .reverts() mock reverts it without matching estimate mocks, so their predicates don't run", async () => {
+    const { mock, client } = setup();
+    const counted = vi.fn(() => true);
+    mock.actions.estimateGas({ to: match.where(counted) }).returns(80_000n);
+    mock.actions.sendTransaction({ to: bob }).reverts("not today");
+
+    const error = await rejectionOf(client.estimateGas({ account: alice, to: bob, data: "0x12" }));
+
+    expectCause(error, ExecutionRevertedError);
+    expect(counted).not.toHaveBeenCalled();
   });
 
   test("a .reverts() mock reverts a plain transfer's estimate too", async () => {
@@ -992,6 +1022,100 @@ describe("the estimate a send mock implies", () => {
     const error = await rejectionOf(client.estimateGas({ account: alice, to: USDC, data: "0x12" }));
 
     expectCause(error, MockNotFoundError);
+  });
+});
+
+describe("an estimate no mock answers lists the sendTransaction mocks", () => {
+  const header = "sendTransaction mocks, which imply the estimate of a send they match:";
+  const mockIt = "Mock it with mock.actions.estimateGas({ to }).returns(…).";
+
+  test("with what each missed on, after the hint", async () => {
+    const { mock, client } = setup();
+    mock.actions.sendTransaction({ to: carol }).returns();
+
+    const error = await rejectionOf(client.estimateGas({ account: alice, to: bob, data: "0x12" }));
+
+    const notFound = expectCause(error, MockNotFoundError);
+    expect(notFound.shortMessage).toMatch(/^No mock for estimateGas\(/u);
+    expect(notFound.metaMessages).toEqual([
+      mockIt,
+      header,
+      `  sendTransaction({ to: ${carol} })  ← to didn't match`,
+    ]);
+  });
+
+  test("after the estimateGas mocks", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ to: carol }).returns(50_000n);
+    mock.actions.sendTransaction({ to: carol }).returns();
+
+    const error = await rejectionOf(client.estimateGas({ account: alice, to: bob, data: "0x12" }));
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "Registered:",
+      `  estimateGas({ to: ${carol} })  ← to didn't match`,
+      header,
+      `  sendTransaction({ to: ${carol} })  ← to didn't match`,
+    ]);
+  });
+
+  test("used up or without an answer, as Registered lists them", async () => {
+    const { mock, wallet } = localSetup();
+    mock.actions.sendTransaction({ to: bob }).once().returns();
+    mock.actions.sendTransaction({ to: carol });
+    await wallet.sendTransaction({ to: bob, data: "0x12" });
+
+    const error = await rejectionOf(wallet.sendTransaction({ to: bob, data: "0x12" }));
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      mockIt,
+      header,
+      `  sendTransaction({ to: ${bob} }) once, used up`,
+      `  sendTransaction({ to: ${carol} }) without an answer  ← to didn't match`,
+    ]);
+  });
+
+  test("after the line that the data is to a registered contract but isn't one of its functions", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC });
+    mock.actions.sendTransaction({ from: bob, to: USDC }).returns();
+
+    const error = await rejectionOf(
+      client.estimateGas({ account: alice, to: USDC, data: "0x12345678" }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      `${USDC} is a registered contract, but this transaction isn't a call to one of its nonpayable or payable functions.`,
+      mockIt,
+      header,
+      `  sendTransaction({ from: ${bob}, to: ${USDC} })  ← from didn't match`,
+    ]);
+  });
+
+  test("whose predicates run once, at the match the estimate already made", async () => {
+    const { mock, client } = setup();
+    const isCarol = vi.fn((to: Address | null) => to === carol);
+    mock.actions.sendTransaction({ to: match.where(isCarol, "isCarol") }).returns();
+
+    const error = await rejectionOf(client.estimateGas({ account: alice, to: bob, data: "0x12" }));
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      mockIt,
+      header,
+      "  sendTransaction({ to: where(isCarol) })  ← to didn't match",
+    ]);
+    expect(isCarol).toHaveBeenCalledTimes(1);
+  });
+
+  test("but not for an estimate without from, which is no send's", async () => {
+    const { mock } = setup();
+    mock.actions.sendTransaction({ to: carol }).returns();
+
+    const error = await rejectionOf(
+      mock.request({ method: "eth_estimateGas", params: [{ to: bob, input: "0x12" }] }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([mockIt]);
   });
 });
 
@@ -1105,7 +1229,7 @@ describe("nonces follow sends", () => {
 
   test("a refused send takes no nonce", async () => {
     const { mock, wallet } = nodeSetup();
-    mock.actions.sendTransaction({ to: bob }).once().fails("insufficientFunds");
+    mock.actions.sendTransaction({ to: bob }).once().refuses("insufficientFunds");
 
     await rejectionOf(wallet.sendTransaction({ to: bob }));
     await wallet.sendTransaction({ to: bob });
@@ -1209,7 +1333,7 @@ describe("eth_sendRawTransactionSync (EIP-7966, a local account's *Sync sends)",
 
   test("a refusal fails the send and changes nothing", async () => {
     const { mock, client, wallet } = localSetup();
-    mock.actions.sendTransaction().fails("nonceTooLow");
+    mock.actions.sendTransaction().refuses("nonceTooLow");
 
     const error = await rejectionOf(wallet.sendTransactionSync({ to: bob, value: 5n }));
 

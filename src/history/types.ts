@@ -53,8 +53,9 @@ export type MockHistoryEntry =
          */
         call: ActionCalls[action] | undefined;
         /**
-         * The registered contract's record of the call, when the contract had
-         * a turn at answering it: an estimate or a send whose `to` is one.
+         * The registered contract's record of the call, for an estimate or a
+         * send with data whose `to` is one, whichever mocks answered it. A
+         * raw send of bytes already mined has none: no mock answers it again.
          */
         contract?: MockCallRecord;
       };

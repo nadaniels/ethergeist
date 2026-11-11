@@ -1,10 +1,19 @@
-import { InvalidAddressError, createPublicClient, erc20Abi, getAddress, parseAbi } from "viem";
+import {
+  type Address,
+  InvalidAddressError,
+  createPublicClient,
+  createWalletClient,
+  erc20Abi,
+  getAddress,
+  parseAbi,
+} from "viem";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
 import {
   MockCheckError,
   MockNotFoundError,
+  type MockRpc,
   MockResolverError,
   MockSetupError,
   createMockRpc,
@@ -25,6 +34,10 @@ function setup() {
     client.readContract({ abi: erc20Abi, address, functionName: "balanceOf", args: [owner] });
   return { mock, client, balanceOf };
 }
+
+/** The app's wallet client, for a node's account. */
+const walletFor = (mock: MockRpc, account: Address) =>
+  createWalletClient({ account, chain: mock.chain, transport: mock.transport({ retryCount: 0 }) });
 
 describe("assertNoUnhandled()", () => {
   test("passes when every request was answered, including reverts", async () => {
@@ -541,7 +554,7 @@ describe("assertAllUsed()", () => {
     expect(message).not.toContain("another mock answered it");
   });
 
-  test("an estimate or send mock without an answer can also be given .reverts()", () => {
+  test("an estimate or send mock without an answer can also be given .reverts() or .refuses()", () => {
     const { mock } = setup();
     mock.actions.estimateGas({ to: USDC });
     mock.actions.sendTransaction({ to: USDC });
@@ -549,12 +562,27 @@ describe("assertAllUsed()", () => {
     const message = unusedMessage(mock);
     expect(message).toContain(
       `  - estimateGas({ to: ${USDC} }) without an answer\n` +
-        "    give it one with .returns(), .reverts() or .fails(), or don't register it",
+        "    give it one with .returns(), .reverts(), .fails() or .refuses(), or don't register it",
     );
     expect(message).toContain(
       `  - sendTransaction({ to: ${USDC} }) without an answer\n` +
-        "    give it one with .returns(), .reverts() or .fails(), or don't register it",
+        "    give it one with .returns(), .reverts(), .fails() or .refuses(), or don't register it",
     );
+  });
+
+  test("a contract's simulate, estimateGas or write mock without an answer can also be given .refuses()", () => {
+    const { mock } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    usdc.simulate.transfer();
+    usdc.estimateGas.approve();
+    usdc.write.transferFrom();
+
+    const message = unusedMessage(mock);
+    for (const functionName of ["transfer", "approve", "transferFrom"])
+      expect(message).toContain(
+        `  - ${functionName}(*) without an answer on ${USDC}\n` +
+          "    give it one with .returns(), .reverts(), .fails() or .refuses(), or don't register it",
+      );
   });
 
   test("says that an unused mock reverts or fails", () => {
@@ -677,6 +705,65 @@ describe("assertAllUsed(): what the function received instead", () => {
     expect(unusedMessage(mock)).toContain(
       `      getBalance({ address: ${alice}, blockNumber: 1n, blockTag: latest })  ← matches; another mock answered it`,
     );
+  });
+
+  const contractsFunctionReason =
+    /← matches; it's to a registered contract's function, which action mocks don't answer\n/gu;
+  const transferArgs = {
+    abi: erc20Abi,
+    address: USDC,
+    functionName: "transfer",
+    args: [bob, 5n],
+    account: alice,
+  } as const;
+
+  test("an action mock matched sends of a registered contract's function, missed and answered", async () => {
+    const { mock } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    mock.actions.sendTransaction({ to: USDC }).returns({});
+    mock.actions.sendTransaction({ to: DAI }).returns({});
+    const wallet = walletFor(mock, alice);
+
+    expectCause(await rejectionOf(wallet.writeContract(transferArgs)), MockNotFoundError);
+    usdc.write.transfer().returns({});
+    await wallet.writeContract(transferArgs);
+
+    const message = unusedMessage(mock);
+    expect(message).toContain(`  - sendTransaction({ to: ${USDC} })\n`);
+    expect(message.match(contractsFunctionReason)).toHaveLength(2);
+    expect(message.match(/← to didn't match\n/gu)).toHaveLength(2);
+  });
+
+  test("an action mock matched estimates of a registered contract's function, missed and implied by its write mock", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    mock.actions.estimateGas().returns(80_000n);
+
+    expectCause(await rejectionOf(client.estimateContractGas(transferArgs)), MockNotFoundError);
+    usdc.write.transfer().returns({});
+    expect(await client.estimateContractGas(transferArgs)).toBe(100_000n);
+
+    const message = unusedMessage(mock);
+    expect(message).toContain("  - estimateGas(*)\n    received 2 calls to estimateGas:\n");
+    expect(message.match(contractsFunctionReason)).toHaveLength(2);
+  });
+
+  test("data sent to a registered contract that isn't one of its functions is the actions': another mock answered it", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC });
+    mock.actions.estimateGas().returns(50_000n);
+    mock.actions.estimateGas({ to: USDC }).returns(60_000n);
+    mock.actions.sendTransaction().returns({});
+    mock.actions.sendTransaction({ to: USDC }).returns({});
+    const notOnTheAbi = { account: alice, to: USDC, data: "0xdeadbeef" } as const;
+
+    await client.estimateGas(notOnTheAbi);
+    await walletFor(mock, alice).sendTransaction(notOnTheAbi);
+
+    const message = unusedMessage(mock);
+    expect(message).toContain("  - estimateGas(*)\n");
+    expect(message).toContain("  - sendTransaction(*)\n");
+    expect(message.match(/← matches; another mock answered it\n/gu)).toHaveLength(2);
   });
 
   test("shows the first 3 calls and counts the rest", async () => {

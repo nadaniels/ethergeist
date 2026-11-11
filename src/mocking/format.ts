@@ -31,16 +31,22 @@ type DescribedMock = {
   answer: Answer | undefined;
 };
 
+/** What `describeMock` says of a mock's answer, where it says anything. */
+const answerVerbs: Partial<Record<Answer["kind"], string>> = {
+  revert: " reverts",
+  fault: " fails",
+  refusal: " refuses",
+};
+
 /**
  * A mock as messages name it: its call, what else it pins, whether it
- * reverts or fails, its limit, and whether it's still without an answer,
- * e.g. `balanceOf(*) once`, `transfer(*) { from: 0x… } reverts`,
+ * reverts, fails or refuses, its limit, and whether it's still without an
+ * answer, e.g. `balanceOf(*) once`, `transfer(*) { from: 0x… } reverts`,
  * `getBalance(*) fails once` or `getBalance() without an answer`.
  */
 export function describeMock(name: string, mock: DescribedMock): string {
   const pins = mock.pins ? ` ${formatValue(mock.pins)}` : "";
-  const kind = mock.answer?.kind;
-  const verb = kind === "revert" ? " reverts" : kind === "fault" ? " fails" : "";
+  const verb = mock.answer === undefined ? "" : (answerVerbs[mock.answer.kind] ?? "");
   const unanswered = mock.answer === undefined ? " without an answer" : "";
   return `${formatCall(name, mock.pinned)}${pins}${verb}${formatLimit(mock.limit, mock.remaining)}${unanswered}`;
 }
@@ -82,7 +88,15 @@ export function formatMismatch(
  * A call an unused mock's function received, and where it first differs from
  * the mock.
  */
-export type ReceivedCall = { call: string; differs: string | undefined };
+export type ReceivedCall = {
+  call: string;
+  differs: string | undefined;
+  /**
+   * Whether the call was a registered contract's to answer, under an
+   * action's mock.
+   */
+  forContract?: boolean;
+};
 
 /**
  * What follows a registered mock in a "No mock for" message: which of its
@@ -110,16 +124,13 @@ export function missedLines<mock extends DescribedMock>(
 }
 
 /**
- * A miss's lines for the mocks of `name` the last restore removed that match
- * the call, with the layout that often causes it; none if there are none.
+ * A miss's block for the mocks the last restore removed that match the call,
+ * given as their lines (`removed`), under a header and with the layout that
+ * often causes it; none if there are none.
  */
-export function removedLines(name: string, removed: readonly DescribedMock[]): string[] {
+export function removedLines(removed: readonly string[]): string[] {
   if (removed.length === 0) return [];
-  return [
-    removedMocksHeader,
-    ...removed.map((mock) => `  ${describeMock(name, mock)}`),
-    nestedRestoreHint,
-  ];
+  return [removedMocksHeader, ...removed, nestedRestoreHint];
 }
 
 /**
@@ -131,9 +142,17 @@ export function removedLines(name: string, removed: readonly DescribedMock[]): s
 export const formatNoAnswer = (answers: string) =>
   `\n    give it one with ${answers}, or don't register it`;
 
+/** Why a call an unused mock's function received wasn't the mock's use. */
+function formatReceivedReason({ differs, forContract }: ReceivedCall): string {
+  if (differs !== undefined) return `${differs} didn't match`;
+  if (forContract === true)
+    return "matches; it's to a registered contract's function, which action mocks don't answer";
+  return "matches; another mock answered it";
+}
+
 /**
  * The lines under an unused mock, for messages: the calls its function did
- * receive (up to 3) and where each first differs, or that it received none.
+ * receive (up to 3) and why each wasn't its use, or that it received none.
  */
 export function formatReceived(
   name: string,
@@ -142,11 +161,9 @@ export function formatReceived(
   total = received.length,
 ): string {
   if (total === 0) return `\n    received no calls to ${name}`;
-  const lines = received.slice(0, 3).map(({ call, differs }) => {
-    const why =
-      differs === undefined ? "matches; another mock answered it" : `${differs} didn't match`;
-    return `\n      ${call}  ← ${why}`;
-  });
+  const lines = received
+    .slice(0, 3)
+    .map((entry) => `\n      ${entry.call}  ← ${formatReceivedReason(entry)}`);
   if (received.length > 3) lines.push(`\n      … ${received.length - 3} more`);
   const count = total === 1 ? "1 call" : `${total} calls`;
   const kept =

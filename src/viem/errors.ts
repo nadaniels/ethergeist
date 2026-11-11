@@ -1,8 +1,8 @@
 import { HttpRequestError, RpcRequestError, TimeoutError } from "viem";
 
 import { nodeErrors, nodeRevertMessage } from "../chain/nodeErrors.js";
-import { MockFailure, isNodeErrorName } from "../mocking/faults.js";
-import type { MockNodeFault } from "../mocking/types.js";
+import { MockFailure, MockRefusal } from "../mocking/faults.js";
+import type { MockFault, NodeErrorName } from "../mocking/types.js";
 import { MockRevertError, MockRpcError } from "../shared/errors.js";
 
 /**
@@ -34,17 +34,31 @@ function createRevertRpcError(
 }
 
 /**
- * A fault as viem's `http` transport reports it: a node's refusal or a
- * JSON-RPC error as an `RpcRequestError`, a timeout as a `TimeoutError`, and
- * an HTTP status or no response as an `HttpRequestError`.
+ * A node's refusal by name as viem's `http` transport reports it: an
+ * `RpcRequestError` with the node's code and message for the request's
+ * params (see `nodeErrors`).
+ */
+function createRefusalError(
+  refusal: NodeErrorName,
+  request: { method: string; params?: unknown },
+): RpcRequestError {
+  return new RpcRequestError({
+    body: { method: request.method, params: request.params },
+    url,
+    error: nodeErrors[refusal](request.params),
+  });
+}
+
+/**
+ * A fault as viem's `http` transport reports it: a JSON-RPC error as an
+ * `RpcRequestError`, a timeout as a `TimeoutError`, and an HTTP status or no
+ * response as an `HttpRequestError`.
  */
 function createFaultError(
-  fault: MockNodeFault,
+  fault: MockFault,
   request: { method: string; params?: unknown },
 ): HttpRequestError | RpcRequestError | TimeoutError {
   const body = { method: request.method, params: request.params };
-  if (isNodeErrorName(fault))
-    return new RpcRequestError({ body, url, error: nodeErrors[fault](request.params) });
   if (fault === "timeout") return new TimeoutError({ body, url });
   if (fault === "network")
     return new HttpRequestError({ body, url, details: "The request got no response." });
@@ -70,7 +84,8 @@ function createFaultError(
 
 /**
  * `error`, thrown while answering `request`, as viem's error: a fault
- * (`MockFailure`), a revert or a node's refusal becomes what viem's `http`
+ * (`MockFailure`), a revert or a node's refusal (`MockRefusal` by name, from
+ * the request's params, or `MockRpcError`) becomes what viem's `http`
  * transport throws for a node failing that way, so viem's retry rules and
  * error classes apply as in production. Anything else, what the mock
  * couldn't answer, is returned as is.
@@ -78,6 +93,7 @@ function createFaultError(
 export function toViemError(error: unknown, request: { method: string; params?: unknown }) {
   const body = request.params === undefined ? { method: request.method } : request;
   if (error instanceof MockFailure) return createFaultError(error.fault, body);
+  if (error instanceof MockRefusal) return createRefusalError(error.refusal, body);
   if (error instanceof MockRevertError) return createRevertRpcError(error, body);
   if (error instanceof MockRpcError)
     return createFaultError({ code: error.code, message: error.shortMessage }, body);

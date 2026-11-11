@@ -151,10 +151,10 @@ const metaMessagesOf = (error: Error) =>
     : undefined;
 
 /**
- * Thrown when a resolver throws, other than by `revert()` or `fail()`, or
- * returns an answer that doesn't fit, or when a `match.where()` predicate
- * throws while matching. The cause's hints carry over, so a mock's own error
- * thrown inside a resolver keeps them.
+ * Thrown when a resolver throws, other than by `revert()`, `fail()` or
+ * `refuse()`, or returns an answer that doesn't fit, or when a
+ * `match.where()` predicate throws while matching. The cause's hints carry
+ * over, so a mock's own error thrown inside a resolver keeps them.
  */
 export class MockResolverError extends MockError {
   override name = "MockResolverError";

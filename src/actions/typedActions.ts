@@ -190,32 +190,33 @@ export type MockActions = {
   getStorageAt: MockAction<StorageCall, Hex>;
   /**
    * `eth_estimateGas`, for viem's `estimateGas()` and the gas a transaction
-   * is prepared with. A `.reverts()` send mock (`write` or
-   * `sendTransaction`) that would answer the transaction reverts its
-   * estimate first, before any estimate mock. Then a registered contract's
-   * `estimateGas` mocks and defaults answer estimates of its functions, and
-   * these mocks answer the rest.
+   * is prepared with. These mocks answer estimates of anything but a
+   * registered contract's nonpayable and payable functions, which only the
+   * contract's own mocks answer (see `contract.estimateGas`). A `.reverts()`
+   * `sendTransaction` mock that would answer the transaction reverts its
+   * estimate first, before these mocks.
    *
    * Unmocked, a plain transfer, with no data, to an address without code is
    * 21,000 gas, as a node estimates it, even with a send mock. Otherwise, a
-   * send mock that would answer the transaction implies 100,000 gas, and
-   * anything else isn't answered.
-   * `.fails()` takes a node's refusal by name, e.g. `"insufficientFunds"`.
+   * `sendTransaction` mock that would answer the transaction implies
+   * 100,000 gas, and anything else isn't answered.
+   * `.refuses()` refuses an estimate by name, e.g. `"insufficientFunds"`.
    */
   estimateGas: MockEstimateGasAction;
   /**
    * `eth_sendTransaction` and `eth_sendRawTransaction`, for viem's
    * `sendTransaction()`, `writeContract()` and `deployContract()`, and
    * `eth_sendRawTransactionSync` (EIP-7966), for a local account's
-   * `sendTransactionSync()` and `writeContractSync()`. A registered
-   * contract's `write` mocks and defaults answer sends of its functions
-   * first, and these mocks answer the rest. Unmocked, a send without data to
-   * an address without code succeeds, as on a node, and anything else isn't
-   * answered.
+   * `sendTransactionSync()` and `writeContractSync()`. These mocks answer
+   * sends of anything but a registered contract's nonpayable and payable
+   * functions, which only its `write` mocks and defaults answer. Unmocked,
+   * a send without data to an address without code succeeds, as on a node,
+   * and anything else isn't answered.
    *
    * A mock answers with what the chain did: see `MockWriteAnswers`.
-   * `.fails()` takes a node's refusal by name, e.g. `"nonceTooLow"`, and a
-   * resolver also gets `emit` and `revert` (see `SendTransactionContext`).
+   * `.refuses()` refuses a send by name, e.g. `"nonceTooLow"`, and a
+   * resolver also gets `refuse`, `emit` and `revert` (see
+   * `SendTransactionContext`).
    * For how a send is mined, its estimate, and raw sends, see
    * `MockSendTransactionAction`.
    */

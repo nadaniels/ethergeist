@@ -1,4 +1,4 @@
-import { fail } from "../mocking/faults.js";
+import { fail, refuse } from "../mocking/faults.js";
 import {
   type ReceivedCall,
   describeMock,
@@ -9,13 +9,13 @@ import {
   missedLines,
   removedLines,
 } from "../mocking/format.js";
+import { type Builder, type Handler as MockHandler, createHandlers } from "../mocking/handlers.js";
 import {
-  type Builder,
-  type Handler as MockHandler,
-  createHandlers,
-  foundMock,
-} from "../mocking/handlers.js";
-import { checkNoMatchers, firstMismatch, mismatches } from "../mocking/matching.js";
+  type MatchOptions,
+  checkNoMatchers,
+  firstMismatch,
+  mismatches,
+} from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { MockNotFoundError, type MockRevertError } from "../shared/errors.js";
@@ -94,7 +94,10 @@ export type MockDefinition<call extends object = object, answer = unknown> = {
    * itself.
    */
   actual?(pinned: unknown, call: call): unknown;
-  /** Adds to what a resolver gets, beyond the call, `fail` and `revert`. */
+  /**
+   * Adds to what a resolver gets, beyond the call, `fail`, `revert` and
+   * `refuse`.
+   */
   extendContext?(context: object, call: call): void;
   /**
    * Validates a value in viem's types and converts it to its JSON-RPC form.
@@ -138,6 +141,13 @@ class Registered {
   }
 }
 
+/**
+ * An action's mocks as a miss lists them, a line each: every registered one,
+ * with what it missed on, and those the last restore removed that match the
+ * call.
+ */
+type MissListing = { registered: readonly string[]; removed: readonly string[] };
+
 /** What a mock set needs beside its definition: see `createMockSet`. */
 export type MockSetOptions = {
   /** The block current now, e.g. `state.blockNumber`. */
@@ -153,8 +163,9 @@ export type MockSetOptions = {
  * One action's mocks and the calls it received, kept to `recordLimit`:
  * registering mocks, finding the one that answers a call (`match`),
  * answering with it (`answerWith`), and the error when nothing answers
- * (`missError`). Decoding the call, and what answers when no mock does, are
- * its caller's: a table's, or sends and their estimates'.
+ * (`missError`), which can also list another action's mocks, from that
+ * action's `missListing`. Decoding the call, and what answers when no mock
+ * does, are its caller's: a table's, or sends and their estimates'.
  */
 export function createMockSet<answer>(
   definition: MockDefinition<object, answer>,
@@ -163,17 +174,24 @@ export function createMockSet<answer>(
 ) {
   const mocks = createHandlers<ActionContext<object>, unknown>();
   const calls = createRecordList<object>(recordLimit);
+  /**
+   * The calls received that were a registered contract's to answer, which
+   * these mocks weren't in contention for. Weak, so a call that `calls`
+   * drops or clears is forgotten with it.
+   */
+  const forContract = new WeakSet<object>();
   const actualOf = (pinned: unknown, call: object) =>
     definition.actual === undefined ? call : definition.actual(pinned, call);
 
   /**
    * The builder methods that answer, named for a mock registered without
-   * one.
+   * one. Only estimates and sends run a transaction, so they're the actions
+   * with `.reverts()`, and the ones whose types offer `.refuses()`.
    */
   const answers =
     definition.revertError === undefined
       ? ".returns() or .fails()"
-      : ".returns(), .reverts() or .fails()";
+      : ".returns(), .reverts(), .fails() or .refuses()";
 
   function register(params: unknown) {
     const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
@@ -214,6 +232,7 @@ export function createMockSet<answer>(
       return {
         call: formatMismatch(definition.name, shown(call), mismatched),
         differs: key === undefined ? undefined : paramName(key),
+        forContract: forContract.has(call),
       };
     });
   }
@@ -234,21 +253,20 @@ export function createMockSet<answer>(
     });
   }
 
+  /** Where `candidate` first differs from `call`: see `firstMismatch`. */
+  const differsFrom = (call: object) => (candidate: Handler, options: MatchOptions) =>
+    firstMismatch(candidate.pinned, actualOf(candidate.pinned, call), options);
+
   /**
    * The handler that answers `call`, and where the others missed: see
    * `findAnswering`.
    */
   const match = (call: object) =>
-    mocks.findAnswering(
-      () => true,
-      (candidate, options) =>
-        firstMismatch(candidate.pinned, actualOf(candidate.pinned, call), options),
-      definition.name,
-    );
+    mocks.findAnswering(() => true, differsFrom(call), definition.name);
 
   /** Answers `call` with `handler`, the mock `match` found for it. */
   function answerWith(handler: Handler, call: object): Promise<answer> {
-    const context = { ...call, fail };
+    const context = { ...call, fail, refuse };
     if (definition.revertError !== undefined)
       Object.assign(context, {
         revert(spec?: unknown): never {
@@ -266,23 +284,49 @@ export function createMockSet<answer>(
   }
 
   /**
+   * This action's mocks as a miss lists them, from what `match` gave for a
+   * call: see `MissListing`. Built from the match, so no predicate runs
+   * again; another action's miss lists them as `others`.
+   */
+  const missListing = ({ missed, removed }: ReturnType<typeof match>): MissListing => ({
+    registered: missedLines(definition.name, mocks.handlers, missed, (_, key) => paramName(key)),
+    removed: removed.map((handler) => `  ${describeMock(definition.name, handler)}`),
+  });
+
+  /**
    * The error for a call nothing answers, from what `match` gave for it. It
    * lists the mocks that missed the call, or without any, says where to
-   * register one: `hint`, the definition's by default.
+   * register one: `hint`, the definition's by default. The caller's
+   * `before` lines come between the `notFoundLines` and that list or hint.
+   * `others` are another action's mocks, as its `missListing` gives them:
+   * the registered ones come next, under `header`, and the ones the last
+   * restore removed follow this action's, under one header.
    */
   function missError(
     call: object,
-    { missed, removed }: ReturnType<typeof match>,
-    hint = definition.hint,
+    found: ReturnType<typeof match>,
+    {
+      hint = definition.hint,
+      before = [],
+      others,
+    }: {
+      hint?: string | undefined;
+      before?: readonly string[];
+      others?: { header: string; listing: MissListing } | undefined;
+    } = {},
   ): MockNotFoundError {
-    const registered = missedLines(definition.name, mocks.handlers, missed, (_, key) =>
-      paramName(key),
-    );
+    const own = missListing(found);
     return new MockNotFoundError(`No mock for ${formatCall(definition.name, shown(call))}.`, {
       metaMessages: [
         ...(notFoundLines?.(call) ?? []),
-        ...(registered.length > 0 ? ["Registered:", ...registered] : [`Mock it with ${hint}.`]),
-        ...removedLines(definition.name, removed),
+        ...before,
+        ...(own.registered.length > 0
+          ? ["Registered:", ...own.registered]
+          : [`Mock it with ${hint}.`]),
+        ...(others !== undefined && others.listing.registered.length > 0
+          ? [others.header, ...others.listing.registered]
+          : []),
+        ...removedLines([...own.removed, ...(others?.listing.removed ?? [])]),
       ],
     });
   }
@@ -291,14 +335,26 @@ export function createMockSet<answer>(
     register,
     match,
     answerWith,
+    missListing,
     missError,
     /**
-     * The mock that would answer `call` now, if any, found without answering
-     * it: nothing runs, and no use is counted until `spend` counts one.
+     * The mocks that match `call` by exact values and can answer, a line
+     * each, for a registered contract's miss, where they aren't in
+     * contention: see `matchingByValues`.
      */
-    findMock: (call: object) => foundMock(match(call).handler),
+    matchingLines: (call: object) =>
+      mocks
+        .matchingByValues(differsFrom(call))
+        .map((handler) => `  ${describeMock(definition.name, handler)}`),
     /** The calls this action received, as they arrive. */
     calls,
+    /**
+     * Marks `call`, one this action received, as a registered contract's to
+     * answer, for an unused mock's lines.
+     */
+    markForContract(call: object) {
+      forContract.add(call);
+    },
     clearCalls() {
       calls.clear();
       mocks.clearUsage();

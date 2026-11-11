@@ -2,10 +2,14 @@ import {
   BaseError,
   HttpRequestError,
   createPublicClient,
+  createWalletClient,
   encodeFunctionData,
   erc20Abi,
   getAddress,
+  keccak256,
+  toHex,
 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { base } from "viem/chains";
 import { afterAll, afterEach, beforeAll, describe, expect, test } from "vite-plus/test";
 
@@ -509,6 +513,33 @@ describe("nesting", () => {
     ]);
   });
 
+  test("and a sendTransaction mock it removed, on the estimate of a local account's deploy", async () => {
+    const { mock } = setup();
+    const wallet = createWalletClient({
+      account: privateKeyToAccount(keccak256(toHex("deployer"))),
+      chain: mock.chain,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+    const deploy = () => wallet.deployContract({ abi: [], bytecode: "0x6000" });
+    // The hooks in the order vitest runs them, as above.
+    const baseline = mock.checkpoint();
+    mock.actions.sendTransaction({ to: null }).returns();
+    const suite = mock.checkpoint();
+    await deploy();
+    suite.restore();
+    baseline.restore();
+
+    // The nested describe's second test: viem estimates the deploy first.
+    const error = await notFound(deploy());
+    expect(error.shortMessage).toMatch(/^No mock for estimateGas\(/u);
+    expect(error.metaMessages).toEqual([
+      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+      "Removed by the last restore() or reset():",
+      "  sendTransaction({ to: null })",
+      layoutHint,
+    ]);
+  });
+
   test("and after reset(), every typed action mock it removed", async () => {
     const { mock, client } = setup();
     mock.actions.getBalance({ address: alice }).returns(1n);
@@ -518,6 +549,28 @@ describe("nesting", () => {
     expect(error.metaMessages?.slice(1, 3)).toEqual([
       "Removed by the last restore() or reset():",
       `  getBalance({ address: ${alice} })`,
+    ]);
+  });
+
+  test("an estimate's removed estimateGas mocks, then its send's, under one header", async () => {
+    const { mock, client } = setup();
+    const baseline = mock.checkpoint();
+    mock.actions.estimateGas({ to: DAI }).returns(50_000n);
+    mock.actions.sendTransaction({ to: DAI }).returns();
+    baseline.restore();
+
+    const error = await notFound(
+      client.request({
+        method: "eth_estimateGas",
+        params: [{ from: alice, to: DAI, data: "0x12" }],
+      }),
+    );
+    expect(error.metaMessages).toEqual([
+      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+      "Removed by the last restore() or reset():",
+      `  estimateGas({ to: ${DAI} })`,
+      `  sendTransaction({ to: ${DAI} })`,
+      layoutHint,
     ]);
   });
 
@@ -719,6 +772,29 @@ describe("a transaction the last restore() or reset() removed", () => {
       }).message,
     ).toContain(removedFooter);
   });
+
+  test.each(["restore()", "reset()"] as const)(
+    "an estimate or a send to a contract registered again after %s says nothing of the one removed",
+    async (restore) => {
+      const { mock, client } = setup();
+      const baseline = mock.checkpoint();
+      mock.contract({ abi: erc20Abi, address: DAI });
+      if (restore === "restore()") baseline.restore();
+      else mock.reset();
+      mock.contract({ abi: erc20Abi, address: DAI });
+
+      // ETH sent with no data, which only action mocks answer.
+      const tx = { from: alice, to: DAI, value: "0x1" } as const;
+      const estimate = await notFound(client.request({ method: "eth_estimateGas", params: [tx] }));
+      const send = await notFound(mock.request({ method: "eth_sendTransaction", params: [tx] }));
+      expect(estimate.metaMessages).toEqual([
+        "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+      ]);
+      expect(send.metaMessages).toEqual([
+        "Mock it with mock.actions.sendTransaction({ to }).returns(…).",
+      ]);
+    },
+  );
 
   test("assertNoUnhandled says so for a mock it removed too", async () => {
     const { mock, client } = setup();

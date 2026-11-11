@@ -7,7 +7,7 @@ import {
   removedMockError,
 } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
-import { checkFault, fail } from "./faults.js";
+import { checkFault, checkRefusal, fail, refuse } from "./faults.js";
 import {
   type MatchOptions,
   type Specificity,
@@ -17,7 +17,7 @@ import {
 } from "./matching.js";
 import { isAnswer } from "./outcomes.js";
 import { checkCount } from "./setupChecks.js";
-import type { Answer, MockNodeFault, PinnedKey } from "./types.js";
+import type { Answer, MockFault, NodeErrorName, PinnedKey } from "./types.js";
 import { zeroResult } from "./zeroResult.js";
 
 /** A mock's limit: `limit` answers in all, `remaining` of them left. */
@@ -106,7 +106,9 @@ export type Builder = {
   returns(value?: unknown): void;
   /** Only where its engine gives `createBuilder` a `revertError`. */
   reverts?(spec?: unknown): void;
-  fails(fault: MockNodeFault): void;
+  fails(fault: MockFault): void;
+  /** On every builder: only the types say where a node can refuse. */
+  refuses(refusal: NodeErrorName): void;
   once(): Builder;
   times(count: number): Builder;
 };
@@ -114,7 +116,8 @@ export type Builder = {
 /**
  * What a resolver throws that's an answer, not a resolver error: a revert, a
  * fault, a node's refusal, or that it doesn't answer this call
- * (`MockNotFoundError`). Its context's `revert()` and `fail()` throw these.
+ * (`MockNotFoundError`). Its context's `revert()`, `fail()` and `refuse()`
+ * throw these.
  */
 const isDeliberate = (error: unknown) => isAnswer(error) || error instanceof MockNotFoundError;
 
@@ -205,14 +208,16 @@ export function createHandlers<context, extra>() {
           return { kind: "resolver", resolve: value as (context: context) => unknown };
         });
       },
-      /**
-       * Fails every matching call with `fault`. Any node's refusal passes
-       * here: the names are typed only where a node can refuse with them.
-       */
-      fails(fault: MockNodeFault) {
+      fails(fault: MockFault) {
         setAnswer(() => {
           checkFault(fault);
           return { kind: "fault", fault };
+        });
+      },
+      refuses(refusal: NodeErrorName) {
+        setAnswer(() => {
+          checkRefusal(refusal);
+          return { kind: "refusal", name: refusal };
         });
       },
       once: () => builder.times(1),
@@ -228,6 +233,10 @@ export function createHandlers<context, extra>() {
       };
     return builder;
   }
+
+  /** Whether `handler` has an answer and answers left. */
+  const canAnswer = (handler: Handler<context, extra>) =>
+    handler.answer !== undefined && handler.remaining !== 0;
 
   /**
    * The best of the candidates (the mocks `isCandidate` picks) that can
@@ -254,8 +263,6 @@ export function createHandlers<context, extra>() {
     removed: readonly Handler<context, extra>[];
   } {
     const candidates = handlers.filter((handler) => isCandidate(handler));
-    const canAnswer = (handler: Handler<context, extra>) =>
-      handler.answer !== undefined && handler.remaining !== 0;
     const { best, missed } = bestMatch(
       candidates.filter((handler) => canAnswer(handler)),
       differs,
@@ -271,6 +278,19 @@ export function createHandlers<context, extra>() {
     );
     return { handler: undefined, missed, removed };
   }
+
+  /**
+   * The mocks that can answer a call and match it by exact values, for a
+   * miss elsewhere that names them, where they aren't in contention: no
+   * predicate runs, so a mock with one is listed whatever it would say.
+   * `differs` is as in `findAnswering`.
+   */
+  const matchingByValues = (
+    differs: (handler: Handler<context, extra>, options: MatchOptions) => PinnedKey | undefined,
+  ) =>
+    handlers.filter(
+      (handler) => canAnswer(handler) && differs(handler, { predicates: false }) === undefined,
+    );
 
   /**
    * Answers with `handler`, counting the use: its answer, encoded. A revert,
@@ -294,6 +314,7 @@ export function createHandlers<context, extra>() {
       if (given.kind === "static") return encode(given.prepared);
       if (given.kind === "revert") throw given.error;
       if (given.kind === "fault") return fail(given.fault);
+      if (given.kind === "refusal") return refuse(given.name);
       return encode(await given.resolve(context));
     } catch (error) {
       if (error instanceof MockRevertError && reverted !== undefined) return encode(reverted);
@@ -318,6 +339,7 @@ export function createHandlers<context, extra>() {
     register,
     createBuilder,
     findAnswering,
+    matchingByValues,
     answerWith,
     unused,
     /** Zeroes every mock's use count; limits keep what's left. */

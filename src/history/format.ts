@@ -4,7 +4,7 @@ import type { MockCallRecord } from "../contracts/types.js";
 import type { LogsCall } from "../logs/filter.js";
 import { formatCall, formatValue } from "../mocking/format.js";
 import type { FaultOutcome, MockOutcome } from "../mocking/outcomes.js";
-import type { MockNodeFault } from "../mocking/types.js";
+import type { MockFault } from "../mocking/types.js";
 import {
   MockInternalError,
   MockNotFoundError,
@@ -262,6 +262,7 @@ export function formatOutcome(outcome: MockOutcome, action?: string): string {
   }
   if (outcome.type === "fault")
     return `✗ fault: ${formatFault(outcome.fault)}${outcome.source === "failRequests" ? " (failRequests)" : ""}`;
+  if (outcome.type === "refusal") return `✗ refused: ${outcome.name}`;
   if (outcome.type === "rpcError") return `✗ rpc error ${outcome.code}: ${outcome.message}`;
   const { error } = outcome;
   if (error instanceof MockNotFoundError) return "✗ not mocked";
@@ -296,10 +297,9 @@ function summarize(value: unknown, action: string | undefined): string {
   return formatValue(value, { short: true });
 }
 
-function formatFault(fault: MockNodeFault): string {
+function formatFault(fault: MockFault): string {
   if (fault === "timeout") return "timeout";
   if (fault === "network") return "network error";
-  if (typeof fault === "string") return fault;
   if ("status" in fault) return `HTTP ${fault.status}`;
   return `RPC error ${fault.code}${fault.message === undefined ? "" : ` (${fault.message})`}`;
 }

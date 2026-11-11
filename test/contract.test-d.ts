@@ -6,8 +6,11 @@ import {
   type MockBatch,
   type MockLogContent,
   type ContractDefaults,
+  type MockFault,
   type MockNamespace,
+  type MockOutcome,
   type MockRpc,
+  type NodeErrorName,
   createMockRpc,
   match,
   zeroResult,
@@ -220,34 +223,67 @@ describe("faults", () => {
     usdc.read.decimals().fails("offline");
   });
 
-  test("simulate mocks also take a node's refusal by name; reads don't", () => {
-    usdc.simulate.transfer().fails("insufficientFunds");
-    usdc.simulate.approve().once().fails("tipAboveFeeCap");
-    usdc.simulate.transfer().returns(({ fail }) => fail("feeCapTooLow"));
+  test("simulate mocks refuse by name; reads don't", () => {
+    usdc.simulate.transfer().refuses("insufficientFunds");
+    usdc.simulate.approve().once().refuses("tipAboveFeeCap");
+    usdc.simulate.transfer().returns(({ refuse }) => refuse("feeCapTooLow"));
     createMockRpc().contract({
       abi: erc20Abi,
       address: USDC,
-      defaults: { simulate: { transfer: ({ fail }) => fail("insufficientFunds") } },
+      defaults: { simulate: { transfer: ({ refuse }) => refuse("insufficientFunds") } },
     });
+    usdc.simulate.transfer().refuses("gasExceedsAllowance");
+    usdc.simulate.transfer().returns(({ refuse }) => refuse("intrinsicGasTooLow"));
 
-    // @ts-expect-error -- a node doesn't refuse a read by name
-    usdc.read.decimals().fails("insufficientFunds");
-    // @ts-expect-error -- nor can a resolver fail a read with it
-    usdc.read.decimals().returns(({ fail }) => fail("insufficientFunds"));
-    usdc.simulate.transfer().fails("gasExceedsAllowance");
-    usdc.simulate.transfer().returns(({ fail }) => fail("intrinsicGasTooLow"));
+    // @ts-expect-error -- a node doesn't refuse a read
+    usdc.read.decimals().refuses("insufficientFunds");
+    usdc.read.decimals().returns((context) => {
+      expectTypeOf(context).not.toHaveProperty("refuse");
+      return 6;
+    });
+    defaultsOf({
+      read: {
+        decimals: (context) => {
+          expectTypeOf(context).not.toHaveProperty("refuse");
+          return 6;
+        },
+      },
+    });
     // @ts-expect-error -- a call doesn't check the nonce
-    usdc.simulate.transfer().fails("nonceTooLow");
-    // @ts-expect-error -- nor can a default fail a call with a send's refusal
-    defaultsOf({ simulate: { transfer: ({ fail }) => fail("alreadyKnown") } });
-    // @ts-expect-error -- a read takes no gas from viem
-    usdc.read.decimals().fails("gasExceedsAllowance");
+    usdc.simulate.transfer().refuses("nonceTooLow");
+    // @ts-expect-error -- nor can a default refuse a call with a send's refusal
+    defaultsOf({ simulate: { transfer: ({ refuse }) => refuse("alreadyKnown") } });
   });
 
-  test("fail() in a resolver returns never", () => {
+  test("fails() and fail() take only faults, not a node's refusal", () => {
+    // @ts-expect-error -- a refusal is `.refuses()`
+    usdc.simulate.transfer().fails("insufficientFunds");
+    // @ts-expect-error -- and `refuse()` in a resolver
+    usdc.simulate.transfer().returns(({ fail }) => fail("feeCapTooLow"));
+    // @ts-expect-error -- a refusal isn't a fault on a read either
+    usdc.read.decimals().fails("insufficientFunds");
+    // @ts-expect-error -- `refuses()` takes no fault
+    usdc.simulate.transfer().refuses({ status: 503 });
+    // @ts-expect-error -- nor does `refuse()`
+    usdc.simulate.transfer().returns(({ refuse }) => refuse("timeout"));
+  });
+
+  test("history tells a refusal from a fault", () => {
+    expectTypeOf<Extract<MockOutcome, { type: "refusal" }>>().toEqualTypeOf<{
+      type: "refusal";
+      name: NodeErrorName;
+    }>();
+    expectTypeOf<Extract<MockOutcome, { type: "fault" }>["fault"]>().toEqualTypeOf<MockFault>();
+  });
+
+  test("fail() and refuse() in a resolver return never", () => {
     usdc.read.decimals().returns(({ fail }) => {
       expectTypeOf(fail("timeout")).toBeNever();
       return 6;
+    });
+    usdc.simulate.transfer().returns(({ refuse }) => {
+      expectTypeOf(refuse("insufficientFunds")).toBeNever();
+      return true;
     });
   });
 });
@@ -299,12 +335,13 @@ describe("estimateGas", () => {
       "error Paused(address by)",
     ]),
     address: USDC,
-    defaults: { estimateGas: { transfer: ({ fail }) => fail("insufficientFunds") } },
+    defaults: { estimateGas: { transfer: ({ refuse }) => refuse("insufficientFunds") } },
   });
 
   test("takes write functions' args and answers gas", () => {
     token.estimateGas.transfer([USDC, 1n]).returns(65_000n);
-    token.estimateGas.transfer().once().fails("feeCapTooLow");
+    token.estimateGas.transfer().once().refuses("feeCapTooLow");
+    token.estimateGas.transfer().fails({ status: 503 });
     token.estimateGas.transfer().returns(({ args, from }) => {
       expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
       expectTypeOf(from).toEqualTypeOf<Address | undefined>();
@@ -321,15 +358,19 @@ describe("estimateGas", () => {
     token.estimateGas.transfer(["0x1"]);
     // @ts-expect-error -- not an error on the ABI
     token.estimateGas.transfer().reverts({ errorName: "Nope" });
+    token.estimateGas.transfer().refuses("gasExceedsAllowance");
+    // @ts-expect-error -- a refusal is `.refuses()`
     token.estimateGas.transfer().fails("gasExceedsAllowance");
+    // @ts-expect-error -- and `refuse()` in a resolver
+    token.estimateGas.transfer().returns(({ fail }) => fail("gasExceedsAllowance"));
     // @ts-expect-error -- an estimate doesn't check the nonce
-    token.estimateGas.transfer().fails("nonceTooHigh");
-    // @ts-expect-error -- nor can a resolver fail an estimate with it
-    token.estimateGas.transfer().returns(({ fail }) => fail("nonceTooLow"));
+    token.estimateGas.transfer().refuses("nonceTooHigh");
+    // @ts-expect-error -- nor can a resolver refuse an estimate with it
+    token.estimateGas.transfer().returns(({ refuse }) => refuse("nonceTooLow"));
     // @ts-expect-error -- an estimate reports too little gas as exceeding the allowance
-    token.estimateGas.transfer().returns(({ fail }) => fail("intrinsicGasTooLow"));
-    // @ts-expect-error -- nor can a default fail an estimate with a send's refusal
-    defaultsOf({ estimateGas: { transfer: ({ fail }) => fail("alreadyKnown") } });
+    token.estimateGas.transfer().returns(({ refuse }) => refuse("intrinsicGasTooLow"));
+    // @ts-expect-error -- nor can a default, with a send's refusal
+    defaultsOf({ estimateGas: { transfer: ({ refuse }) => refuse("alreadyKnown") } });
     // @ts-expect-error -- viem doesn't estimate a view
     token.estimateGas.balanceOf; // oxlint-disable-line typescript/no-unused-expressions -- a type test
   });
@@ -344,7 +385,7 @@ describe("write", () => {
       "error Paused(address by)",
     ]),
     address: USDC,
-    defaults: { write: { transfer: ({ fail }) => fail("insufficientFunds") } },
+    defaults: { write: { transfer: ({ refuse }) => refuse("insufficientFunds") } },
   });
 
   test("takes write functions' args and answers with the outcome", () => {
@@ -354,7 +395,8 @@ describe("write", () => {
     token.write.transfer().emits(token.events.Transfer({ from: USDC, to: USDC, value: 1n }));
     // @ts-expect-error -- not a log: no address, topics or data
     token.write.transfer().emits({ logIndex: 0 });
-    token.write.transfer().once().fails("insufficientFunds");
+    token.write.transfer().once().refuses("insufficientFunds");
+    token.write.transfer().fails("timeout");
     token.write.transfer().reverts({ errorName: "Paused", args: [USDC] });
     token.write.transfer().returns(({ args, from, emit, revert }) => {
       expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
@@ -376,16 +418,20 @@ describe("write", () => {
     token.write.transfer().returns({ blockNumber: 1n });
     // @ts-expect-error -- not an error on the ABI
     token.write.transfer().reverts({ errorName: "Nope" });
+    token.write.transfer().refuses("nonceTooLow");
+    token.write.transfer().refuses("alreadyKnown");
+    token.write.transfer().returns(({ refuse }) => refuse("nonceTooHigh"));
+    token.write.transfer().returns(({ refuse }) => refuse("intrinsicGasTooLow"));
+    // @ts-expect-error -- a refusal is `.refuses()`
     token.write.transfer().fails("nonceTooLow");
-    token.write.transfer().fails("alreadyKnown");
-    token.write.transfer().returns(({ fail }) => fail("nonceTooHigh"));
-    token.write.transfer().returns(({ fail }) => fail("intrinsicGasTooLow"));
+    // @ts-expect-error -- and `refuse()` in a resolver
+    token.write.transfer().returns(({ fail }) => fail("nonceTooLow"));
     // @ts-expect-error -- a send with too little gas is mined, and runs out
-    token.write.transfer().fails("gasExceedsAllowance");
-    // @ts-expect-error -- nor can a resolver fail a send with it
-    token.write.transfer().returns(({ fail }) => fail("gasExceedsAllowance"));
-    // @ts-expect-error -- nor can a default fail a send with it
-    defaultsOf({ write: { transfer: ({ fail }) => fail("gasExceedsAllowance") } });
+    token.write.transfer().refuses("gasExceedsAllowance");
+    // @ts-expect-error -- nor can a resolver refuse a send with it
+    token.write.transfer().returns(({ refuse }) => refuse("gasExceedsAllowance"));
+    // @ts-expect-error -- nor can a default refuse a send with it
+    defaultsOf({ write: { transfer: ({ refuse }) => refuse("gasExceedsAllowance") } });
     // @ts-expect-error -- a view isn't sent
     token.write.balanceOf; // oxlint-disable-line typescript/no-unused-expressions -- a type test
     createMockRpc().contract({

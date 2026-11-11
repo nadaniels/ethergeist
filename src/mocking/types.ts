@@ -12,6 +12,9 @@ import type { MockRevertError } from "../shared/errors.js";
  *   viem sorts the code into that class, so a test can assert on it by name.
  * - `"timeout"`: the request takes too long.
  * - `"network"`: the request gets no response, like a failed fetch.
+ *
+ * A node declining a transaction by name is a refusal, not a fault: see
+ * `NodeErrorName`.
  */
 export type MockFault =
   | { status: number; retryAfter?: number }
@@ -20,9 +23,10 @@ export type MockFault =
   | "network";
 
 /**
- * A node's refusal by name, with a node's code and message. viem tells these
- * apart by the message, as for any node, so the app sees viem's class. Each
- * is available where a node can say it:
+ * A node's refusal by name, for `.refuses()` and a resolver's `refuse()`:
+ * the node declines the transaction before running it, with a node's code
+ * and message. viem tells these apart by the message, as for any node, so
+ * the app sees viem's class. Each is available where a node can say it:
  * - `"insufficientFunds"`: the sender can't pay the value sent, viem's
  *   `InsufficientFundsError`. With fee fields in the request, the message
  *   gives the balance as 0.
@@ -77,10 +81,29 @@ export type EstimateErrorName = TransactionErrorName | "gasExceedsAllowance";
 export type SimulateErrorName = EstimateErrorName | "intrinsicGasTooLow";
 
 /**
- * A `MockFault`, or a node's refusal by name, where a node can refuse: see
- * `NodeErrorName`. `name` is the names available there.
+ * How a mock refuses where a node can: `.refuses()`, beside its other
+ * answers. `name` is the names available there.
  */
-export type MockNodeFault<name extends NodeErrorName = NodeErrorName> = MockFault | name;
+export type MockRefusalAnswers<name extends NodeErrorName> = {
+  /**
+   * Refuses every matching call as a node does: the request it's in fails
+   * with the node's error for `name`, e.g. `.refuses("insufficientFunds")`.
+   * See `NodeErrorName` for the names and where each is available.
+   */
+  refuses(name: name): void;
+};
+
+/**
+ * What a resolver gets where a node can refuse: `refuse`. `name` is the
+ * names available there.
+ */
+export type RefusalContext<name extends NodeErrorName> = {
+  /**
+   * Refuses the request this call is in as a node does, e.g.
+   * `refuse("nonceTooLow")`: see `NodeErrorName` for the names.
+   */
+  refuse: (name: name) => never;
+};
 
 /**
  * A mock's answers, with `.once()` and `.times()` to limit how often it gives
@@ -103,10 +126,10 @@ export type WithLimits<answers> = answers & {
 };
 
 /**
- * How an estimate's mock answers: with gas, or `.fails()`, which also takes
- * a node's refusal by name.
+ * How an estimate's mock answers: with gas, `.fails()`, or `.refuses()` (see
+ * `MockRefusalAnswers`).
  */
-export type MockEstimateAnswers<context> = {
+export type MockEstimateAnswers<context> = MockRefusalAnswers<EstimateErrorName> & {
   /**
    * Answers every matching call with `value` gas, or with what a resolver
    * returns for each call, sync or async: a non-negative bigint.
@@ -116,10 +139,9 @@ export type MockEstimateAnswers<context> = {
   returns(value: bigint | ((context: context) => bigint | Promise<bigint>)): void;
   /**
    * Fails every matching call: the request it's in fails with `fault`. See
-   * `MockFault` for the kinds. It also takes a node's refusal by name, e.g.
-   * `"insufficientFunds"` (see `NodeErrorName`).
+   * `MockFault` for the kinds.
    */
-  fails(fault: MockNodeFault<EstimateErrorName>): void;
+  fails(fault: MockFault): void;
 };
 
 /**
@@ -132,10 +154,11 @@ export type PinnedKey = number | string | null;
 /**
  * How a mock answers: `.returns(value)`'s value, as its engine prepared it
  * at registration; `.returns(resolver)`'s resolver; `.reverts()`'s error;
- * or `.fails()`'s fault.
+ * `.fails()`'s fault; or `.refuses()`'s name.
  */
 export type Answer<context = never> =
   | { kind: "static"; prepared: unknown }
   | { kind: "resolver"; resolve: (context: context) => unknown }
   | { kind: "revert"; error: MockRevertError }
-  | { kind: "fault"; fault: MockNodeFault };
+  | { kind: "fault"; fault: MockFault }
+  | { kind: "refusal"; name: NodeErrorName };

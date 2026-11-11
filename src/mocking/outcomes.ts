@@ -2,8 +2,8 @@ import { type Abi, type Hex, decodeErrorResult } from "viem";
 
 import { builtinErrors } from "../shared/abiValues.js";
 import { MockError, MockInternalError, MockRevertError, MockRpcError } from "../shared/errors.js";
-import { MockFailure } from "./faults.js";
-import type { MockNodeFault } from "./types.js";
+import { MockFailure, MockRefusal } from "./faults.js";
+import type { MockFault, NodeErrorName } from "./types.js";
 
 /** How the mock answered a request, or a contract call inside one. */
 export type MockOutcome =
@@ -14,11 +14,12 @@ export type MockOutcome =
   /** Reverted, decoded against the contract's ABI where possible. */
   | { type: "revert"; data: Hex; errorName?: string; args?: readonly unknown[]; reason?: string }
   /**
-   * Failed with a fault, or a node's refusal by name, from
-   * `mock.failRequests()` or a mock's `.fails()` or `fail()`: `source` says
-   * which.
+   * Failed with a fault, from `mock.failRequests()` or a mock's `.fails()`
+   * or `fail()`: `source` says which.
    */
-  | { type: "fault"; fault: MockNodeFault; source: "failRequests" | "mock" }
+  | { type: "fault"; fault: MockFault; source: "failRequests" | "mock" }
+  /** Refused by name, by a mock's `.refuses()` or `refuse()`. */
+  | { type: "refusal"; name: NodeErrorName }
   /**
    * Refused with the JSON-RPC error a node gives for the same request, e.g.
    * an `eth_getLogs` block range past the head. It's an answer, not
@@ -54,11 +55,15 @@ function revertOutcome(abi: Abi, data: Hex): Extract<MockOutcome, { type: "rever
 }
 
 /**
- * Whether `error` is an answer: a revert, a fault, or a node's refusal. The
- * mock throws these on purpose; adapters turn them into their client's errors.
+ * Whether `error` is an answer: a revert, a fault, or a node's refusal, by
+ * name or as a node's JSON-RPC error. The mock throws these on purpose;
+ * adapters turn them into their client's errors.
  */
 export const isAnswer = (error: unknown) =>
-  error instanceof MockRevertError || error instanceof MockFailure || error instanceof MockRpcError;
+  error instanceof MockRevertError ||
+  error instanceof MockFailure ||
+  error instanceof MockRefusal ||
+  error instanceof MockRpcError;
 
 const wrapped = new WeakMap<object, MockInternalError>();
 
@@ -79,8 +84,8 @@ export function asMockError(error: unknown): MockError {
 }
 
 /**
- * The outcome of an error thrown while answering, other than reverts and
- * faults.
+ * The outcome of an error thrown while answering, other than reverts, faults
+ * and refusals by name.
  */
 export function errorOutcome(error: unknown): MockOutcome {
   if (error instanceof MockRpcError)
@@ -90,10 +95,12 @@ export function errorOutcome(error: unknown): MockOutcome {
 
 /**
  * The outcome of an error thrown while answering: a revert decoded against
- * `abi` and the built-in errors, a mock's fault, or what `errorOutcome` says.
+ * `abi` and the built-in errors, a mock's fault or refusal, or what
+ * `errorOutcome` says.
  */
 export function failureOutcome(error: unknown, abi: Abi = []): MockOutcome {
   if (error instanceof MockRevertError) return revertOutcome(abi, error.data);
   if (error instanceof MockFailure) return { type: "fault", fault: error.fault, source: "mock" };
+  if (error instanceof MockRefusal) return { type: "refusal", name: error.refusal };
   return errorOutcome(error);
 }
