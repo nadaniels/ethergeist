@@ -71,9 +71,10 @@ export function createRegistry({ multicallAddress }: { multicallAddress: Address
     unusedMocks: () => contracts.flatMap((contract) => contract.unusedMocks()),
     /**
      * Whether the last `restore()` or `reset()` removed a contract at
-     * `address`, checksummed.
+     * `address`, checksummed, and none is registered there since.
      */
-    removedByLastRestore: (address: Address) => removed.has(address),
+    removedByLastRestore: (address: Address) =>
+      removed.has(address) && contractAt(address) === undefined,
     /**
      * Saves the contracts, their mocks, and the empty addresses. `restore()`
      * removes contracts registered since, which then throw if used.

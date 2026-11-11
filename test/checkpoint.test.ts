@@ -720,6 +720,29 @@ describe("a transaction the last restore() or reset() removed", () => {
     ).toContain(removedFooter);
   });
 
+  test.each(["restore()", "reset()"] as const)(
+    "an estimate or a send to a contract registered again after %s says nothing of the one removed",
+    async (restore) => {
+      const { mock, client } = setup();
+      const baseline = mock.checkpoint();
+      mock.contract({ abi: erc20Abi, address: DAI });
+      if (restore === "restore()") baseline.restore();
+      else mock.reset();
+      mock.contract({ abi: erc20Abi, address: DAI });
+
+      // ETH sent with no data, which only action mocks answer.
+      const tx = { from: alice, to: DAI, value: "0x1" } as const;
+      const estimate = await notFound(client.request({ method: "eth_estimateGas", params: [tx] }));
+      const send = await notFound(mock.request({ method: "eth_sendTransaction", params: [tx] }));
+      expect(estimate.metaMessages).toEqual([
+        "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+      ]);
+      expect(send.metaMessages).toEqual([
+        "Mock it with mock.actions.sendTransaction({ to }).returns(…).",
+      ]);
+    },
+  );
+
   test("assertNoUnhandled says so for a mock it removed too", async () => {
     const { mock, client } = setup();
     const baseline = mock.checkpoint();
