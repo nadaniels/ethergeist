@@ -49,7 +49,9 @@ export type MockEstimateBuilder<context> = WithLimits<
 
 /**
  * Like `MockAction`, for `estimateGas`, with `MockEstimateBuilder`'s
- * answers.
+ * answers. Its mocks answer estimates of anything but a registered
+ * contract's nonpayable and payable functions, which only the contract's
+ * own mocks answer.
  */
 export type MockEstimateGasAction = {
   (params?: Partial<EstimateGasCall>): MockEstimateBuilder<EstimateGasContext>;

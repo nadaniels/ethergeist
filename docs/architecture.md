@@ -38,9 +38,10 @@ shared → mocking → chain → logs → transactions → contracts → actions
   `mock.buildLog()`'s), so a log's index counts across its block in one place.
 - **`contracts/`:** mocked contracts, their registry, and `eth_call`
   dispatch, multicall included; a contract also takes a turn at the
-  estimates and sends of its functions, ahead of the action's own mocks
-  (`turn()`, which prepares a `ContractTurn`). It emits logs, so it sits
-  above `transactions/`; it owns `MockCallRecord`, the record of a call it
+  estimates and sends to it with data (`turn()`, which prepares a
+  `ContractTurn`), where its mocks alone answer a call to one of its
+  functions in that namespace. It emits logs, so it sits above
+  `transactions/`; it owns `MockCallRecord`, the record of a call it
   answered.
 - **`actions/`:** typed actions (`mock.actions.getBalance`, …), one file each,
   and raw `mock.method()` mocks. Each action's or raw method's mocks are a
@@ -49,8 +50,8 @@ shared → mocking → chain → logs → transactions → contracts → actions
   action's fallback. The two exceptions are sends and their estimates,
   answered in `sends.ts` (see [Sends and estimates](#sends-and-estimates)).
   Receipts, transactions, blocks and `getLogs` read the transaction store,
-  and sends and their estimates give a contract its turn first, so it sits
-  above both.
+  and sends and their estimates give a registered contract its turn, so it
+  sits above both.
 - **`history/`:** what the mock received and how it answered: the recorder,
   history entries, and formatting.
 - **`rpc/`:** the request pipeline (`createRequestHandler`, a
@@ -216,17 +217,22 @@ everything, then mutate.
 `estimateGas` and `sendTransaction` aren't table actions. A table has one
 rule: decode the call, then answer with the mock that matches, or else the
 fallback. A send and its estimate have an order of answers instead: a
-registered contract's turn, a send mock's `.reverts()` before any estimate
-mock, the gas a send mock implies, a repeated raw send, and placing the
-transaction.
+send mock's `.reverts()` before any estimate mock, the gas a send mock
+implies, a repeated raw send, and placing the transaction. And they take
+two sides: a transaction is the contract's when its `to` is a registered
+contract and its data decodes to one of that contract's functions in the
+request's namespace (`estimateGas` or `write`, so not a view function),
+and the actions' otherwise. Only one side is asked, each with its own
+order, and neither falls through to the other.
 
 `createSends` in `actions/sends.ts` holds both actions' mocks and two
 functions, `answerEstimate` and `answerSend`. Each is the order of answers,
-read top to bottom, and its doc comment lists the steps; `answerSend`
-continues in `outcomeOf`, under it, for the steps that choose a send's
-outcome. A new rule for a send or an estimate (what answers first, what a
-mock implies) is an edit to those functions, not a new hook on
-`Definition`.
+read top to bottom, a block for each side, and its doc comment lists the
+steps; `answerSend` continues in `outcomeOf`, under it, for the steps that
+choose a send's outcome. The contract says which side a transaction is: its
+turn has `functionMocks` only for a call that's the contract's. A new rule
+for a send or an estimate (what answers first, what a mock implies) is an
+edit to those functions, not a new hook on `Definition`.
 
 - The mocks are mock sets (`createMockSet` in `mockSet.ts`), which a table
   is built on too: registering, matching, answering with a mock, and the
@@ -243,7 +249,7 @@ mock implies) is an edit to those functions, not a new hook on
 The two functions keep these rules:
 
 - a contract's turn is prepared before anything answers, so its call is
-  recorded however the request ends;
+  recorded however the request ends, and whichever side answers it;
 - a mock's predicates run only while it's in contention, and once per
   estimate, except at a contract's estimate miss, where its `write` mocks
   are matched again for the reasons they missed;

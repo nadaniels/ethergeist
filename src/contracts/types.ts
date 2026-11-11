@@ -363,10 +363,11 @@ export type MockContractWriteAnswers<abi extends Abi, args> = Omit<
 > & {
   /**
    * Reverts every matching call's transaction. Its estimate reverts with
-   * `spec`, before any estimate mock, this contract's own included, so a
-   * client that estimates first throws before it sends. That answer uses
-   * the mock, spending a `.once()`. A send that reaches the chain anyway is
-   * mined reverted. See `RevertSpec` for the forms.
+   * `spec`, before the contract's `estimateGas` mocks and
+   * `defaults.estimateGas`, so a client that estimates first throws before
+   * it sends. That answer uses the mock, spending a `.once()`. A send that
+   * reaches the chain anyway is mined reverted. See `RevertSpec` for the
+   * forms.
    */
   reverts<errorName extends ContractErrorName<abi> = ContractErrorName<abi>>(
     spec?: RevertSpec<abi, errorName>,
@@ -467,10 +468,11 @@ export type MockContract<abi extends Abi> = {
   /**
    * Its nonpayable and payable functions' gas, by name, answered over
    * `eth_estimateGas` as viem's `estimateContractGas()` sends it, and as
-   * viem prepares a write. These mocks answer before
-   * `mock.actions.estimateGas`, which answers what they don't, and a
-   * `write` mock implies the rest. A `.reverts()` `write` mock reverts the
-   * estimate of a send it would answer before any of them.
+   * viem prepares a write. These mocks and `defaults.estimateGas` answer
+   * estimates of these functions, and `mock.actions.estimateGas` doesn't.
+   * A `write` mock that would answer the send implies what they don't. A
+   * `.reverts()` `write` mock reverts the estimate of a send it would
+   * answer before any of them.
    */
   estimateGas: {
     [functionName in ContractFunctionName<abi, WriteMutability>]: MockEstimateGasFunction<
@@ -485,13 +487,14 @@ export type MockContract<abi extends Abi> = {
    * answers with what the chain did, and the transaction is mined in a new
    * block: see `MockContractWriteAnswers`. Concurrent sends are mined in
    * the order they're answered, which isn't always the order they were
-   * sent. These mocks answer before `mock.actions.sendTransaction`, which
-   * answers what they don't.
+   * sent. Only these mocks and `defaults.write` answer sends of the
+   * contract's functions, not `mock.actions.sendTransaction`.
    *
    * A mock without `.reverts()` also answers the transaction's estimate with
-   * 100,000 gas when no estimate mock does, without running it or using it
-   * up. The function's return value isn't on the chain: a `simulate` mock
-   * answers it over `eth_call`, which nothing here answers.
+   * 100,000 gas when none of the contract's `estimateGas` mocks or
+   * `defaults.estimateGas` does, without running it or using it up. The
+   * function's return value isn't on the chain: a `simulate` mock answers
+   * it over `eth_call`, which nothing here answers.
    */
   write: {
     [functionName in ContractFunctionName<abi, WriteMutability>]: MockWriteFunction<

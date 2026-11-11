@@ -147,9 +147,11 @@ features land; tick them off as pages get written.
       app's `writeContract`, then `waitForTransactionReceipt`, with nothing
       for gas, fees or the nonce. Show:
   - A write mock answers a send of its function (`eth_sendTransaction`,
-    `eth_sendRawTransaction`) to the contract, before
-    `mock.actions.sendTransaction`, which answers what it doesn't. The
-    transaction is mined in a new block, as every send is (section 5,
+    `eth_sendRawTransaction`) to the contract. Only write mocks and
+    `defaults.write` answer it: `mock.actions.sendTransaction` doesn't,
+    so a send the write mocks miss is the contract's miss. The catch-all
+    for a function is an args-less `write.transfer()` or `defaults.write`.
+    The transaction is mined in a new block, as every send is (section 5,
     "Sends").
   - `.returns()` takes what the chain did, as a send mock's does (`{ logs,
     status, gasUsed, effectiveGasPrice }`), not the function's return
@@ -164,12 +166,13 @@ features land; tick them off as pages get written.
     it reverted, dropping what it emitted. Send mocks' resolvers get both
     too.
   - The estimate: a matching write mock answers the transaction's
-    `eth_estimateGas` with 100,000 gas when no estimate mock does
-    (`estimateGas.fn()`, `defaults.estimateGas`,
-    `mock.actions.estimateGas`), without running it or using up a
-    `.once()`; it's recorded as an `estimateGas` call, and doesn't count
-    as used for `assertAllUsed`. A `.reverts()` one reverts it instead,
-    before any estimate mock (below).
+    `eth_estimateGas` with 100,000 gas when no estimate mock of the
+    contract's does (`estimateGas.fn()`, `defaults.estimateGas`; an
+    action's `mock.actions.estimateGas` never answers a contract's
+    function), without running it or using up a `.once()`; it's recorded
+    as an `estimateGas` call, and doesn't count as used for
+    `assertAllUsed`. A `.reverts()` one reverts it instead, before any
+    estimate mock (below).
   - Reverts, by client path: `.reverts(spec)` reverts the estimate, before
     any estimate mock (the contract's own `estimateGas` mocks and defaults
     included), so a local account's `writeContract` throws the decoded
@@ -665,18 +668,22 @@ features land; tick them off as pages get written.
     `.returns(({ value, revert }) => value > cap ? revert("too much") :
     50_000n)`; a spec viem can't encode fails that request, as a
     resolver's error does.
-  - Which answers: a `.reverts()` write or send mock reverts the estimate
-    of every send it would answer, before any estimate mock, the
-    contract's or an action's. Otherwise estimate mocks answer: a
-    registered contract owns its functions, so its `estimateGas` mocks and
-    defaults answer estimates of them first, and action mocks answer the
-    rest, by the usual rules. Without one, the send's mock implies 100,000,
-    and a plain transfer to an address without code is 21000 (below). So an
-    args-less `mock.actions.estimateGas().returns(100_000n)` in shared
-    setup is a fallback number for every write, a test's contract mock
-    overrides it, and a write's or send's `.reverts()` still reverts the
-    estimate. To
-    fail an estimate of a function the contract mocks, fail it there:
+  - Which answers: a registered contract owns its nonpayable and payable
+    functions, so an estimate of one is the contract's: its write mock's
+    `.reverts()`, then its `estimateGas` mocks and defaults, then the
+    100,000 its write mock implies. Action mocks never answer it. Every
+    other estimate is the actions': ETH sent with no data, a selector not
+    on a registered contract's ABI, an estimate of a view function, and
+    anything to another address. There a `sendTransaction` mock's
+    `.reverts()` comes first, then `mock.actions.estimateGas` mocks, then
+    21000 for a plain transfer to an address without code, then the
+    100,000 a `sendTransaction` mock implies (below). Only the side that
+    owns the transaction is asked, so its miss is the one reported. A
+    number for a contract's writes goes on the contract, per function:
+    `token.estimateGas.transfer().returns(n)` or `defaults.estimateGas`.
+    An args-less `mock.actions.estimateGas().returns(100_000n)` sets no
+    write's number, and `assertAllUsed()` reports it if nothing else used
+    it. To fail an estimate of a contract's function, fail it there:
     `token.estimateGas.transfer().fails("insufficientFunds")`.
   - Estimating with a local account first prepares the transaction, which
     asks for the nonce: the chain's count answers it.
@@ -686,8 +693,9 @@ features land; tick them off as pages get written.
     code). Nothing runs and no `.once()` is used up. A `.reverts()` one
     reverts it instead, before any estimate mock (above): that's its
     answer, so it counts as used and spends a `.once()`. The send's mock is
-    found by the send's own order (a contract's write mock, else a send
-    mock), with its pins, once per estimate, so its predicates run once;
+    found on the send's own side (a contract's write mock for its
+    functions, else a `sendTransaction` mock), with its pins, once per
+    estimate, so its predicates run once;
     they run on every estimate of a send it could answer, even one an
     estimate mock then answers, since it could revert it.
 - [ ] Sends: `mock.actions.sendTransaction({ from, to, value, data })`
@@ -726,8 +734,10 @@ features land; tick them off as pages get written.
     sending, and mines it
     reverted if it's sent anyway (`gas` set, or a node's account). A
     resolver returns the same, or nothing for a success.
-  - A registered contract's `write` mocks answer sends of its functions
-    first (section 3, "Writes"); send mocks answer the rest.
+  - Only a registered contract's `write` mocks answer sends of its
+    functions (section 3, "Writes"); `sendTransaction` mocks answer the
+    rest, ETH sent to the contract without data and a selector not on its
+    ABI included.
   - Unmocked, a send without data to an address without code succeeds
     (sending ETH needs no mock); anything else isn't answered, with a hint:
     data to an unknown or `empty()` address, a registered contract's

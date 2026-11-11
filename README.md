@@ -139,7 +139,9 @@ The transfer is mined in a new block on the mock's chain state, so its receipt a
 its `Transfer` log are there for the app to find (see [The Chain](#the-chain)).
 If viem estimates the gas first, as it does for a local account, the write mock
 answers the estimate too (default 100,000 gas). A `.reverts()` mock reverts the
-estimate instead, as a node would, and an `estimateGas` mock sets a number.
+estimate instead, as a node would, and the contract's `estimateGas` mock sets a
+number. Only a contract's mocks answer its functions: `mock.actions.estimateGas`
+and `mock.actions.sendTransaction` answer everything else.
 
 Reads batched through Multicall3 are answered call by call, so viem's
 `multicall()` and wagmi's `useReadContracts` work unchanged.

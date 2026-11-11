@@ -64,10 +64,10 @@ export type MockWriteAnswers<context, revertSpec> = {
   emits(logs: MockLogContent | readonly MockLogContent[]): void;
   /**
    * Reverts every matching call's transaction. Its estimate reverts with
-   * `spec`, before any estimate mock, so a client that estimates first
-   * throws before it sends. That answer uses the mock, spending a
-   * `.once()`. A send that reaches the chain anyway is mined reverted. See
-   * `RevertSpec` for the forms.
+   * `spec`, before any `mock.actions.estimateGas` mock, so a client that
+   * estimates first throws before it sends. That answer uses the mock,
+   * spending a `.once()`. A send that reaches the chain anyway is mined
+   * reverted. See `RevertSpec` for the forms.
    */
   reverts(spec?: revertSpec): void;
   /**

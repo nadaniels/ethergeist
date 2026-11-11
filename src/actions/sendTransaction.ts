@@ -56,7 +56,9 @@ export type MockSendTransactionBuilder = WithLimits<
 
 /**
  * Like `MockAction`, for `sendTransaction`, with `MockSendTransactionBuilder`'s
- * answers.
+ * answers. Its mocks answer sends of anything but a registered contract's
+ * nonpayable and payable functions, which only the contract's `write`
+ * mocks and `defaults.write` answer.
  *
  * An answered send is mined in a new block, which its receipt,
  * transaction, block and logs answer from (see `mock.transactions`); a

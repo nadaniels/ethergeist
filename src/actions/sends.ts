@@ -32,10 +32,10 @@ export function createSends(
   const sendTransactionMocks = createMockSet(sendTransaction(context), recordLimit, options);
 
   /**
-   * The registered contract a transaction calls a function of, with the
+   * The registered contract a transaction with data is sent to, with the
    * call's data and its context at `blockNumber`: the contract takes a turn
-   * at the transaction. `undefined` for a deploy, a transaction without
-   * data, or one to any other address.
+   * at the transaction (see `ContractTurn`). `undefined` for a deploy, a
+   * transaction without data, or one to any other address.
    */
   function contractCalled(
     { from, to, data, value }: { from?: Address; to?: Address | null; data?: Hex; value: bigint },
@@ -45,17 +45,6 @@ export function createSends(
     const contract = registry.contractAt(to);
     const callContext: CallContext = { from, value, blockNumber, batch: undefined };
     return contract && { contract, data, context: callContext };
-  }
-
-  /**
-   * The send mock that would answer `sent` now, found without answering it,
-   * so nothing runs and nothing is recorded: a registered contract's `write`
-   * mock first, as in its turn at the send, else a `sendTransaction` mock.
-   */
-  function sendMockFor(sent: SendTransactionCall) {
-    const called = contractCalled(sent, state.blockNumber);
-    const contractMock = called?.contract.writeMock(called.data, called.context);
-    return contractMock ?? sendTransactionMocks.findMock(sent);
   }
 
   /**
@@ -73,17 +62,25 @@ export function createSends(
   }
 
   /**
-   * Answers an `eth_estimateGas`. In order:
-   * 1. the send mock that would answer the transaction's send, if it
-   *    `.reverts()`: the estimate reverts as the send would, which counts as
-   *    that mock's use. A resolver's `revert()` runs only at the send;
-   * 2. a registered contract's `estimateGas` mocks, for its functions;
-   * 3. `mock.actions.estimateGas` mocks;
-   * 4. 21,000 gas for a plain transfer to an address without code, as a node
+   * Answers an `eth_estimateGas`. An estimate of a registered contract's
+   * nonpayable or payable function (see `ContractTurn`) is the contract's
+   * to answer, in order:
+   * 1. its `write` mock that would answer the send, if it `.reverts()`: the
+   *    estimate reverts as the send would, which counts as that mock's use.
+   *    A resolver's `revert()` runs only at the send;
+   * 2. its `estimateGas` mocks and `defaults.estimateGas`;
+   * 3. the gas its `write` mock implies (see `impliedGas`), without running
+   *    it or using it up;
+   * 4. the contract's miss.
+   *
+   * Any other estimate is the actions', in order:
+   * 1. the `sendTransaction` mock that would answer the send, if it
+   *    `.reverts()`, as in step 1 above;
+   * 2. `mock.actions.estimateGas` mocks;
+   * 3. 21,000 gas for a plain transfer to an address without code, as a node
    *    estimates it, even with a send mock;
-   * 5. the gas a send mock implies (see `impliedGas`), without running it or
-   *    using it up;
-   * 6. the miss: the contract's, if it had a turn, else the action's.
+   * 4. the gas a `sendTransaction` mock implies, as in step 3 above;
+   * 5. the action's miss.
    */
   async function answerEstimate(
     _method: string,
@@ -101,19 +98,30 @@ export function createSends(
     const called = contractCalled(call, call.blockNumber);
     const turn = called?.contract.turn("estimateGas", called.data, called.context);
     return await reportAnswer({ call, turn, report, view: viewQuantity }, async () => {
-      // Found once, for steps 1 and 5, so its predicates run once.
-      const sendMock = sent && sendMockFor(sent);
+      const functionMocks = turn?.functionMocks;
+      if (called && functionMocks) {
+        // Found once, for steps 1 and 3, so its predicates run once.
+        const writeMock = sent && called.contract.writeMock(called.data, called.context);
+        if (writeMock?.answer.kind === "revert") {
+          writeMock.spend();
+          throw writeMock.answer.error;
+        }
+        const answered = functionMocks.answer();
+        if (answered) return await answered;
+        if (writeMock) return numberToHex(impliedGas);
+        throw functionMocks.miss();
+      }
+      // Found once, for steps 1 and 4, so its predicates run once.
+      const sendMock = sent && sendTransactionMocks.findMock(sent);
       if (sendMock?.answer.kind === "revert") {
         sendMock.spend();
         throw sendMock.answer.error;
       }
-      const answered = turn?.answer();
-      if (answered) return await answered;
       const found = estimateGasMocks.match(call);
       if (found.handler) return await estimateGasMocks.answerWith(found.handler, call);
       if (isPlainTransfer(registry, call)) return numberToHex(21_000n);
       if (sendMock) return numberToHex(impliedGas);
-      throw turn ? turn.miss() : estimateGasMocks.missError(call, found);
+      throw estimateGasMocks.missError(call, found);
     });
   }
 
@@ -121,14 +129,11 @@ export function createSends(
    * Answers a send. In order:
    * 1. a repeated raw send's answer: the same bytes are the same
    *    transaction, answered as the first without asking a mock again;
-   * 2. a registered contract's `write` mocks, for its functions;
-   * 3. `mock.actions.sendTransaction` mocks;
-   * 4. a success for a plain transfer to an address without code, as on a
-   *    node;
-   * 5. the miss: the contract's, if it had a turn, else the action's.
+   * 2. its outcome (see `outcomeOf`): the registered contract's, for a send
+   *    of one of its nonpayable or payable functions, else the actions'.
    *
-   * Steps 2 to 5 are `outcomeOf`. Their outcome is placed: the send is mined
-   * in a new block as it's answered, so the Sync method never times out.
+   * The outcome is placed: the send is mined in a new block as it's
+   * answered, so the Sync method never times out.
    */
   async function answerSend(
     method: string,
@@ -175,20 +180,29 @@ export function createSends(
   }
 
   /**
-   * A send's outcome, steps 2 to 5 of `answerSend`: what a registered
-   * contract's `write` mock or a `sendTransaction` mock answers, or a plain
-   * transfer's success. Throws the miss when nothing answers.
+   * A send's outcome, step 2 of `answerSend`. A send of a registered
+   * contract's nonpayable or payable function is the contract's to answer:
+   * its `write` mocks and `defaults.write`, else the contract's miss. Any
+   * other send is the actions', in order:
+   * 1. `mock.actions.sendTransaction` mocks;
+   * 2. a success for a plain transfer to an address without code, as on a
+   *    node;
+   * 3. the action's miss.
    */
   async function outcomeOf(
     call: SendTransactionCall,
     turn: ContractTurn<MockWriteOutcome> | undefined,
   ): Promise<MockWriteOutcome> {
-    const answered = turn?.answer();
-    if (answered) return await answered;
+    const functionMocks = turn?.functionMocks;
+    if (functionMocks) {
+      const answered = functionMocks.answer();
+      if (answered) return await answered;
+      throw functionMocks.miss();
+    }
     const found = sendTransactionMocks.match(call);
     if (found.handler) return await sendTransactionMocks.answerWith(found.handler, call);
     if (isPlainTransfer(registry, call)) return {};
-    throw turn ? turn.miss() : sendTransactionMocks.missError(call, found, sendHint(call.to));
+    throw sendTransactionMocks.missError(call, found, sendHint(call.to));
   }
 
   return {

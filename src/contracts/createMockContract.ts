@@ -55,19 +55,30 @@ type ContractFunction = {
 type Handler = MockHandler<Context, ContractFunction>;
 
 /**
- * A contract's turn at an action's call (an estimate or a send of one of its
- * functions), ahead of the action's own mocks, prepared when the call
- * arrives: the call is decoded and added to the contract's calls then. It's
- * answered only if it gets its turn.
+ * A contract's turn at an estimate or a send to it with data, prepared when
+ * the call arrives: a call that decodes is added to the contract's calls
+ * then. Only the contract's mocks answer a call to one of its functions in
+ * the turn's namespace, and only action mocks answer any other data sent to
+ * it.
  */
 export type ContractTurn<answer = unknown> = {
-  /** Answers with the best matching mock; `undefined` when none matches. */
-  answer(): Promise<answer> | undefined;
   /**
-   * The error for the call when nothing else answers it either; built only
-   * then.
+   * The mocks of the function the call is to, which alone answer it.
+   * `undefined` when the call is to none of the contract's functions in the
+   * turn's namespace: a selector not on its ABI, data that doesn't decode,
+   * or a view function.
    */
-  miss(): MockNotFoundError;
+  functionMocks:
+    | {
+        /**
+         * Answers with the best matching mock; `undefined` when none
+         * matches.
+         */
+        answer(): Promise<answer> | undefined;
+        /** The error for the call when nothing answers it; built only then. */
+        miss(): MockNotFoundError;
+      }
+    | undefined;
   /**
    * The call's record in its namespace, for history, with how its request
    * ended: `ended` is the request's outcome, or what it threw. A revert is
@@ -284,7 +295,10 @@ export function createMockContract<const abi extends Abi>(
     const record = (outcome: MockOutcome) => recordOf(decoded?.namespace, decoded, outcome);
     try {
       const found = decode(data, context);
-      if (found instanceof MockNotFoundError) throw found;
+      if (found === undefined)
+        throw new MockNotFoundError(
+          `No function with selector ${slice(data, 0, 4)} on mocked contract ${label}.`,
+        );
       const { selector, abiItem, call } = found;
       const namespace = reads.includes(abiItem) ? "read" : "simulate";
       decoded = { namespace, selector, abiItem, call };
@@ -313,22 +327,22 @@ export function createMockContract<const abi extends Abi>(
     context: CallContext,
   ): ContractTurn<AnswerIn<namespace>> {
     const decoded = decodeIn(namespace, data, context);
-    const found = decoded instanceof MockNotFoundError ? undefined : decoded;
     const record: ContractTurn["record"] = (ended) =>
       recordOf(
         namespace,
-        found,
+        decoded,
         "error" in ended ? failureOutcome(ended.error, abi) : ended.outcome,
       );
-    if (decoded instanceof MockNotFoundError)
-      return { answer: () => undefined, miss: () => decoded, record };
+    if (decoded === undefined) return { functionMocks: undefined, record };
     receive(decoded);
+    if (!functionsIn[namespace].includes(decoded.abiItem))
+      return { functionMocks: undefined, record };
     const { call } = decoded;
     // Matched when the turn comes, once: an estimate that its send's
     // `.reverts()` mock reverts first runs none of these mocks' predicates.
     let matched: ReturnType<typeof match> | undefined;
     const matchOnce = () => (matched ??= match(decoded));
-    return {
+    const functionMocks = {
       answer() {
         const { handler } = matchOnce();
         return handler && run(handler, call, namespace);
@@ -348,27 +362,27 @@ export function createMockContract<const abi extends Abi>(
           removed: writesMatched.removed,
         });
       },
-      record,
     };
+    return { functionMocks, record };
   }
 
   /** See `InternalMockContract.writeMock`. */
   function writeMock(data: Hex, context: CallContext) {
     const decoded = decodeIn("write", data, context);
-    return decoded instanceof MockNotFoundError ? undefined : foundMock(match(decoded).handler);
+    return decoded && foundMock(match(decoded).handler);
   }
 
   /**
-   * A call of `data` in `namespace`, or why none of the contract's functions
-   * takes it.
+   * A call of `data` in `namespace`; `undefined` when none of the contract's
+   * functions takes it.
    */
   function decodeIn(
     namespace: MockNamespace,
     data: Hex,
     context: CallContext,
-  ): Decoded | MockNotFoundError {
+  ): Decoded | undefined {
     const found = decode(data, context);
-    return found instanceof MockNotFoundError ? found : { ...found, namespace };
+    return found && { ...found, namespace };
   }
 
   /**
@@ -378,10 +392,10 @@ export function createMockContract<const abi extends Abi>(
   type Decoded = { namespace: MockNamespace; selector: Hex; abiItem: AbiFunction; call: MockCall };
 
   /**
-   * Decodes a call to one of the contract's functions, or says why it can't:
-   * none has its selector, or its function can't decode it.
+   * Decodes a call to one of the contract's functions; `undefined` when none
+   * has its selector, or its function can't decode it.
    */
-  function decode(data: Hex, context: CallContext): Omit<Decoded, "namespace"> | MockNotFoundError {
+  function decode(data: Hex, context: CallContext): Omit<Decoded, "namespace"> | undefined {
     const selector = slice(data, 0, 4);
     const abiItem = functionsBySelector.get(selector);
     if (abiItem)
@@ -393,9 +407,7 @@ export function createMockContract<const abi extends Abi>(
           call: { ...context, address, functionName: abiItem.name, args },
         };
       } catch {}
-    return new MockNotFoundError(
-      `No function with selector ${selector} on mocked contract ${label}.`,
-    );
+    return undefined;
   }
 
   /**

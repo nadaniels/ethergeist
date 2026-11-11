@@ -27,7 +27,9 @@ import {
   MockNotFoundError,
   MockResolverError,
   MockSetupError,
+  contractEvents,
   createMockRpc,
+  match,
   testAddress,
   testHash,
   testLog,
@@ -449,8 +451,11 @@ describe("send mocks", () => {
 
   test("answer with what the chain did: logs, status, gas", async () => {
     const { mock, client, wallet } = nodeSetup();
-    const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
-    const transfer = usdc.events.Transfer({ from: alice, to: bob, value: 5n });
+    const transfer = contractEvents({ abi: erc20Abi, address: USDC }).Transfer({
+      from: alice,
+      to: bob,
+      value: 5n,
+    });
     mock.actions.sendTransaction({ to: USDC }).emits([transfer, testLog("noise")]);
     mock.actions.sendTransaction({ to: bob }).returns({
       status: "reverted",
@@ -824,7 +829,6 @@ describe("sends unmocked", () => {
 describe("the estimate a send mock implies", () => {
   test("is 100,000 gas, without running the mock or using it up", async () => {
     const { mock, wallet } = localSetup();
-    mock.contract({ abi: erc20Abi, address: USDC });
     const resolver = vi.fn(() => ({}));
     mock.actions.sendTransaction({ to: USDC }).once().returns(resolver);
 
@@ -842,6 +846,19 @@ describe("the estimate a send mock implies", () => {
     await wallet.sendTransaction(request);
     expect(resolver).toHaveBeenCalledTimes(1);
     expect(mock.transactions[0]!.fields.gas).toBe(100_000n);
+  });
+
+  test("a .once() mock implies it and is still there to answer the send", async () => {
+    const { mock, wallet } = localSetup();
+    const resolver = vi.fn(() => ({}));
+    mock.actions.sendTransaction({ to: bob }).once().returns(resolver);
+
+    await wallet.sendTransaction({ to: bob, data: "0x12" });
+
+    expect(mock.history.map(({ method }) => method)).toContain("eth_estimateGas");
+    expect(resolver).toHaveBeenCalledTimes(1);
+    expect(mock.transactions).toMatchObject([{ fields: { gas: 100_000n } }]);
+    mock.assertAllUsed();
   });
 
   test("an estimate mock answers first, and a plain transfer to an address without code is 21000", async () => {
@@ -884,6 +901,18 @@ describe("the estimate a send mock implies", () => {
     expect(mock.transactions).toMatchObject([{ fields: { gas: 80_000n } }]);
     expect(mock.transactions[0]!.receipt).toEqual({});
     mock.assertAllUsed();
+  });
+
+  test("a .reverts() mock reverts it without matching estimate mocks, so their predicates don't run", async () => {
+    const { mock, client } = setup();
+    const counted = vi.fn(() => true);
+    mock.actions.estimateGas({ to: match.where(counted) }).returns(80_000n);
+    mock.actions.sendTransaction({ to: bob }).reverts("not today");
+
+    const error = await rejectionOf(client.estimateGas({ account: alice, to: bob, data: "0x12" }));
+
+    expectCause(error, ExecutionRevertedError);
+    expect(counted).not.toHaveBeenCalled();
   });
 
   test("a .reverts() mock reverts a plain transfer's estimate too", async () => {
