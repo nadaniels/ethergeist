@@ -20,6 +20,7 @@ import {
   createMockRpc,
   zeroResult,
   testAddress,
+  testHash,
   testLog,
 } from "../src/index.js";
 
@@ -163,6 +164,28 @@ describe("getLogs", () => {
     mock.actions.getLogs({ address: [usdc.address], topics: [null] });
     // @ts-expect-error -- blocks are bigints
     mock.actions.getLogs({ fromBlock: "0x1" });
+    mock.actions.getLogs({ fromBlock: 1n, toBlock: 5n });
+    mock.actions.getLogs({ blockHash: testHash("block") });
+    // @ts-expect-error -- a block hash takes no range
+    mock.actions.getLogs({ blockHash: testHash("block"), fromBlock: 1n });
+  });
+
+  test("a call is a block range or a block hash", () => {
+    mock.actions.getLogs().returns((context) => {
+      if (context.blockHash === undefined) expectTypeOf(context.toBlock).toEqualTypeOf<bigint>();
+      else expectTypeOf(context.toBlock).toEqualTypeOf<undefined>();
+      return context.logs;
+    });
+    // Narrowing a destructured binding is its own TypeScript rule, and the
+    // range cap relies on it.
+    mock.actions.getLogs().returns(({ blockHash, toBlock, logs }) => {
+      if (blockHash === undefined) expectTypeOf(toBlock).toEqualTypeOf<bigint>();
+      else expectTypeOf(toBlock).toEqualTypeOf<undefined>();
+      return logs;
+    });
+    mock.actions
+      .getLogs()
+      .returns(({ fromBlock = 0n, toBlock = 0n, logs }) => (toBlock - fromBlock > 5n ? [] : logs));
   });
 
   test("returns placed logs, or a resolver with the store's logs", () => {

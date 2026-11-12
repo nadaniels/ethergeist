@@ -588,6 +588,16 @@ features land; tick them off as pages get written.
     code sees what production sends: reth's `-32602 "query exceeds max
     results 20000, retry with the range A-B"`, or Linea's `-32602 "range
     49999 exceeds limit of 10000"`.
+  - The range cap checks `blockHash` before reading the range: a call by
+    block hash has no range, and the check narrows `fromBlock` and
+    `toBlock` to bigints.
+    ```ts
+    mock.actions
+      .getLogs()
+      .returns(({ blockHash, fromBlock, toBlock, logs, fail }) =>
+        blockHash === undefined && toBlock - fromBlock > 5n ? fail(rangeTooLarge) : logs,
+      );
+    ```
   - Reading `logs` for a filter the store refuses throws that refusal, as
     if unmocked; it's not reported as the resolver's error.
 - [ ] Watching events (`watchContractEvent`, `watchEvent`, wagmi's

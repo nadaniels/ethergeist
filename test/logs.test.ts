@@ -986,8 +986,8 @@ describe("mock.actions.getLogs", () => {
     const log = usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
     mock.actions
       .getLogs()
-      .returns(({ fromBlock = 0n, toBlock = 0n, logs, fail }) =>
-        toBlock - fromBlock > 5n ? fail(rangeTooLarge) : logs,
+      .returns(({ blockHash, fromBlock, toBlock, logs, fail }) =>
+        blockHash === undefined && toBlock - fromBlock > 5n ? fail(rangeTooLarge) : logs,
       );
 
     const error = expectCause(
@@ -1056,6 +1056,18 @@ describe("mock.actions.getLogs", () => {
     expect(await client.getLogs({ address: USDC, fromBlock: 5n })).toEqual([]);
     await rejectionOf(client.getLogs({ address: USDC, fromBlock: 1n }));
     expect(mock.actions.getLogs.calls.map((call) => call.fromBlock)).toEqual([5n, 1n]);
+  });
+
+  test("calls record a range or a block hash, not both", async () => {
+    const { mock, client } = setup();
+    const { hash } = await client.getBlock({ blockNumber: 9n });
+
+    await client.getLogs({ address: USDC, fromBlock: 1n });
+    await client.getLogs({ address: USDC, blockHash: hash });
+    expect(mock.actions.getLogs.calls).toStrictEqual([
+      { address: USDC, topics: [], fromBlock: 1n, toBlock: 10n },
+      { address: USDC, topics: [], blockHash: hash },
+    ]);
   });
 
   test("a pinned list of addresses matches in any casing, and a malformed one fails at registration", async () => {
