@@ -20,7 +20,8 @@ export type LogsTopic = Hash | Hash[] | null;
 
 /**
  * What a call to viem's `getLogs()` or `getContractEvents()` asked for: a
- * block range, or a block hash.
+ * block range, or a block hash. Check `blockHash === undefined` before
+ * reading the range: it narrows `fromBlock` and `toBlock` to `bigint`.
  */
 export type LogsCall = {
   /**
@@ -33,17 +34,25 @@ export type LogsCall = {
    * `LogsTopic`. `[]` for any.
    */
   topics: LogsTopic[];
-  /**
-   * The range's first block, or the current block when the filter gives
-   * none. A tag resolves to the current block, or `0n` for `"earliest"`.
-   * Left out for a block hash.
-   */
-  fromBlock?: bigint;
-  /** The range's last block, resolved as `fromBlock` is. */
-  toBlock?: bigint;
-  /** The block it asked for by hash, lowercase, in place of a range. */
-  blockHash?: Hash;
-};
+} & (
+  | {
+      /**
+       * The range's first block, or the current block when the filter gives
+       * none. A tag resolves to the current block, or `0n` for `"earliest"`.
+       * Left out for a block hash.
+       */
+      fromBlock: bigint;
+      /** The range's last block, resolved as `fromBlock` is. */
+      toBlock: bigint;
+      blockHash?: undefined;
+    }
+  | {
+      /** The block it asked for by hash, lowercase, in place of a range. */
+      blockHash: Hash;
+      fromBlock?: undefined;
+      toBlock?: undefined;
+    }
+);
 
 /**
  * `eth_getLogs` params as a call, with `resolveBlock` turning a range's tags
@@ -53,7 +62,7 @@ export function decodeLogsCall([filter]: readonly unknown[], resolveBlock: Resol
   if (filter !== undefined && !isPlainObject(filter))
     throw invalidParams(`expected a filter object; got ${formatValue(filter)}`);
   const fields = filter ?? {};
-  const call: LogsCall = { topics: [] };
+  const call: Pick<LogsCall, "address" | "topics"> = { topics: [] };
   const { address, topics } = fields;
   if (Array.isArray(address)) call.address = address.map((each: unknown) => addressParam(each));
   else if (address !== undefined && address !== null) call.address = addressParam(address);
@@ -64,17 +73,18 @@ export function decodeLogsCall([filter]: readonly unknown[], resolveBlock: Resol
     // The spec's range takes no `pending`.
     if (fields.fromBlock === "pending" || fields.toBlock === "pending")
       throw invalidParams("a log range can't be pending");
-    call.fromBlock = resolveBlock(fields.fromBlock, "numberOrTag");
-    call.toBlock = resolveBlock(fields.toBlock, "numberOrTag");
-  } else {
-    if (fields.fromBlock !== undefined || fields.toBlock !== undefined)
-      throw new MockRpcError(
-        -32602,
-        "invalid argument 0: cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other",
-      );
-    call.blockHash = hashParam(fields.blockHash);
+    return {
+      ...call,
+      fromBlock: resolveBlock(fields.fromBlock, "numberOrTag"),
+      toBlock: resolveBlock(fields.toBlock, "numberOrTag"),
+    };
   }
-  return call;
+  if (fields.fromBlock !== undefined || fields.toBlock !== undefined)
+    throw new MockRpcError(
+      -32602,
+      "invalid argument 0: cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other",
+    );
+  return { ...call, blockHash: hashParam(fields.blockHash) };
 }
 
 /**

@@ -1,7 +1,10 @@
+import type { PublicRpcSchema, WalletRpcSchema } from "viem";
+
 import { MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import type { RecordLimit } from "../shared/records.js";
 import { type Definition, type Table, createTable } from "./table.js";
+import type { ActionMethod } from "./typedActions.js";
 import type { MockMethodBuilder } from "./types.js";
 
 /**
@@ -31,11 +34,37 @@ const refusedMethods = new Set([
 ]);
 
 /** Methods answered outside `mock.method()`, with where to mock them. */
-const builtIns = new Map([
-  ["eth_chainId", "it's the chain's id; pass `chain` to createMockRpc()"],
-  ["eth_blockNumber", "pass `blockNumber` to createMockRpc() and advance it with mine()"],
-  ["eth_call", "register a contract with mock.contract()"],
-]);
+const builtInHints = {
+  eth_chainId: "it's the chain's id; pass `chain` to createMockRpc()",
+  eth_blockNumber: "pass `blockNumber` to createMockRpc() and advance it with mine()",
+  eth_call: "register a contract with mock.contract()",
+};
+const builtIns = new Map(Object.entries(builtInHints));
+
+/**
+ * A JSON-RPC method `mock.method()` refuses: one with a typed mock, or one
+ * the mock answers itself, e.g. `"eth_getBalance"` or `"eth_call"`. It
+ * grows each time a method gets a typed mock.
+ *
+ * A function that passes a name on to `mock.method()`, generic or typed as
+ * a union of method names, takes it as `Exclude<…, ReservedMethod>`, e.g.
+ * `name: Exclude<name, ReservedMethod>`.
+ */
+export type ReservedMethod = ActionMethod | keyof typeof builtInHints;
+
+/**
+ * The JSON-RPC methods an editor suggests at `mock.method()`: viem's public
+ * and wallet methods, as the installed viem names them, less each
+ * `ReservedMethod`. `mock.method()` also takes names outside this set.
+ *
+ * A function that passes a name on to `mock.method()` offers the same
+ * suggestions when it constrains its type parameter the same way, e.g.
+ * `<name extends SuggestedMethod | (string & {})>`.
+ */
+export type SuggestedMethod = Exclude<
+  PublicRpcSchema[number]["Method"] | WalletRpcSchema[number]["Method"],
+  ReservedMethod
+>;
 
 /**
  * Raw JSON-RPC methods, mocked with `mock.method()`: a table per method,

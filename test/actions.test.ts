@@ -746,6 +746,7 @@ describe("getTransactionCount", () => {
     const { mock } = setup();
 
     expectThrows(MockSetupError, "use mock.actions.getTransactionCount()", () =>
+      // @ts-expect-error -- a typed action answers it
       mock.method("eth_getTransactionCount"),
     );
   });
@@ -1037,6 +1038,18 @@ describe("method()", () => {
     expect(received).toEqual([[USDC, ["0x1"], "latest"]]);
   });
 
+  test("a request sent without params has none", async () => {
+    const { mock, client } = setup();
+    const received: (readonly RpcValue[])[] = [];
+    mock.method("eth_coinbase").returns(({ params }) => {
+      received.push(params);
+      return alice;
+    });
+
+    await client.request({ method: "eth_coinbase" });
+    expect(received).toEqual([[]]);
+  });
+
   test("an unmocked method suggests method()", async () => {
     const { mock, client } = setup();
 
@@ -1070,12 +1083,21 @@ describe("method()", () => {
     const { mock } = setup();
 
     expectThrows(MockSetupError, "use mock.actions.getBalance()", () =>
+      // @ts-expect-error -- a typed action answers it
       mock.method("eth_getBalance"),
     );
     expectThrows(MockSetupError, "register a contract with mock.contract()", () =>
+      // @ts-expect-error -- a registered contract answers it
       mock.method("eth_call"),
     );
-    expectThrows(MockSetupError, "it's the chain's id", () => mock.method("eth_chainId"));
+    expectThrows(MockSetupError, "it's the chain's id", () =>
+      // @ts-expect-error -- the mock answers it itself
+      mock.method("eth_chainId"),
+    );
+    expectThrows(MockSetupError, "pass `blockNumber` to createMockRpc()", () =>
+      // @ts-expect-error -- the mock answers it itself
+      mock.method("eth_blockNumber"),
+    );
   });
 
   test("fails() works here too", async () => {
@@ -1123,6 +1145,18 @@ describe("eth_fillTransaction", () => {
       method: "eth_fillTransaction",
       outcome: { type: "fault" },
     });
+  });
+
+  test("is refused again once restore() removes a method() mock for it", async () => {
+    const { mock, wallet } = walletSetup();
+    const baseline = mock.checkpoint();
+    mock.method("eth_fillTransaction").fails({ code: -32000, message: "custom" });
+    baseline.restore();
+
+    const request = await wallet.prepareTransactionRequest({ to: bob, value: 1n });
+    expect(request).toMatchObject({ nonce: 0, gas: 21_000n });
+    expect(mock.unhandled).toEqual([]);
+    expect(mock.history[0]?.outcome).toMatchObject({ type: "rpcError", code: -32601 });
   });
 });
 

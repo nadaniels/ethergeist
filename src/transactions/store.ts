@@ -457,8 +457,8 @@ export function createTransactionStore({
     let from: bigint;
     let to: bigint;
     if (call.blockHash === undefined) {
-      from = call.fromBlock ?? head;
-      to = call.toBlock ?? head;
+      from = call.fromBlock;
+      to = call.toBlock;
       if (from > head || to > head)
         throw new MockRpcError(-32602, "block range extends beyond current head block");
       if (from > to) throw new MockRpcError(-32602, "invalid block range params");

@@ -205,8 +205,11 @@ everything, then mutate.
    winning (methods may disagree); its answer places its parts (a receipt
    its logs, a block its transactions), and nothing else is derived; and
    each answer is one a node could send, as an object.
-2. Add it to the `typedActions` catalog in `actions/typedActions.ts`, with the
-   JSON-RPC methods it answers.
+2. Add its definition to the `typedActions` catalog in
+   `actions/typedActions.ts`, and the JSON-RPC methods it answers to
+   `actionMethods` beside it. `createActions` routes those methods to it, and
+   `ReservedMethod` reads them, so `mock.method()` refuses them at compile
+   time as well as at registration.
 3. Add its mock's type, with its documentation, to `MockActions` in the same
    file.
 4. Add its decoded call's type to `ActionCalls` in `actions/types.ts`. History
@@ -244,7 +247,8 @@ edit to those functions, not a new hook on `Definition`.
 - `createSends` returns the two actions in a table's shape, so
   `createActions` handles all fourteen alike: registration, `.calls`,
   `clearCalls()`, unused mocks, snapshots and answering. Their JSON-RPC
-  methods are in `sendsMethods`, beside the `typedActions` catalog.
+  methods are in `actionMethods`, with every other typed action's; the
+  `typedActions` catalog leaves them out.
 - Both functions tell history how the call ended through `reportAnswer`, as
   a table does.
 

@@ -9,6 +9,7 @@ import type {
   TransactionReceipt,
 } from "viem";
 
+import type { ReservedMethod, SuggestedMethod } from "./actions/methods.js";
 import type { MockActions } from "./actions/typedActions.js";
 import type { MockMethodBuilder } from "./actions/types.js";
 import type { MockFees } from "./chain/fees.js";
@@ -201,13 +202,19 @@ export type MockRpc = {
   /**
    * Mocks a JSON-RPC method that has no typed mock, answering with raw
    * JSON-RPC values. Pinned `params` match a prefix of the request's params.
-   * `eth_chainId`, `eth_blockNumber` and `eth_call` are refused. A method
-   * with a typed mock is refused, naming its action, as a method that gets
-   * a typed mock in a later version will be. The likely ones are
-   * `eth_simulateV1`, the wallet methods and
+   *
+   * A `ReservedMethod` is refused: `eth_chainId`, `eth_blockNumber`,
+   * `eth_call`, and each method with a typed mock. Written as a literal, it
+   * doesn't compile; held in a `string`, it throws, naming where to mock it.
+   * A method that gets a typed mock in a later version is refused too: the
+   * likely ones are `eth_simulateV1`, the wallet methods and
    * `eth_getTransactionByBlock*AndIndex`.
    */
-  method(name: string, params?: readonly unknown[]): MockMethodBuilder;
+  // oxlint-disable-next-line typescript/ban-types -- it's any string, kept from absorbing the suggested names
+  method<name extends SuggestedMethod | (string & {})>(
+    name: Exclude<name, ReservedMethod>,
+    params?: readonly unknown[],
+  ): MockMethodBuilder;
   /**
    * Fails requests with `fault` until it's cleared or `times` runs out: see
    * `MockFault` for the kinds. To fail calls to one contract function, use

@@ -14,17 +14,23 @@ import {
   type EstimateGasCall,
   type LogsCall,
   type LogsContext,
+  type MockMethodBuilder,
+  type MockRpc,
+  type ReservedMethod,
   type RpcValue,
   type SendTransactionCall,
   type StorageCall,
+  type SuggestedMethod,
   createMockRpc,
   zeroResult,
   testAddress,
+  testHash,
   testLog,
 } from "../src/index.js";
 
 const mock = createMockRpc();
 const alice = testAddress("alice");
+const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
 
 describe("actions", () => {
   test("params are partial; any field can be pinned", () => {
@@ -157,13 +163,33 @@ describe("getTransaction", () => {
 const firstLog = ({ logs }: LogsContext) => logs.slice(0, 1);
 
 describe("getLogs", () => {
-  const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
-
   test("pins the decoded filter", () => {
     mock.actions.getLogs({ address: usdc.address, fromBlock: 1n });
     mock.actions.getLogs({ address: [usdc.address], topics: [null] });
     // @ts-expect-error -- blocks are bigints
     mock.actions.getLogs({ fromBlock: "0x1" });
+    mock.actions.getLogs({ fromBlock: 1n, toBlock: 5n });
+    mock.actions.getLogs({ blockHash: testHash("block") });
+    // @ts-expect-error -- a block hash takes no range
+    mock.actions.getLogs({ blockHash: testHash("block"), fromBlock: 1n });
+  });
+
+  test("a call is a block range or a block hash", () => {
+    mock.actions.getLogs().returns((context) => {
+      if (context.blockHash === undefined) expectTypeOf(context.toBlock).toEqualTypeOf<bigint>();
+      else expectTypeOf(context.toBlock).toEqualTypeOf<undefined>();
+      return context.logs;
+    });
+    // Narrowing a destructured binding is its own TypeScript rule, and the
+    // range cap relies on it.
+    mock.actions.getLogs().returns(({ blockHash, toBlock, logs }) => {
+      if (blockHash === undefined) expectTypeOf(toBlock).toEqualTypeOf<bigint>();
+      else expectTypeOf(toBlock).toEqualTypeOf<undefined>();
+      return logs;
+    });
+    mock.actions
+      .getLogs()
+      .returns(({ fromBlock = 0n, toBlock = 0n, logs }) => (toBlock - fromBlock > 5n ? [] : logs));
   });
 
   test("returns placed logs, or a resolver with the store's logs", () => {
@@ -184,7 +210,9 @@ describe("getLogs", () => {
   test("a reusable resolver names its context", () => {
     mock.actions.getLogs().returns(firstLog);
   });
+});
 
+describe("getGasPrice", () => {
   test("fee actions take no params and answer bigints", () => {
     mock.actions.getGasPrice().returns(1n);
     mock.actions.estimateMaxPriorityFeePerGas().once().returns(1n);
@@ -195,7 +223,9 @@ describe("getLogs", () => {
     // @ts-expect-error -- a gas price is a bigint, not hex
     mock.actions.getGasPrice().returns("0x1");
   });
+});
 
+describe("getTransactionCount", () => {
   test("transaction counts pin an address and tag, and answer numbers", () => {
     mock.actions.getTransactionCount({ address: alice, blockTag: "pending" }).returns(1);
     mock.actions.getTransactionCount().returns(({ address, blockTag, count }) => {
@@ -207,7 +237,9 @@ describe("getLogs", () => {
     // @ts-expect-error -- viem's count is a number
     mock.actions.getTransactionCount().returns(1n);
   });
+});
 
+describe("estimateGas", () => {
   test("estimates pin a transaction, answer gas, and refuse by name", () => {
     mock.actions.estimateGas({ from: alice, to: alice, value: 1n, data: "0x" }).returns(21_000n);
     // @ts-expect-error -- the sender is `from`, as the request has it
@@ -262,7 +294,9 @@ describe("getLogs", () => {
     // @ts-expect-error -- a refusal isn't a fault
     mock.actions.getBalance().fails("insufficientFunds");
   });
+});
 
+describe("sendTransaction", () => {
   test("sends pin a transaction and answer with what the chain did", () => {
     mock.actions.sendTransaction({ from: alice, to: null }).returns({ contractAddress: alice });
     // @ts-expect-error -- the sender is `from`, as the request has it
@@ -312,7 +346,9 @@ describe("getLogs", () => {
     // @ts-expect-error -- without an ABI, there are no custom errors
     mock.actions.sendTransaction().reverts({ errorName: "Paused" });
   });
+});
 
+describe("getFeeHistory", () => {
   test("fee history pins the call's fields and answers partial histories", () => {
     mock.actions
       .getFeeHistory({ blockCount: 4, blockTag: "latest" })
@@ -329,12 +365,56 @@ describe("getLogs", () => {
   });
 });
 
+/** Wrappers that pass a name on to `mock.method()`, as a test helper might. */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- the generic pass-through is the case under test
+const passThrough = <name extends string>(name: name) =>
+  // @ts-expect-error -- `name` may be a reserved method
+  mock.method(name);
+const excluding = <name extends string>(name: Exclude<name, ReservedMethod>) => mock.method(name);
+type SomeMethods = "eth_getProof" | "eth_feeHistory";
+const fromUnion = (name: SomeMethods) =>
+  // @ts-expect-error -- `eth_feeHistory` has a typed mock
+  mock.method(name);
+const fromAllowed = (name: Exclude<SomeMethods, ReservedMethod>) => mock.method(name);
+
 describe("method()", () => {
   test("answers with JSON-RPC values, not viem's types", () => {
     mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
-    mock.method("eth_feeHistory").returns({ oldestBlock: "0x1", baseFeePerGas: ["0x1"] });
+    mock.method("eth_getProof").returns({ balance: "0x1", storageProof: [] });
     // @ts-expect-error -- JSON-RPC carries quantities as hex strings
     mock.method("eth_getBlockTransactionCountByNumber").returns(1n);
+  });
+
+  test("refuses a method a typed action or the mock itself answers", () => {
+    // @ts-expect-error -- `mock.actions.getFeeHistory()` answers it
+    mock.method("eth_feeHistory");
+    // @ts-expect-error -- `mock.actions.sendTransaction()` answers it
+    mock.method("eth_sendRawTransaction", ["0x"]);
+    // @ts-expect-error -- a registered contract answers it
+    mock.method("eth_call");
+    const name: string = "eth_feeHistory";
+    expectTypeOf(mock.method(name)).toEqualTypeOf<MockMethodBuilder>();
+    expectTypeOf(mock.method("eth_newFilter")).toEqualTypeOf<MockMethodBuilder>();
+  });
+
+  test("its name is viem's method names less the reserved ones, or any other string", () => {
+    type Name = Parameters<MockRpc["method"]>[0];
+    type Mocked = "eth_getProof" | "eth_getBlockTransactionCountByNumber";
+    expectTypeOf<Extract<Name, Mocked>>().toEqualTypeOf<Mocked>();
+    expectTypeOf<Extract<Name, ReservedMethod>>().toBeNever();
+    expectTypeOf<Mocked | "wallet_switchEthereumChain">().toExtend<SuggestedMethod>();
+    expectTypeOf<Extract<SuggestedMethod, ReservedMethod>>().toBeNever();
+    expectTypeOf(mock.method("debug_custom")).toEqualTypeOf<MockMethodBuilder>();
+    expectTypeOf<"debug_custom">().not.toExtend<SuggestedMethod>();
+  });
+
+  test("a name passed on to it excludes the reserved methods", () => {
+    expectTypeOf(passThrough("eth_getProof")).toEqualTypeOf<MockMethodBuilder>();
+    expectTypeOf(excluding("eth_getProof")).toEqualTypeOf<MockMethodBuilder>();
+    // @ts-expect-error -- `mock.actions.getBalance()` answers it
+    excluding("eth_getBalance");
+    expectTypeOf(fromUnion("eth_getProof")).toEqualTypeOf<MockMethodBuilder>();
+    expectTypeOf(fromAllowed).parameter(0).toEqualTypeOf<"eth_getProof">();
   });
 
   test("resolvers get the raw params", () => {
@@ -345,7 +425,9 @@ describe("method()", () => {
     });
     mock.method("eth_getBlockTransactionCountByNumber").fails({ status: 429 });
   });
+});
 
+describe("getCode", () => {
   test("code is Hex", () => {
     mock.actions.getCode().returns(({ address }) => {
       expectTypeOf(address).toEqualTypeOf<Address>();

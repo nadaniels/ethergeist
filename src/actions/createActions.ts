@@ -8,7 +8,7 @@ import type { RecordLimit } from "../shared/records.js";
 import { createMethods } from "./methods.js";
 import { createSends } from "./sends.js";
 import { type ActionReport, type Table, createTable, type ActionsContext } from "./table.js";
-import { type MockActions, type ActionName, sendsMethods, typedActions } from "./typedActions.js";
+import { type MockActions, type ActionName, actionMethods, typedActions } from "./typedActions.js";
 
 /** The typed actions and raw methods: see `createActions`. */
 export type Actions = ReturnType<typeof createActions>;
@@ -41,10 +41,7 @@ export function createActions(chain: ActionsContext, recordLimit: RecordLimit) {
   const tableNames = Object.keys(typedActions) as (keyof typeof typedActions)[];
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- one table per name, as built
   const tableActions = Object.fromEntries(
-    tableNames.map((name) => [
-      name,
-      createTable(typedActions[name].define(chain), recordLimit, options),
-    ]),
+    tableNames.map((name) => [name, createTable(typedActions[name](chain), recordLimit, options)]),
   ) as Record<keyof typeof typedActions, Table>;
   /**
    * Every typed action: a table, or for sends and their estimates, the
@@ -54,13 +51,11 @@ export function createActions(chain: ActionsContext, recordLimit: RecordLimit) {
     ...tableActions,
     ...createSends(chain, recordLimit, options),
   };
-  const typedMethods = new Map<string, ActionName>([
-    ...tableNames.flatMap((name) =>
-      typedActions[name].methods.map((method) => [method, name] as const),
-    ),
-    ...sendsMethods.estimateGas.map((method) => [method, "estimateGas"] as const),
-    ...sendsMethods.sendTransaction.map((method) => [method, "sendTransaction"] as const),
-  ]);
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
+  const actionNames = Object.keys(actionMethods) as ActionName[];
+  const typedMethods = new Map<string, ActionName>(
+    actionNames.flatMap((name) => actionMethods[name].map((method) => [method, name] as const)),
+  );
   const methods = createMethods((method) => typedMethods.get(method), recordLimit, currentBlock);
 
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- built from the tables at runtime, in the shape MockActions describes

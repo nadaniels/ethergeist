@@ -157,6 +157,7 @@ describe("getStorageAt", () => {
     expectThrows(
       MockSetupError,
       '"eth_getStorageAt" has a typed mock: use mock.actions.getStorageAt().',
+      // @ts-expect-error -- a typed action answers it
       () => mock.method("eth_getStorageAt"),
     );
   });

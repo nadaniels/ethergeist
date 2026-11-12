@@ -99,6 +99,9 @@ export const transactionAnswer =
 export const feeHistoryAnswer =
   typeOf<Parameters<ReturnType<typeof mock.actions.getFeeHistory>["returns"]>[0]>();
 export const method = mock.method("custom_method");
+export const rawMethod = typeOf<typeof mock.method>();
+// @ts-expect-error -- `mock.actions.getFeeHistory()` answers it
+mock.method("eth_feeHistory");
 export const methodContext = typeOf<ContextOf<typeof method>>();
 
 export const history = mock.history;
