@@ -1038,6 +1038,18 @@ describe("method()", () => {
     expect(received).toEqual([[USDC, ["0x1"], "latest"]]);
   });
 
+  test("a request sent without params has none", async () => {
+    const { mock, client } = setup();
+    const received: (readonly RpcValue[])[] = [];
+    mock.method("eth_coinbase").returns(({ params }) => {
+      received.push(params);
+      return alice;
+    });
+
+    await client.request({ method: "eth_coinbase" });
+    expect(received).toEqual([[]]);
+  });
+
   test("an unmocked method suggests method()", async () => {
     const { mock, client } = setup();
 
@@ -1133,6 +1145,18 @@ describe("eth_fillTransaction", () => {
       method: "eth_fillTransaction",
       outcome: { type: "fault" },
     });
+  });
+
+  test("is refused again once restore() removes a method() mock for it", async () => {
+    const { mock, wallet } = walletSetup();
+    const baseline = mock.checkpoint();
+    mock.method("eth_fillTransaction").fails({ code: -32000, message: "custom" });
+    baseline.restore();
+
+    const request = await wallet.prepareTransactionRequest({ to: bob, value: 1n });
+    expect(request).toMatchObject({ nonce: 0, gas: 21_000n });
+    expect(mock.unhandled).toEqual([]);
+    expect(mock.history[0]?.outcome).toMatchObject({ type: "rpcError", code: -32601 });
   });
 });
 

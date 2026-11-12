@@ -519,15 +519,16 @@ describe("getLogs refuses what reth refuses", () => {
     });
   });
 
-  test("a block hash with a range", async () => {
+  test("a block hash with a range, or either end of one", async () => {
     const { mock } = setup();
-    expect(
-      await refusal(mock, getLogsRaw(mock, { blockHash: testHash("block"), fromBlock: "0x1" })),
-    ).toEqual({
-      code: -32602,
-      message:
-        "invalid argument 0: cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other",
-    });
+    for (const range of [{ fromBlock: "0x1" }, { toBlock: "0x1" }])
+      expect(
+        await refusal(mock, getLogsRaw(mock, { blockHash: testHash("block"), ...range })),
+      ).toEqual({
+        code: -32602,
+        message:
+          "invalid argument 0: cannot specify both BlockHash and FromBlock/ToBlock, choose one or the other",
+      });
   });
 
   test("an unknown block hash", async () => {
