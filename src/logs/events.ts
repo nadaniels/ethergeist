@@ -257,8 +257,8 @@ export function encodeEventLog(
     {
       metaMessages:
         fits.length === 0
-          ? ["Overloads:", listEvents(overloads)]
-          : ["It fits:", listEvents(fits.map(({ event }) => event))],
+          ? ["Overloads:", ...listEvents(overloads)]
+          : ["It fits:", ...listEvents(fits.map(({ event }) => event))],
     },
   );
 }
@@ -330,6 +330,7 @@ function isNamed<input extends AbiParameter>(input: input): input is input & { n
   return input.name !== undefined && input.name !== "";
 }
 
-function listEvents(events: readonly AbiEvent[]): string {
-  return events.map((event) => `  ${OxAbiEvent.format(event)}`).join("\n");
+/** A hint line for each event: its signature, indented. */
+function listEvents(events: readonly AbiEvent[]): string[] {
+  return events.map((event) => `  ${OxAbiEvent.format(event)}`);
 }

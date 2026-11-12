@@ -546,8 +546,9 @@ minor release.
 The `MockError` classes' JSON-RPC codes are stable, and `-32099` to `-32090` is
 reserved for them.
 
-Generated hashes depend on the transaction's place and the chain: don't pin
-them in a test. Read them from the record or the receipt.
+Generated hashes are the same in every run, but how they're derived isn't
+promised: read a hash from what made it (the hash a send returns, the record
+or the receipt) rather than pinning it.
 
 ## Reference
 

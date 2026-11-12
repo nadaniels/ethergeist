@@ -732,17 +732,12 @@ describe("overloads", () => {
 
   test("an overload the exact args can't tell apart throws", () => {
     const { token } = setupOverloads();
-    expectThrows(
+    const error = expectThrows(
       MockSetupError,
-      [
-        "Ambiguous overload for price(any): pin an arg that tells them apart.",
-        "",
-        "It fits:",
-        "  price(address)",
-        "  price(uint256)",
-      ].join("\n"),
+      "Ambiguous overload for price(any): pin an arg that tells them apart.",
       () => token.read.price([match.any()]),
     );
+    expect(error.metaMessages).toEqual(["It fits:", "  price(address)", "  price(uint256)"]);
   });
 
   test("partials don't tell overloads apart, even by field names", () => {
@@ -756,17 +751,16 @@ describe("overloads", () => {
 
   test("an args-less mock on an overloaded function throws", () => {
     const { token } = setupOverloads();
-    expectThrows(
+    const error = expectThrows(
       MockSetupError,
-      [
-        "Ambiguous overload for balanceOf(*): pin args to choose one, e.g. [match.any()].",
-        "",
-        "Overloads:",
-        "  balanceOf(address,uint256)",
-        "  balanceOf(address)",
-      ].join("\n"),
+      "Ambiguous overload for balanceOf(*): pin args to choose one, e.g. [match.any()].",
       () => token.read.balanceOf(),
     );
+    expect(error.metaMessages).toEqual([
+      "Overloads:",
+      "  balanceOf(address,uint256)",
+      "  balanceOf(address)",
+    ]);
   });
 
   test("an ABI that repeats a function, as two standards spread together, isn't an overload", async () => {

@@ -221,21 +221,22 @@ everything, then mutate.
 
 `estimateGas` and `sendTransaction` aren't table actions. A table has one
 rule: decode the call, then answer with the mock that matches, or else the
-fallback. A send and its estimate have an order of answers instead: a
-send mock's `.reverts()` before any estimate mock, the gas a send mock
-implies, a repeated raw send, and placing the transaction. And they take
-two sides: a transaction is the contract's when its `to` is a registered
-contract and its data decodes to one of that contract's functions in the
-request's namespace (`estimateGas` or `write`, so not a view function),
-and the actions' otherwise. Only one side is asked, each with its own
-order, and neither falls through to the other.
+fallback. A send and its estimate have an order of answers instead: for
+an estimate with a sender, a send mock's `.reverts()` before any estimate
+mock and the gas a send mock implies; a repeated raw send; and placing the
+transaction. And they take two sides: a transaction is the contract's when
+its `to` is a registered contract and its data decodes to one of that
+contract's functions in the request's namespace (`estimateGas` or `write`,
+so not a view function), and the actions' otherwise. Only one side is
+asked, each with its own order, and neither falls through to the other.
 
 `createSends` in `actions/sends.ts` holds both actions' mocks and two
 functions, `answerEstimate` and `answerSend`. Each is the order of answers,
-read top to bottom, a block for each side, and its doc comment lists the
-steps; `answerSend` continues in `outcomeOf`, under it, for the steps that
-choose a send's outcome. The contract says which side a transaction is: its
-turn has `functionMocks` only for a call that's the contract's. A new rule
+read top to bottom, and its doc comment lists the steps. `answerEstimate`
+has a block for each side; `answerSend` continues in `outcomeOf`, under it,
+which has a block for each side and chooses a send's outcome. The contract
+says which side a transaction is: its turn has `functionMocks` only for a
+call that's the contract's. A new rule
 for a send or an estimate (what answers first, what a mock implies) is an
 edit to those functions, not a new hook on `Definition`.
 
@@ -272,7 +273,9 @@ The two functions keep these rules:
   their predicates again. Later, `assertAllUsed()`'s listing runs an unused
   mock's predicates on a call it received only where the call's exact values
   match, as matching would;
-- a send that's refused or not answered places nothing and takes no nonce;
+- a send that throws (no mock answers it, or its mock fails, refuses or
+  throws) places nothing and takes no nonce; a reverted send is mined
+  reverted, and takes one;
 - a repeated raw send asks no mock and gives no contract a turn;
 - a send's outcome is chosen inside the store's `whileSending`, which
   refuses `mock.addTransaction()` and `contract.emit` until `outcomeOf`

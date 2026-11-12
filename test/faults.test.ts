@@ -183,7 +183,7 @@ describe("lifecycle", () => {
     expect(outage.count).toBe(1);
   });
 
-  test("faulted requests are in requests, but not calls or unhandled", async () => {
+  test("faulted requests are in history, but not calls or unhandled", async () => {
     const { mock, decimals } = setup({ retryCount: 0 });
     mock.failRequests({ status: 503 });
 
@@ -240,12 +240,14 @@ describe("lifecycle", () => {
 
   test("times must be a positive integer", () => {
     const { mock } = setup();
-    expectThrows(MockSetupError, "failRequests()'s times must be a positive integer; got 0.", () =>
-      mock.failRequests("timeout", { times: 0 }),
+    expectThrows(
+      MockSetupError,
+      "mock.failRequests()'s times must be a positive integer; got 0.",
+      () => mock.failRequests("timeout", { times: 0 }),
     );
     expectThrows(
       MockSetupError,
-      "failRequests()'s times must be a positive integer; got 1.5.",
+      "mock.failRequests()'s times must be a positive integer; got 1.5.",
       () => mock.failRequests("timeout", { times: 1.5 }),
     );
   });
@@ -253,14 +255,17 @@ describe("lifecycle", () => {
   test("method must be a method name or a list of them, not a pattern", () => {
     const { mock } = setup();
     const message =
-      "failRequests()'s method must be a method name or a list of them; got /^eth_/u.";
+      "mock.failRequests()'s method must be a method name or a list of them; got /^eth_/u.";
     expectThrows(MockSetupError, message, () =>
       // @ts-expect-error -- a pattern, not a name
       mock.failRequests("timeout", { method: /^eth_/u }),
     );
-    expectThrows(MockSetupError, "failRequests()'s method must be a method name or a list", () =>
-      // @ts-expect-error -- a pattern, not a name
-      mock.failRequests("timeout", { method: ["eth_call", /^eth_/u] }),
+    expectThrows(
+      MockSetupError,
+      "mock.failRequests()'s method must be a method name or a list",
+      () =>
+        // @ts-expect-error -- a pattern, not a name
+        mock.failRequests("timeout", { method: ["eth_call", /^eth_/u] }),
     );
   });
 });

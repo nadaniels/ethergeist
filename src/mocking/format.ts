@@ -191,10 +191,10 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
   if (Array.isArray(value))
     return `[${value.map((v: unknown) => formatValue(v, options)).join(", ")}]`;
   if (value instanceof RegExp) return String(value);
-  if (isPlainObject(value))
-    return `{ ${Object.entries(value)
-      .map(([key, v]) => `${key}: ${formatValue(v, options)}`)
-      .join(", ")} }`;
+  if (isPlainObject(value)) {
+    const fields = Object.entries(value).map(([key, v]) => `${key}: ${formatValue(v, options)}`);
+    return fields.length === 0 ? "{}" : `{ ${fields.join(", ")} }`;
+  }
   if (typeof value === "string")
     return options.short === true && isHex(value) && value.length > 14
       ? `${value.slice(0, 6)}…${value.slice(-4)}`

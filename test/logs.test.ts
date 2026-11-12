@@ -582,9 +582,9 @@ describe("history", () => {
     await client.getContractEvents({ abi: erc20Abi, address: [USDC, DAI], fromBlock: 1n });
     await rejectionOf(client.getLogs({ address: USDC, fromBlock: 8n, toBlock: 7n }));
     expect(mock.formatHistory({ builtIns: false }).split("\n")).toEqual([
-      "#1 eth_getLogs getLogs(USDC, Transfer(from: 0xa41f…2D9e), block 10) → 1 log",
-      "#2 eth_getLogs getLogs([USDC, DAI], Approval | Transfer, blocks 1–10) → 1 log",
-      "#3 eth_getLogs getLogs(USDC, blocks 8–7) ✗ rpc error -32602: invalid block range params",
+      "#1 eth_getLogs getLogs(USDC, Transfer(from: 0xa41f…2D9e), block 10n) → 1 log",
+      "#2 eth_getLogs getLogs([USDC, DAI], Approval | Transfer, blocks 1n–10n) → 1 log",
+      "#3 eth_getLogs getLogs(USDC, blocks 8n–7n) ✗ rpc error -32602: invalid block range params",
     ]);
   });
 
@@ -619,7 +619,7 @@ describe("history", () => {
       });
     expect(mock.formatHistory({ builtIns: false }).split("\n")).toEqual(
       cases.map(
-        (_, i) => `#${i + 1} eth_getLogs getLogs(Args, E${i}(x: 0x62c6…22f8), block 10) → 0 logs`,
+        (_, i) => `#${i + 1} eth_getLogs getLogs(Args, E${i}(x: 0x62c6…22f8), block 10n) → 0 logs`,
       ),
     );
   });
@@ -630,7 +630,7 @@ describe("history", () => {
 
     await client.getLogs({ address: alice });
     expect(mock.formatHistory({ builtIns: false })).toBe(
-      "#1 eth_getLogs getLogs(0xa41f…2D9e, block 10) → 0 logs",
+      "#1 eth_getLogs getLogs(0xa41f…2D9e, block 10n) → 0 logs",
     );
   });
 

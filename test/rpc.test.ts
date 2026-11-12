@@ -66,7 +66,7 @@ describe("registration", () => {
   });
 });
 
-describe("rpc.calls", () => {
+describe("mock.calls", () => {
   test("logs calls across contracts in order, with their address", async () => {
     const { mock, decimals } = setup();
     mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
@@ -186,7 +186,7 @@ describe("rpc.calls", () => {
     expect(usdc.calls[0]?.address).toBe(USDC);
   });
 
-  test("returned logs are copies", async () => {
+  test("the returned lists are copies", async () => {
     const { mock, decimals } = setup();
     mock.contract({ abi: erc20Abi, address: USDC }).read.decimals().returns(6);
     await decimals(USDC);

@@ -76,7 +76,7 @@ export function createFunctions(abi: Abi) {
     if (args === undefined && overloads.length > 1)
       throw new MockSetupError(
         `Ambiguous overload for ${functionName}(*): pin args to choose one, e.g. [match.any()].`,
-        { metaMessages: ["Overloads:", listSignatures(overloads)] },
+        { metaMessages: ["Overloads:", ...listSignatures(overloads)] },
       );
     if (overloads.length < 2 || findMatcher(args) === undefined)
       return getAbiItem({ abi: functionsIn[namespace], name: functionName, args });
@@ -97,8 +97,8 @@ export function createFunctions(abi: Abi) {
       {
         metaMessages:
           fits.length === 0
-            ? ["Overloads:", listSignatures(overloads)]
-            : ["It fits:", listSignatures(fits)],
+            ? ["Overloads:", ...listSignatures(overloads)]
+            : ["It fits:", ...listSignatures(fits)],
       },
     );
   }
@@ -106,8 +106,9 @@ export function createFunctions(abi: Abi) {
   return { reads, writes, functionsIn, functionsBySelector, notInNamespaceError, findFunction };
 }
 
-function listSignatures(functions: readonly AbiFunction[]): string {
-  return functions.map((abiItem) => `  ${toFunctionSignature(abiItem)}`).join("\n");
+/** A hint line for each function: its signature, indented. */
+function listSignatures(functions: readonly AbiFunction[]): string[] {
+  return functions.map((abiItem) => `  ${toFunctionSignature(abiItem)}`);
 }
 
 /** Whether `value` encodes as `parameter`'s type. */

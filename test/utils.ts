@@ -64,9 +64,14 @@ export function expectCause<error>(error: unknown, type: ErrorClass<error>): err
   return found;
 }
 
-/** A mock error's hint lines, as its message shows them. */
+/**
+ * A mock error's hint lines, as its message shows them. Fails the test on an
+ * entry that holds several lines, which would read the same once joined.
+ */
 export function hintsOf(error: { metaMessages?: string[] | undefined } | undefined): string {
-  return (error?.metaMessages ?? []).join("\n");
+  const hints = error?.metaMessages ?? [];
+  expect(hints.filter((hint) => hint.includes("\n"))).toEqual([]);
+  return hints.join("\n");
 }
 
 /** The error of a `client.multicall` result that should have failed. */

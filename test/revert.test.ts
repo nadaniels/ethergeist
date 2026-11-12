@@ -219,7 +219,7 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
   for (const [name, register] of Object.entries(builders))
     test.each([
       ["null", null, MockSetupError, `${refused}; got null.`],
-      ["an empty object", {}, MockSetupError, `${refused}; got {  }.`],
+      ["an empty object", {}, MockSetupError, `${refused}; got {}.`],
       ["a number", 5, MockSetupError, `${refused}; got 5.`],
       [
         "a panic code that isn't an integer",

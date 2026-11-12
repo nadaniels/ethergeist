@@ -37,7 +37,7 @@ export function createActions(chain: ActionsContext, recordLimit: RecordLimit) {
         : [];
   const currentBlock = () => chain.state.blockNumber;
   const options = { currentBlock, notFoundLines: removedTargetLines };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an object literal's own keys, which Object.keys types as string
   const tableNames = Object.keys(typedActions) as (keyof typeof typedActions)[];
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- one table per name, as built
   const tableActions = Object.fromEntries(
@@ -51,7 +51,7 @@ export function createActions(chain: ActionsContext, recordLimit: RecordLimit) {
     ...tableActions,
     ...createSends(chain, recordLimit, options),
   };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an object literal's own keys, which Object.keys types as string
   const actionNames = Object.keys(actionMethods) as ActionName[];
   const typedMethods = new Map<string, ActionName>(
     actionNames.flatMap((name) => actionMethods[name].map((method) => [method, name] as const)),
