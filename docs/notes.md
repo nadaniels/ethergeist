@@ -621,13 +621,13 @@ features land; tick them off as pages get written.
     `await vi.runOnlyPendingTimersAsync()` once before emitting (the
     watcher notes the current block) and once after (it reads the new
     one). Advancing by a fixed time instead runs one poll per interval.
-  - Pitfall (a viem bug, in production too): viem's polling skips a fetch
-    when the previous block number is `0n` (it checks it for truthiness).
-    Watching from block 0 loses the logs in block 1; later ones arrive.
-    `fromBlock: 1n` loses the whole backfill. The mock starts at block 1,
-    so only `createMockRpc({ blockNumber: 0n })` or `fromBlock: 1n` hit it;
-    use `fromBlock: 0n` to backfill from the start. Remove once viem fixes
-    it (reported upstream; link the issue).
+  - Pitfall (viem before 2.57.13, in production too): viem's polling
+    skipped a fetch when the previous block number was `0n`. Watching from
+    block 0 loses the logs in block 1; later ones arrive. `fromBlock: 1n`
+    loses the whole backfill. The mock starts at block 1, so only
+    `createMockRpc({ blockNumber: 0n })` or `fromBlock: 1n` hit it. Upgrade
+    viem, or use `fromBlock: 0n` to backfill from the start. Fixed in viem
+    2.57.13 (wevm/viem#5330). Remove once the peer range starts there.
 - [ ] Strict by default for data the test owns (balances, receipts), and how
       to opt into real-node defaults with args-less mocks.
 - [ ] Block tags: calls at a block keep the tag they asked for (`getBalance`,

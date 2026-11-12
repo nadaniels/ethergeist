@@ -76,7 +76,11 @@ export function createMethods(
   recordLimit: RecordLimit,
   currentBlock: () => bigint,
 ) {
-  const raw = new Map<string, Table>();
+  /**
+   * Each method's table, with its snapshot from when it was made, to empty it
+   * on a restore to before it was first mocked.
+   */
+  const raw = new Map<string, { table: Table; created: Required<PartSnapshot> }>();
 
   function method(name: string, params?: readonly unknown[]): MockMethodBuilder {
     const builtIn = builtIns.get(name);
@@ -86,8 +90,8 @@ export function createMethods(
     if (action !== undefined)
       throw new MockSetupError(`"${name}" has a typed mock: use mock.actions.${action}().`);
 
-    let table = raw.get(name);
-    if (!table) {
+    let entry = raw.get(name);
+    if (!entry) {
       const definition: Definition<{ method: string; params: readonly unknown[] }> = {
         name,
         hint: `mock.method("${name}", …).returns(…)`,
@@ -101,41 +105,36 @@ export function createMethods(
         actual: (pinned, call) =>
           Array.isArray(pinned) ? pinned.map((_, i) => call.params[i]) : call.params,
       };
-      table = createTable(definition, recordLimit, { currentBlock });
-      raw.set(name, table);
+      const table = createTable(definition, recordLimit, { currentBlock });
+      entry = { table, created: table.snapshot() };
+      raw.set(name, entry);
     }
-    return table.register(params);
+    return entry.table.register(params);
   }
 
   return {
     method,
-    /** The table answering `name`, if it's been mocked. */
-    tableFor: (name: string) => raw.get(name),
-    /** Whether `name` is refused as unsupported when it isn't mocked. */
-    isRefused: (name: string) => refusedMethods.has(name),
-    tables: () => [...raw.values()],
+    /** The table answering `name`, if it's ever been mocked. */
+    tableFor: (name: string) => raw.get(name)?.table,
     /**
-     * Saves every method's mocks; `restore()` removes methods first mocked
-     * since.
+     * Whether `name` is refused as unsupported: it's one the mock doesn't
+     * support, and it has no mocks (none yet, or a restore removed them).
+     */
+    isRefused: (name: string) =>
+      refusedMethods.has(name) && raw.get(name)?.table.hasMocks() !== true,
+    tables: () => [...raw.values()].map(({ table }) => table),
+    /**
+     * Saves every method's mocks; `restore()` empties methods first mocked
+     * since, so their misses list what it removed.
      */
     snapshot(): Required<PartSnapshot> {
-      const saved = new Map([...raw].map(([name, table]) => [name, table.snapshot()]));
+      const saved = new Map([...raw].map(([name, { table }]) => [name, table.snapshot()]));
       return {
         restore() {
-          for (const [name, table] of raw) {
-            const each = saved.get(name);
-            if (each) {
-              each.restore();
-            } else {
-              table.removeAll();
-              raw.delete(name);
-            }
-          }
+          for (const [name, { created }] of raw) (saved.get(name) ?? created).restore();
         },
         unusedSince: () =>
-          [...raw].flatMap(
-            ([name, table]) => saved.get(name)?.unusedSince() ?? table.unusedMocks(),
-          ),
+          [...raw].flatMap(([name, { created }]) => (saved.get(name) ?? created).unusedSince()),
       };
     },
   };

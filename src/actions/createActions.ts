@@ -37,7 +37,7 @@ export function createActions(chain: ActionsContext, recordLimit: RecordLimit) {
         : [];
   const currentBlock = () => chain.state.blockNumber;
   const options = { currentBlock, notFoundLines: removedTargetLines };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an object literal's own keys, which Object.keys types as string
   const tableNames = Object.keys(typedActions) as (keyof typeof typedActions)[];
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- one table per name, as built
   const tableActions = Object.fromEntries(
@@ -51,7 +51,7 @@ export function createActions(chain: ActionsContext, recordLimit: RecordLimit) {
     ...tableActions,
     ...createSends(chain, recordLimit, options),
   };
-  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Object.keys loses the key type
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- an object literal's own keys, which Object.keys types as string
   const actionNames = Object.keys(actionMethods) as ActionName[];
   const typedMethods = new Map<string, ActionName>(
     actionNames.flatMap((name) => actionMethods[name].map((method) => [method, name] as const)),
@@ -85,11 +85,11 @@ export function createActions(chain: ActionsContext, recordLimit: RecordLimit) {
       report: (report: ActionReport) => void,
     ): Promise<unknown> | undefined {
       const action = typedMethods.get(name);
-      const table = action === undefined ? methods.tableFor(name) : typed[action];
-      if (table === undefined && methods.isRefused(name))
+      if (action === undefined && methods.isRefused(name))
         return Promise.reject(
           new MockRpcError(-32601, `the method ${name} does not exist/is not available`),
         );
+      const table = action === undefined ? methods.tableFor(name) : typed[action];
       // A raw method's params stay as sent, trailing nulls included: it isn't
       // the spec's.
       const given = action === undefined ? params : withoutTrailingNulls(params);

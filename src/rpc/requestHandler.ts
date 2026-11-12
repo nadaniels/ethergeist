@@ -12,7 +12,10 @@ import { asMockError, isAnswer } from "../mocking/outcomes.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import type { Faults } from "./faults.js";
 
-/** Answers a request with the mock's own errors: see `createRequestHandler`. */
+/**
+ * A function that answers a request, with the mock's own errors for what it
+ * can't answer: see `createRequestHandler`.
+ */
 export type RequestHandler = (request: RpcRequest, retryCount?: number) => Promise<unknown>;
 
 /**

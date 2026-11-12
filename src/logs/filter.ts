@@ -132,8 +132,8 @@ export function describeLogsCall(
   if (call.topics.length > 0) parts.push(describeTopics(call.topics, contracts));
   if (call.blockHash !== undefined)
     parts.push(`block ${formatValue(call.blockHash, { short: true })}`);
-  else if (call.fromBlock === call.toBlock) parts.push(`block ${call.fromBlock}`);
-  else parts.push(`blocks ${call.fromBlock}–${call.toBlock}`);
+  else if (call.fromBlock === call.toBlock) parts.push(`block ${formatValue(call.fromBlock)}`);
+  else parts.push(`blocks ${formatValue(call.fromBlock)}–${formatValue(call.toBlock)}`);
   return `getLogs(${parts.join(", ")})`;
 }
 

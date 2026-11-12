@@ -306,6 +306,28 @@ describe("historyLimit", () => {
     expect(lines).toEqual(["#1 eth_blockNumber → 10n", "#– eth_call USDC.totalSupply() → 1n"]);
   });
 
+  test("a request in flight while it's dropped past historyLimit is logged without a number", async () => {
+    const lines: string[] = [];
+    const { mock, usdc, totalSupply } = setup(1, (line) => {
+      lines.push(line);
+    });
+    let release: (() => void) | undefined;
+    usdc.read.totalSupply().returns(async () => {
+      await new Promise<void>((resolve) => {
+        release = resolve;
+      });
+      return 1n;
+    });
+
+    const pending = totalSupply();
+    await Promise.resolve();
+    await mock.request({ method: "eth_blockNumber" });
+    release?.();
+    await pending;
+
+    expect(lines).toEqual(["#2 eth_blockNumber → 10n", "#– eth_call USDC.totalSupply() → 1n"]);
+  });
+
   test("a concurrent identical request isn't a retry", async () => {
     const { mock, usdc, totalSupply } = setup(10);
     usdc.read.totalSupply().returns(1n);

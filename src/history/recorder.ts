@@ -122,26 +122,21 @@ export function createRecorder({
   const history = createRecordList<MockHistoryEntry>(recordLimit);
   const calls = createRecordList<MockTaggedCall>(recordLimit);
   const unhandled = createRecordList<UnhandledRequest>(recordLimit);
-  /**
-   * Each entry's number, kept beside it, not in it, so entries stay as users
-   * see them. A number holds until the next clear, which starts them over.
-   */
-  const numbers = new WeakMap<MockHistoryEntry, { number: number; clears: number }>();
-  let clears = 0;
   /** The fault each retry retries. */
   const retries = new WeakMap<MockHistoryEntry, FaultOutcome>();
   /** The last request received, to tell whether the next one retries it. */
   let last: MockHistoryEntry | undefined;
+  /**
+   * How many times `clearCalls()` has cleared history, to tell an entry
+   * received before the last clear.
+   */
+  let clears = 0;
   const view: HistoryView = {
     get entries() {
       return history.kept;
     },
     get dropped() {
       return history.dropped;
-    },
-    numberOf(entry) {
-      const numbered = numbers.get(entry);
-      return numbered?.clears === clears ? numbered.number : undefined;
     },
     faultRetried: (entry) => retries.get(entry),
   };
@@ -154,9 +149,20 @@ export function createRecorder({
         ? undefined
         : debug;
 
-  /** The recording of `request`, whose history entry is `entry`. */
-  function recordingOf(request: RpcRequest, entry: MockHistoryEntry): Recording {
+  /**
+   * The recording of `request`, whose history entry is `entry`, numbered
+   * `number` as `HistoryView` numbers it.
+   */
+  function recordingOf(request: RpcRequest, entry: MockHistoryEntry, number: number): Recording {
     let actionOutcome: ActionReport["outcome"];
+    const clearsAtStart = clears;
+    /**
+     * The entry's number while history keeps it, for `debug`'s line. Once
+     * it's no longer kept (received before the last clear, or dropped past
+     * `historyLimit` while it was still in flight), `undefined`.
+     */
+    const numberNow = () =>
+      clears === clearsAtStart && number > history.dropped ? number : undefined;
 
     /** Records `outcome` on the entry, and logs it when `debug` is on. */
     function end(outcome: MockOutcome) {
@@ -164,7 +170,7 @@ export function createRecorder({
       if (log === undefined) return;
       let line: string;
       try {
-        line = formatEntry(view, entry, formatContext);
+        line = formatEntry(view, entry, numberNow(), formatContext);
       } catch (error) {
         throw new MockInternalError(error);
       }
@@ -244,8 +250,9 @@ export function createRecorder({
       if (fault) retries.set(entry, fault);
       last = entry;
       history.add(entry);
-      numbers.set(entry, { number: history.total, clears });
-      return recordingOf(request, entry);
+      // Read as it's added: finding the entry in history later copies the
+      // kept list once the ring is full.
+      return recordingOf(request, entry, history.total);
     },
     /** Records a decoded contract call, tagged, from any contract. */
     onCall: (call: MockTaggedCall) => {

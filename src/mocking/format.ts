@@ -126,11 +126,15 @@ export function missedLines<mock extends DescribedMock>(
 /**
  * A miss's block for the mocks the last restore removed that match the call,
  * given as their lines (`removed`), under a header and with the layout that
- * often causes it; none if there are none.
+ * often causes it, unless `layout` is false (the miss gave it already); none
+ * if there are none.
  */
-export function removedLines(removed: readonly string[]): string[] {
+export function removedLines(
+  removed: readonly string[],
+  { layout = true }: { layout?: boolean } = {},
+): string[] {
   if (removed.length === 0) return [];
-  return [removedMocksHeader, ...removed, nestedRestoreHint];
+  return [removedMocksHeader, ...removed, ...(layout ? [nestedRestoreHint] : [])];
 }
 
 /**
@@ -191,10 +195,10 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
   if (Array.isArray(value))
     return `[${value.map((v: unknown) => formatValue(v, options)).join(", ")}]`;
   if (value instanceof RegExp) return String(value);
-  if (isPlainObject(value))
-    return `{ ${Object.entries(value)
-      .map(([key, v]) => `${key}: ${formatValue(v, options)}`)
-      .join(", ")} }`;
+  if (isPlainObject(value)) {
+    const fields = Object.entries(value).map(([key, v]) => `${key}: ${formatValue(v, options)}`);
+    return fields.length === 0 ? "{}" : `{ ${fields.join(", ")} }`;
+  }
   if (typeof value === "string")
     return options.short === true && isHex(value) && value.length > 14
       ? `${value.slice(0, 6)}…${value.slice(-4)}`

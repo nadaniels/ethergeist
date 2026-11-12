@@ -15,10 +15,11 @@ import {
   checkNoMatchers,
   firstMismatch,
   mismatches,
+  mismatchesAsMatched,
 } from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
-import { MockNotFoundError, type MockRevertError } from "../shared/errors.js";
+import { MockNotFoundError, type MockRevertError, nestedRestoreHint } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, createRecordList } from "../shared/records.js";
 import { leftOut } from "../shared/values.js";
@@ -227,7 +228,9 @@ export function createMockSet<answer>(
    */
   function received(handler: Handler): ReceivedCall[] {
     return calls.kept.map((call) => {
-      const mismatched = mismatches(handler.pinned, actualOf(handler.pinned, call));
+      const mismatched = mismatchesAsMatched((options) =>
+        mismatches(handler.pinned, actualOf(handler.pinned, call), options),
+      );
       const [key] = mismatched;
       return {
         call: formatMismatch(definition.name, shown(call), mismatched),
@@ -300,7 +303,9 @@ export function createMockSet<answer>(
    * `before` lines come between the `notFoundLines` and that list or hint.
    * `others` are another action's mocks, as its `missListing` gives them:
    * the registered ones come next, under `header`, and the ones the last
-   * restore removed follow this action's, under one header.
+   * restore removed follow this action's, under one header. The layout that
+   * often causes it, which ends that block, is given once: a removed
+   * contract's note gives it first.
    */
   function missError(
     call: object,
@@ -316,9 +321,10 @@ export function createMockSet<answer>(
     } = {},
   ): MockNotFoundError {
     const own = missListing(found);
+    const targetLines = notFoundLines?.(call) ?? [];
     return new MockNotFoundError(`No mock for ${formatCall(definition.name, shown(call))}.`, {
       metaMessages: [
-        ...(notFoundLines?.(call) ?? []),
+        ...targetLines,
         ...before,
         ...(own.registered.length > 0
           ? ["Registered:", ...own.registered]
@@ -326,7 +332,9 @@ export function createMockSet<answer>(
         ...(others !== undefined && others.listing.registered.length > 0
           ? [others.header, ...others.listing.registered]
           : []),
-        ...removedLines([...own.removed, ...(others?.listing.removed ?? [])]),
+        ...removedLines([...own.removed, ...(others?.listing.removed ?? [])], {
+          layout: !targetLines.includes(nestedRestoreHint),
+        }),
       ],
     });
   }
@@ -359,10 +367,8 @@ export function createMockSet<answer>(
       calls.clear();
       mocks.clearUsage();
     },
-    /** Removes every mock, whose builders then throw. */
-    removeAll() {
-      mocks.removeAll();
-    },
+    /** Whether any mock is registered, used or not. */
+    hasMocks: () => mocks.handlers.length > 0,
     unusedMocks: () => describeUnused(mocks.unused(mocks.handlers)),
     /**
      * Saves the registered mocks and their answers, to put back or compare

@@ -259,26 +259,34 @@ describe("contract.events", () => {
   test("args that fit several overloads throw, listing them", () => {
     const { shapes } = setup();
 
-    expectThrows(
+    const error = expectThrows(
       MockSetupError,
-      "Ambiguous overload for event Ping({ a: 1n }): pass an arg that tells them apart.\n\n" +
-        "It fits:\n  event Ping(uint256 a)\n  event Ping(uint256 a, uint256 b)",
+      "Ambiguous overload for event Ping({ a: 1n }): pass an arg that tells them apart.",
       () => shapes.events.Ping({ a: 1n }),
     );
+    expect(error.metaMessages).toEqual([
+      "It fits:",
+      "  event Ping(uint256 a)",
+      "  event Ping(uint256 a, uint256 b)",
+    ]);
     expect(() => shapes.events.Ping({ a: 1n, b: 2n })).not.toThrow();
   });
 
   test("args that fit no overload throw, listing them all", () => {
     const { shapes } = setup();
 
-    expectThrows(
+    const error = expectThrows(
       MockSetupError,
-      'No overload of event "Ping" takes Ping({ c: 1n }).\n\nOverloads:\n' +
-        "  event Ping(uint256 a)\n  event Ping(uint256 a, uint256 b)",
+      'No overload of event "Ping" takes Ping({ c: 1n }).',
       () =>
         // @ts-expect-error -- no overload has `c`
         shapes.events.Ping({ c: 1n }),
     );
+    expect(error.metaMessages).toEqual([
+      "Overloads:",
+      "  event Ping(uint256 a)",
+      "  event Ping(uint256 a, uint256 b)",
+    ]);
   });
 
   test("matchers aren't args here", () => {

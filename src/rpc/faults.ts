@@ -54,10 +54,10 @@ function createActiveFault(fault: MockFault, options: FailRequestsOptions): Acti
     !(Array.isArray(methods) && methods.every((each) => typeof each === "string"))
   )
     throw new MockSetupError(
-      `failRequests()'s method must be a method name or a list of them; got ${formatValue(method)}.`,
+      `mock.failRequests()'s method must be a method name or a list of them; got ${formatValue(method)}.`,
     );
   if (times !== Infinity)
-    checkCount(times, "failRequests()'s times", 1, "Or Infinity, the default: every request.");
+    checkCount(times, "mock.failRequests()'s times", 1, "Or Infinity, the default: every request.");
   return {
     fault,
     methods,

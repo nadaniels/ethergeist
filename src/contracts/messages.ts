@@ -1,4 +1,4 @@
-import type { AbiFunction, Address } from "viem";
+import { type AbiFunction, type Address, toFunctionSignature } from "viem";
 
 import {
   type ReceivedCall,
@@ -11,7 +11,7 @@ import {
   missedLines,
   removedLines,
 } from "../mocking/format.js";
-import { mismatches } from "../mocking/matching.js";
+import { mismatches, mismatchesAsMatched } from "../mocking/matching.js";
 import type { Answer, PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import { type Pins, pinMismatches } from "./functions.js";
@@ -43,26 +43,42 @@ type Candidates = {
  * namespace's mocks for its function, each with the arg it missed on, or that
  * there are none. An estimate's also lists its function's `write` mocks
  * (`writes`), which imply the estimate of a send they match, for an estimate
- * with `from`. Then come the mocks of both that the last restore removed, and
- * last the `after` lines of a turn's caller.
+ * with `from`. Then come the mocks on the function's other overloads
+ * (`overloads.others`), which can't answer it, each in another namespace
+ * than the call's marked with it; with any, the call's own overload
+ * (`overloads.called`) is named by its signature. Then the mocks of both
+ * that the last restore removed, and last the `after` lines of a turn's
+ * caller.
  */
 export function missError(
   call: MockCall,
   namespace: MockNamespace,
   label: string,
   own: Candidates,
-  { writes, after = [] }: { writes?: Candidates; after?: readonly string[] } = {},
+  {
+    writes,
+    overloads,
+    after = [],
+  }: {
+    writes?: Candidates;
+    overloads?: { called: AbiFunction; others: readonly Mock[] };
+    after?: readonly string[];
+  } = {},
 ): MockNotFoundError {
   const describe = ({ registered, missed }: Candidates) =>
     missedLines(call.functionName, registered, missed, argName);
   const lines = describe(own);
   const writeLines = writes === undefined ? [] : describe(writes);
-  const name = `"${call.functionName}"`;
+  const others = overloads?.others ?? [];
+  const name =
+    overloads !== undefined && others.length > 0
+      ? toFunctionSignature(overloads.called)
+      : `"${call.functionName}"`;
   const what = namespace === "read" || namespace === "simulate" ? "mock" : `${namespace} mock`;
   const none = {
     read: `No mocks registered for ${name}.`,
     simulate: `No mocks registered for ${name}.`,
-    estimateGas: `No estimateGas mocks registered for ${name}; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
+    estimateGas: `No estimateGas mocks registered for ${name}; ${call.from === undefined ? "a write mock implies one only for an estimate with a sender" : "a write mock that matches the send implies one"}, and a simulate mock doesn't answer estimates.`,
     write: `No write mocks registered for ${name}; a simulate mock doesn't answer sends.`,
   }[namespace];
   const pinned = [...own.registered, ...(writes?.registered ?? [])].flatMap((mock) =>
@@ -72,6 +88,14 @@ export function missError(
   if (writeLines.length > 0)
     metaMessages.push("Write mocks, which imply the estimate of a send they match:", ...writeLines);
   if (metaMessages.length === 0) metaMessages.push(none);
+  if (others.length > 0)
+    metaMessages.push(
+      `Mocks on ${call.functionName}'s other overloads, which don't answer this one:`,
+      ...others.map(
+        (mock) =>
+          `  ${describeMock(call.functionName, mock)}${mock.namespace === namespace ? "" : `, a ${mock.namespace} mock`}`,
+      ),
+    );
   const removed = [...own.removed, ...(writes?.removed ?? [])].map(
     (mock) => `  ${describeMock(call.functionName, mock)}`,
   );
@@ -114,11 +138,13 @@ export function unusedLine(
  * `mock`'s args, or else its `from` and `value`, shown when they differ.
  */
 function received(mock: Mock, call: MockCall): ReceivedCall {
-  const args = mismatches(mock.pinned, call.args);
-  const pins = pinMismatches(mock.pins, call);
-  const key = [...args, ...pins][0];
+  const mismatched = mismatchesAsMatched((options) => [
+    ...mismatches(mock.pinned, call.args, options),
+    ...pinMismatches(mock.pins, call, options),
+  ]);
+  const [key] = mismatched;
   return {
-    call: `${formatMismatch(call.functionName, call.args, [...args, ...pins])}${formatPins(call, pins)}`,
+    call: `${formatMismatch(call.functionName, call.args, mismatched)}${formatPins(call, mismatched)}`,
     differs: key === undefined ? undefined : argName(mock, key),
   };
 }

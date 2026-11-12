@@ -234,13 +234,38 @@ describe("match.where()", () => {
     expect(predicate).not.toHaveBeenCalled();
   });
 
-  test("a predicate that throws while an unused mock's calls are listed counts as a mismatch", async () => {
+  test("an unused mock's listing checks exact values before its predicates, as matching does", async () => {
     const { mock, usdc, allowance } = setup();
-    // `bob` doesn't match `carol`, so matching never runs the predicate; listing the call does.
-    usdc.read.allowance([match.where(throwsBoom), bob]).returns(1n);
+    const isBob = vi.fn((owner: `0x${string}`) => owner === bob);
+    // The predicate's position comes first, but `bob` doesn't match `carol`.
+    usdc.read.allowance([match.where(isBob), bob]).returns(1n);
     await rejectionOf(allowance(alice, carol));
 
-    expectThrows(MockCheckError, `allowance(${alice}, ${carol})  ← owner didn't match`, () => {
+    expectThrows(MockCheckError, `allowance(…, ${carol})  ← spender didn't match`, () => {
+      mock.assertAllUsed();
+    });
+    expect(isBob).not.toHaveBeenCalled();
+  });
+
+  test("an unused action mock's listing checks exact values before its predicates", async () => {
+    const { mock, client } = setup();
+    const isBob = vi.fn((address: `0x${string}`) => address === bob);
+    mock.actions.getBalance({ address: match.where(isBob), blockNumber: 5n }).returns(1n);
+    await rejectionOf(client.getBalance({ address: alice, blockNumber: 6n }));
+
+    expectThrows(MockCheckError, "blockNumber didn't match", () => {
+      mock.assertAllUsed();
+    });
+    expect(isBob).not.toHaveBeenCalled();
+  });
+
+  test("a predicate that throws while an unused mock's calls are listed counts as a mismatch", async () => {
+    const { mock, usdc, allowance } = setup();
+    // The exact values match, so the predicate runs: in matching, and again in the listing.
+    usdc.read.allowance([match.where(throwsBoom), bob]).returns(1n);
+    await rejectionOf(allowance(alice, bob));
+
+    expectThrows(MockCheckError, `allowance(${alice}, …)  ← owner didn't match`, () => {
       mock.assertAllUsed();
     });
   });
@@ -644,19 +669,75 @@ describe("overloads", () => {
     expect(quote).toBe(2n);
   });
 
+  test("a miss names the mocks on the function's other overloads", async () => {
+    const { token, client } = setupOverloads();
+    token.read.balanceOf([alice, 1n]).returns(1n);
+
+    const error = await rejectionOf(
+      client.readContract({
+        abi: multiTokenAbi,
+        address: DAI,
+        functionName: "balanceOf",
+        args: [bob],
+      }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "No mocks registered for balanceOf(address).",
+      "Mocks on balanceOf's other overloads, which don't answer this one:",
+      `  balanceOf(${alice}, 1n)`,
+    ]);
+  });
+
+  test("a miss lists its own overload's mocks, then the other overloads'", async () => {
+    const { token, client } = setupOverloads();
+    token.read.balanceOf([carol]).returns(1n);
+    token.read.balanceOf([alice, 1n]).returns(1n);
+
+    const error = await rejectionOf(
+      client.readContract({
+        abi: multiTokenAbi,
+        address: DAI,
+        functionName: "balanceOf",
+        args: [bob],
+      }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "Registered:",
+      `  balanceOf(${carol})  ← owner didn't match`,
+      "Mocks on balanceOf's other overloads, which don't answer this one:",
+      `  balanceOf(${alice}, 1n)`,
+    ]);
+  });
+
+  test("a view overload's miss names the mocks on a nonpayable overload of its name", async () => {
+    const { mock, client } = setup();
+    const pairAbi = parseAbi([
+      "function quote(uint256 amount) view returns (uint256)",
+      "function quote(address token) returns (uint256)",
+    ]);
+    mock.contract({ abi: pairAbi, address: DAI }).simulate.quote([alice]).returns(1n);
+
+    const error = await rejectionOf(
+      client.readContract({ abi: pairAbi, address: DAI, functionName: "quote", args: [5n] }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "No mocks registered for quote(uint256).",
+      "Mocks on quote's other overloads, which don't answer this one:",
+      `  quote(${alice}), a simulate mock`,
+    ]);
+  });
+
   test("an overload the exact args can't tell apart throws", () => {
     const { token } = setupOverloads();
-    expectThrows(
+    const error = expectThrows(
       MockSetupError,
-      [
-        "Ambiguous overload for price(any): pin an arg that tells them apart.",
-        "",
-        "It fits:",
-        "  price(address)",
-        "  price(uint256)",
-      ].join("\n"),
+      "Ambiguous overload for price(any): pin an arg that tells them apart.",
       () => token.read.price([match.any()]),
     );
+    expect(error.metaMessages).toEqual(["It fits:", "  price(address)", "  price(uint256)"]);
   });
 
   test("partials don't tell overloads apart, even by field names", () => {
@@ -670,17 +751,16 @@ describe("overloads", () => {
 
   test("an args-less mock on an overloaded function throws", () => {
     const { token } = setupOverloads();
-    expectThrows(
+    const error = expectThrows(
       MockSetupError,
-      [
-        "Ambiguous overload for balanceOf(*): pin args to choose one, e.g. [match.any()].",
-        "",
-        "Overloads:",
-        "  balanceOf(address,uint256)",
-        "  balanceOf(address)",
-      ].join("\n"),
+      "Ambiguous overload for balanceOf(*): pin args to choose one, e.g. [match.any()].",
       () => token.read.balanceOf(),
     );
+    expect(error.metaMessages).toEqual([
+      "Overloads:",
+      "  balanceOf(address,uint256)",
+      "  balanceOf(address)",
+    ]);
   });
 
   test("an ABI that repeats a function, as two standards spread together, isn't an overload", async () => {

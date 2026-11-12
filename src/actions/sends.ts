@@ -79,24 +79,26 @@ export function createSends(
    * Answers an `eth_estimateGas`. An estimate of a registered contract's
    * nonpayable or payable function (see `ContractTurn`) is the contract's
    * to answer, in order:
-   * 1. its `write` mock that would answer the send, if it `.reverts()`: the
-   *    estimate reverts as the send would, which counts as that mock's use.
-   *    A resolver's `revert()` runs only at the send;
+   * 1. for an estimate with a sender, its `write` mock that would answer the
+   *    send, if it `.reverts()`: the estimate reverts as the send would,
+   *    which counts as that mock's use. A resolver's `revert()` runs only at
+   *    the send;
    * 2. its `estimateGas` mocks and `defaults.estimateGas`;
-   * 3. the gas its `write` mock implies (see `impliedGas`), without running
-   *    it or using it up;
+   * 3. for an estimate with a sender, the gas its `write` mock implies (see
+   *    `impliedGas`), without running it or using it up;
    * 4. the contract's miss, which names the `estimateGas` mocks that match
    *    the estimate and, for an estimate with a sender, the
    *    `sendTransaction` mocks that match its send, though they don't
    *    answer it.
    *
    * Any other estimate is the actions', in order:
-   * 1. the `sendTransaction` mock that would answer the send, if it
-   *    `.reverts()`, as in step 1 above;
+   * 1. for an estimate with a sender, the `sendTransaction` mock that would
+   *    answer the send, if it `.reverts()`, as in step 1 above;
    * 2. `mock.actions.estimateGas` mocks;
    * 3. 21,000 gas for a plain transfer to an address without code, as a node
    *    estimates it, even with a send mock;
-   * 4. the gas a `sendTransaction` mock implies, as in step 3 above;
+   * 4. for an estimate with a sender, the gas a `sendTransaction` mock
+   *    implies, as in step 3 above;
    * 5. the action's miss, which says when the estimate has data and is to
    *    a registered contract. For an estimate with a sender, it also lists
    *    the `sendTransaction` mocks, each with what it missed on, and those
