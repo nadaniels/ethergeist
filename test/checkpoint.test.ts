@@ -773,6 +773,38 @@ describe("a transaction the last restore() or reset() removed", () => {
     ).toContain(removedFooter);
   });
 
+  test("an estimate or a send to a contract it removed, with an action mock it removed, says so once", async () => {
+    const { mock, client } = setup();
+    const baseline = mock.checkpoint();
+    mock.contract({ abi: erc20Abi, address: DAI });
+    mock.actions.sendTransaction({ to: DAI }).returns();
+    baseline.restore();
+
+    // Data that isn't one of the contract's functions, which only action
+    // mocks answer.
+    const tx = { from: alice, to: DAI, data: "0x12" } as const;
+    const estimate = await notFound(client.request({ method: "eth_estimateGas", params: [tx] }));
+    const send = await notFound(mock.request({ method: "eth_sendTransaction", params: [tx] }));
+    const removed = [
+      "A contract was registered at this address until the last restore() or reset() removed it.",
+      layoutHint,
+    ];
+    const removedSend = [
+      "Removed by the last restore() or reset():",
+      `  sendTransaction({ to: ${DAI} })`,
+    ];
+    expect(estimate.metaMessages).toEqual([
+      ...removed,
+      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+      ...removedSend,
+    ]);
+    expect(send.metaMessages).toEqual([
+      ...removed,
+      "Mock it with mock.actions.sendTransaction({ to }).returns(…).",
+      ...removedSend,
+    ]);
+  });
+
   test.each(["restore()", "reset()"] as const)(
     "an estimate or a send to a contract registered again after %s says nothing of the one removed",
     async (restore) => {

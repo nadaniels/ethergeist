@@ -19,7 +19,7 @@ import {
 } from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
-import { MockNotFoundError, type MockRevertError } from "../shared/errors.js";
+import { MockNotFoundError, type MockRevertError, nestedRestoreHint } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, createRecordList } from "../shared/records.js";
 import { leftOut } from "../shared/values.js";
@@ -303,7 +303,9 @@ export function createMockSet<answer>(
    * `before` lines come between the `notFoundLines` and that list or hint.
    * `others` are another action's mocks, as its `missListing` gives them:
    * the registered ones come next, under `header`, and the ones the last
-   * restore removed follow this action's, under one header.
+   * restore removed follow this action's, under one header. The layout that
+   * often causes it, which ends that block, is given once: a removed
+   * contract's note gives it first.
    */
   function missError(
     call: object,
@@ -319,9 +321,10 @@ export function createMockSet<answer>(
     } = {},
   ): MockNotFoundError {
     const own = missListing(found);
+    const targetLines = notFoundLines?.(call) ?? [];
     return new MockNotFoundError(`No mock for ${formatCall(definition.name, shown(call))}.`, {
       metaMessages: [
-        ...(notFoundLines?.(call) ?? []),
+        ...targetLines,
         ...before,
         ...(own.registered.length > 0
           ? ["Registered:", ...own.registered]
@@ -329,7 +332,9 @@ export function createMockSet<answer>(
         ...(others !== undefined && others.listing.registered.length > 0
           ? [others.header, ...others.listing.registered]
           : []),
-        ...removedLines([...own.removed, ...(others?.listing.removed ?? [])]),
+        ...removedLines([...own.removed, ...(others?.listing.removed ?? [])], {
+          layout: !targetLines.includes(nestedRestoreHint),
+        }),
       ],
     });
   }

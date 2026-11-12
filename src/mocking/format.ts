@@ -126,11 +126,15 @@ export function missedLines<mock extends DescribedMock>(
 /**
  * A miss's block for the mocks the last restore removed that match the call,
  * given as their lines (`removed`), under a header and with the layout that
- * often causes it; none if there are none.
+ * often causes it, unless `layout` is false (the miss gave it already); none
+ * if there are none.
  */
-export function removedLines(removed: readonly string[]): string[] {
+export function removedLines(
+  removed: readonly string[],
+  { layout = true }: { layout?: boolean } = {},
+): string[] {
   if (removed.length === 0) return [];
-  return [removedMocksHeader, ...removed, nestedRestoreHint];
+  return [removedMocksHeader, ...removed, ...(layout ? [nestedRestoreHint] : [])];
 }
 
 /**
