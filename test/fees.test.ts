@@ -460,12 +460,15 @@ describe("mocking fee answers", () => {
     const { mock } = setup();
 
     expectThrows(MockSetupError, "use mock.actions.getGasPrice()", () =>
+      // @ts-expect-error -- a typed action answers it
       mock.method("eth_gasPrice"),
     );
     expectThrows(MockSetupError, "use mock.actions.estimateMaxPriorityFeePerGas()", () =>
+      // @ts-expect-error -- a typed action answers it
       mock.method("eth_maxPriorityFeePerGas"),
     );
     expectThrows(MockSetupError, "use mock.actions.getBlobBaseFee()", () =>
+      // @ts-expect-error -- a typed action answers it
       mock.method("eth_blobBaseFee"),
     );
   });

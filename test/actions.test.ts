@@ -746,6 +746,7 @@ describe("getTransactionCount", () => {
     const { mock } = setup();
 
     expectThrows(MockSetupError, "use mock.actions.getTransactionCount()", () =>
+      // @ts-expect-error -- a typed action answers it
       mock.method("eth_getTransactionCount"),
     );
   });
@@ -1070,12 +1071,21 @@ describe("method()", () => {
     const { mock } = setup();
 
     expectThrows(MockSetupError, "use mock.actions.getBalance()", () =>
+      // @ts-expect-error -- a typed action answers it
       mock.method("eth_getBalance"),
     );
     expectThrows(MockSetupError, "register a contract with mock.contract()", () =>
+      // @ts-expect-error -- a registered contract answers it
       mock.method("eth_call"),
     );
-    expectThrows(MockSetupError, "it's the chain's id", () => mock.method("eth_chainId"));
+    expectThrows(MockSetupError, "it's the chain's id", () =>
+      // @ts-expect-error -- the mock answers it itself
+      mock.method("eth_chainId"),
+    );
+    expectThrows(MockSetupError, "pass `blockNumber` to createMockRpc()", () =>
+      // @ts-expect-error -- the mock answers it itself
+      mock.method("eth_blockNumber"),
+    );
   });
 
   test("fails() works here too", async () => {

@@ -946,6 +946,7 @@ describe("state", () => {
     expectThrows(
       MockSetupError,
       '"eth_getLogs" has a typed mock: use mock.actions.getLogs().',
+      // @ts-expect-error -- a typed action answers it
       () => mock.method("eth_getLogs"),
     );
   });

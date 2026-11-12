@@ -19,6 +19,7 @@ import { getStorageAt } from "./getStorageAt.js";
 import { getTransaction } from "./getTransaction.js";
 import { getTransactionCount, type TransactionCountContext } from "./getTransactionCount.js";
 import { getTransactionReceipt } from "./getTransactionReceipt.js";
+import type { createSends } from "./sends.js";
 import type { MockSendTransactionAction } from "./sendTransaction.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type {
@@ -36,44 +37,53 @@ import type {
 } from "./types.js";
 
 /**
- * Every typed action a table answers: its definition, and the JSON-RPC
- * methods it answers. An action is added here, in `MockActions`, and in
- * `ActionCalls`.
+ * The definition of each typed action a table answers. An action is added
+ * here, in `actionMethods`, in `MockActions`, and in `ActionCalls`.
  */
 export const typedActions = {
-  getBalance: { define: getBalance, methods: ["eth_getBalance"] },
-  getCode: { define: getCode, methods: ["eth_getCode"] },
-  getBlock: { define: getBlock, methods: ["eth_getBlockByNumber", "eth_getBlockByHash"] },
-  getTransactionReceipt: {
-    define: getTransactionReceipt,
-    methods: ["eth_getTransactionReceipt"],
-  },
-  getTransaction: { define: getTransaction, methods: ["eth_getTransactionByHash"] },
-  getLogs: { define: getLogs, methods: ["eth_getLogs"] },
-  getGasPrice: { define: getGasPrice, methods: ["eth_gasPrice"] },
-  estimateMaxPriorityFeePerGas: {
-    define: estimateMaxPriorityFeePerGas,
-    methods: ["eth_maxPriorityFeePerGas"],
-  },
-  getBlobBaseFee: { define: getBlobBaseFee, methods: ["eth_blobBaseFee"] },
-  getFeeHistory: { define: getFeeHistory, methods: ["eth_feeHistory"] },
-  getTransactionCount: { define: getTransactionCount, methods: ["eth_getTransactionCount"] },
-  getStorageAt: { define: getStorageAt, methods: ["eth_getStorageAt"] },
+  getBalance,
+  getCode,
+  getBlock,
+  getTransactionReceipt,
+  getTransaction,
+  getLogs,
+  getGasPrice,
+  estimateMaxPriorityFeePerGas,
+  getBlobBaseFee,
+  getFeeHistory,
+  getTransactionCount,
+  getStorageAt,
 } satisfies {
-  [name in Exclude<keyof ActionCalls, keyof typeof sendsMethods>]: {
-    define: (context: ActionsContext) => Definition<ActionCalls[name]>;
-    methods: readonly string[];
-  };
+  [name in Exclude<ActionName, keyof ReturnType<typeof createSends>>]: (
+    context: ActionsContext,
+  ) => Definition<ActionCalls[name]>;
 };
 
 /**
- * The JSON-RPC methods of the two typed actions no table answers: sends and
- * their estimates, which `createSends` answers.
+ * The JSON-RPC methods each typed action answers, which `mock.method()`
+ * refuses. They're apart from the definitions because `ReservedMethod`, a
+ * public type, reads them: the definitions' types would go into the
+ * published declarations with it.
  */
-export const sendsMethods = {
+export const actionMethods = {
+  getBalance: ["eth_getBalance"],
+  getCode: ["eth_getCode"],
+  getBlock: ["eth_getBlockByNumber", "eth_getBlockByHash"],
+  getTransactionReceipt: ["eth_getTransactionReceipt"],
+  getTransaction: ["eth_getTransactionByHash"],
+  getLogs: ["eth_getLogs"],
+  getGasPrice: ["eth_gasPrice"],
+  estimateMaxPriorityFeePerGas: ["eth_maxPriorityFeePerGas"],
+  getBlobBaseFee: ["eth_blobBaseFee"],
+  getFeeHistory: ["eth_feeHistory"],
+  getTransactionCount: ["eth_getTransactionCount"],
+  getStorageAt: ["eth_getStorageAt"],
   estimateGas: ["eth_estimateGas"],
   sendTransaction: ["eth_sendTransaction", "eth_sendRawTransaction", "eth_sendRawTransactionSync"],
-} as const;
+} as const satisfies { [name in keyof ActionCalls]: readonly string[] };
+
+/** A JSON-RPC method a typed action answers, e.g. `"eth_getBalance"`. */
+export type ActionMethod = (typeof actionMethods)[keyof typeof actionMethods][number];
 
 /** A typed action's name, e.g. `"getBalance"`. */
 export type ActionName = keyof ActionCalls;

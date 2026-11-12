@@ -2,6 +2,7 @@ import { MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import type { RecordLimit } from "../shared/records.js";
 import { type Definition, type Table, createTable } from "./table.js";
+import type { ActionMethod } from "./typedActions.js";
 import type { MockMethodBuilder } from "./types.js";
 
 /**
@@ -31,11 +32,23 @@ const refusedMethods = new Set([
 ]);
 
 /** Methods answered outside `mock.method()`, with where to mock them. */
-const builtIns = new Map([
-  ["eth_chainId", "it's the chain's id; pass `chain` to createMockRpc()"],
-  ["eth_blockNumber", "pass `blockNumber` to createMockRpc() and advance it with mine()"],
-  ["eth_call", "register a contract with mock.contract()"],
-]);
+const builtInHints = {
+  eth_chainId: "it's the chain's id; pass `chain` to createMockRpc()",
+  eth_blockNumber: "pass `blockNumber` to createMockRpc() and advance it with mine()",
+  eth_call: "register a contract with mock.contract()",
+};
+const builtIns = new Map(Object.entries(builtInHints));
+
+/**
+ * A JSON-RPC method `mock.method()` refuses: one with a typed mock, or one
+ * the mock answers itself, e.g. `"eth_getBalance"` or `"eth_call"`. It
+ * grows each time a method gets a typed mock.
+ *
+ * A function that passes a name on to `mock.method()`, generic or typed as
+ * a union of method names, takes it as `Exclude<…, ReservedMethod>`, e.g.
+ * `name: Exclude<name, ReservedMethod>`.
+ */
+export type ReservedMethod = ActionMethod | keyof typeof builtInHints;
 
 /**
  * Raw JSON-RPC methods, mocked with `mock.method()`: a table per method,

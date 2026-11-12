@@ -14,6 +14,8 @@ import {
   type EstimateGasCall,
   type LogsCall,
   type LogsContext,
+  type MockMethodBuilder,
+  type ReservedMethod,
   type RpcValue,
   type SendTransactionCall,
   type StorageCall,
@@ -361,12 +363,45 @@ describe("getFeeHistory", () => {
   });
 });
 
+/** Wrappers that pass a name on to `mock.method()`, as a test helper might. */
+// oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- the generic pass-through is the case under test
+const passThrough = <name extends string>(name: name) =>
+  // @ts-expect-error -- `name` may be a reserved method
+  mock.method(name);
+const excluding = <name extends string>(name: Exclude<name, ReservedMethod>) => mock.method(name);
+type SomeMethods = "eth_getProof" | "eth_feeHistory";
+const fromUnion = (name: SomeMethods) =>
+  // @ts-expect-error -- `eth_feeHistory` has a typed mock
+  mock.method(name);
+const fromAllowed = (name: Exclude<SomeMethods, ReservedMethod>) => mock.method(name);
+
 describe("method()", () => {
   test("answers with JSON-RPC values, not viem's types", () => {
     mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
-    mock.method("eth_feeHistory").returns({ oldestBlock: "0x1", baseFeePerGas: ["0x1"] });
+    mock.method("eth_getProof").returns({ balance: "0x1", storageProof: [] });
     // @ts-expect-error -- JSON-RPC carries quantities as hex strings
     mock.method("eth_getBlockTransactionCountByNumber").returns(1n);
+  });
+
+  test("refuses a method a typed action or the mock itself answers", () => {
+    // @ts-expect-error -- `mock.actions.getFeeHistory()` answers it
+    mock.method("eth_feeHistory");
+    // @ts-expect-error -- `mock.actions.sendTransaction()` answers it
+    mock.method("eth_sendRawTransaction", ["0x"]);
+    // @ts-expect-error -- a registered contract answers it
+    mock.method("eth_call");
+    const name: string = "eth_feeHistory";
+    expectTypeOf(mock.method(name)).toEqualTypeOf<MockMethodBuilder>();
+    expectTypeOf(mock.method("eth_newFilter")).toEqualTypeOf<MockMethodBuilder>();
+  });
+
+  test("a name passed on to it excludes the reserved methods", () => {
+    expectTypeOf(passThrough("eth_getProof")).toEqualTypeOf<MockMethodBuilder>();
+    expectTypeOf(excluding("eth_getProof")).toEqualTypeOf<MockMethodBuilder>();
+    // @ts-expect-error -- `mock.actions.getBalance()` answers it
+    excluding("eth_getBalance");
+    expectTypeOf(fromUnion("eth_getProof")).toEqualTypeOf<MockMethodBuilder>();
+    expectTypeOf(fromAllowed).parameter(0).toEqualTypeOf<"eth_getProof">();
   });
 
   test("resolvers get the raw params", () => {

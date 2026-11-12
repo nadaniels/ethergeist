@@ -212,6 +212,7 @@ describe("estimateGas", () => {
     expectThrows(
       MockSetupError,
       '"eth_estimateGas" has a typed mock: use mock.actions.estimateGas().',
+      // @ts-expect-error -- a typed action answers it
       () => mock.method("eth_estimateGas"),
     );
   });
