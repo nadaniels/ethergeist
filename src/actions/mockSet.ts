@@ -367,10 +367,8 @@ export function createMockSet<answer>(
       calls.clear();
       mocks.clearUsage();
     },
-    /** Removes every mock, whose builders then throw. */
-    removeAll() {
-      mocks.removeAll();
-    },
+    /** Whether any mock is registered, used or not. */
+    hasMocks: () => mocks.handlers.length > 0,
     unusedMocks: () => describeUnused(mocks.unused(mocks.handlers)),
     /**
      * Saves the registered mocks and their answers, to put back or compare

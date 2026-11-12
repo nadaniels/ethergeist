@@ -1,6 +1,7 @@
 import {
   BaseError,
   HttpRequestError,
+  MethodNotFoundRpcError,
   createPublicClient,
   createWalletClient,
   encodeFunctionData,
@@ -550,6 +551,78 @@ describe("nesting", () => {
       "Removed by the last restore() or reset():",
       `  getBalance({ address: ${alice} })`,
     ]);
+  });
+
+  test("and a raw method's mock, when the method was first mocked inside", async () => {
+    const { mock } = setup();
+    const trace = () => mock.request({ method: "debug_traceTransaction", params: ["0x12"] });
+    // The hooks in the order vitest runs them, as above.
+    const baseline = mock.checkpoint();
+    mock.method("debug_traceTransaction", ["0x12"]).returns({ gas: 1 });
+    const suite = mock.checkpoint();
+    expect(await trace()).toEqual({ gas: 1 });
+    suite.restore();
+    baseline.restore();
+
+    // The nested describe's second test.
+    const error = await notFound(trace());
+    expect(error.shortMessage).toBe("No mock for debug_traceTransaction(0x12).");
+    expect(error.metaMessages).toEqual([
+      'Mock it with mock.method("debug_traceTransaction", …).returns(…).',
+      "Removed by the last restore() or reset():",
+      "  debug_traceTransaction(0x12)",
+      layoutHint,
+    ]);
+  });
+
+  test("and after reset(), every raw method's mock", async () => {
+    const { mock } = setup();
+    mock.method("debug_traceTransaction", ["0x12"]).returns({ gas: 1 });
+    mock.reset();
+
+    const error = await notFound(
+      mock.request({ method: "debug_traceTransaction", params: ["0x12"] }),
+    );
+    expect(error.metaMessages?.slice(1, 3)).toEqual([
+      "Removed by the last restore() or reset():",
+      "  debug_traceTransaction(0x12)",
+    ]);
+  });
+
+  test("a method the mock refuses, with a mock that's used up, misses instead", async () => {
+    const { mock } = setup();
+    mock.method("eth_newBlockFilter").once().returns("0x1");
+    const request = () => mock.request({ method: "eth_newBlockFilter", params: [] });
+    await request();
+
+    const error = await notFound(request());
+    expect(error.metaMessages).toEqual(["Registered:", "  eth_newBlockFilter(*) once, used up"]);
+  });
+
+  test("a raw method mocked again after a restore removed its mocks answers with the new one", async () => {
+    const { mock } = setup();
+    const baseline = mock.checkpoint();
+    const first = mock.method("debug_traceTransaction");
+    first.returns({ gas: 1 });
+    baseline.restore();
+    mock.method("debug_traceTransaction").returns({ gas: 2 });
+
+    expect(await mock.request({ method: "debug_traceTransaction", params: ["0x12"] })).toEqual({
+      gas: 2,
+    });
+    expectThrows(MockSetupError, "This mock was removed", () => first.once());
+  });
+
+  test("a method the mock refuses is refused again once a restore removes its mocks", async () => {
+    const { mock, client } = setup();
+    const baseline = mock.checkpoint();
+    mock.method("eth_newBlockFilter").returns("0x1");
+    expect(await client.createBlockFilter()).toMatchObject({ id: "0x1" });
+    baseline.restore();
+
+    // A sibling describe's test, which relies on the refusal: viem's
+    // watchers fall back to polling on it.
+    expectCause(await rejectionOf(client.createBlockFilter()), MethodNotFoundRpcError);
   });
 
   test("an estimate's removed estimateGas mocks, then its send's, under one header", async () => {
