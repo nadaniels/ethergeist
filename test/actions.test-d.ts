@@ -25,6 +25,7 @@ import {
 
 const mock = createMockRpc();
 const alice = testAddress("alice");
+const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
 
 describe("actions", () => {
   test("params are partial; any field can be pinned", () => {
@@ -157,8 +158,6 @@ describe("getTransaction", () => {
 const firstLog = ({ logs }: LogsContext) => logs.slice(0, 1);
 
 describe("getLogs", () => {
-  const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
-
   test("pins the decoded filter", () => {
     mock.actions.getLogs({ address: usdc.address, fromBlock: 1n });
     mock.actions.getLogs({ address: [usdc.address], topics: [null] });
@@ -184,7 +183,9 @@ describe("getLogs", () => {
   test("a reusable resolver names its context", () => {
     mock.actions.getLogs().returns(firstLog);
   });
+});
 
+describe("getGasPrice", () => {
   test("fee actions take no params and answer bigints", () => {
     mock.actions.getGasPrice().returns(1n);
     mock.actions.estimateMaxPriorityFeePerGas().once().returns(1n);
@@ -195,7 +196,9 @@ describe("getLogs", () => {
     // @ts-expect-error -- a gas price is a bigint, not hex
     mock.actions.getGasPrice().returns("0x1");
   });
+});
 
+describe("getTransactionCount", () => {
   test("transaction counts pin an address and tag, and answer numbers", () => {
     mock.actions.getTransactionCount({ address: alice, blockTag: "pending" }).returns(1);
     mock.actions.getTransactionCount().returns(({ address, blockTag, count }) => {
@@ -207,7 +210,9 @@ describe("getLogs", () => {
     // @ts-expect-error -- viem's count is a number
     mock.actions.getTransactionCount().returns(1n);
   });
+});
 
+describe("estimateGas", () => {
   test("estimates pin a transaction, answer gas, and refuse by name", () => {
     mock.actions.estimateGas({ from: alice, to: alice, value: 1n, data: "0x" }).returns(21_000n);
     // @ts-expect-error -- the sender is `from`, as the request has it
@@ -262,7 +267,9 @@ describe("getLogs", () => {
     // @ts-expect-error -- a refusal isn't a fault
     mock.actions.getBalance().fails("insufficientFunds");
   });
+});
 
+describe("sendTransaction", () => {
   test("sends pin a transaction and answer with what the chain did", () => {
     mock.actions.sendTransaction({ from: alice, to: null }).returns({ contractAddress: alice });
     // @ts-expect-error -- the sender is `from`, as the request has it
@@ -312,7 +319,9 @@ describe("getLogs", () => {
     // @ts-expect-error -- without an ABI, there are no custom errors
     mock.actions.sendTransaction().reverts({ errorName: "Paused" });
   });
+});
 
+describe("getFeeHistory", () => {
   test("fee history pins the call's fields and answers partial histories", () => {
     mock.actions
       .getFeeHistory({ blockCount: 4, blockTag: "latest" })
@@ -345,7 +354,9 @@ describe("method()", () => {
     });
     mock.method("eth_getBlockTransactionCountByNumber").fails({ status: 429 });
   });
+});
 
+describe("getCode", () => {
   test("code is Hex", () => {
     mock.actions.getCode().returns(({ address }) => {
       expectTypeOf(address).toEqualTypeOf<Address>();
