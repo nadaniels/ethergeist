@@ -9,7 +9,7 @@ import type {
   TransactionReceipt,
 } from "viem";
 
-import type { ReservedMethod } from "./actions/methods.js";
+import type { ReservedMethod, SuggestedMethod } from "./actions/methods.js";
 import type { MockActions } from "./actions/typedActions.js";
 import type { MockMethodBuilder } from "./actions/types.js";
 import type { MockFees } from "./chain/fees.js";
@@ -210,7 +210,8 @@ export type MockRpc = {
    * likely ones are `eth_simulateV1`, the wallet methods and
    * `eth_getTransactionByBlock*AndIndex`.
    */
-  method<name extends string>(
+  // oxlint-disable-next-line typescript/ban-types -- it's any string, kept from absorbing the suggested names
+  method<name extends SuggestedMethod | (string & {})>(
     name: Exclude<name, ReservedMethod>,
     params?: readonly unknown[],
   ): MockMethodBuilder;

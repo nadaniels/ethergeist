@@ -35,7 +35,7 @@ export type {
 export type { TransactionCountContext } from "./actions/getTransactionCount.js";
 export type { LogsContext } from "./actions/getLogs.js";
 export type { MockActions } from "./actions/typedActions.js";
-export type { ReservedMethod } from "./actions/methods.js";
+export type { ReservedMethod, SuggestedMethod } from "./actions/methods.js";
 export { createMockRpc } from "./createMockRpc.js";
 export type { CreateMockRpcParameters, MockRpc } from "./types.js";
 export type { MockPublicClientParameters } from "./viem/adapter.js";

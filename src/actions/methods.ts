@@ -1,3 +1,5 @@
+import type { PublicRpcSchema, WalletRpcSchema } from "viem";
+
 import { MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import type { RecordLimit } from "../shared/records.js";
@@ -49,6 +51,20 @@ const builtIns = new Map(Object.entries(builtInHints));
  * `name: Exclude<name, ReservedMethod>`.
  */
 export type ReservedMethod = ActionMethod | keyof typeof builtInHints;
+
+/**
+ * The JSON-RPC methods an editor suggests at `mock.method()`: viem's public
+ * and wallet methods, as the installed viem names them, less each
+ * `ReservedMethod`. `mock.method()` also takes names outside this set.
+ *
+ * A function that passes a name on to `mock.method()` offers the same
+ * suggestions when it constrains its type parameter the same way, e.g.
+ * `<name extends SuggestedMethod | (string & {})>`.
+ */
+export type SuggestedMethod = Exclude<
+  PublicRpcSchema[number]["Method"] | WalletRpcSchema[number]["Method"],
+  ReservedMethod
+>;
 
 /**
  * Raw JSON-RPC methods, mocked with `mock.method()`: a table per method,

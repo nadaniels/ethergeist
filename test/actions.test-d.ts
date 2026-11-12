@@ -15,10 +15,12 @@ import {
   type LogsCall,
   type LogsContext,
   type MockMethodBuilder,
+  type MockRpc,
   type ReservedMethod,
   type RpcValue,
   type SendTransactionCall,
   type StorageCall,
+  type SuggestedMethod,
   createMockRpc,
   zeroResult,
   testAddress,
@@ -393,6 +395,17 @@ describe("method()", () => {
     const name: string = "eth_feeHistory";
     expectTypeOf(mock.method(name)).toEqualTypeOf<MockMethodBuilder>();
     expectTypeOf(mock.method("eth_newFilter")).toEqualTypeOf<MockMethodBuilder>();
+  });
+
+  test("its name is viem's method names less the reserved ones, or any other string", () => {
+    type Name = Parameters<MockRpc["method"]>[0];
+    type Mocked = "eth_getProof" | "eth_getBlockTransactionCountByNumber";
+    expectTypeOf<Extract<Name, Mocked>>().toEqualTypeOf<Mocked>();
+    expectTypeOf<Extract<Name, ReservedMethod>>().toBeNever();
+    expectTypeOf<Mocked | "wallet_switchEthereumChain">().toExtend<SuggestedMethod>();
+    expectTypeOf<Extract<SuggestedMethod, ReservedMethod>>().toBeNever();
+    expectTypeOf(mock.method("debug_custom")).toEqualTypeOf<MockMethodBuilder>();
+    expectTypeOf<"debug_custom">().not.toExtend<SuggestedMethod>();
   });
 
   test("a name passed on to it excludes the reserved methods", () => {
