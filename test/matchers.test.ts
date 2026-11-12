@@ -644,6 +644,67 @@ describe("overloads", () => {
     expect(quote).toBe(2n);
   });
 
+  test("a miss names the mocks on the function's other overloads", async () => {
+    const { token, client } = setupOverloads();
+    token.read.balanceOf([alice, 1n]).returns(1n);
+
+    const error = await rejectionOf(
+      client.readContract({
+        abi: multiTokenAbi,
+        address: DAI,
+        functionName: "balanceOf",
+        args: [bob],
+      }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "No mocks registered for balanceOf(address).",
+      "Mocks on balanceOf's other overloads, which don't answer this one:",
+      `  balanceOf(${alice}, 1n)`,
+    ]);
+  });
+
+  test("a miss lists its own overload's mocks, then the other overloads'", async () => {
+    const { token, client } = setupOverloads();
+    token.read.balanceOf([carol]).returns(1n);
+    token.read.balanceOf([alice, 1n]).returns(1n);
+
+    const error = await rejectionOf(
+      client.readContract({
+        abi: multiTokenAbi,
+        address: DAI,
+        functionName: "balanceOf",
+        args: [bob],
+      }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "Registered:",
+      `  balanceOf(${carol})  ← owner didn't match`,
+      "Mocks on balanceOf's other overloads, which don't answer this one:",
+      `  balanceOf(${alice}, 1n)`,
+    ]);
+  });
+
+  test("a view overload's miss names the mocks on a nonpayable overload of its name", async () => {
+    const { mock, client } = setup();
+    const pairAbi = parseAbi([
+      "function quote(uint256 amount) view returns (uint256)",
+      "function quote(address token) returns (uint256)",
+    ]);
+    mock.contract({ abi: pairAbi, address: DAI }).simulate.quote([alice]).returns(1n);
+
+    const error = await rejectionOf(
+      client.readContract({ abi: pairAbi, address: DAI, functionName: "quote", args: [5n] }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "No mocks registered for quote(uint256).",
+      "Mocks on quote's other overloads, which don't answer this one:",
+      `  quote(${alice}), a simulate mock`,
+    ]);
+  });
+
   test("an overload the exact args can't tell apart throws", () => {
     const { token } = setupOverloads();
     expectThrows(

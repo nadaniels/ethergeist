@@ -603,7 +603,7 @@ describe("the estimate a write mock implies", () => {
     // The `write` mocks were never in contention, so they aren't matched for the message.
     expect(small).not.toHaveBeenCalled();
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
-      'No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn\'t answer estimates.',
+      'No estimateGas mocks registered for "transfer"; a write mock implies one only for an estimate with a sender, and a simulate mock doesn\'t answer estimates.',
     );
   });
 
@@ -643,10 +643,11 @@ describe("the estimate a write mock implies", () => {
     });
   });
 
-  test("an estimate's miss lists only its own overload's write mocks", async () => {
+  test("an estimate's miss names the estimate and write mocks on the function's other overload", async () => {
     const { mock, wallet } = setup();
     const vault = mock.contract({ abi: vaultAbi, address: VAULT, name: "Vault" });
-    vault.write.withdraw([5n]).returns();
+    vault.estimateGas.withdraw([5n]).returns(30_000n);
+    vault.write.withdraw([6n]).returns();
 
     const error = await rejectionOf(
       wallet.writeContract({
@@ -657,9 +658,53 @@ describe("the estimate a write mock implies", () => {
       }),
     );
 
-    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
-      'No estimateGas mocks registered for "withdraw"; a write mock that matches the send implies one, and a simulate mock doesn\'t answer estimates.',
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "No estimateGas mocks registered for withdraw(uint256,address); a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.",
+      "Mocks on withdraw's other overloads, which don't answer this one:",
+      "  withdraw(5n)",
+      "  withdraw(6n), a write mock",
+    ]);
+  });
+
+  test("an estimate without a sender doesn't name the write mocks on another overload", async () => {
+    const { mock, client } = setup();
+    const vault = mock.contract({ abi: vaultAbi, address: VAULT, name: "Vault" });
+    vault.write.withdraw([5n]).returns();
+
+    const error = await rejectionOf(
+      client.estimateContractGas({
+        address: VAULT,
+        abi: vaultAbi,
+        functionName: "withdraw",
+        args: [5n, bob],
+      }),
     );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      'No estimateGas mocks registered for "withdraw"; a write mock implies one only for an estimate with a sender, and a simulate mock doesn\'t answer estimates.',
+    ]);
+  });
+
+  test("a send's miss names the write mocks on the function's other overload", async () => {
+    const { mock, wallet } = setup();
+    const vault = mock.contract({ abi: vaultAbi, address: VAULT, name: "Vault" });
+    vault.write.withdraw([5n]).returns();
+
+    const error = await rejectionOf(
+      wallet.writeContract({
+        address: VAULT,
+        abi: vaultAbi,
+        functionName: "withdraw",
+        args: [5n, bob],
+        gas: 100_000n,
+      }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "No write mocks registered for withdraw(uint256,address); a simulate mock doesn't answer sends.",
+      "Mocks on withdraw's other overloads, which don't answer this one:",
+      "  withdraw(5n)",
+    ]);
   });
 });
 
@@ -757,7 +802,7 @@ describe("only a contract's mocks answer its functions", () => {
       `No estimateGas mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
     );
     expect(notFound.metaMessages).toEqual([
-      `No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
+      `No estimateGas mocks registered for "transfer"; a write mock implies one only for an estimate with a sender, and a simulate mock doesn't answer estimates.`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       "  estimateGas(*)",
     ]);

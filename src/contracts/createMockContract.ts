@@ -308,11 +308,15 @@ export function createMockContract<const abi extends Abi>(
       receive(decoded);
       const { handler, missed, removed } = match(decoded);
       if (!handler)
-        throw missError(call, namespace, label, {
-          registered: candidates(decoded),
-          missed,
-          removed,
-        });
+        throw missError(
+          call,
+          namespace,
+          label,
+          { registered: candidates(decoded), missed, removed },
+          // An eth_call reaches both: a view overload's miss names the
+          // simulate mocks on a nonpayable overload of its name, and back.
+          { overloads: otherOverloads(decoded, ["read", "simulate"]) },
+        );
       const hex = await run(handler, call, namespace);
       const value = decodeFunctionResult({ abi: [abiItem], functionName: abiItem.name, data: hex });
       report(record({ type: "result", value }));
@@ -354,7 +358,10 @@ export function createMockContract<const abi extends Abi>(
         const { missed, removed } = matchOnce();
         const registered = { registered: candidates(decoded), missed, removed };
         if (namespace !== "estimateGas" || call.from === undefined)
-          return missError(call, namespace, label, registered, { after });
+          return missError(call, namespace, label, registered, {
+            overloads: otherOverloads(decoded, [namespace]),
+            after,
+          });
         // The `write` mocks are matched again for the reasons they missed, so
         // their predicates run a second time.
         const writes = { ...decoded, namespace: "write" as const };
@@ -365,6 +372,7 @@ export function createMockContract<const abi extends Abi>(
             missed: writesMatched.missed,
             removed: writesMatched.removed,
           },
+          overloads: otherOverloads(decoded, [namespace, "write"]),
           after,
         });
       },
@@ -467,6 +475,23 @@ export function createMockContract<const abi extends Abi>(
   /** The handlers in the call's namespace for its function. */
   const candidates = (decoded: Decoded) =>
     mocks.handlers.filter((handler) => isFor(decoded, handler));
+
+  /**
+   * The call's overload, and the handlers in `namespaces` for its function's
+   * other overloads, which can't answer it, for its miss.
+   */
+  const otherOverloads = (
+    { selector, abiItem }: Decoded,
+    namespaces: readonly MockNamespace[],
+  ) => ({
+    called: abiItem,
+    others: mocks.handlers.filter(
+      (handler) =>
+        namespaces.includes(handler.namespace) &&
+        handler.abiItem.name === abiItem.name &&
+        handler.selector !== selector,
+    ),
+  });
 
   /**
    * The handler that answers `decoded`, matched on its args, then its `from`
