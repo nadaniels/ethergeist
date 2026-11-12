@@ -118,6 +118,19 @@ export function mismatches(
 }
 
 /**
+ * Where a call differs from a mock, for a listing of the calls an unused mock
+ * received, as matching would find it: `differ`'s keys with predicates off,
+ * or, when the exact values all match, with them on. So a predicate runs only
+ * where matching would run it.
+ */
+export function mismatchesAsMatched(
+  differ: (options: MatchOptions) => readonly PinnedKey[],
+): readonly PinnedKey[] {
+  const exact = differ({ predicates: false });
+  return exact.length > 0 ? exact : differ({});
+}
+
+/**
  * The first of `pinned`'s keys (an array of args, or an object of params)
  * whose value doesn't match `actual`'s, or `undefined` when all match: the
  * same verdict as `isMatch(pinned, actual)`, with where it failed, except

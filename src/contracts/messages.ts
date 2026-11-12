@@ -11,7 +11,7 @@ import {
   missedLines,
   removedLines,
 } from "../mocking/format.js";
-import { mismatches } from "../mocking/matching.js";
+import { mismatches, mismatchesAsMatched } from "../mocking/matching.js";
 import type { Answer, PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import { type Pins, pinMismatches } from "./functions.js";
@@ -138,11 +138,13 @@ export function unusedLine(
  * `mock`'s args, or else its `from` and `value`, shown when they differ.
  */
 function received(mock: Mock, call: MockCall): ReceivedCall {
-  const args = mismatches(mock.pinned, call.args);
-  const pins = pinMismatches(mock.pins, call);
-  const key = [...args, ...pins][0];
+  const mismatched = mismatchesAsMatched((options) => [
+    ...mismatches(mock.pinned, call.args, options),
+    ...pinMismatches(mock.pins, call, options),
+  ]);
+  const [key] = mismatched;
   return {
-    call: `${formatMismatch(call.functionName, call.args, [...args, ...pins])}${formatPins(call, pins)}`,
+    call: `${formatMismatch(call.functionName, call.args, mismatched)}${formatPins(call, mismatched)}`,
     differs: key === undefined ? undefined : argName(mock, key),
   };
 }

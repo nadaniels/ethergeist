@@ -401,6 +401,18 @@ describe("pins in assertAllUsed()", () => {
     });
   });
 
+  test("an unused mock's listing names a from that doesn't match before running the args' predicates", async () => {
+    const { mock, usdc, balanceOf } = setup();
+    const isBob = vi.fn((account: Address) => account === bob);
+    usdc.read.balanceOf([match.where(isBob)], { from: alice }).returns(1n);
+    await rejectionOf(balanceOf(carol));
+
+    expectThrows(MockCheckError, `balanceOf(…) { from: ${carol} }  ← { from } didn't match`, () => {
+      mock.assertAllUsed();
+    });
+    expect(isBob).not.toHaveBeenCalled();
+  });
+
   test("an unused mock shows the value, or the missing from, its function's calls had", async () => {
     const { mock, vault, usdc, walletOf, balanceOf } = setup();
     vault.write.deposit([], { value: 1n }).returns();

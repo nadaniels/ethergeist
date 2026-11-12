@@ -234,13 +234,38 @@ describe("match.where()", () => {
     expect(predicate).not.toHaveBeenCalled();
   });
 
-  test("a predicate that throws while an unused mock's calls are listed counts as a mismatch", async () => {
+  test("an unused mock's listing checks exact values before its predicates, as matching does", async () => {
     const { mock, usdc, allowance } = setup();
-    // `bob` doesn't match `carol`, so matching never runs the predicate; listing the call does.
-    usdc.read.allowance([match.where(throwsBoom), bob]).returns(1n);
+    const isBob = vi.fn((owner: `0x${string}`) => owner === bob);
+    // The predicate's position comes first, but `bob` doesn't match `carol`.
+    usdc.read.allowance([match.where(isBob), bob]).returns(1n);
     await rejectionOf(allowance(alice, carol));
 
-    expectThrows(MockCheckError, `allowance(${alice}, ${carol})  ← owner didn't match`, () => {
+    expectThrows(MockCheckError, `allowance(…, ${carol})  ← spender didn't match`, () => {
+      mock.assertAllUsed();
+    });
+    expect(isBob).not.toHaveBeenCalled();
+  });
+
+  test("an unused action mock's listing checks exact values before its predicates", async () => {
+    const { mock, client } = setup();
+    const isBob = vi.fn((address: `0x${string}`) => address === bob);
+    mock.actions.getBalance({ address: match.where(isBob), blockNumber: 5n }).returns(1n);
+    await rejectionOf(client.getBalance({ address: alice, blockNumber: 6n }));
+
+    expectThrows(MockCheckError, "blockNumber didn't match", () => {
+      mock.assertAllUsed();
+    });
+    expect(isBob).not.toHaveBeenCalled();
+  });
+
+  test("a predicate that throws while an unused mock's calls are listed counts as a mismatch", async () => {
+    const { mock, usdc, allowance } = setup();
+    // The exact values match, so the predicate runs: in matching, and again in the listing.
+    usdc.read.allowance([match.where(throwsBoom), bob]).returns(1n);
+    await rejectionOf(allowance(alice, bob));
+
+    expectThrows(MockCheckError, `allowance(${alice}, …)  ← owner didn't match`, () => {
       mock.assertAllUsed();
     });
   });

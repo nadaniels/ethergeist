@@ -15,6 +15,7 @@ import {
   checkNoMatchers,
   firstMismatch,
   mismatches,
+  mismatchesAsMatched,
 } from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
@@ -227,7 +228,9 @@ export function createMockSet<answer>(
    */
   function received(handler: Handler): ReceivedCall[] {
     return calls.kept.map((call) => {
-      const mismatched = mismatches(handler.pinned, actualOf(handler.pinned, call));
+      const mismatched = mismatchesAsMatched((options) =>
+        mismatches(handler.pinned, actualOf(handler.pinned, call), options),
+      );
       const [key] = mismatched;
       return {
         call: formatMismatch(definition.name, shown(call), mismatched),

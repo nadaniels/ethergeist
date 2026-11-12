@@ -220,9 +220,13 @@ export const firstPinMismatch = (
       : firstMismatch(pins, { from: call.from, value: call.value }, options);
 
 /** Every key of a mock's `pins` that `call` doesn't match, for messages. */
-export const pinMismatches = (pins: Pins | undefined, call: MockCall): PinnedKey[] =>
+export const pinMismatches = (
+  pins: Pins | undefined,
+  call: MockCall,
+  options: MatchOptions = {},
+): PinnedKey[] =>
   pins === undefined
     ? []
     : lacksFrom(pins, call)
       ? ["from"]
-      : mismatches(pins, { from: call.from, value: call.value });
+      : mismatches(pins, { from: call.from, value: call.value }, options);

@@ -269,7 +269,9 @@ The two functions keep these rules:
   so `contracts/` names no action. The actions' estimate miss lists the
   `sendTransaction` mocks from the match its estimate already made
   (`missListing`, passed to the estimate's `missError`), so it runs none of
-  their predicates again;
+  their predicates again. Later, `assertAllUsed()`'s listing runs an unused
+  mock's predicates on a call it received only where the call's exact values
+  match, as matching would;
 - a send that's refused or not answered places nothing and takes no nonce;
 - a repeated raw send asks no mock and gives no contract a turn;
 - a send's outcome is chosen inside the store's `whileSending`, which
