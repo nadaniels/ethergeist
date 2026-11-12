@@ -3,6 +3,7 @@ import { base } from "viem/chains";
 import { describe, expect, expectTypeOf, test } from "vite-plus/test";
 
 import {
+  MockCheckError,
   MockSetupError,
   type MockHistoryEntry,
   MockNotFoundError,
@@ -11,7 +12,7 @@ import {
   testAddress,
   testLog,
 } from "../src/index.js";
-import { findCause, rejectionOf } from "./utils.js";
+import { expectThrows, findCause, rejectionOf } from "./utils.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
@@ -306,6 +307,20 @@ describe("formatHistory()", () => {
     await client.getBlockTransactionCount();
     expect(mock.formatHistory({ builtIns: false })).toBe(
       "#2 eth_getBlockTransactionCountByNumber(latest) → 0x1",
+    );
+  });
+
+  test("a failed check's recent requests leave out built-ins, keeping numbers", async () => {
+    const { mock, client } = setup();
+
+    await client.getBlockNumber();
+    await rejectionOf(client.getBlockTransactionCount());
+    expectThrows(
+      MockCheckError,
+      "Requests so far:\n#2 eth_getBlockTransactionCountByNumber(latest) ✗ not mocked",
+      () => {
+        mock.assertNoUnhandled();
+      },
     );
   });
 

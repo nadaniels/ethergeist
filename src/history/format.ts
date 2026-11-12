@@ -41,16 +41,13 @@ export type FormatContext = {
 
 /**
  * What formatting needs from the recorder: the history it kept, how many
- * older entries it dropped, and what it knows about each entry.
+ * older entries it dropped, and what it knows about each entry. An entry's
+ * number counts from 1 since the last clear, the dropped ones included: its
+ * place in `entries`, after `dropped`.
  */
 export type HistoryView = {
   entries: readonly MockHistoryEntry[];
   dropped: number;
-  /**
-   * The entry's number, from 1 since the last clear, kept as older ones are
-   * dropped; `undefined` for one received before the last clear.
-   */
-  numberOf(entry: MockHistoryEntry): number | undefined;
   /**
    * The fault `entry` retries, if it's a retry: the same request, right
    * after a fault.
@@ -68,9 +65,9 @@ export function formatHistory(
   { builtIns = true }: FormatHistoryOptions = {},
   context: FormatContext = {},
 ): string {
-  const lines = view.entries
-    .filter((entry) => builtIns || entry.type !== "builtIn")
-    .map((entry) => formatEntry(view, entry, context));
+  const lines = numbered(view)
+    .filter(({ entry }) => builtIns || entry.type !== "builtIn")
+    .map(({ entry, number }) => formatEntry(view, entry, number, context));
   if (view.dropped > 0) lines.unshift(`(${droppedNote(view.dropped)})`);
   return lines.join("\n");
 }
@@ -84,7 +81,7 @@ export function formatRecent(
   count: number,
   context: FormatContext = {},
 ): string | undefined {
-  const requests = view.entries.filter((entry) => entry.type !== "builtIn");
+  const requests = numbered(view).filter(({ entry }) => entry.type !== "builtIn");
   const shown = requests.slice(-count);
   if (shown.length === 0)
     return view.dropped === 0
@@ -106,8 +103,15 @@ export function formatRecent(
       ? "Requests so far:"
       : `${shown.length === 1 ? "Last request" : `Last ${shown.length} requests`} ` +
         `(${notes.join("; ")}):`;
-  return [heading, ...shown.map((entry) => formatEntry(view, entry, context))].join("\n");
+  return [
+    heading,
+    ...shown.map(({ entry, number }) => formatEntry(view, entry, number, context)),
+  ].join("\n");
 }
+
+/** The kept entries, each with its number. */
+const numbered = (view: HistoryView) =>
+  view.entries.map((entry, index) => ({ entry, number: view.dropped + index + 1 }));
 
 const droppedNote = (dropped: number) =>
   `${dropped} older ${dropped === 1 ? "request" : "requests"} dropped, past historyLimit`;
@@ -135,15 +139,18 @@ export function retryHint(
   );
 }
 
-/** `entry`, formatted with its number, and marked if it's a retry. */
+/**
+ * `entry`, formatted with its `number`, and marked if it's a retry. An entry
+ * no longer kept has no number, and shows `–`.
+ */
 export function formatEntry(
   view: HistoryView,
   entry: MockHistoryEntry,
+  number: number | undefined,
   context: FormatContext = {},
 ): string {
   const retry = view.faultRetried(entry) ? "(retry) " : "";
-  // An entry from before the last clear has no number, so it shows `–`.
-  const head = `#${view.numberOf(entry) ?? "–"} ${entry.method} ${retry}`;
+  const head = `#${number ?? "–"} ${entry.method} ${retry}`;
 
   if (entry.type === "call")
     return entry.call
