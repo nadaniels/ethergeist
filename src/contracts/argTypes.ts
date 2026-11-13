@@ -1,9 +1,10 @@
 import { AbiParameters } from "ox";
-import { type AbiParameter, isAddress, isHex } from "viem";
+import { type AbiFunction, type AbiParameter, getAddress, isAddress, isHex } from "viem";
 
-import type { Path } from "../mocking/format.js";
-import { isMatcher } from "../mocking/matchers.js";
-import { arrayElement, arraySize, decodesAsObject } from "../shared/abiValues.js";
+import { type Path, formatPath, formatValue } from "../mocking/format.js";
+import { isMatcher, partialMatcher } from "../mocking/matchers.js";
+import { arrayElement, arraySize, decodesAsObject, isNamed } from "../shared/abiValues.js";
+import { MockSetupError } from "../shared/errors.js";
 import { isPlainObject } from "../shared/values.js";
 
 /**
@@ -11,7 +12,7 @@ import { isPlainObject } from "../shared/values.js";
  * "bytes" and "bytes[]", or "a tuple (address tokenIn, uint256 amountIn)"
  * and "a list of tuples (…)" for structs.
  */
-export function describeType(parameter: AbiParameter): string {
+function describeType(parameter: AbiParameter): string {
   if (parameter.type.startsWith("tuple")) return `a ${describeStruct(parameter, "one")}`;
   if (/^bytes(\[\d*\])*$/u.test(parameter.type)) return parameter.type;
   return /^[ai]/u.test(parameter.type) ? `an ${parameter.type}` : `a ${parameter.type}`;
@@ -53,7 +54,7 @@ type Misfit =
  * isn't one, and the list form for an object given for a struct viem
  * decodes as a list.
  */
-export function misfitHint(misfit: Misfit): string | undefined {
+function misfitHint(misfit: Misfit): string | undefined {
   const { parameter } = misfit;
   if (parameter.type !== "tuple" || !("components" in parameter)) return undefined;
   const fields = parameter.components.map((component) => AbiParameters.format([component]));
@@ -167,4 +168,89 @@ function fitsValueType(parameter: AbiParameter, value: unknown): boolean {
     return BigInt(value) >= min && BigInt(value) <= max;
   }
   return false;
+}
+
+/**
+ * Throws unless each of a mock's `pinned` args fits its input in `abiItem`,
+ * as `findMisfit` says, naming the first part that doesn't: a decoded
+ * call's args always fit, so its mock could never match.
+ */
+export function checkArgTypes(
+  subject: string,
+  abiItem: AbiFunction,
+  pinned: readonly unknown[],
+): void {
+  for (const [index, arg] of pinned.entries()) {
+    const misfit = findMisfit(abiItem.inputs[index]!, arg, "some");
+    if (misfit === undefined) continue;
+    const where = `${subject}'s ${inputName(abiItem, index)}${formatPath(misfit.path)}`;
+    const hint = misfitHint(misfit);
+    const options = hint === undefined ? undefined : { metaMessages: [hint] };
+    if ("field" in misfit)
+      throw new MockSetupError(`${misfit.field} isn't a field of ${where}.`, options);
+    throw new MockSetupError(
+      `${where} must be ${describeType(misfit.parameter)}; got ${formatValue(misfit.value)}.`,
+      options,
+    );
+  }
+}
+
+/**
+ * Input `index` of `abiItem` by its ABI name, or numbered from 1 when it's
+ * unnamed (`""`) or the function isn't known yet: an overload not chosen.
+ */
+export function inputName(abiItem: AbiFunction | undefined, index: number): string {
+  const input = abiItem?.inputs[index];
+  return input !== undefined && isNamed(input) ? input.name : `arg ${index + 1}`;
+}
+
+/**
+ * `value` as a mock pins it for `parameter`: address-typed parts
+ * checksummed, which also validates them. A struct written as a list is
+ * made an object by its fields' names where viem decodes it as one
+ * (`decodesAsObject`). Partial structs keep only the fields they have;
+ * anything that isn't a string where an address goes is left for the types
+ * (or matching) to judge. A `match.partial()` gets its fields pinned; other
+ * matchers are left as they are.
+ */
+function pinValue(parameter: AbiParameter, value: unknown): unknown {
+  if (isMatcher(value))
+    return value.type === "partial"
+      ? partialMatcher(pinValue(parameter, { ...value.fields }))
+      : value;
+  if (parameter.type === "address") return typeof value === "string" ? getAddress(value) : value;
+
+  const element = arrayElement(parameter);
+  if (element) return Array.isArray(value) ? value.map((item) => pinValue(element, item)) : value;
+
+  if (parameter.type === "tuple" && "components" in parameter) {
+    const { components } = parameter;
+    if (Array.isArray(value)) {
+      const listed = value.map((item: unknown, i) =>
+        components[i] ? pinValue(components[i], item) : item,
+      );
+      // A list of another length is left for the types to refuse.
+      return decodesAsObject(components) && listed.length === components.length
+        ? Object.fromEntries(components.map((component, i) => [component.name, listed[i]]))
+        : listed;
+    }
+    if (isPlainObject(value))
+      return Object.fromEntries(
+        Object.entries(value).map(([key, item]) => {
+          const component = components.find((candidate) => candidate.name === key);
+          return [key, component ? pinValue(component, item) : item];
+        }),
+      );
+  }
+  return value;
+}
+
+/**
+ * `args` as a mock of `abiItem` pins them, as `pinValue` pins each: so
+ * messages show addresses one way, a malformed one fails at registration,
+ * and a struct is matched in the form viem decodes. They hold no
+ * `undefined`: `pinFunctionArgs` takes those out first.
+ */
+export function pinArgs(abiItem: AbiFunction, args: readonly unknown[]): readonly unknown[] {
+  return args.map((arg, i) => pinValue(abiItem.inputs[i]!, arg));
 }

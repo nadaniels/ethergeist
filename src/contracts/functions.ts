@@ -1,30 +1,18 @@
 import {
   type Abi,
   type AbiFunction,
-  type AbiParameter,
   getAbiItem,
   toFunctionSelector,
   toFunctionSignature,
-  getAddress,
 } from "viem";
 
-import { formatCall, formatPath, formatValue } from "../mocking/format.js";
-import { isMatcher, partialMatcher } from "../mocking/matchers.js";
-import {
-  type MatchOptions,
-  checkNoRunnerMatchers,
-  findMatcher,
-  firstMismatch,
-  mismatches,
-  pinWithoutUndefined,
-} from "../mocking/matching.js";
+import { formatCall } from "../mocking/format.js";
+import { checkNoRunnerMatchers, findMatcher, pinWithoutUndefined } from "../mocking/matching.js";
 import { checkList } from "../mocking/setupChecks.js";
-import type { PinnedKey } from "../mocking/types.js";
-import { arrayElement, decodesAsObject, isNamed, withoutRepeats } from "../shared/abiValues.js";
+import { withoutRepeats } from "../shared/abiValues.js";
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
-import { type StructFields, describeType, findMisfit, misfitHint } from "./argTypes.js";
-import type { MockCall, MockNamespace } from "./types.js";
+import { type StructFields, checkArgTypes, findMisfit, inputName, pinArgs } from "./argTypes.js";
+import type { MockNamespace } from "./types.js";
 
 /**
  * A contract's functions by kind (`reads`, view and pure; `writes`,
@@ -209,15 +197,6 @@ function chooseOverload(
   });
 }
 
-/**
- * Input `index` of `abiItem` by its ABI name, or numbered from 1 when it's
- * unnamed (`""`) or the function isn't known yet: an overload not chosen.
- */
-export function inputName(abiItem: AbiFunction | undefined, index: number): string {
-  const input = abiItem?.inputs[index];
-  return input !== undefined && isNamed(input) ? input.name : `arg ${index + 1}`;
-}
-
 /** `count` args, for messages: "no args", "1 arg", "2 args". */
 function argCount(count: number): string {
   if (count === 0) return "no args";
@@ -228,137 +207,3 @@ function argCount(count: number): string {
 function listSignatures(functions: readonly AbiFunction[]): string[] {
   return functions.map((abiItem) => `  ${toFunctionSignature(abiItem)}`);
 }
-
-/**
- * Throws unless each of a mock's `pinned` args fits its input in `abiItem`,
- * as `findMisfit` says, naming the first part that doesn't: a decoded
- * call's args always fit, so its mock could never match.
- */
-function checkArgTypes(subject: string, abiItem: AbiFunction, pinned: readonly unknown[]): void {
-  for (const [index, arg] of pinned.entries()) {
-    const misfit = findMisfit(abiItem.inputs[index]!, arg, "some");
-    if (misfit === undefined) continue;
-    const where = `${subject}'s ${inputName(abiItem, index)}${formatPath(misfit.path)}`;
-    const hint = misfitHint(misfit);
-    const options = hint === undefined ? undefined : { metaMessages: [hint] };
-    if ("field" in misfit)
-      throw new MockSetupError(`${misfit.field} isn't a field of ${where}.`, options);
-    throw new MockSetupError(
-      `${where} must be ${describeType(misfit.parameter)}; got ${formatValue(misfit.value)}.`,
-      options,
-    );
-  }
-}
-
-/**
- * `value` as a mock pins it for `parameter`: address-typed parts
- * checksummed, which also validates them. A struct written as a list is
- * made an object by its fields' names where viem decodes it as one
- * (`decodesAsObject`). Partial structs keep only the fields they have;
- * anything that isn't a string where an address goes is left for the types
- * (or matching) to judge. A `match.partial()` gets its fields pinned; other
- * matchers are left as they are.
- */
-function pinValue(parameter: AbiParameter, value: unknown): unknown {
-  if (isMatcher(value))
-    return value.type === "partial"
-      ? partialMatcher(pinValue(parameter, { ...value.fields }))
-      : value;
-  if (parameter.type === "address") return typeof value === "string" ? getAddress(value) : value;
-
-  const element = arrayElement(parameter);
-  if (element) return Array.isArray(value) ? value.map((item) => pinValue(element, item)) : value;
-
-  if (parameter.type === "tuple" && "components" in parameter) {
-    const { components } = parameter;
-    if (Array.isArray(value)) {
-      const listed = value.map((item: unknown, i) =>
-        components[i] ? pinValue(components[i], item) : item,
-      );
-      // A list of another length is left for the types to refuse.
-      return decodesAsObject(components) && listed.length === components.length
-        ? Object.fromEntries(components.map((component, i) => [component.name, listed[i]]))
-        : listed;
-    }
-    if (isPlainObject(value))
-      return Object.fromEntries(
-        Object.entries(value).map(([key, item]) => {
-          const component = components.find((candidate) => candidate.name === key);
-          return [key, component ? pinValue(component, item) : item];
-        }),
-      );
-  }
-  return value;
-}
-
-/**
- * `args` as a mock of `abiItem` pins them, as `pinValue` pins each: so
- * messages show addresses one way, a malformed one fails at registration,
- * and a struct is matched in the form viem decodes. They hold no
- * `undefined`: `pinFunctionArgs` takes those out first.
- */
-function pinArgs(abiItem: AbiFunction, args: readonly unknown[]): readonly unknown[] {
-  return args.map((arg, i) => pinValue(abiItem.inputs[i]!, arg));
-}
-
-/** A mock's pinned `from` and `value`, beside its args: only those given. */
-export type Pins = { readonly from?: unknown; readonly value?: unknown };
-
-/**
- * `pins` as a mock of `abiItem` pins them, checked: `from` an address
- * (checksummed) or a matcher, and `value` only on a payable function, as
- * no other takes one. `undefined` when nothing is pinned.
- */
-export function pinCall(abiItem: AbiFunction, pins: unknown): Pins | undefined {
-  if (pins === undefined) return undefined;
-  if (!isPlainObject(pins) || isMatcher(pins))
-    throw new MockSetupError(`A mock pins from and value as an object; got ${formatValue(pins)}.`);
-  const { from, value, ...rest } = pins;
-  const [other] = Object.keys(rest);
-  if (other !== undefined)
-    throw new MockSetupError(`A mock pins from and value, not ${other}.`, {
-      metaMessages: ["Pin the sender as from, e.g. { from: alice }."],
-    });
-  if (value !== undefined && abiItem.stateMutability !== "payable")
-    throw new MockSetupError(
-      `"${abiItem.name}" is ${abiItem.stateMutability}, so it takes no value; only a payable function's mock pins one.`,
-    );
-  if (from !== undefined && !isMatcher(from) && typeof from !== "string")
-    throw new MockSetupError(`from takes an address or a matcher; got ${formatValue(from)}.`);
-  const pinned: Pins = {
-    ...(from !== undefined && { from: typeof from === "string" ? getAddress(from) : from }),
-    ...(value !== undefined && { value }),
-  };
-  return Object.keys(pinned).length === 0 ? undefined : pinned;
-}
-
-/**
- * Whether `call` lacks the `from` that `pins` pins: then it doesn't match,
- * and no predicate runs.
- */
-const lacksFrom = (pins: Pins, call: MockCall) =>
-  pins.from !== undefined && call.from === undefined;
-
-/** Where `call` first differs from a mock's `pins`, as `firstMismatch` says. */
-export const firstPinMismatch = (
-  pins: Pins | undefined,
-  call: MockCall,
-  options: MatchOptions,
-): PinnedKey | undefined =>
-  pins === undefined
-    ? undefined
-    : lacksFrom(pins, call)
-      ? "from"
-      : firstMismatch(pins, { from: call.from, value: call.value }, options);
-
-/** Every key of a mock's `pins` that `call` doesn't match, for messages. */
-export const pinMismatches = (
-  pins: Pins | undefined,
-  call: MockCall,
-  options: MatchOptions = {},
-): PinnedKey[] =>
-  pins === undefined
-    ? []
-    : lacksFrom(pins, call)
-      ? ["from"]
-      : mismatches(pins, { from: call.from, value: call.value }, options);

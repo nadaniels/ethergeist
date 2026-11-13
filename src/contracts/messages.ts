@@ -14,7 +14,8 @@ import {
 import { mismatches, mismatchesAsMatched } from "../mocking/matching.js";
 import type { Answer, PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
-import { type Pins, inputName, pinMismatches } from "./functions.js";
+import { inputName } from "./argTypes.js";
+import { type Pins, pinMismatches } from "./callPins.js";
 import type { MockCall, MockNamespace } from "./types.js";
 
 /** A contract's mock, as messages describe it. */
