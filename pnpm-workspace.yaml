@@ -2,14 +2,20 @@ packages:
   - examples
   - examples/*
 catalog:
+  # vite-plus sets the versions of vite (its core), vitest, oxlint, and
+  # oxlint-tsgolint: when it moves, set each to the one `vp toolchain` shows.
+  # Dependabot bumps only vite-plus.
   "@types/node": ^26.6.6
+  # Vite+ wants coverage providers at its vitest exactly.
   "@vitest/coverage-v8": 5.1.0
+  # The examples' lint, at the versions the root's lint runs.
   oxlint: 1.93.0
   oxlint-tsgolint: 7.0.2006
   typescript: ^7.0.2
   viem: ^2.57.19
   vite: npm:@voidzero-dev/vite-plus-core@1.6.0
   vite-plus: 1.6.0
+  # Stryker's runner needs vitest as a direct dependency.
   vitest: 5.1.0
 overrides:
   vite@*: "catalog:"
