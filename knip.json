@@ -1,9 +1,19 @@
 {
   "$schema": "https://unpkg.com/knip@6/schema.json",
-  "entry": ["src/index.ts!", "scripts/*.ts"],
-  "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts", "test/**/*.ts"],
+  "workspaces": {
+    ".": {
+      "entry": ["src/index.ts!", "scripts/*.ts"],
+      "project": ["src/**/*.ts!", "!src/**/*.test.ts!", "scripts/**/*.ts", "test/**/*.ts"],
+      "ignoreDependencies": ["@arethetypeswrong/core", "publint"]
+    },
+    "examples": {
+      "ignoreDependencies": ["vitest"]
+    },
+    "examples/*": {
+      "project": ["src/**/*.ts!", "test/**/*.ts"]
+    }
+  },
   "include": ["nsExports", "nsTypes"],
-  "ignoreDependencies": ["@arethetypeswrong/core", "publint"],
   "tags": ["-lintignore"],
   "treatConfigHintsAsErrors": true
 }

@@ -1,0 +1,17 @@
+{
+  "name": "uniswap-v2-limit-order",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "start": "node src/main.ts",
+    "lint": "vp run --filter ../ lint",
+    "test": "vitest run",
+    "typecheck": "tsc"
+  },
+  "dependencies": {
+    "viem": "catalog:"
+  },
+  "devDependencies": {
+    "ethergeist": "workspace:*"
+  }
+}
