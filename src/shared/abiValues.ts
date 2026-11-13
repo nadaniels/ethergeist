@@ -1,6 +1,6 @@
 import { type AbiEvent, type AbiFunction, type AbiParameter, parseAbi, zeroAddress } from "viem";
 
-import { isPlainObject } from "./values.js";
+import { isNonArrayObject } from "./values.js";
 
 /**
  * `value` with its structs' fields optional, at any depth: a field left out
@@ -39,7 +39,7 @@ export function fillZeros(parameter: AbiParameter, value: unknown): unknown {
     const { components } = parameter;
     if (Array.isArray(value))
       return components.map((component, i) => fillZeros(component, value[i]));
-    if (isPlainObject(value))
+    if (isNonArrayObject(value))
       return Object.fromEntries(
         components.map((component) => [
           component.name,

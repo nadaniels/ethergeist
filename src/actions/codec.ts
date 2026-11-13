@@ -20,7 +20,7 @@ import {
 import type { MockTransactionType } from "../chain/transactions.js";
 import type { Registry } from "../contracts/registry.js";
 import { checkAmount } from "../mocking/setupChecks.js";
-import { isPlainObject, lowercase, withoutUndefined } from "../shared/values.js";
+import { isNonArrayObject, lowercase, withoutUndefined } from "../shared/values.js";
 import type { AddressAtBlockCall, SendTransactionCall } from "./types.js";
 
 /**
@@ -42,7 +42,7 @@ export const viewQuantity = (rpc: unknown) => (isHex(rpc) ? hexToBigInt(rpc) : r
  * at registration.
  */
 export function pinAddress(pinned: unknown) {
-  if (!isPlainObject(pinned)) return pinned;
+  if (!isNonArrayObject(pinned)) return pinned;
   const { address } = pinned;
   if (typeof address === "string") return { ...pinned, address: getAddress(address) };
   if (Array.isArray(address))
@@ -58,7 +58,7 @@ export function pinAddress(pinned: unknown) {
  * registration.
  */
 export function pinTransaction(pinned: unknown) {
-  if (!isPlainObject(pinned)) return pinned;
+  if (!isNonArrayObject(pinned)) return pinned;
   const { from, to } = pinned;
   return {
     ...pinned,
@@ -145,6 +145,6 @@ export function decodeAddressAtBlock(
  * as a request's is decoded; `{}` for a matcher.
  */
 export const pinnedHash = (pinned: unknown): { hash?: Hash } =>
-  isPlainObject(pinned) && typeof pinned.hash === "string" && isHash(pinned.hash)
+  isNonArrayObject(pinned) && typeof pinned.hash === "string" && isHash(pinned.hash)
     ? { hash: lowercase(pinned.hash) }
     : {};

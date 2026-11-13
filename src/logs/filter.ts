@@ -10,7 +10,7 @@ import {
 import { type ResolveBlock, addressParam, hashParam } from "../chain/params.js";
 import { formatValue } from "../mocking/format.js";
 import { MockRpcError, invalidParams } from "../shared/errors.js";
-import { isPlainObject, lowercase } from "../shared/values.js";
+import { isNonArrayObject, lowercase } from "../shared/values.js";
 
 /**
  * A topic position in a `getLogs` filter: one hash, any of several, or `null`
@@ -59,7 +59,7 @@ export type LogsCall = {
  * into numbers. A filter with both a block hash and a range is refused.
  */
 export function decodeLogsCall([filter]: readonly unknown[], resolveBlock: ResolveBlock): LogsCall {
-  if (filter !== undefined && !isPlainObject(filter))
+  if (filter !== undefined && !isNonArrayObject(filter))
     throw invalidParams(`expected a filter object; got ${formatValue(filter)}`);
   const fields = filter ?? {};
   const call: Pick<LogsCall, "address" | "topics"> = { topics: [] };

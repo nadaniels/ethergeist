@@ -18,14 +18,18 @@ export function lowercase<hex extends Hex>(value: hex): hex {
   return value.toLowerCase() as hex;
 }
 
-/** Whether `value` is an object other than an array or `null`. */
-export function isPlainObject(value: unknown): value is Record<string, unknown> {
+/**
+ * Whether `value` is an object other than an array or `null`. Class
+ * instances count, a `Date` or a `Uint8Array` too: `isObjectLiteral` is the
+ * narrower check.
+ */
+export function isNonArrayObject(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
 /**
- * Whether `value` is an object literal: not an array, and not a class
- * instance, which `isPlainObject` counts too.
+ * Whether `value` is an object literal: its prototype is `Object.prototype`,
+ * so neither an array nor a class instance (which `isNonArrayObject` counts).
  */
 export const isObjectLiteral = (value: unknown): value is Record<string, unknown> =>
   typeof value === "object" && value !== null && Object.getPrototypeOf(value) === Object.prototype;

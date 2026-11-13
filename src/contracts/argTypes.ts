@@ -5,7 +5,7 @@ import { type Path, formatPath, formatValue } from "../mocking/format.js";
 import { isMatcher, partialMatcher } from "../mocking/matchers.js";
 import { arrayElement, arraySize, decodesAsObject, isNamed } from "../shared/abiValues.js";
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 
 /**
  * `parameter`'s type for messages, after "must be", e.g. "an address",
@@ -59,7 +59,7 @@ function misfitHint(misfit: Misfit): string | undefined {
   if (parameter.type !== "tuple" || !("components" in parameter)) return undefined;
   const fields = parameter.components.map((component) => AbiParameters.format([component]));
   if ("field" in misfit) return `Its fields are ${andList(fields)}.`;
-  if (!isPlainObject(misfit.value) || decodesAsObject(parameter.components)) return undefined;
+  if (!isNonArrayObject(misfit.value) || decodesAsObject(parameter.components)) return undefined;
   return (
     `Write it as a list, [${fields.join(", ")}]: viem decodes a struct as an object only ` +
     "when every field has a name."
@@ -113,7 +113,7 @@ export function findMisfit(
         value.map((item, i) => findMisfit(components[i]!, item, fields, [...path, i])),
       );
     }
-    if (isPlainObject(value)) {
+    if (isNonArrayObject(value)) {
       if (!decodesAsObject(components)) return here;
       const entries = Object.entries(value);
       if (fields === "whole" && entries.length !== components.length) return here;
@@ -234,7 +234,7 @@ function pinValue(parameter: AbiParameter, value: unknown): unknown {
         ? Object.fromEntries(components.map((component, i) => [component.name, listed[i]]))
         : listed;
     }
-    if (isPlainObject(value))
+    if (isNonArrayObject(value))
       return Object.fromEntries(
         Object.entries(value).map(([key, item]) => {
           const component = components.find((candidate) => candidate.name === key);

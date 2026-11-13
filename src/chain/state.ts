@@ -4,7 +4,7 @@ import { mainnet } from "viem/chains";
 import { formatValue } from "../mocking/format.js";
 import { checkAmount, checkCount } from "../mocking/setupChecks.js";
 import { MockNotFoundError, invalidParams } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 import { type BlockClock, type MockBlock, generateBlock, numberOfBlockHash } from "./blocks.js";
 import { type Fees, type MockFees, resolveFees } from "./fees.js";
 import { type BlockForm, hashParam, isBlockTag, quantityParam } from "./params.js";
@@ -81,13 +81,17 @@ export function createChainState(parameters: {
     if (isBlockTag(block)) return block === "earliest" ? 0n : blockNumber;
     if (form === "numberTagOrHash") {
       if (typeof block === "string" && isHash(block)) return numberOfHash(block);
-      if (isPlainObject(block) && block.blockHash !== undefined && block.blockNumber !== undefined)
+      if (
+        isNonArrayObject(block) &&
+        block.blockHash !== undefined &&
+        block.blockNumber !== undefined
+      )
         throw invalidParams(
           `expected a block number or a block hash, not both; got ${formatValue(block)}`,
         );
-      if (isPlainObject(block) && block.blockHash !== undefined)
+      if (isNonArrayObject(block) && block.blockHash !== undefined)
         return numberOfHash(hashParam(block.blockHash));
-      if (isPlainObject(block) && block.blockNumber !== undefined)
+      if (isNonArrayObject(block) && block.blockNumber !== undefined)
         return quantityParam(block.blockNumber, "a block number");
     }
     if (isHex(block)) return quantityParam(block, "a block number");

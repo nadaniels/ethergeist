@@ -5,7 +5,7 @@ import type { EmittedLog } from "../logs/events.js";
 import { type LogsCall, decodeLogsCall } from "../logs/filter.js";
 import { checkAmount, checkList } from "../mocking/setupChecks.js";
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 import { pinAddress } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { ActionContext } from "./types.js";
@@ -65,7 +65,7 @@ function toRpcLogs(value: unknown): RpcLog[] {
   checkList(value, "getLogs's answer");
   return value.map((log: unknown, i) => {
     const placed =
-      isPlainObject(log) &&
+      isNonArrayObject(log) &&
       Object.entries(placedFields).every(([field, type]) => typeof log[field] === type);
     if (!placed)
       throw new MockSetupError(`log ${i} in getLogs's answer has no position.`, {

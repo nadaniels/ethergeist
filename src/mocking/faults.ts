@@ -1,5 +1,5 @@
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 import { formatValue } from "./format.js";
 import { type MockFault, type NodeErrorName, nodeErrorNames } from "./types.js";
 
@@ -45,7 +45,7 @@ const isOptional = (value: unknown, type: "number" | "string") =>
  */
 export function checkFault(fault: unknown): asserts fault is MockFault {
   if (fault === "timeout" || fault === "network") return;
-  if (isPlainObject(fault)) {
+  if (isNonArrayObject(fault)) {
     if ("status" in fault) {
       if (Number.isInteger(fault.status) && isOptional(fault.retryAfter, "number")) return;
     } else if (Number.isInteger(fault.code) && isOptional(fault.message, "string")) return;

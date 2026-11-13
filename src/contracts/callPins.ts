@@ -5,7 +5,7 @@ import { isMatcher } from "../mocking/matchers.js";
 import { type MatchOptions, firstMismatch, mismatches } from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 import type { MockCall } from "./types.js";
 
 /** A mock's pinned `from` and `value`, beside its args: only those given. */
@@ -18,7 +18,7 @@ export type Pins = { readonly from?: unknown; readonly value?: unknown };
  */
 export function pinCall(abiItem: AbiFunction, pins: unknown): Pins | undefined {
   if (pins === undefined) return undefined;
-  if (!isPlainObject(pins) || isMatcher(pins))
+  if (!isNonArrayObject(pins) || isMatcher(pins))
     throw new MockSetupError(`A mock pins from and value as an object; got ${formatValue(pins)}.`);
   const { from, value, ...rest } = pins;
   const [other] = Object.keys(rest);

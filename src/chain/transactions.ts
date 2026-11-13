@@ -22,7 +22,7 @@ import {
 
 import { formatValue } from "../mocking/format.js";
 import { MockSetupError, invalidParams } from "../shared/errors.js";
-import { isPlainObject, nodeAddress } from "../shared/values.js";
+import { isNonArrayObject, nodeAddress } from "../shared/values.js";
 import { blockHash } from "./blocks.js";
 import { type Fees, blobBaseFee } from "./fees.js";
 import { nodeHash } from "./hashes.js";
@@ -345,7 +345,7 @@ function typeByFields(request: Record<string, unknown>): MockTransactionType {
  * doesn't know, or fees the type doesn't have, as a node refuses both.
  */
 export function sentType(request: unknown, fees: SentFees): MockTransactionType {
-  const fields = isPlainObject(request) ? request : {};
+  const fields = isNonArrayObject(request) ? request : {};
   const { type } = fields;
   const named =
     type === undefined

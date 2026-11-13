@@ -1,7 +1,7 @@
 import { isHex } from "viem";
 
 import { MockResolverError, MockSetupError } from "../shared/errors.js";
-import { isObjectLiteral, isPlainObject } from "../shared/values.js";
+import { isNonArrayObject, isObjectLiteral } from "../shared/values.js";
 import { type Path, formatPath, formatValue } from "./format.js";
 import { type Matcher, isMatcher, partialMatcher } from "./matchers.js";
 import type { PinnedKey } from "./types.js";
@@ -24,7 +24,7 @@ export function specificity(pinned: unknown): Specificity {
     }
     const parts = Array.isArray(value)
       ? value
-      : isPlainObject(value)
+      : isNonArrayObject(value)
         ? Object.values(value)
         : undefined;
     if (!parts) return [1, 0];
@@ -105,7 +105,11 @@ export function mismatches(
     }
   }
   const at = (key: number | string): unknown =>
-    Array.isArray(actual) ? actual[Number(key)] : isPlainObject(actual) ? actual[key] : undefined;
+    Array.isArray(actual)
+      ? actual[Number(key)]
+      : isNonArrayObject(actual)
+        ? actual[key]
+        : undefined;
   return pinnedEntries(pinned)
     .filter(([key, value]) => {
       try {
@@ -150,10 +154,14 @@ export function firstMismatch(
   const entries = pinnedEntries(pinned);
   const sameShape = Array.isArray(pinned)
     ? Array.isArray(actual) && actual.length === pinned.length
-    : isPlainObject(actual);
+    : isNonArrayObject(actual);
   if (!sameShape) return entries[0]?.[0] ?? null;
   const at = (key: number | string): unknown =>
-    Array.isArray(actual) ? actual[Number(key)] : isPlainObject(actual) ? actual[key] : undefined;
+    Array.isArray(actual)
+      ? actual[Number(key)]
+      : isNonArrayObject(actual)
+        ? actual[key]
+        : undefined;
   return entries.find(([key, value]) => !isMatch(value, at(key), options))?.[0];
 }
 
@@ -162,12 +170,12 @@ export function firstMismatch(
  * matcher or value.
  */
 const hasKeys = (pinned: unknown) =>
-  Array.isArray(pinned) || (isPlainObject(pinned) && !isMatcher(pinned));
+  Array.isArray(pinned) || (isNonArrayObject(pinned) && !isMatcher(pinned));
 
 /** A mock's pinned args or params as [index or key, value] pairs. */
 function pinnedEntries(pinned: unknown): [number | string, unknown][] {
   if (Array.isArray(pinned)) return pinned.map((value: unknown, i) => [i, value]);
-  return isPlainObject(pinned) ? Object.entries(pinned) : [];
+  return isNonArrayObject(pinned) ? Object.entries(pinned) : [];
 }
 
 /** What `bestMatch` ranks a candidate by. */
@@ -198,7 +206,7 @@ export function isMatch(expected: unknown, actual: unknown, options: MatchOption
   if (isMatcher(expected)) {
     if (expected.type === "partial")
       return (
-        isPlainObject(actual) &&
+        isNonArrayObject(actual) &&
         Object.entries(expected.fields).every(([key, value]) =>
           isMatch(value, actual[key], options),
         )
@@ -216,7 +224,7 @@ export function isMatch(expected: unknown, actual: unknown, options: MatchOption
       expected.length === actual.length &&
       expected.every((value, i) => isMatch(value, actual[i], options))
     );
-  if (isPlainObject(expected) && isPlainObject(actual))
+  if (isNonArrayObject(expected) && isNonArrayObject(actual))
     return Object.entries(expected).every(([key, value]) => isMatch(value, actual[key], options));
   // viem decodes integers up to 48 bits as numbers and wider ones as
   // bigints. A value of the other kind that got past the types still means

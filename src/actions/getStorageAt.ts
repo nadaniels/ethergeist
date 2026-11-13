@@ -2,7 +2,7 @@ import { type Hex, isHex, pad, size } from "viem";
 
 import { formatValue } from "../mocking/format.js";
 import { invalidParams, MockSetupError } from "../shared/errors.js";
-import { isPlainObject, lowercase } from "../shared/values.js";
+import { isNonArrayObject, lowercase } from "../shared/values.js";
 import { decodeAddressAtBlock, pinAddress } from "./codec.js";
 import type { ActionsContext, Definition } from "./table.js";
 import type { StorageCall } from "./types.js";
@@ -37,7 +37,8 @@ function slotParam(value: unknown): Hex {
  */
 function pinStorage(pinned: unknown) {
   const pinnedAddress = pinAddress(pinned);
-  if (!isPlainObject(pinnedAddress) || typeof pinnedAddress.slot !== "string") return pinnedAddress;
+  if (!isNonArrayObject(pinnedAddress) || typeof pinnedAddress.slot !== "string")
+    return pinnedAddress;
   return { ...pinnedAddress, slot: toWord(pinnedAddress.slot, "A storage slot") };
 }
 
