@@ -8,6 +8,7 @@ import {
   erc20Abi,
   erc4626Abi,
   erc721Abi,
+  getAbiItem,
   getAddress,
   isAddressEqual,
   pad,
@@ -135,7 +136,7 @@ function setupOverloads() {
 function setupFitOverloads() {
   const { mock, client } = setup();
   const token = mock.contract({ abi: fitOverloadsAbi, address: DAI });
-  const read = (functionName: "q" | "nest" | "list" | "pair", args: readonly unknown[]) =>
+  const read = (functionName: "q" | "nest" | "list" | "pair" | "w", args: readonly unknown[]) =>
     client.readContract({
       abi: fitOverloadsAbi,
       address: DAI,
@@ -1260,14 +1261,27 @@ describe("overloads", () => {
     ]);
   });
 
-  test("args that two overloads' types both take throw viem's own ambiguity error", () => {
-    const { token } = setupFitOverloads();
+  test("args that two overloads' types both take choose as viem does for the app's call", async () => {
+    const { token, read } = setupFitOverloads();
+    // viem's choice differs by version: newer ones throw their ambiguity
+    // error for 5n, older ones pick an overload.
+    let viemThrew: unknown;
+    try {
+      getAbiItem({ abi: fitOverloadsAbi, name: "w", args: [5n] });
+    } catch (error) {
+      viemThrew = error;
+    }
 
-    // viem doesn't export the class.
-    const error = expectThrows(BaseError, "Found ambiguous types in overloaded ABI items.", () =>
-      token.read.w([5n]),
-    );
-    expect(error.name).toBe("AbiItemAmbiguityError");
+    if (viemThrew === undefined) {
+      token.read.w([5n]).returns(7n);
+      expect(await read("w", [5n])).toBe(7n);
+    } else {
+      // viem doesn't export the class.
+      const error = expectThrows(BaseError, "Found ambiguous types in overloaded ABI items.", () =>
+        token.read.w([5n]),
+      );
+      expect(error.name).toBe("AbiItemAmbiguityError");
+    }
   });
 });
 
