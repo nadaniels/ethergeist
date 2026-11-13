@@ -70,8 +70,9 @@ export type MockDefinition<call extends object = object, answer = unknown> = {
   name: string;
   /**
    * Normalizes pinned fields at registration, e.g. checksumming addresses.
-   * The mock set then takes the `undefined`s out of what it returns: see
-   * `pinWithoutUndefined`.
+   * It never gets a test runner's matcher: the mock set refuses those
+   * first. The mock set then takes the `undefined`s out of what it
+   * returns: see `pinWithoutUndefined`.
    */
   pin?(pinned: unknown): unknown;
   /**
@@ -200,7 +201,14 @@ export function createMockSet<answer>(
       ? ".returns() or .fails()"
       : ".returns(), .reverts(), .fails() or .refuses()";
 
+  /**
+   * Registers a mock pinning `params`, and returns its builder. A test
+   * runner's matcher is refused first, before the action's `pin` can copy
+   * it and lose its prototype's `asymmetricMatch`. Neither the `pin` nor
+   * the `undefined` pass that follows can bring one in.
+   */
   function register(params: unknown) {
+    checkNoRunnerMatchers(params);
     const normalized = params === undefined ? undefined : (definition.pin?.(params) ?? params);
     const pinned = pinWithoutUndefined(normalized, {
       name: (key) => `${definition.name}'s ${paramName(key)}`,
@@ -208,7 +216,6 @@ export function createMockSet<answer>(
       // object.
       reason: "only a raw method's last params can be left out",
     });
-    checkNoRunnerMatchers(pinned);
     const handler = mocks.register(pinned, undefined);
     const builder = mocks.createBuilder(
       handler,

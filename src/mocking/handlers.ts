@@ -138,9 +138,9 @@ export function createHandlers<context, extra>() {
 
   /**
    * Registers a mock pinning `pinned`, without an answer yet. `pinned` holds
-   * no `undefined` and no test runner's matcher: its engine takes them out
-   * first, with `pinWithoutUndefined`, and refuses those with
-   * `checkNoRunnerMatchers`.
+   * no `undefined` and no test runner's matcher. Its engine refuses a
+   * runner's matchers with `checkNoRunnerMatchers` before anything copies
+   * them, and takes the `undefined`s out with `pinWithoutUndefined`.
    */
   function register(
     pinned: unknown,

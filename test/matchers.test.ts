@@ -656,6 +656,19 @@ describe("registration", () => {
       // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
       mock.actions.getBalance({ address: expect.anything() }),
     );
+    // As the whole params too, before an action's own pin reshapes them.
+    expectThrows(
+      MockSetupError,
+      "Args and params take the mock's own matchers, not Jest's or Vitest's (got a test runner matcher): " +
+        "use match.any() or match.where(…) instead.",
+      () =>
+        // oxlint-disable-next-line typescript/no-unsafe-argument -- typed `any`, as users meet it
+        mock.actions.sendTransaction(expect.objectContaining({ to: bob })),
+    );
+    expectThrows(MockSetupError, "(got a test runner matcher)", () =>
+      // oxlint-disable-next-line typescript/no-unsafe-argument -- typed `any`, as users meet it
+      mock.actions.estimateGas(expect.objectContaining({ to: bob })),
+    );
     // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
     expect(() => mock.method("eth_custom", [{ nested: expect.any(Number) }])).toThrow(
       MockSetupError,
