@@ -104,14 +104,30 @@ features land; tick them off as pages get written.
     call: the first error reported is the symptom (e.g. an HTTP 500 from the
     app), with the cause second.
   - `partial` for "only these struct fields": at any depth, in structs inside
-    arrays, with matchers as field values. Struct args are complete without
-    it: omitting a field is a type error, not a wildcard. It ranks by what its
-    fields pin, so a full exact struct beats it.
+    arrays, with matchers as field values. Without it, viem's types make a
+    struct arg complete; a struct cast with fields left out matches the same
+    way, but `partial` says so without a cast. It ranks by what its fields
+    pin, so a full exact struct beats it.
   - Matchers for an array arg (a swap path "contains X" or "starts with X"):
     `where` on the whole array; `partial` is only for structs.
-  - Overloads: with matchers, the exact args pick the overload; if they can't,
-    registration throws "ambiguous overload". A `partial` doesn't help pick,
-    even when only one overload's struct has its fields.
+  - Overloads: the arg count picks first. The only overload of that count
+    is pinned as if it were the only function (ERC-721's `safeTransferFrom`),
+    so a mistake gets the same specific error. Otherwise the args' types
+    pick, each matcher checked where it sits: `any` and `where` fit any type
+    there, and a `partial`'s fields must be fields of the struct. Args that
+    fit no overload throw. A struct with fields left out, or a `partial`,
+    picks the overload its fields fit. When several fit, a struct that gives
+    every field of one of them picks that one (a `partial` never does).
+    Complete values that fit several go to viem, which picks one or throws
+    its own ambiguity error; anything else throws "ambiguous overload".
+  - A function with one overload throws for an args list of the wrong length:
+    pin every arg, with `match.any()` where any value goes. Args that aren't
+    a list throw too, and so does an arg of the wrong type (`"5"` for a
+    uint), on any function: its mock could never match. The error names the
+    field or element that doesn't fit (`params.sqrtPriceLimitX96`, `ids[2]`),
+    or the key that isn't a field.
+  - A struct with named fields may be written as a list, in field order, as
+    viem's encoder takes it: the mock matches it as the object viem decodes.
   - An args-less mock (`fn()`) on an overloaded function throws "ambiguous
     overload": pin args, e.g. `[match.any()]`, to choose one. A default for
     an overloaded name answers every overload.

@@ -14,7 +14,7 @@ import {
 import { mismatches, mismatchesAsMatched } from "../mocking/matching.js";
 import type { Answer, PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
-import { type Pins, pinMismatches } from "./functions.js";
+import { type Pins, inputName, pinMismatches } from "./functions.js";
 import type { MockCall, MockNamespace } from "./types.js";
 
 /** A contract's mock, as messages describe it. */
@@ -169,15 +169,6 @@ function argName(mock: Mock, index: PinnedKey): string {
   if (index === null) return "args";
   if (typeof index === "string") return `{ ${index} }`;
   return inputName(mock.abiItem, index);
-}
-
-/**
- * Input `index` of `abiItem` by its ABI name, or numbered from 1 when it's
- * unnamed (`""`) or the function isn't known yet: an overload not chosen.
- */
-export function inputName(abiItem: AbiFunction | undefined, index: number): string {
-  const name = abiItem?.inputs[index]?.name;
-  return name === undefined || name === "" ? `arg ${index + 1}` : name;
 }
 
 /** A contract for messages: its name and address, or just the address. */

@@ -206,6 +206,17 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
   return JSON.stringify(value);
 }
 
+/** Where a part sits inside a value: the indexes and keys to it. */
+export type Path = readonly (number | string)[];
+
+/**
+ * A path inside a value for messages, after the value's own name: `[1]` for
+ * an index and `.amountIn` for a key, e.g. `.swaps[0].amountIn`.
+ */
+export function formatPath(path: Path): string {
+  return path.map((each) => (typeof each === "number" ? `[${each}]` : `.${each}`)).join("");
+}
+
 /**
  * A matcher for messages: `any`, `where(isLarge)` by its label (the one
  * given, or the predicate's name or source), or a partial's fields followed

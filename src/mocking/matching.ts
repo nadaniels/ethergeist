@@ -2,7 +2,7 @@ import { isHex } from "viem";
 
 import { MockResolverError, MockSetupError } from "../shared/errors.js";
 import { isObjectLiteral, isPlainObject } from "../shared/values.js";
-import { formatValue } from "./format.js";
+import { type Path, formatPath, formatValue } from "./format.js";
 import { type Matcher, isMatcher, partialMatcher } from "./matchers.js";
 import type { PinnedKey } from "./types.js";
 
@@ -272,17 +272,20 @@ export function checkNoMatchers(value: unknown, place: string, hint?: string): v
  * Where a value sits in a pin: its top-level arg, param or key, then the
  * keys and indexes inside it.
  */
-type PinPath = readonly [number | string, ...(number | string)[]];
+type PinPath = readonly [Path[number], ...Path];
 
-/** How a pin's engine words the refusal of an `undefined` in a list. */
+/** How a pin's engine words the refusal of an `undefined` in its list. */
 type LeftOutWording = {
   /**
    * A top-level arg, param or key by name, qualified by the call that took
    * it, e.g. "read.allowance's spender".
    */
   name(key: number | string): string;
-  /** Why the element at `path` can't be left out: "an arg can't be left out". */
-  reason(path: PinPath): string;
+  /**
+   * Why an element of the pin's own list can't be left out, e.g. "an arg
+   * can't be left out". A list inside it has one reason for every engine.
+   */
+  reason: string;
 };
 
 /**
@@ -294,16 +297,16 @@ type LeftOutWording = {
  * `checkNoRunnerMatchers` intact: a copy would lose its prototype's
  * `asymmetricMatch`, and would silently never match.
  *
- * A list's element can't be left out, so an `undefined` one throws, as
- * `wording` words it. An engine whose lists can end early (a raw method's
- * params) trims them first.
+ * A list's element can't be left out, so an `undefined` one throws, named
+ * as `wording` says. An engine whose list can end early (a raw method's
+ * params) trims it first.
  */
 export function pinWithoutUndefined<pin>(pinned: pin, wording: LeftOutWording): pin {
   function refusal(path: PinPath) {
     const [key, ...inside] = path;
-    const slot = inside.map((each) => (typeof each === "number" ? `[${each}]` : `.${each}`));
+    const reason = inside.length === 0 ? wording.reason : "a list's elements can't be left out";
     return new MockSetupError(
-      `${wording.name(key)}${slot.join("")} is undefined, and ${wording.reason(path)}.`,
+      `${wording.name(key)}${formatPath(inside)} is undefined, and ${reason}.`,
       { metaMessages: ["Use match.any() to match any value there."] },
     );
   }

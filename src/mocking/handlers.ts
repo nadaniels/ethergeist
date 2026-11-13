@@ -8,13 +8,7 @@ import {
 } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { checkFault, checkRefusal, fail, refuse } from "./faults.js";
-import {
-  type MatchOptions,
-  type Specificity,
-  checkNoRunnerMatchers,
-  bestMatch,
-  specificity,
-} from "./matching.js";
+import { type MatchOptions, type Specificity, bestMatch, specificity } from "./matching.js";
 import { isAnswer } from "./outcomes.js";
 import { checkCount } from "./setupChecks.js";
 import type { Answer, MockFault, NodeErrorName, PinnedKey } from "./types.js";
@@ -144,8 +138,9 @@ export function createHandlers<context, extra>() {
 
   /**
    * Registers a mock pinning `pinned`, without an answer yet. `pinned` holds
-   * no `undefined`: its engine takes them out first, with
-   * `pinWithoutUndefined`.
+   * no `undefined` and no test runner's matcher: its engine takes them out
+   * first, with `pinWithoutUndefined`, and refuses those with
+   * `checkNoRunnerMatchers`.
    */
   function register(
     pinned: unknown,
@@ -162,7 +157,6 @@ export function createHandlers<context, extra>() {
       ranked?: Specificity;
     } = {},
   ): Handler<context, extra> {
-    checkNoRunnerMatchers(pinned);
     const handler: Handler<context, extra> = {
       ...extra,
       pinned,

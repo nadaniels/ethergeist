@@ -17,12 +17,7 @@ import {
   createHandlers,
   foundMock,
 } from "../mocking/handlers.js";
-import {
-  checkNoRunnerMatchers,
-  firstMismatch,
-  pinWithoutUndefined,
-  specificity,
-} from "../mocking/matching.js";
+import { checkNoRunnerMatchers, firstMismatch, specificity } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
 import type { NodeErrorName, RefusalContext } from "../mocking/types.js";
 import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
@@ -30,8 +25,8 @@ import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, type RecordList, createRecordList } from "../shared/records.js";
 import { createRevertError } from "./answers.js";
 import { type AddTransaction, createContractApi } from "./createContractApi.js";
-import { type Pins, createFunctions, firstPinMismatch, pinArgs, pinCall } from "./functions.js";
-import { formatContract, inputName, missError, unusedLine } from "./messages.js";
+import { type Pins, createFunctions, firstPinMismatch, pinCall } from "./functions.js";
+import { formatContract, missError, unusedLine } from "./messages.js";
 import { type AnswerIn, answersIn } from "./namespaces.js";
 import type {
   MockCallRecord,
@@ -219,14 +214,14 @@ export function createMockContract<const abi extends Abi>(
     functionsBySelector,
     overloadsOf,
     notInNamespaceError,
-    findFunction,
+    pinFunctionArgs,
   } = functions;
 
   /**
    * Registers a mock of `functionName` in `namespace`, pinning `args` and
-   * `given`'s `from` and `value`, and returns its builder. The args it pins
-   * hold no `undefined`: it takes those out first, before choosing the
-   * overload.
+   * `given`'s `from` and `value`, and returns its builder. `pinFunctionArgs`
+   * finds the function and pins the args; a default has its function, and
+   * pins none.
    */
   function register(
     namespace: MockNamespace,
@@ -240,20 +235,10 @@ export function createMockContract<const abi extends Abi>(
     asDefault?: { abiItem: AbiFunction },
   ) {
     checkAttached();
-    // Before the overload is chosen: viem's `getAbiItem` takes the first
-    // overload for args holding an `undefined`.
-    const stripped = pinWithoutUndefined(args, {
-      name(index) {
-        const overloads = overloadsOf(namespace, functionName);
-        const only = overloads.length === 1 ? overloads[0] : undefined;
-        return `${namespace}.${functionName}'s ${inputName(only, Number(index))}`;
-      },
-      reason: () => "an arg can't be left out",
-    });
-    const abiItem = asDefault?.abiItem ?? findFunction(namespace, functionName, stripped);
+    const { abiItem, args: pinned } = asDefault
+      ? { abiItem: asDefault.abiItem, args: undefined }
+      : pinFunctionArgs(namespace, functionName, args);
     const isDefault = asDefault !== undefined;
-
-    const pinned = pinArgs(abiItem, stripped);
     checkNoRunnerMatchers(given);
     const pins = pinCall(abiItem, given);
     const handler = mocks.register(

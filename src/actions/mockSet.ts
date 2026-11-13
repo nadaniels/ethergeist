@@ -13,6 +13,7 @@ import { type Builder, type Handler as MockHandler, createHandlers } from "../mo
 import {
   type MatchOptions,
   checkNoMatchers,
+  checkNoRunnerMatchers,
   firstMismatch,
   mismatches,
   mismatchesAsMatched,
@@ -203,12 +204,11 @@ export function createMockSet<answer>(
     const normalized = params === undefined ? undefined : (definition.pin?.(params) ?? params);
     const pinned = pinWithoutUndefined(normalized, {
       name: (key) => `${definition.name}'s ${paramName(key)}`,
-      // Only a raw method pins a list at the top, its params.
-      reason: (path) =>
-        path.length === 1
-          ? "only a raw method's last params can be left out"
-          : "a list's elements can't be left out",
+      // Only a raw method's pin is a list, its params; an action's is an
+      // object.
+      reason: "only a raw method's last params can be left out",
     });
+    checkNoRunnerMatchers(pinned);
     const handler = mocks.register(pinned, undefined);
     const builder = mocks.createBuilder(
       handler,

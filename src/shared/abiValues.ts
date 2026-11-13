@@ -52,19 +52,19 @@ export function fillZeros(parameter: AbiParameter, value: unknown): unknown {
 
 /**
  * The Solidity zero value of `parameter`'s type: a fixed-size array of
- * zeros, `[]` for a dynamic one, and a struct by name when every component
- * has one, else by position.
+ * zeros, `[]` for a dynamic one, and a struct as viem decodes it, by name
+ * or by position (`decodesAsObject`).
  */
 function zeroValue(parameter: AbiParameter): unknown {
   const element = arrayElement(parameter);
   if (element) {
-    const size = /\[(\d+)\]$/u.exec(parameter.type)?.[1];
-    return size ? Array.from({ length: Number(size) }, () => zeroValue(element)) : [];
+    const size = arraySize(parameter);
+    return size === undefined ? [] : Array.from({ length: size }, () => zeroValue(element));
   }
 
   if (parameter.type === "tuple" && "components" in parameter) {
     const { components } = parameter;
-    return components.every((component) => component.name)
+    return decodesAsObject(components)
       ? Object.fromEntries(components.map((component) => [component.name, zeroValue(component)]))
       : components.map((component) => zeroValue(component));
   }
@@ -79,10 +79,34 @@ function zeroValue(parameter: AbiParameter): unknown {
   return 0n;
 }
 
+/**
+ * Whether `parameter` has a name: an ABI leaves it out or writes `""` for
+ * one without.
+ */
+export function isNamed<parameter extends AbiParameter>(
+  parameter: parameter,
+): parameter is parameter & { name: string } {
+  return parameter.name !== undefined && parameter.name !== "";
+}
+
+/**
+ * Whether viem decodes a struct of `components` as an object, by its fields'
+ * names: when it has fields, and every one has a name. Otherwise it's a list.
+ */
+export function decodesAsObject(components: readonly AbiParameter[]): boolean {
+  return components.length > 0 && components.every((component) => isNamed(component));
+}
+
 /** The element parameter of an array type (`T[]`, `T[n]`), or `undefined`. */
 export function arrayElement(parameter: AbiParameter): AbiParameter | undefined {
   const match = /^(.*)\[\d*\]$/u.exec(parameter.type);
   return match ? { ...parameter, type: match[1]! } : undefined;
+}
+
+/** The size of a fixed-size array type (`T[n]`), or `undefined`. */
+export function arraySize(parameter: AbiParameter): number | undefined {
+  const size = /\[(\d+)\]$/u.exec(parameter.type)?.[1];
+  return size === undefined ? undefined : Number(size);
 }
 
 /** Solidity's built-in errors, which any contract can revert with. */

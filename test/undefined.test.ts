@@ -342,11 +342,14 @@ describe("an explicit undefined in a pin is the value left out", () => {
       "read.balanceOf's arg 1 is undefined, and an arg can't be left out.",
       () => token.read.balanceOf([unset]),
     );
-    expectThrows(
-      MockSetupError,
-      "read.allowance's arg 3 is undefined, and an arg can't be left out.",
+    // The count first: a function that takes fewer args has no slot for it.
+    expectThrows(MockSetupError, "read.allowance takes 2 args; got 3.", () =>
       // @ts-expect-error -- allowance takes two args
-      () => token.read.allowance([alice, bob, unset]),
+      token.read.allowance([alice, bob, unset]),
+    );
+    expectThrows(MockSetupError, "read.balanceOf takes 1 arg; got 2.", () =>
+      // @ts-expect-error -- balanceOf takes one arg
+      token.read.balanceOf([alice, unset]),
     );
     expectThrows(
       MockSetupError,
@@ -355,27 +358,66 @@ describe("an explicit undefined in a pin is the value left out", () => {
     );
   });
 
-  test("an overloaded function's arg is refused by position, not registered on an overload", () => {
+  test("an overloaded function's arg is refused by its name in the only overload of the args' count", () => {
     const { token } = withContract();
 
     const error = expectThrows(
       MockSetupError,
-      "read.f's arg 2 is undefined, and an arg can't be left out.",
+      "read.f's amount is undefined, and an arg can't be left out.",
       () => token.read.f([alice, unset]),
     );
     expect(error.metaMessages).toEqual([anyValue]);
     // Not by the first overload's name for it.
-    expectThrows(MockSetupError, "read.f's arg 1 is undefined, and an arg can't be left out.", () =>
+    expectThrows(MockSetupError, "read.f's owner is undefined, and an arg can't be left out.", () =>
       token.read.f([unset, 5n]),
     );
   });
 
-  test("a struct's field written as a list is refused", () => {
+  test("an arg of overloads that take as many args is refused by position, not registered on one", () => {
+    const { mock } = setup();
+    const pairAbi = parseAbi([
+      "function g(address owner, uint256 amount) view returns (uint256)",
+      "function g(uint256 id, bool exact) view returns (uint256)",
+    ]);
+    const pair = mock.contract({ abi: pairAbi, address: TOKEN });
+
+    expectThrows(MockSetupError, "read.g's arg 1 is undefined, and an arg can't be left out.", () =>
+      pair.read.g([unset, 5n]),
+    );
+    expectThrows(MockSetupError, "read.g's arg 2 is undefined, and an arg can't be left out.", () =>
+      pair.read.g([alice, unset]),
+    );
+  });
+
+  test("an overloaded function's struct with a field left out chooses the overload its fields fit", async () => {
+    const { mock, client } = setup();
+    // The two-arg overload first: viem falls back to it.
+    const routerAbi = parseAbi([
+      "struct Swap { address tokenIn; address tokenOut; uint256 amountIn; address[] path; }",
+      "function quote(Swap params, uint256 deadline) view returns (uint256)",
+      "function quote(Swap params) view returns (uint256)",
+    ]);
+    const router = mock.contract({ abi: routerAbi, address: TOKEN });
+    // A cast fixture with tokenOut unset and no path.
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture cast as tests write one
+    router.read.quote([{ tokenIn, tokenOut: unset, amountIn: 5n } as never]).returns(1n);
+
+    expect(
+      await client.readContract({
+        abi: routerAbi,
+        address: TOKEN,
+        functionName: "quote",
+        args: [swap],
+      }),
+    ).toBe(1n);
+  });
+
+  test("an undefined field in a struct written as a list is refused", () => {
     const { token } = withContract();
 
     const error = expectThrows(
       MockSetupError,
-      "read.quote's params[1] is undefined, and an arg can't be left out.",
+      "read.quote's params[1] is undefined, and a list's elements can't be left out.",
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- viem's types take a struct as an object
       () => token.read.quote([[tokenIn, unset, 5n, [alice]] as never]),
     );
@@ -387,7 +429,7 @@ describe("an explicit undefined in a pin is the value left out", () => {
 
     const error = expectThrows(
       MockSetupError,
-      "read.quote's params.path[1] is undefined, and an arg can't be left out.",
+      "read.quote's params.path[1] is undefined, and a list's elements can't be left out.",
       () => token.read.quote([match.partial({ path: [alice, unset] })]),
     );
     expect(error.metaMessages).toEqual([anyValue]);
