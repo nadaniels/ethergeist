@@ -16,6 +16,7 @@ import {
   firstMismatch,
   mismatches,
   mismatchesAsMatched,
+  pinWithoutUndefined,
 } from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
@@ -66,7 +67,11 @@ type Encoding<call extends object> = {
 export type MockDefinition<call extends object = object, answer = unknown> = {
   /** How calls and mocks are named in messages, e.g. `getBalance`. */
   name: string;
-  /** Normalizes pinned fields at registration, e.g. checksumming addresses. */
+  /**
+   * Normalizes pinned fields at registration, e.g. checksumming addresses.
+   * The mock set then takes the `undefined`s out of what it returns: see
+   * `pinWithoutUndefined`.
+   */
   pin?(pinned: unknown): unknown;
   /**
    * Adds to a mock's builder, beyond `.returns()` and `.fails()`, e.g. a
@@ -195,7 +200,15 @@ export function createMockSet<answer>(
       : ".returns(), .reverts(), .fails() or .refuses()";
 
   function register(params: unknown) {
-    const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
+    const normalized = params === undefined ? undefined : (definition.pin?.(params) ?? params);
+    const pinned = pinWithoutUndefined(normalized, {
+      name: (key) => `${definition.name}'s ${paramName(key)}`,
+      // Only a raw method pins a list at the top, its params.
+      reason: (path) =>
+        path.length === 1
+          ? "only a raw method's last params can be left out"
+          : "a list's elements can't be left out",
+    });
     const handler = mocks.register(pinned, undefined);
     const builder = mocks.createBuilder(
       handler,

@@ -44,6 +44,10 @@ export function createFunctions(abi: Abi) {
     [...reads, ...writes].map((abiItem) => [toFunctionSelector(abiItem), abiItem]),
   );
 
+  /** The functions named `functionName` in `namespace`: its overloads. */
+  const overloadsOf = (namespace: MockNamespace, functionName: string) =>
+    functionsIn[namespace].filter((abiItem) => abiItem.name === functionName);
+
   /**
    * The error for a name that isn't in `namespace`, saying where it is
    * instead, if anywhere.
@@ -72,7 +76,7 @@ export function createFunctions(abi: Abi) {
     functionName: string,
     args: readonly unknown[] | undefined,
   ): AbiFunction {
-    const overloads = functionsIn[namespace].filter((abiItem) => abiItem.name === functionName);
+    const overloads = overloadsOf(namespace, functionName);
     if (args === undefined && overloads.length > 1)
       throw new MockSetupError(
         `Ambiguous overload for ${functionName}(*): pin args to choose one, e.g. [match.any()].`,
@@ -103,7 +107,15 @@ export function createFunctions(abi: Abi) {
     );
   }
 
-  return { reads, writes, functionsIn, functionsBySelector, notInNamespaceError, findFunction };
+  return {
+    reads,
+    writes,
+    functionsIn,
+    functionsBySelector,
+    overloadsOf,
+    notInNamespaceError,
+    findFunction,
+  };
 }
 
 /** A hint line for each function: its signature, indented. */
@@ -159,6 +171,7 @@ function checksumAddresses(parameter: AbiParameter, value: unknown): unknown {
 /**
  * `args` as a mock of `abiItem` pins them: address-typed parts checksummed,
  * so messages show addresses one way and a malformed one fails at registration.
+ * They hold no `undefined`: the contract's `register` takes those out first.
  */
 export function pinArgs(
   abiItem: AbiFunction,

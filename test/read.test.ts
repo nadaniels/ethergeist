@@ -402,13 +402,21 @@ describe("number and bigint args", () => {
 
   test("different values still don't match", async () => {
     const { mock, client } = setup();
-    const nft = mock.contract({ abi, address: USDC });
+    const contract = mock.contract({ abi, address: USDC });
     // @ts-expect-error -- a uint256 takes a bigint
-    nft.read.ownerOf([42]).returns(alice);
+    contract.read.ownerOf([42]).returns(alice);
+    // @ts-expect-error -- a uint32 takes a number
+    contract.read.checkpoints([alice, 3n]).returns({ value: 7n });
 
     expectCause(
       await rejectionOf(
         client.readContract({ abi, address: USDC, functionName: "ownerOf", args: [43n] }),
+      ),
+      MockNotFoundError,
+    );
+    expectCause(
+      await rejectionOf(
+        client.readContract({ abi, address: USDC, functionName: "checkpoints", args: [alice, 4] }),
       ),
       MockNotFoundError,
     );

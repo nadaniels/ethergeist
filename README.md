@@ -250,8 +250,9 @@ quoter.read.quote([match.partial({ tokenIn: USDC })]).returns(990n);
 ```
 
 When several mocks match a call, the most specific one answers: exact values
-beat `match.where()`, which beats `match.any()` or no args at all, and a
-`match.partial()` counts the fields it gives.
+beat `match.where()`, which beats `match.any()`. A mock with args, even all
+`match.any()`, beats one with none, and a `match.partial()` counts the fields
+it gives.
 
 ```ts continued
 usdc.read.balanceOf().returns(0n); // anyone

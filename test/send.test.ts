@@ -787,6 +787,12 @@ describe("sends unmocked", () => {
       hint: "({ to: null }).returns(…), which deploys at getContractAddress({ from, nonce }).",
     },
     {
+      name: "a deploy without data, which isn't a plain transfer",
+      to: undefined,
+      data: undefined,
+      hint: "({ to: null }).returns(…), which deploys at getContractAddress({ from, nonce }).",
+    },
+    {
       name: "a send to Multicall3",
       to: "0xcA11bde05977b3631167028862bE2a173976CA11",
       data: "0x1234",

@@ -34,6 +34,12 @@ features land; tick them off as pages get written.
       default as a value (`balanceOf: 0n`). `.returns()` and
       `.returns(undefined)` are the zero answer, since that's an argument
       left out of a call, not a key.
+      In a pin, a key set to `undefined` is left out too, so any value
+      matches there: to match a call without the key, pin
+      `match.where((v) => v === undefined)` (`match.any()` matches an
+      absent key too). A list's element can't be left out, so an
+      `undefined` arg or topic is refused at registration; only a raw
+      method's last params can be.
 - [ ] `read` vs `simulate` namespaces (view/pure vs nonpayable/payable),
       mirroring `getContract`, and `estimateGas` (the same functions as
       `simulate`, for `estimateContractGas` and a write's prepare). A

@@ -1,9 +1,9 @@
 import { isHex } from "viem";
 
 import { MockResolverError, MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isObjectLiteral, isPlainObject } from "../shared/values.js";
 import { formatValue } from "./format.js";
-import { type Matcher, isMatcher } from "./matchers.js";
+import { type Matcher, isMatcher, partialMatcher } from "./matchers.js";
 import type { PinnedKey } from "./types.js";
 
 /**
@@ -266,6 +266,66 @@ export function checkNoMatchers(value: unknown, place: string, hint?: string): v
         "and pins.",
       hint === undefined ? undefined : { metaMessages: [hint] },
     );
+}
+
+/**
+ * Where a value sits in a pin: its top-level arg, param or key, then the
+ * keys and indexes inside it.
+ */
+type PinPath = readonly [number | string, ...(number | string)[]];
+
+/** How a pin's engine words the refusal of an `undefined` in a list. */
+type LeftOutWording = {
+  /**
+   * A top-level arg, param or key by name, qualified by the call that took
+   * it, e.g. "read.allowance's spender".
+   */
+  name(key: number | string): string;
+  /** Why the element at `path` can't be left out: "an arg can't be left out". */
+  reason(path: PinPath): string;
+};
+
+/**
+ * `pinned` as a mock stores it, holding no `undefined`: an object key set to
+ * `undefined` is left out, at every depth and in `match.partial()`'s
+ * fields, so it pins nothing. Object literals are copied; class instances
+ * and other matchers are kept as they are. A test runner's matcher
+ * (`expect.any()` and the like) is a class instance, and reaches
+ * `checkNoRunnerMatchers` intact: a copy would lose its prototype's
+ * `asymmetricMatch`, and would silently never match.
+ *
+ * A list's element can't be left out, so an `undefined` one throws, as
+ * `wording` words it. An engine whose lists can end early (a raw method's
+ * params) trims them first.
+ */
+export function pinWithoutUndefined<pin>(pinned: pin, wording: LeftOutWording): pin {
+  function refusal(path: PinPath) {
+    const [key, ...inside] = path;
+    const slot = inside.map((each) => (typeof each === "number" ? `[${each}]` : `.${each}`));
+    return new MockSetupError(
+      `${wording.name(key)}${slot.join("")} is undefined, and ${wording.reason(path)}.`,
+      { metaMessages: ["Use match.any() to match any value there."] },
+    );
+  }
+  function strip(value: unknown, path: PinPath | readonly []): unknown {
+    if (isMatcher(value))
+      return value.type === "partial" ? partialMatcher(strip(value.fields, path)) : value;
+    if (Array.isArray(value))
+      // `Array.from` visits holes, which `map` skips.
+      return Array.from(value, (each: unknown, i) => {
+        if (each === undefined) throw refusal([...path, i]);
+        return strip(each, [...path, i]);
+      });
+    // After the matchers: a matcher is an object literal too.
+    if (!isObjectLiteral(value)) return value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, each]) => each !== undefined)
+        .map(([key, each]) => [key, strip(each, [...path, key])]),
+    );
+  }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the same shape, less its undefined keys
+  return strip(pinned, []) as pin;
 }
 
 /**

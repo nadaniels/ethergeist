@@ -142,7 +142,11 @@ export function createHandlers<context, extra>() {
   /** The mocks the last `restore()` or `reset()` removed, for misses. */
   let lastRemoved: Handler<context, extra>[] = [];
 
-  /** Registers a mock pinning `pinned`, without an answer yet. */
+  /**
+   * Registers a mock pinning `pinned`, without an answer yet. `pinned` holds
+   * no `undefined`: its engine takes them out first, with
+   * `pinWithoutUndefined`.
+   */
   function register(
     pinned: unknown,
     extra: extra,

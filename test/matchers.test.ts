@@ -270,6 +270,20 @@ describe("match.where()", () => {
     });
   });
 
+  test("so does a whole-params predicate that throws", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance(match.where(throwsBoom)).returns(1n);
+    await rejectionOf(client.getBalance({ address: alice }));
+
+    expectThrows(
+      MockCheckError,
+      `getBalance({ address: ${getAddress(alice)}, blockNumber: 1n, blockTag: latest })  ← params didn't match`,
+      () => {
+        mock.assertAllUsed();
+      },
+    );
+  });
+
   test("a predicate that throws is reported as unhandled, naming it", async () => {
     const { mock, usdc, balanceOf } = setup();
     usdc.read.balanceOf([match.where(throwsBoom)]).returns(1n);
@@ -612,6 +626,12 @@ describe("registration", () => {
     expect(() => mock.method("eth_custom", [{ nested: expect.any(Number) }])).toThrow(
       MockSetupError,
     );
+    // Other runners' matchers, like Jasmine's, have no name to show.
+    const unnamed = { asymmetricMatch: () => true };
+    expectThrows(MockSetupError, "(got a test runner matcher)", () =>
+      // @ts-expect-error -- typed `any` where users meet it, as Jasmine's are
+      usdc.read.allowance([unnamed, bob]),
+    );
     // A call that throws registers nothing.
     expect(() => {
       mock.assertAllUsed();
@@ -620,13 +640,14 @@ describe("registration", () => {
 
   test("matchers can't be return values", async () => {
     const { usdc, balanceOf } = setup();
-    expectThrows(
+    const refused = expectThrows(
       MockSetupError,
       "match.any() can't go in read.balanceOf's answer; matchers only go in a mock's args, params and pins.",
       () => {
         usdc.read.balanceOf([alice]).returns(match.any());
       },
     );
+    expect(refused.metaMessages).toBeUndefined();
 
     expectThrows(MockSetupError, "match.partial() can't go in read.balanceOf's answer", () => {
       // The types allow it: `partial` takes the resolver function's type from `.returns()`.
@@ -826,10 +847,18 @@ describe("overloads", () => {
 
   test("args no overload takes throw", () => {
     const { token } = setupOverloads();
-    expectThrows(MockSetupError, 'No overload of "quote" takes quote(any, five).', () =>
-      // @ts-expect-error -- neither overload of `quote` takes a string second
-      token.read.quote([match.any(), "five"]),
+    const error = expectThrows(
+      MockSetupError,
+      'No overload of "quote" takes quote(any, five).',
+      () =>
+        // @ts-expect-error -- neither overload of `quote` takes a string second
+        token.read.quote([match.any(), "five"]),
     );
+    expect(error.metaMessages).toEqual([
+      "Overloads:",
+      "  quote(address,bool)",
+      "  quote(address,uint256)",
+    ]);
   });
 });
 

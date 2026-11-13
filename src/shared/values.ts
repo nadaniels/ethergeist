@@ -24,6 +24,13 @@ export function isPlainObject(value: unknown): value is Record<string, unknown> 
 }
 
 /**
+ * Whether `value` is an object literal: not an array, and not a class
+ * instance, which `isPlainObject` counts too.
+ */
+export const isObjectLiteral = (value: unknown): value is Record<string, unknown> =>
+  typeof value === "object" && value !== null && Object.getPrototypeOf(value) === Object.prototype;
+
+/**
  * `fields` without the ones left out: an explicit `undefined` is a field
  * left out, as consumers' types allow it in any optional field.
  */
@@ -36,6 +43,4 @@ export const withoutUndefined = (fields: object) =>
  * is stripped on each read.
  */
 export const leftOut = (value: unknown): unknown =>
-  typeof value === "object" && value !== null && Object.getPrototypeOf(value) === Object.prototype
-    ? withoutUndefined(value)
-    : value;
+  isObjectLiteral(value) ? withoutUndefined(value) : value;
