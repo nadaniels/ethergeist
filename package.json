@@ -35,9 +35,11 @@
     "./package.json": "./package.json"
   },
   "scripts": {
+    "build": "vp pack",
     "test": "vp test run --typecheck --no-isolate",
     "test:coverage": "vp test run --no-isolate --coverage",
     "typecheck": "tsc",
+    "examples": "vp run build && vp run --filter ./examples lint && vp run --filter './examples/*' test",
     "knip": "knip && knip --production --strict",
     "mutate": "stryker run",
     "smoke": "vpx scripts/smoke.ts",
@@ -48,13 +50,13 @@
     "@arethetypeswrong/core": "^0.18.5",
     "@stryker-mutator/core": "10.1.1",
     "@stryker-mutator/vitest-runner": "10.1.1",
-    "@types/node": "^26.6.6",
+    "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "knip": "^6.44.1",
     "ox": "^0.14.59",
     "publint": "^0.3.25",
-    "typescript": "^7.0.2",
-    "viem": "^2.57.16",
+    "typescript": "catalog:",
+    "viem": "catalog:",
     "vite-plus": "catalog:",
     "vitest": "catalog:"
   },

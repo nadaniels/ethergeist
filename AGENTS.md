@@ -34,15 +34,24 @@ release. Add a tool name to select part of the graph. For example, run
 
 Read `docs/architecture.md` before changing `src/`: the layers, naming, and how to add an action or a piece of state.
 
+Use the Oxford comma in all writing: docs, comments, error messages, test names, commit messages, and PR bodies ("reads, writes, and sends").
+
 ## Checks
 
-- Run `vp check`, `vp run knip` and `vp run test` before handing a change over. The pre-commit hook runs `vp staged` and then `vp run knip`, so a commit fails if Knip isn't satisfied.
+- Run `vp check`, `vp run knip`, `vp run test`, and `vp run examples` before handing a change over. The pre-commit hook runs `vp staged` and then `vp run knip`, so a commit fails if Knip isn't satisfied.
 - `vp run test` is the test command: it adds `--typecheck`, so the `*.test-d.ts` type tests run too. The Vite+ checklist above names the built-in `vp test`, which runs without them.
+- `vp run examples` builds the library (`vp pack`), then runs the examples' lint, which type-checks them too, and each example's `test` against the built package. `vp run test` stays the library's suite.
 - Run `vp run smoke` when a change touches the public types, `exports`, `package.json` or the build. CI runs it on every push; it takes about 30 s and needs the network.
 - `vp run knip` runs [Knip](https://knip.dev) twice: the default mode (all code, tests included), then `--production --strict` (only what ships: `src/` minus colocated tests, with dependencies checked against what ships). Config is in `knip.json`.
 - Fix findings rather than configure around them: remove an `export` nothing outside its file uses, delete an unused file, add or remove the dependency. A file that a tool or a person runs directly is an `entry` in `knip.json`.
 - `vp run mutate` runs [Stryker](https://stryker-mutator.io) mutation testing (config in `stryker.config.mjs`; reports in `reports/mutation/`). It's slow, so it isn't part of the checks: run it before an engine or matching change, on the files the change touches (`vp run mutate --mutate "src/contracts/**/*.ts"`). Close the gaps it finds with tests of behavior the change keeps, through the public API in `test/` where possible, so they outlive the refactor; skip survivors in code the change removes, in error wording and display formatting (history lines, thresholds like where hex is shortened), and in answer fields viem doesn't read (see "Fidelity").
 - An export only a unit test needs gets `@internal` in its doc comment, which production mode skips. Don't export a value just so a test can read it back: a test should pin documented values as literals, or it can't catch them changing.
+
+## Examples
+
+- `examples/` holds apps a user would write, each a private workspace package with its own `package.json` and `tsconfig.json`. An example's `package.json` lists only what its app uses (viem, and `ethergeist` as `workspace:*`); the tooling they share (TypeScript, Vitest, oxlint) is in `examples/package.json`. An example's `tsc` and `vitest` scripts run the root's binaries (a package's scripts see only its own and the root's), while its imports resolve to the copies in `examples/package.json`. Versions come from the catalog in `pnpm-workspace.yaml`.
+- An example follows good practice for user code and the repo's formatting, not the conventions in this file, which are for `src/`. Its `tsconfig.json` has plain `strict`, as most users have it, and its tests import from `vitest`.
+- Root `vp check` formats examples but doesn't lint them: the root's lint is the library's. They're linted and type-checked by `examples/oxlint.config.ts` (correctness rules, each file against its nearest `tsconfig.json`), from `vp run examples`.
 
 ## Addresses
 

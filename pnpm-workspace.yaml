@@ -1,10 +1,16 @@
+packages:
+  - examples
+  - examples/*
 catalog:
+  "@types/node": ^26.6.6
+  "@vitest/coverage-v8": 5.1.0
+  oxlint: 1.91.0
+  oxlint-tsgolint: 7.0.2005
+  typescript: ^7.0.2
+  viem: ^2.57.16
   vite: npm:@voidzero-dev/vite-plus-core@1.5.0
   vite-plus: 1.5.0
-  # The one vite-plus bundles; Stryker's runner needs it as a direct dependency.
   vitest: 5.1.0
-  # Vite+ wants coverage providers at its bundled vitest exactly, so it moves with the one above.
-  "@vitest/coverage-v8": 5.1.0
 overrides:
   vite@*: "catalog:"
   # Audit fixes in Stryker's dependencies (dev-only); drop once Stryker takes them.

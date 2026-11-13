@@ -522,6 +522,11 @@ const config = createConfig({
   the transport, so this covers reads and simulations. Writes through a wallet
   need an EIP-1193 provider, which is planned.
 
+## Examples
+
+- [A Uniswap V2 limit-order bot](https://github.com/nadaniels/ethergeist/tree/main/examples/uniswap-v2-limit-order):
+  a Node bot running viem with a local account, and its test suite.
+
 ## Stability
 
 ethergeist is 0.x: a breaking change is a minor release, and anything else is a
