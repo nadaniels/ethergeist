@@ -25,6 +25,7 @@ jobs:
       - run: vp check
       - run: vp run knip
       - run: vp run test
+      - run: vp run examples
       - run: vp run smoke
 
   floor:
@@ -39,5 +40,5 @@ jobs:
       - name: Install the oldest viem and ox the peer ranges allow
         run: |
           oldest() { node -p "require('./package.json').peerDependencies['$1'].replace(/^(\^|~|>=)/, '')"; }
-          pnpm add --save-dev "viem@$(oldest viem)" "ox@$(oldest ox)"
+          pnpm add -w --save-dev "viem@$(oldest viem)" "ox@$(oldest ox)"
       - run: vp run test
