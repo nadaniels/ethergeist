@@ -11,7 +11,7 @@ import {
   MockResolverError,
   summaryOf,
 } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 import type { TransactionRecord } from "../transactions/store.js";
 import type { MockHistoryEntry } from "./types.js";
 
@@ -215,7 +215,7 @@ function minedAs(value: unknown, minedTransaction: FormatContext["minedTransacti
 const isReceipt = (
   value: unknown,
 ): value is { transactionHash: unknown; blockNumber: unknown; status: unknown; logs: unknown[] } =>
-  isPlainObject(value) && "transactionHash" in value && Array.isArray(value.logs);
+  isNonArrayObject(value) && "transactionHash" in value && Array.isArray(value.logs);
 
 /**
  * A contract call as `USDC.transfer(…)`, or the contract alone when it
@@ -286,13 +286,13 @@ export function formatOutcome(outcome: MockOutcome, action?: string): string {
  * or a list of logs, which are long, and any other value shortened.
  */
 function summarize(value: unknown, action: string | undefined): string {
-  if (action === "getBlock" && isPlainObject(value))
+  if (action === "getBlock" && isNonArrayObject(value))
     return `block ${formatValue(value.number)}, timestamp ${formatValue(value.timestamp)}`;
-  if (action === "getTransactionReceipt" && isPlainObject(value)) {
+  if (action === "getTransactionReceipt" && isNonArrayObject(value)) {
     const logs = Array.isArray(value.logs) ? value.logs.length : 0;
     return `${String(value.status)}, block ${formatValue(value.blockNumber)}, ${logs} log(s)`;
   }
-  if (action === "getTransaction" && isPlainObject(value)) {
+  if (action === "getTransaction" && isNonArrayObject(value)) {
     const where =
       value.blockNumber === null ? "pending" : `block ${formatValue(value.blockNumber)}`;
     return `${String(value.type)}, ${where}`;

@@ -96,6 +96,14 @@ export function createMethods(
         name,
         hint: `mock.method("${name}", …).returns(…)`,
         decode: (rawParams) => ({ method: name, params: rawParams }),
+        /**
+         * Without the `undefined`s at the end, which are params left out:
+         * pinned params are a prefix of the request's.
+         */
+        pin: (pinned) =>
+          Array.isArray(pinned)
+            ? pinned.slice(0, pinned.findLastIndex((each) => each !== undefined) + 1)
+            : pinned,
         zero: null,
         encode: (value) => value,
         /**

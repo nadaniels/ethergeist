@@ -11,7 +11,7 @@ import {
 
 import { formatValue } from "../mocking/format.js";
 import { invalidParams } from "../shared/errors.js";
-import { isPlainObject, lowercase } from "../shared/values.js";
+import { isNonArrayObject, lowercase } from "../shared/values.js";
 
 // A request's params, read to the Ethereum JSON-RPC spec (ethereum/execution-apis):
 // what it rules out is refused as invalid params, never thrown as is (viem
@@ -73,7 +73,7 @@ const optionalAddress = (value: unknown) => (value === undefined ? undefined : a
  * object.
  */
 export function transactionParam(tx: unknown) {
-  if (!isPlainObject(tx))
+  if (!isNonArrayObject(tx))
     throw invalidParams(`expected a transaction object; got ${formatValue(tx)}`);
   const { from, to, value, data, input, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas, nonce } =
     tx;

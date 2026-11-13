@@ -2,7 +2,7 @@ import { type Hex, decodeErrorResult, isHex, parseTransaction } from "viem";
 
 import type { NodeErrorName } from "../mocking/types.js";
 import { builtinErrors } from "../shared/abiValues.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 import { optionalQuantity } from "./params.js";
 
 /**
@@ -54,7 +54,7 @@ function transactionOf(params: unknown) {
       const { value, gas } = parseTransaction(tx);
       return { value: value ?? 0n, gas };
     } catch {}
-  const fields = isPlainObject(tx) ? tx : {};
+  const fields = isNonArrayObject(tx) ? tx : {};
   return {
     value: optionalQuantity(fields.value, "a value") ?? 0n,
     gas: optionalQuantity(fields.gas, "a gas limit"),

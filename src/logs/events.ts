@@ -22,10 +22,11 @@ import {
   type AllNamed,
   type PartialStructs,
   fillZeros,
+  isNamed,
   withoutRepeats,
 } from "../shared/abiValues.js";
 import { MockSetupError, refuseUnencodable } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 
 /**
  * A log's content: who emitted it, its topics and its data, from
@@ -83,7 +84,7 @@ export function checkLog(
   const refuse = (problem: string) =>
     new MockSetupError(`${name} ${problem}.`, { metaMessages: [logsHint] });
   if (
-    !isPlainObject(log) ||
+    !isNonArrayObject(log) ||
     typeof log.address !== "string" ||
     (log.topics !== undefined && !Array.isArray(log.topics))
   )
@@ -312,7 +313,7 @@ function argValues(event: AbiEvent, args: unknown): unknown[] {
   const { inputs, name } = event;
   if (inputs.every((input) => isNamed(input))) {
     if (args === undefined) return inputs.map(() => undefined);
-    if (!isPlainObject(args))
+    if (!isNonArrayObject(args))
       throw new MockSetupError(`Event "${name}" takes its args as an object, by name.`);
     const unknown = Object.keys(args).find((key) => !inputs.some((input) => input.name === key));
     if (unknown !== undefined)
@@ -324,10 +325,6 @@ function argValues(event: AbiEvent, args: unknown): unknown[] {
       `Event "${name}" has unnamed args: pass all ${inputs.length} of them, in order.`,
     );
   return args;
-}
-
-function isNamed<input extends AbiParameter>(input: input): input is input & { name: string } {
-  return input.name !== undefined && input.name !== "";
 }
 
 /** A hint line for each event: its signature, indented. */

@@ -1,7 +1,7 @@
 import { isHex } from "viem";
 
 import { nestedRestoreHint, removedMocksHeader } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 import { type Matcher, isMatcher } from "./matchers.js";
 import type { Answer, PinnedKey } from "./types.js";
 
@@ -14,7 +14,7 @@ import type { Answer, PinnedKey } from "./types.js";
  */
 export function formatCall(name: string, args: unknown, options: FormatOptions = {}): string {
   if (args === undefined) return `${name}(*)`;
-  if (isPlainObject(args) && Object.keys(args).length === 0) return `${name}()`;
+  if (isNonArrayObject(args) && Object.keys(args).length === 0) return `${name}()`;
   const list = Array.isArray(args)
     ? args.map((arg: unknown) => formatValue(arg, options))
     : [formatValue(args, options)];
@@ -75,7 +75,7 @@ export function formatMismatch(
   if (mismatched.length === 0 || mismatched.includes(null)) return formatCall(name, actual);
   if (Array.isArray(actual))
     return `${name}(${actual.map((v: unknown, i) => (mismatched.includes(i) ? formatValue(v) : "…")).join(", ")})`;
-  if (isPlainObject(actual)) {
+  if (isNonArrayObject(actual)) {
     const fields = mismatched.flatMap((key) =>
       key === null ? [] : [`${key}: ${formatValue(actual[key])}`],
     );
@@ -195,7 +195,7 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
   if (Array.isArray(value))
     return `[${value.map((v: unknown) => formatValue(v, options)).join(", ")}]`;
   if (value instanceof RegExp) return String(value);
-  if (isPlainObject(value)) {
+  if (isNonArrayObject(value)) {
     const fields = Object.entries(value).map(([key, v]) => `${key}: ${formatValue(v, options)}`);
     return fields.length === 0 ? "{}" : `{ ${fields.join(", ")} }`;
   }
@@ -204,6 +204,17 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
       ? `${value.slice(0, 6)}…${value.slice(-4)}`
       : value;
   return JSON.stringify(value);
+}
+
+/** Where a part sits inside a value: the indexes and keys to it. */
+export type Path = readonly (number | string)[];
+
+/**
+ * A path inside a value for messages, after the value's own name: `[1]` for
+ * an index and `.amountIn` for a key, e.g. `.swaps[0].amountIn`.
+ */
+export function formatPath(path: Path): string {
+  return path.map((each) => (typeof each === "number" ? `[${each}]` : `.${each}`)).join("");
 }
 
 /**

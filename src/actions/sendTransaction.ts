@@ -6,7 +6,7 @@ import { createRevertError } from "../contracts/answers.js";
 import type { RevertFn, RevertSpec } from "../contracts/types.js";
 import type { RefusalContext, SendErrorName, WithLimits } from "../mocking/types.js";
 import { invalidParams } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 import {
   type MockWriteAnswers,
   type MockWriteOutcome,
@@ -117,7 +117,7 @@ export const sendTransaction: MockDefinition<SendTransactionCall, MockWriteOutco
   pin: pinTransaction,
   // `pin` has checksummed a string `to`: `isAddress` narrows its type.
   pinnedCall: (pinned) =>
-    isPlainObject(pinned) &&
+    isNonArrayObject(pinned) &&
     (pinned.to === null || (typeof pinned.to === "string" && isAddress(pinned.to)))
       ? { to: pinned.to }
       : {},

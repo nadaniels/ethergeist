@@ -8,7 +8,7 @@
 import { type Hex, isHex } from "viem";
 
 import { MockSetupError } from "../shared/errors.js";
-import { isPlainObject, withoutUndefined } from "../shared/values.js";
+import { isNonArrayObject, withoutUndefined } from "../shared/values.js";
 import { formatValue } from "./format.js";
 import { checkNoMatchers } from "./matching.js";
 
@@ -66,7 +66,7 @@ export function checkObject(
   what: string,
   hint?: string,
 ): asserts value is Record<string, unknown> {
-  if (!isPlainObject(value))
+  if (!isNonArrayObject(value))
     throw new MockSetupError(
       `Expected an object for ${what}; got ${formatValue(value)}.`,
       withHint(hint),

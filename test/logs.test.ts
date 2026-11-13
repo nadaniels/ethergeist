@@ -1,4 +1,5 @@
 import {
+  type Address,
   InvalidAddressError,
   InvalidInputRpcError,
   InvalidParamsRpcError,
@@ -1079,6 +1080,14 @@ describe("mock.actions.getLogs", () => {
     await rejectionOf(client.getLogs({ address: [USDC, DAI] }));
     expect(await client.getLogs({ address: [USDC] })).toEqual([]);
     expect(() => mock.actions.getLogs({ address: [USDC, "0x12"] })).toThrow(InvalidAddressError);
+  });
+
+  test("a matcher in a pinned list of addresses stands for any one address there", async () => {
+    const { mock, client } = setup();
+    mock.actions.getLogs({ address: [USDC, match.any<Address>()] }).fails(rangeTooLarge);
+
+    await rejectionOf(client.getLogs({ address: [USDC, bob] }));
+    expect(await client.getLogs({ address: [DAI, bob] })).toEqual([]);
   });
 
   test("an answer that isn't a list of logs fails at registration", () => {

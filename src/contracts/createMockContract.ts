@@ -24,8 +24,9 @@ import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, type RecordList, createRecordList } from "../shared/records.js";
 import { createRevertError } from "./answers.js";
+import { type Pins, firstPinMismatch, pinCall } from "./callPins.js";
 import { type AddTransaction, createContractApi } from "./createContractApi.js";
-import { type Pins, createFunctions, firstPinMismatch, pinArgs, pinCall } from "./functions.js";
+import { createFunctions } from "./functions.js";
 import { formatContract, missError, unusedLine } from "./messages.js";
 import { type AnswerIn, answersIn } from "./namespaces.js";
 import type {
@@ -208,30 +209,66 @@ export function createMockContract<const abi extends Abi>(
   }) as RevertFn<Abi>;
 
   const functions = createFunctions(abi);
-  const { reads, functionsIn, functionsBySelector, notInNamespaceError, findFunction } = functions;
+  const {
+    reads,
+    functionsIn,
+    functionsBySelector,
+    overloadsOf,
+    notInNamespaceError,
+    pinFunctionArgs,
+  } = functions;
 
   /**
    * Registers a mock of `functionName` in `namespace`, pinning `args` and
-   * `given`'s `from` and `value`, and returns its builder.
+   * `given`'s `from` and `value`, and returns its builder. `pinFunctionArgs`
+   * finds the function and pins the args, and `pinCall` pins `from` and
+   * `value`. Throws first if the contract was removed.
    */
-  function register(
+  function registerMock(
     namespace: MockNamespace,
     functionName: string,
     args: readonly unknown[] | undefined,
     given?: unknown,
-    /**
-     * For defaults: registered on a given overload, and exempt from
-     * `assertAllUsed()`.
-     */
-    asDefault?: { abiItem: AbiFunction },
   ) {
     checkAttached();
-    const abiItem = asDefault?.abiItem ?? findFunction(namespace, functionName, args);
-    const isDefault = asDefault !== undefined;
-
-    const pinned = pinArgs(abiItem, args);
+    const { abiItem, args: pinned } = pinFunctionArgs(namespace, functionName, args);
     checkNoRunnerMatchers(given);
     const pins = pinCall(abiItem, given);
+    return registerHandler(namespace, abiItem, { pinned, pins, isDefault: false });
+  }
+
+  /**
+   * Registers a default on `abiItem`, one overload of a function in
+   * `namespace`, and returns its builder. It pins nothing, and
+   * `assertAllUsed()` never reports it. It runs only while the contract is
+   * created, before it can be removed.
+   */
+  function registerDefault(namespace: MockNamespace, abiItem: AbiFunction) {
+    return registerHandler(namespace, abiItem, {
+      pinned: undefined,
+      pins: undefined,
+      isDefault: true,
+    });
+  }
+
+  /**
+   * Registers a handler for `abiItem` in `namespace`, pinning `pinned` args
+   * and `pins`, ranked by both, and returns its builder. With neither, it
+   * answers any call to `abiItem`.
+   */
+  function registerHandler(
+    namespace: MockNamespace,
+    abiItem: AbiFunction,
+    {
+      pinned,
+      pins,
+      isDefault,
+    }: {
+      pinned: readonly unknown[] | undefined;
+      pins: Pins | undefined;
+      isDefault: boolean;
+    },
+  ) {
     const handler = mocks.register(
       pinned,
       { namespace, abiItem, selector: toFunctionSelector(abiItem), pins },
@@ -254,10 +291,9 @@ export function createMockContract<const abi extends Abi>(
   for (const namespace of ["read", "simulate", "estimateGas", "write"] as const)
     for (const [functionName, resolver] of Object.entries(defaults[namespace] ?? {})) {
       if (resolver === undefined) continue;
-      const overloads = functionsIn[namespace].filter((abiItem) => abiItem.name === functionName);
+      const overloads = overloadsOf(namespace, functionName);
       if (overloads.length === 0) throw notInNamespaceError(namespace, functionName);
-      for (const abiItem of overloads)
-        register(namespace, functionName, undefined, undefined, { abiItem }).returns(resolver);
+      for (const abiItem of overloads) registerDefault(namespace, abiItem).returns(resolver);
     }
 
   const contract = createContractApi({
@@ -265,7 +301,7 @@ export function createMockContract<const abi extends Abi>(
     address,
     name,
     functions,
-    register,
+    register: registerMock,
     calls: () => calls.kept,
     callsTo,
     addTransaction,

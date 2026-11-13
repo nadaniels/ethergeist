@@ -17,7 +17,7 @@ import { type FaultOutcome, failureOutcome, type MockOutcome } from "../mocking/
 import type { MockFault } from "../mocking/types.js";
 import { MockInternalError, MockRevertError, MockSetupError, summaryOf } from "../shared/errors.js";
 import { createRecordList, type RecordLimit } from "../shared/records.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 import { type FormatContext, type HistoryView, formatEntry } from "./format.js";
 import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./types.js";
 
@@ -219,7 +219,7 @@ export function createRecorder({
     if (method === "eth_chainId" || method === "eth_blockNumber")
       return { ...base, type: "builtIn" };
     if (method === "eth_call") {
-      const to = Array.isArray(params) && isPlainObject(params[0]) ? params[0].to : undefined;
+      const to = Array.isArray(params) && isNonArrayObject(params[0]) ? params[0].to : undefined;
       const target =
         typeof to === "string" && isAddress(to, { strict: false }) ? getAddress(to) : undefined;
       return target !== undefined && target === multicallAddress

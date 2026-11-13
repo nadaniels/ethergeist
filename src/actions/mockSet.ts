@@ -13,9 +13,11 @@ import { type Builder, type Handler as MockHandler, createHandlers } from "../mo
 import {
   type MatchOptions,
   checkNoMatchers,
+  checkNoRunnerMatchers,
   firstMismatch,
   mismatches,
   mismatchesAsMatched,
+  pinWithoutUndefined,
 } from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
@@ -66,7 +68,12 @@ type Encoding<call extends object> = {
 export type MockDefinition<call extends object = object, answer = unknown> = {
   /** How calls and mocks are named in messages, e.g. `getBalance`. */
   name: string;
-  /** Normalizes pinned fields at registration, e.g. checksumming addresses. */
+  /**
+   * Normalizes pinned fields at registration, e.g. checksumming addresses.
+   * It never gets a test runner's matcher: the mock set refuses those
+   * first. The mock set then takes the `undefined`s out of what it
+   * returns: see `pinWithoutUndefined`.
+   */
   pin?(pinned: unknown): unknown;
   /**
    * Adds to a mock's builder, beyond `.returns()` and `.fails()`, e.g. a
@@ -194,8 +201,21 @@ export function createMockSet<answer>(
       ? ".returns() or .fails()"
       : ".returns(), .reverts(), .fails() or .refuses()";
 
+  /**
+   * Registers a mock pinning `params`, and returns its builder. A test
+   * runner's matcher is refused first, before the action's `pin` can copy
+   * it and lose its prototype's `asymmetricMatch`. Neither the `pin` nor
+   * the `undefined` pass that follows can bring one in.
+   */
   function register(params: unknown) {
-    const pinned = params === undefined ? undefined : (definition.pin?.(params) ?? params);
+    checkNoRunnerMatchers(params);
+    const normalized = params === undefined ? undefined : (definition.pin?.(params) ?? params);
+    const pinned = pinWithoutUndefined(normalized, {
+      name: (key) => `${definition.name}'s ${paramName(key)}`,
+      // Only a raw method's pin is a list, its params; an action's is an
+      // object.
+      reason: "only a raw method's last params can be left out",
+    });
     const handler = mocks.register(pinned, undefined);
     const builder = mocks.createBuilder(
       handler,

@@ -14,7 +14,7 @@ import { checkHex, checkList } from "../mocking/setupChecks.js";
 import { zeroResult } from "../mocking/zeroResult.js";
 import { builtinErrors, fillZeros } from "../shared/abiValues.js";
 import { MockRevertError, MockSetupError, refuseUnencodable } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
+import { isNonArrayObject } from "../shared/values.js";
 import type { RevertSpec } from "./types.js";
 
 /**
@@ -27,7 +27,7 @@ function normalizeResult(outputs: readonly AbiParameter[], value: unknown): unkn
   if (outputs.length === 0) return value;
   if (outputs.length === 1) return fillZeros(outputs[0]!, value);
   if (Array.isArray(value)) return outputs.map((output, i) => fillZeros(output, value[i]));
-  if (isPlainObject(value) && outputs.every((output) => output.name))
+  if (isNonArrayObject(value) && outputs.every((output) => output.name))
     return outputs.map((output) => fillZeros(output, value[output.name!]));
   return value;
 }
@@ -64,7 +64,7 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
       encodeErrorResult({ abi: builtinErrors, errorName: "Error", args: [given] }),
       given,
     );
-  if (!isPlainObject(given)) throw notARevert(given);
+  if (!isNonArrayObject(given)) throw notARevert(given);
   checkNoMatchers(
     given,
     "a revert spec",

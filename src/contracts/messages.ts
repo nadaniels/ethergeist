@@ -14,7 +14,8 @@ import {
 import { mismatches, mismatchesAsMatched } from "../mocking/matching.js";
 import type { Answer, PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
-import { type Pins, pinMismatches } from "./functions.js";
+import { inputName } from "./argTypes.js";
+import { type Pins, pinMismatches } from "./callPins.js";
 import type { MockCall, MockNamespace } from "./types.js";
 
 /** A contract's mock, as messages describe it. */
@@ -168,8 +169,7 @@ function formatPins(call: MockCall, keys: readonly PinnedKey[]): string {
 function argName(mock: Mock, index: PinnedKey): string {
   if (index === null) return "args";
   if (typeof index === "string") return `{ ${index} }`;
-  const inputName = mock.abiItem.inputs[index]?.name;
-  return inputName === undefined || inputName === "" ? `arg ${index + 1}` : inputName;
+  return inputName(mock.abiItem, index);
 }
 
 /** A contract for messages: its name and address, or just the address. */

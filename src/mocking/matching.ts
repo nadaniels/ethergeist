@@ -1,9 +1,9 @@
 import { isHex } from "viem";
 
 import { MockResolverError, MockSetupError } from "../shared/errors.js";
-import { isPlainObject } from "../shared/values.js";
-import { formatValue } from "./format.js";
-import { type Matcher, isMatcher } from "./matchers.js";
+import { isNonArrayObject, isObjectLiteral } from "../shared/values.js";
+import { type Path, formatPath, formatValue } from "./format.js";
+import { type Matcher, isMatcher, partialMatcher } from "./matchers.js";
 import type { PinnedKey } from "./types.js";
 
 /**
@@ -24,7 +24,7 @@ export function specificity(pinned: unknown): Specificity {
     }
     const parts = Array.isArray(value)
       ? value
-      : isPlainObject(value)
+      : isNonArrayObject(value)
         ? Object.values(value)
         : undefined;
     if (!parts) return [1, 0];
@@ -105,7 +105,11 @@ export function mismatches(
     }
   }
   const at = (key: number | string): unknown =>
-    Array.isArray(actual) ? actual[Number(key)] : isPlainObject(actual) ? actual[key] : undefined;
+    Array.isArray(actual)
+      ? actual[Number(key)]
+      : isNonArrayObject(actual)
+        ? actual[key]
+        : undefined;
   return pinnedEntries(pinned)
     .filter(([key, value]) => {
       try {
@@ -150,10 +154,14 @@ export function firstMismatch(
   const entries = pinnedEntries(pinned);
   const sameShape = Array.isArray(pinned)
     ? Array.isArray(actual) && actual.length === pinned.length
-    : isPlainObject(actual);
+    : isNonArrayObject(actual);
   if (!sameShape) return entries[0]?.[0] ?? null;
   const at = (key: number | string): unknown =>
-    Array.isArray(actual) ? actual[Number(key)] : isPlainObject(actual) ? actual[key] : undefined;
+    Array.isArray(actual)
+      ? actual[Number(key)]
+      : isNonArrayObject(actual)
+        ? actual[key]
+        : undefined;
   return entries.find(([key, value]) => !isMatch(value, at(key), options))?.[0];
 }
 
@@ -162,12 +170,12 @@ export function firstMismatch(
  * matcher or value.
  */
 const hasKeys = (pinned: unknown) =>
-  Array.isArray(pinned) || (isPlainObject(pinned) && !isMatcher(pinned));
+  Array.isArray(pinned) || (isNonArrayObject(pinned) && !isMatcher(pinned));
 
 /** A mock's pinned args or params as [index or key, value] pairs. */
 function pinnedEntries(pinned: unknown): [number | string, unknown][] {
   if (Array.isArray(pinned)) return pinned.map((value: unknown, i) => [i, value]);
-  return isPlainObject(pinned) ? Object.entries(pinned) : [];
+  return isNonArrayObject(pinned) ? Object.entries(pinned) : [];
 }
 
 /** What `bestMatch` ranks a candidate by. */
@@ -198,7 +206,7 @@ export function isMatch(expected: unknown, actual: unknown, options: MatchOption
   if (isMatcher(expected)) {
     if (expected.type === "partial")
       return (
-        isPlainObject(actual) &&
+        isNonArrayObject(actual) &&
         Object.entries(expected.fields).every(([key, value]) =>
           isMatch(value, actual[key], options),
         )
@@ -216,7 +224,7 @@ export function isMatch(expected: unknown, actual: unknown, options: MatchOption
       expected.length === actual.length &&
       expected.every((value, i) => isMatch(value, actual[i], options))
     );
-  if (isPlainObject(expected) && isPlainObject(actual))
+  if (isNonArrayObject(expected) && isNonArrayObject(actual))
     return Object.entries(expected).every(([key, value]) => isMatch(value, actual[key], options));
   // viem decodes integers up to 48 bits as numbers and wider ones as
   // bigints. A value of the other kind that got past the types still means
@@ -266,6 +274,69 @@ export function checkNoMatchers(value: unknown, place: string, hint?: string): v
         "and pins.",
       hint === undefined ? undefined : { metaMessages: [hint] },
     );
+}
+
+/**
+ * Where a value sits in a pin: its top-level arg, param or key, then the
+ * keys and indexes inside it.
+ */
+type PinPath = readonly [Path[number], ...Path];
+
+/** How a pin's engine words the refusal of an `undefined` in its list. */
+type LeftOutWording = {
+  /**
+   * A top-level arg, param or key by name, qualified by the call that took
+   * it, e.g. "read.allowance's spender".
+   */
+  name(key: number | string): string;
+  /**
+   * Why an element of the pin's own list can't be left out, e.g. "an arg
+   * can't be left out". A list inside it has one reason for every engine.
+   */
+  reason: string;
+};
+
+/**
+ * `pinned` as a mock stores it, holding no `undefined`: an object key set to
+ * `undefined` is left out, at every depth and in `match.partial()`'s
+ * fields, so it pins nothing. Object literals are copied; class instances
+ * and other matchers are kept as they are. A test runner's matcher
+ * (`expect.any()` and the like) is a class instance, and reaches
+ * `checkNoRunnerMatchers` intact: a copy would lose its prototype's
+ * `asymmetricMatch`, and would silently never match.
+ *
+ * A list's element can't be left out, so an `undefined` one throws, named
+ * as `wording` says. An engine whose list can end early (a raw method's
+ * params) trims it first.
+ */
+export function pinWithoutUndefined<pin>(pinned: pin, wording: LeftOutWording): pin {
+  function refusal(path: PinPath) {
+    const [key, ...inside] = path;
+    const reason = inside.length === 0 ? wording.reason : "a list's elements can't be left out";
+    return new MockSetupError(
+      `${wording.name(key)}${formatPath(inside)} is undefined, and ${reason}.`,
+      { metaMessages: ["Use match.any() to match any value there."] },
+    );
+  }
+  function strip(value: unknown, path: PinPath | readonly []): unknown {
+    if (isMatcher(value))
+      return value.type === "partial" ? partialMatcher(strip(value.fields, path)) : value;
+    if (Array.isArray(value))
+      // `Array.from` visits holes, which `map` skips.
+      return Array.from(value, (each: unknown, i) => {
+        if (each === undefined) throw refusal([...path, i]);
+        return strip(each, [...path, i]);
+      });
+    // After the matchers: a matcher is an object literal too.
+    if (!isObjectLiteral(value)) return value;
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, each]) => each !== undefined)
+        .map(([key, each]) => [key, strip(each, [...path, key])]),
+    );
+  }
+  // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the same shape, less its undefined keys
+  return strip(pinned, []) as pin;
 }
 
 /**
