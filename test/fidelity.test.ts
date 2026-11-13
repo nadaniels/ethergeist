@@ -641,7 +641,7 @@ describe("storage", () => {
     const { body, client } = nodeResponse("get-storage-at");
     expect(client).toMatch(/^reth\//u);
     const real = resultOf(body);
-    if (typeof real !== "string") throw new Error("Malformed fixture get-storage-at");
+    if (typeof real !== "string") throw new TypeError("Malformed fixture get-storage-at");
     const mock = createMockRpc({ blockNumber: 10n });
     // The address the word holds, checksummed, as a test would write it.
     mock.actions

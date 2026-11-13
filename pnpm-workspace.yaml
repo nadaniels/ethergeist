@@ -4,12 +4,12 @@ packages:
 catalog:
   "@types/node": ^26.6.6
   "@vitest/coverage-v8": 5.1.0
-  oxlint: 1.91.0
-  oxlint-tsgolint: 7.0.2005
+  oxlint: 1.93.0
+  oxlint-tsgolint: 7.0.2006
   typescript: ^7.0.2
-  viem: ^2.57.16
-  vite: npm:@voidzero-dev/vite-plus-core@1.5.0
-  vite-plus: 1.5.0
+  viem: ^2.57.19
+  vite: npm:@voidzero-dev/vite-plus-core@1.6.0
+  vite-plus: 1.6.0
   vitest: 5.1.0
 overrides:
   vite@*: "catalog:"

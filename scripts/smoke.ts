@@ -55,7 +55,7 @@ function manifestField(directory: string, ...path: string[]): string {
   let value: unknown = JSON.parse(readFileSync(file, "utf8"));
   for (const key of path)
     value = typeof value === "object" && value !== null ? Reflect.get(value, key) : undefined;
-  if (typeof value !== "string") throw new Error(`${file} has no ${path.join(".")}.`);
+  if (typeof value !== "string") throw new TypeError(`${file} has no ${path.join(".")}.`);
   return value;
 }
 
