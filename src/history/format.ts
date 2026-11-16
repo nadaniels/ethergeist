@@ -164,14 +164,14 @@ export function formatEntry(
       (record, i) =>
         `   ${i === entry.calls.length - 1 ? "└" : "├"} ${formatLabel(record)} ${recordOutcome(record)}`,
     );
-    return [
-      `${head} multicall${batch} (${entry.calls.length} ${entry.calls.length === 1 ? "call" : "calls"})${retry}${outcome}`,
-      ...lines,
-    ].join("\n");
+    return [`${head} multicall${batch}${callCount(entry)}${retry}${outcome}`, ...lines].join("\n");
   }
-  if (entry.type === "action" && entry.action === "getLogs" && entry.call !== undefined)
-    return `${head} ${context.describeLogs?.(entry.call) ?? formatCall("getLogs", entry.call, { short: true })}${retry} ${formatOutcome(entry.outcome, entry.action)}`;
-  if (entry.type === "action") {
+  // An action without its call (refused for its params, failed by
+  // `failRequests()`, or still pending) prints its params as sent, as a raw
+  // method's does: `(*)` would claim any args.
+  if (entry.type === "action" && entry.call !== undefined) {
+    if (entry.action === "getLogs")
+      return `${head} ${context.describeLogs?.(entry.call) ?? formatCall("getLogs", entry.call, { short: true })}${retry} ${formatOutcome(entry.outcome, entry.action)}`;
     const what = entry.contract?.call
       ? `${entry.contract.namespace ?? entry.action} ${formatLabel(entry.contract)}`
       : formatCall(entry.action, entry.call, { short: true });
@@ -179,6 +179,17 @@ export function formatEntry(
     return `${head} ${what}${retry} ${formatOutcome(entry.outcome, entry.action)}${mined}`;
   }
   return `${head}${formatParams(entry.params)}${retry} ${formatOutcome(entry.outcome)}`;
+}
+
+/**
+ * A batch's count of calls, ` (2 calls)`. None when no call was recorded and
+ * the request didn't succeed: it failed before its batch was read
+ * (`failRequests()`, its params, a Multicall3 function other than
+ * `aggregate3`), or is still pending, so the count isn't known.
+ */
+function callCount({ calls, outcome }: Extract<MockHistoryEntry, { type: "multicall" }>) {
+  if (calls.length === 0 && outcome.type !== "result") return "";
+  return ` (${calls.length} ${calls.length === 1 ? "call" : "calls"})`;
 }
 
 /**
