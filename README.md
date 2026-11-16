@@ -101,6 +101,10 @@ test("reads a balance", async () => {
 `mock.publicClient()` is a viem public client on `mock.transport()`, which you
 can hand to anything that takes a viem transport.
 
+If your app builds its own client on `mock.transport()`, give it the same test
+settings `mock.publicClient()` has: `pollingInterval: 50` and `cacheTime: 0`,
+so it sees new blocks at once rather than seconds later.
+
 ### Contract Writes
 
 ```ts
@@ -137,10 +141,10 @@ test("sends a transfer", async () => {
 
 The transfer is mined in a new block on the mock's chain state, so its receipt and
 its `Transfer` log are there for the app to find (see [The Chain](#the-chain)).
-If viem estimates the gas first, as it does for a local account, the write mock
-answers the estimate too (default 100,000 gas). A `.reverts()` mock reverts the
-estimate instead, as a node would, and the contract's `estimateGas` mock sets a
-number. Only a contract's mocks answer its functions: `mock.actions.estimateGas`
+A local account (`privateKeyToAccount()`) works too: viem estimates the gas
+first, and the write mock answers the estimate as well (default 100,000 gas).
+A `.reverts()` mock reverts the estimate instead, as a node would, and the
+contract's `estimateGas` mock sets a number. Only a contract's mocks answer its functions: `mock.actions.estimateGas`
 and `mock.actions.sendTransaction` answer everything else.
 
 Reads batched through Multicall3 are answered call by call, so viem's
@@ -408,12 +412,17 @@ const mock = createMockRpc();
 const usdc = mock.contract({ abi: erc20Abi, address: testAddress("usdc") });
 
 mock.failRequests({ status: 503 }, { times: 2 }); // two failures, then it recovers
+mock.failRequests({ status: 503 }, { method: "eth_blockNumber" }); // only block-number polls
 const outage = mock.failRequests("timeout");
 outage.clear();
 
 // Just one function.
 usdc.read.balanceOf().fails({ status: 429, retryAfter: 1 });
 ```
+
+viem retries a failed request three times by default, so `times: 2` tests the
+app's recovery without the app seeing an error. To test that it sees one, pass
+`retryCount: 0` to `mock.transport()` or `mock.publicClient()`.
 
 A node can also refuse an estimate, a simulation, or a send before running it:
 `.refuses()` does that by name, and `refuse()` in a resolver. Each name is
@@ -441,7 +450,7 @@ The mock records what your app asked for, decoded:
 ```ts
 import { createMockRpc, testAddress } from "ethergeist";
 import { erc20Abi } from "viem";
-import { expect } from "vitest";
+import { expect, onTestFinished } from "vitest";
 
 const alice = testAddress("alice");
 const mock = createMockRpc();
@@ -458,19 +467,28 @@ await mock.publicClient().readContract({
 expect(usdc.read.balanceOf.calls).toMatchObject([{ args: [alice] }]);
 ```
 
-- `contract.calls` and `mock.calls` list decoded calls, across namespaces and
-  inside multicalls; each action has `.calls` too.
-- `mock.history` has every request and how it was answered, and
-  `mock.formatHistory()` prints it. `createMockRpc({ debug: true })` logs each
+- `contract.calls` and `mock.calls` list decoded calls in order, across
+  namespaces and inside multicalls, sends included, so `mock.calls` is the
+  order of the app's contract calls; each action has `.calls` too.
+- `mock.history` has every request, receipts and blocks included, and how it
+  was answered, and `mock.formatHistory()` prints it. `createMockRpc({ debug: true })` logs each
   request as it's answered, for a test that times out before it can print.
 - `mock.assertNoUnhandled()` fails if a request went unanswered, even one whose
-  error your app swallowed.
+  error your app swallowed. A mock pinned to the args the app should send
+  checks them too: with wrong args, the call goes unanswered, and the assertion fails.
 - `mock.assertAllUsed()` fails if a mock never answered, e.g. because its pins
   are wrong and a broader mock answered instead.
 
+Run `assertNoUnhandled()` after every test, not just where you suspect a miss:
+with a fresh mock per test, in `onTestFinished` where the mock is made, or with
+`restore()`'s checks (see [Shared Setup](#shared-setup)).
+
 ```ts continued
-mock.assertNoUnhandled();
-mock.assertAllUsed();
+function setup() {
+  const mock = createMockRpc();
+  onTestFinished(() => mock.assertNoUnhandled());
+  return mock;
+}
 ```
 
 ## Shared Setup

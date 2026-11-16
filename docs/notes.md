@@ -19,12 +19,26 @@ features land; tick them off as pages get written.
 - [ ] `createMockRpc({ chain, blockNumber, timestamp })`, then
       `mock.publicClient()`, or `createPublicClient({ transport: mock.transport() })`
       with the defaults the helper sets (`cacheTime: 0`, `pollingInterval: 50`,
-      `retryDelay: 0`). Say why `cacheTime: 0` matters: a client made
-      without it (the app's own, or a wagmi config) caches the block number
-      for seconds, so after `restore()` rolls the chain back (say from block
-      13 to 10) it asks for logs from block 13, and the mock refuses the
-      range as beyond the head, as a node would. Give test clients
-      `cacheTime: 0`.
+      `retryDelay: 0`). Say why `cacheTime: 0` matters: viem caches
+      `getBlockNumber()` for `cacheTime`, which defaults to the polling
+      interval capped at half the chain's block time (up to 4 s on viem's
+      defaults, 50 ms with a short `pollingInterval`). An app that reads the
+      block number directly sees a stale one if the test calls `mine()`
+      inside that window, and after `restore()` rolls the chain back (say
+      from block 13 to 10) it asks for logs from block 13, which the mock
+      refuses as beyond the head, as a node would. Watchers and
+      `waitForTransactionReceipt()` aren't affected: viem's polling passes
+      `cacheTime: 0` itself. Give test clients both settings anyway, as
+      the README says, so the reader needn't know which path the app takes.
+- [ ] The chain's clock isn't the wall clock: block 1 is stamped
+      `1_700_000_000` (Nov 2023) unless `createMockRpc({ timestamp })` says
+      otherwise, and each block adds the chain's block time. An app that
+      builds a deadline from `Date.now()` and a test that pins it need fake
+      timers for `Date` only, e.g. `vi.useFakeTimers({ toFake: ["Date"] })`
+      and `vi.setSystemTime(…)`, which leave viem's polling on real timers.
+      Nothing compares the deadline with a block's timestamp, since no
+      contract runs, so the app sees no difference either way. Revisit with
+      clock control.
 - [ ] Registering a contract, and
       `defaults: { read: { … }, simulate: { … }, estimateGas: { … } }`.
       This is the first setup code everyone writes, so the docs should lead
@@ -328,7 +342,10 @@ features land; tick them off as pages get written.
     empty account, geth-family nodes say "insufficient funds" for any
     estimate with fees, before any fee-cap error.
 - [ ] `failRequests()` for transport-wide faults, versus `.fails()` and
-      `fail()` for one function.
+      `fail()` for one function. Its `method` option (a method or a list)
+      fails only those requests, e.g. `{ method: "eth_blockNumber" }` to fail
+      a block watcher's polls and test its error path apart from the calls
+      the app makes on each block; built-ins can be failed this way too.
 - [ ] Recovering after a failure: `.once().fails(…)` or `.times(n).fails(…)`
       next to a mock that answers. Retries use up answers, so with viem's
       default 3 retries, `.times(3)` still succeeds and `.times(4)` fails the
@@ -838,6 +855,20 @@ features land; tick them off as pages get written.
 - [ ] `assertNoUnhandled()` (catches errors the app swallowed) and
       `assertAllUsed()` (catches mocks that never answered: wrong args, or a
       call the app no longer makes).
+- [ ] Writing tests that check something:
+  - Run `assertNoUnhandled()` after every test: `onTestFinished(() =>
+    mock.assertNoUnhandled())` where a fresh mock is made, or `restore()`'s
+    checks. The example's test agent called it the check that paid for
+    itself most: a mutated app failed on the exact request, `✗ not mocked`,
+    rather than on a vague assertion.
+  - Pin the args the app should send: a pinned mock doubles as a check,
+    since wrong args go unanswered and `assertNoUnhandled()` fails. It's the
+    best guard against tests that mostly re-assert their own mocks. The
+    cost: a test's override of a fixture's pinned mock needs the same pins,
+    or the pinned mock stays more specific and answers instead.
+  - Mutation testing (e.g. Stryker) finds the hollow tests: mutate the app,
+    and a test that still passes isn't checking that behavior. The example's
+    suite caught every behavioral mutant of its bot.
 - [ ] What `assertNoUnhandled()`'s list shows (as do `restore()`'s check
       and `checkpoint()`'s refusal): each miss with its error's hints
       indented under it, so a test whose app kept the error (wagmi holds it
@@ -967,6 +998,17 @@ features land; tick them off as pages get written.
       `(line, entry) => …` to use any logger, with examples for pino- and
       winston-style loggers and `process.stdout`. Warn that entries contain
       bigints, which `JSON.stringify` rejects.
+- [ ] Asserting the order of what the app did: `mock.calls` for contract
+      calls alone (every namespace, sends included, multicall sub-calls in
+      place), e.g. `mock.calls.map((call) => call.functionName)`; `history`
+      when the order has to include other requests, like a receipt fetched
+      between a send and the next call. In `history`, a contract call's
+      record is in one of three places, by entry: `entry.call` on a `call`
+      entry, `entry.calls[i]` on a `multicall` entry, and `entry.contract`
+      on an `action` entry for an estimate or a send to a registered
+      contract. Narrow on `entry.type` (and `entry.action`) first. Show a
+      helper that flattens them, beside the `mock.calls` version, so readers
+      see they rarely need it.
 - [ ] When to use which: `formatHistory()` after a failure, `debug` when a
       test times out before it could print anything. Under Vitest, `debug`
       gets a `stdout | file > test` header per line, so printing history only
