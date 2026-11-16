@@ -140,8 +140,9 @@ export function retryHint(
 }
 
 /**
- * `entry`, formatted with its `number`, and marked if it's a retry. An entry
- * no longer kept has no number, and shows `–`.
+ * `entry`, formatted with its `number`. A retry is marked just before its
+ * outcome, so the request reads whole. An entry no longer kept has no
+ * number, and shows `–`.
  */
 export function formatEntry(
   view: HistoryView,
@@ -149,34 +150,35 @@ export function formatEntry(
   number: number | undefined,
   context: FormatContext = {},
 ): string {
-  const retry = view.faultRetried(entry) ? "(retry) " : "";
-  const head = `#${number ?? "–"} ${entry.method} ${retry}`;
+  const retry = view.faultRetried(entry) ? " (retry)" : "";
+  const head = `#${number ?? "–"} ${entry.method}`;
 
   if (entry.type === "call")
     return entry.call
-      ? `${head}${formatRecord(entry.call)}`
-      : `${head}${entry.to ?? "(no to)"} ${formatOutcome(entry.outcome)}`;
+      ? `${head} ${formatLabel(entry.call)}${retry} ${recordOutcome(entry.call)}`
+      : `${head} ${entry.to ?? "(no to)"}${retry} ${formatOutcome(entry.outcome)}`;
   if (entry.type === "multicall") {
     const batch = entry.batchId === undefined ? "" : `, batch ${entry.batchId}`;
     const outcome = entry.outcome.type === "result" ? "" : ` ${formatOutcome(entry.outcome)}`;
     const lines = entry.calls.map(
-      (record, i) => `   ${i === entry.calls.length - 1 ? "└" : "├"} ${formatRecord(record)}`,
+      (record, i) =>
+        `   ${i === entry.calls.length - 1 ? "└" : "├"} ${formatLabel(record)} ${recordOutcome(record)}`,
     );
     return [
-      `${head}multicall${batch} (${entry.calls.length} ${entry.calls.length === 1 ? "call" : "calls"})${outcome}`,
+      `${head} multicall${batch} (${entry.calls.length} ${entry.calls.length === 1 ? "call" : "calls"})${retry}${outcome}`,
       ...lines,
     ].join("\n");
   }
   if (entry.type === "action" && entry.action === "getLogs" && entry.call !== undefined)
-    return `${head}${context.describeLogs?.(entry.call) ?? formatCall("getLogs", entry.call, { short: true })} ${formatOutcome(entry.outcome, entry.action)}`;
+    return `${head} ${context.describeLogs?.(entry.call) ?? formatCall("getLogs", entry.call, { short: true })}${retry} ${formatOutcome(entry.outcome, entry.action)}`;
   if (entry.type === "action") {
     const what = entry.contract?.call
       ? `${entry.contract.namespace ?? entry.action} ${formatLabel(entry.contract)}`
       : formatCall(entry.action, entry.call, { short: true });
     const mined = entry.action === "sendTransaction" ? minedNote(entry.outcome, context) : "";
-    return `${head}${what} ${formatOutcome(entry.outcome, entry.action)}${mined}`;
+    return `${head} ${what}${retry} ${formatOutcome(entry.outcome, entry.action)}${mined}`;
   }
-  return `${head.trimEnd()}${formatParams(entry.params)} ${formatOutcome(entry.outcome)}`;
+  return `${head}${formatParams(entry.params)}${retry} ${formatOutcome(entry.outcome)}`;
 }
 
 /**
@@ -226,12 +228,10 @@ function formatLabel({ address, name, call }: MockCallRecord): string {
   return call ? `${label}.${formatCall(call.functionName, call.args, { short: true })}` : label;
 }
 
-function formatRecord(record: MockCallRecord): string {
-  const { abiItem, outcome } = record;
-  const text = formatLabel(record);
-  if (outcome.type === "result" && abiItem)
-    return `${text} → ${formatResult(abiItem, outcome.value)}`;
-  return `${text} ${formatOutcome(outcome)}`;
+/** A contract call's outcome: `→` and its decoded result, or how it ended. */
+function recordOutcome({ abiItem, outcome }: MockCallRecord): string {
+  if (outcome.type === "result" && abiItem) return `→ ${formatResult(abiItem, outcome.value)}`;
+  return formatOutcome(outcome);
 }
 
 /**

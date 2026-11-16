@@ -297,7 +297,7 @@ describe("formatHistory()", () => {
         "   ├ USDC.balanceOf(0xa41f…2D9e) → 5n",
         "   └ 0x6B17…1d0F.decimals() ✗ reverted: EnforcedPause()",
         "#3 eth_call USDC.symbol() ✗ fault: HTTP 503",
-        "#4 eth_call (retry) USDC.symbol() ✗ fault: HTTP 503",
+        "#4 eth_call USDC.symbol() (retry) ✗ fault: HTTP 503",
         '#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n, blockTag: "latest" }) → 1000000000000000000n',
         '#6 eth_getBlockTransactionCountByNumber("latest") ✗ not mocked',
         "#7 eth_blockNumber → 10n",
@@ -313,7 +313,60 @@ describe("formatHistory()", () => {
 
     await rejectionOf(mock.request(request));
     expect(await mock.request(request)).toBe(1);
-    expect(mock.formatHistory()).toContain("#2 x_y (retry)");
+    expect(mock.formatHistory()).toContain("#2 x_y(1n) (retry) → 1");
+  });
+
+  test("a retry is marked just before its outcome, on every kind of line", async () => {
+    const { mock, client, read } = setup({ retryCount: 1 });
+    const usdc = mock.contract({ abi: tokenAbi, address: USDC, name: "USDC" });
+    mock.method("eth_getBlockTransactionCountByNumber").once().fails("timeout");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
+    usdc.read.symbol().once().fails("timeout");
+    usdc.read.symbol().returns("USDC");
+    mock.actions.getBalance().once().fails("timeout");
+    mock.actions.getBalance().returns(5n);
+    usdc.read.decimals().returns(6);
+    usdc.estimateGas.transfer().once().fails("timeout");
+    usdc.estimateGas.transfer().returns(65_000n);
+    mock.actions.getLogs().once().fails("timeout");
+    mock.actions.getLogs().returns([]);
+
+    await client.getBlockTransactionCount();
+    await read(USDC, "symbol");
+    await client.getBalance({ address: alice });
+    mock.failRequests("timeout", { times: 1 });
+    await client.multicall({
+      contracts: [
+        { abi: tokenAbi, address: USDC, functionName: "symbol" },
+        { abi: tokenAbi, address: USDC, functionName: "decimals" },
+      ],
+    });
+    const transfer = { abi: tokenAbi, functionName: "transfer", args: [alice, 1n] } as const;
+    await client.estimateContractGas({ ...transfer, address: USDC, account: alice });
+    await client.getLogs({ address: USDC });
+    mock.failRequests("timeout", { times: 2 });
+    await rejectionOf(client.call({ to: NOWHERE, data: "0x12" }));
+
+    expect(mock.formatHistory()).toBe(
+      [
+        '#1 eth_getBlockTransactionCountByNumber("latest") ✗ fault: timeout',
+        '#2 eth_getBlockTransactionCountByNumber("latest") (retry) → 0x1',
+        "#3 eth_call USDC.symbol() ✗ fault: timeout",
+        '#4 eth_call USDC.symbol() (retry) → "USDC"',
+        '#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n, blockTag: "latest" }) ✗ fault: timeout',
+        '#6 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n, blockTag: "latest" }) (retry) → 5n',
+        "#7 eth_call multicall (0 calls) ✗ fault: timeout (failRequests)",
+        "#8 eth_call multicall, batch 1 (2 calls) (retry)",
+        '   ├ USDC.symbol() → "USDC"',
+        "   └ USDC.decimals() → 6",
+        "#9 eth_estimateGas estimateGas USDC.transfer(0xa41f…2D9e, 1n) ✗ fault: timeout",
+        "#10 eth_estimateGas estimateGas USDC.transfer(0xa41f…2D9e, 1n) (retry) → 65000n",
+        "#11 eth_getLogs getLogs(USDC, block 10n) ✗ fault: timeout",
+        "#12 eth_getLogs getLogs(USDC, block 10n) (retry) → 0 logs",
+        `#13 eth_call ${NOWHERE} ✗ fault: timeout (failRequests)`,
+        `#14 eth_call ${NOWHERE} (retry) ✗ fault: timeout (failRequests)`,
+      ].join("\n"),
+    );
   });
 
   test("builtIns: false leaves out eth_chainId and eth_blockNumber, keeping numbers", async () => {
@@ -613,7 +666,7 @@ describe("historyOnFailure", () => {
       messageOf(() => {
         mock.assertAllUsed();
       }),
-    ).toContain("#2 eth_call (retry) USDC.decimals()");
+    ).toContain("#2 eth_call USDC.decimals() (retry) → 6");
   });
 
   test("no requests, no section", () => {
