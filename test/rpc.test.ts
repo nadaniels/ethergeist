@@ -579,7 +579,7 @@ describe("options", () => {
     [{ timestamp: -1n }, "createMockRpc()'s timestamp must be a non-negative bigint; got -1n."],
     [
       { chain: { ...mainnet, blockTime: "x" } },
-      "createMockRpc()'s chain.blockTime must be a non-negative integer; got x.",
+      'createMockRpc()\'s chain.blockTime must be a non-negative integer; got "x".',
     ],
     [
       { chain: { ...mainnet, blockTime: 1.5 } },

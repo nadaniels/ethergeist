@@ -96,7 +96,7 @@ describe("getBalance", () => {
       MockNotFoundError,
     );
     expect(error.message).toContain(
-      `No mock for getBalance({ address: ${getAddress(alice)}, blockNumber: 10n, blockTag: latest })`,
+      `No mock for getBalance({ address: ${getAddress(alice)}, blockNumber: 10n, blockTag: "latest" })`,
     );
     expect(error.message).toContain("mock.actions.getBalance({ address }).returns(…)");
     expect(mock.unhandled).toHaveLength(1);
@@ -289,7 +289,7 @@ describe("getCode", () => {
   test("a mock's code must be hex", () => {
     const { mock } = setup();
 
-    expectThrows(MockSetupError, "getCode's answer must be hex; got fe.", () => {
+    expectThrows(MockSetupError, 'getCode\'s answer must be hex; got "fe".', () => {
       // @ts-expect-error -- code is hex
       mock.actions.getCode().returns("fe");
     });
@@ -1072,7 +1072,7 @@ describe("method()", () => {
       await rejectionOf(mock.request({ method: "eth_getProof", params: [DAI, [], "latest"] })),
       MockNotFoundError,
     );
-    expect(error.shortMessage).toBe(`No mock for eth_getProof(${DAI}, [], latest).`);
+    expect(error.shortMessage).toBe(`No mock for eth_getProof(${DAI}, [], "latest").`);
     expect(error.metaMessages).toEqual([
       "Registered:",
       `  eth_getProof(${USDC})  ← param 1 didn't match`,

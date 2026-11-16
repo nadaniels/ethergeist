@@ -100,6 +100,14 @@ The mock's errors:
   `docsPath`: viem matches `details` against node errors, and its wrappers
   take a cause's `docsPath` with their own base URL. A failed check's list
   is the failure, so it stays in the short message: checks never reach viem.
+- A value in a message, history lines included, goes through `formatValue`
+  in `mocking/format.ts`. It quotes a string, so `"21000"` can't read as the
+  number it spells, and leaves hex bare, since nothing else it prints starts
+  with `0x`. A name standing alone in prose (a function, an event, an arg, or
+  a method) is quoted by hand: `No function "transfer"`. In a call, it's
+  bare, and so is a field's name, as in a subject: `fee isn't a field of …`.
+  An error's own message and a summary's words are prose, printed
+  bare: `✗ fault: RPC error -32005 (limit exceeded)`, `success, block 10n`.
 - A request param a node can't parse is `invalidParams` (`chain/params.ts`),
   never a setup error, even when the same check runs at registration.
 - Setup checks run once, in the first part that reads a value: the generic

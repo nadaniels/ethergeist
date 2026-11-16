@@ -185,7 +185,8 @@ type FormatOptions = {
 
 /**
  * A value for messages: bigints as `5n`, arrays and structs spelled out,
- * patterns as written, and matchers as `formatMatcher` shows them.
+ * patterns as written, and matchers as `formatMatcher` shows them. A string
+ * is quoted, as `"latest"`, unless it's hex, e.g. `0x12`.
  */
 export function formatValue(value: unknown, options: FormatOptions = {}): string {
   if (isMatcher(value)) return formatMatcher(value, options);
@@ -199,8 +200,8 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
     const fields = Object.entries(value).map(([key, v]) => `${key}: ${formatValue(v, options)}`);
     return fields.length === 0 ? "{}" : `{ ${fields.join(", ")} }`;
   }
-  if (typeof value === "string")
-    return options.short === true && isHex(value) && value.length > 14
+  if (typeof value === "string" && isHex(value))
+    return options.short === true && value.length > 14
       ? `${value.slice(0, 6)}…${value.slice(-4)}`
       : value;
   return JSON.stringify(value);

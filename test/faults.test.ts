@@ -586,7 +586,7 @@ describe("a fault that isn't one", () => {
       // oxlint-enable typescript/no-unsafe-type-assertion
       for (const register of registrations) {
         const error = expectThrows(MockSetupError, "Expected a fault", register);
-        expect(error.shortMessage).toBe(`Expected a fault; got ${name}.`);
+        expect(error.shortMessage).toBe(`Expected a fault; got "${name}".`);
         expect(error.metaMessages).toEqual([
           `"${name}" is a node's refusal: use .refuses("${name}"), or refuse("${name}") in a resolver.`,
           "A node refuses only simulations, estimates and sends.",
@@ -627,7 +627,7 @@ describe("a fault that isn't one", () => {
     const cause = expectCause(rejection, MockResolverError).cause;
     expect(cause).toBeInstanceOf(MockSetupError);
     expect(cause).toMatchObject({
-      shortMessage: "Expected a fault; got insufficientFunds.",
+      shortMessage: 'Expected a fault; got "insufficientFunds".',
       metaMessages: [
         '"insufficientFunds" is a node\'s refusal: use .refuses("insufficientFunds"), or refuse("insufficientFunds") in a resolver.',
         "A node refuses only simulations, estimates and sends.",

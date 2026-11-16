@@ -543,7 +543,7 @@ describe("the args' types", () => {
 
     const error = expectThrows(
       MockSetupError,
-      "simulate.transfer's amount must be a uint256; got a lot.",
+      'simulate.transfer\'s amount must be a uint256; got "a lot".',
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       () => usdc.simulate.transfer([bob, "a lot" as never]),
     );
@@ -552,7 +552,7 @@ describe("the args' types", () => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       usdc.read.balanceOf([5n as never]),
     );
-    expectThrows(MockSetupError, "read.ownerOf's arg 1 must be a uint256; got a lot.", () =>
+    expectThrows(MockSetupError, 'read.ownerOf\'s arg 1 must be a uint256; got "a lot".', () =>
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       nft.read.ownerOf(["a lot" as never]),
     );
@@ -567,16 +567,16 @@ describe("the args' types", () => {
 
     const error = expectThrows(
       MockSetupError,
-      "read.route's route.swaps[0].amountIn must be a uint256; got a lot.",
+      'read.route\'s route.swaps[0].amountIn must be a uint256; got "a lot".',
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       () => router.read.route([{ swaps: [{ amountIn: "a lot" }] } as never]),
     );
     expect(error.metaMessages).toBeUndefined();
-    expectThrows(MockSetupError, "read.sum's ids[2] must be a uint256; got x.", () =>
+    expectThrows(MockSetupError, 'read.sum\'s ids[2] must be a uint256; got "x".', () =>
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       router.read.sum([[1n, 2n, "x" as never]]),
     );
-    expectThrows(MockSetupError, "read.pay's payment[1] must be a uint256; got x.", () =>
+    expectThrows(MockSetupError, 'read.pay\'s payment[1] must be a uint256; got "x".', () =>
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       router.read.pay([[alice, "x" as never]]),
     );
@@ -594,7 +594,7 @@ describe("the args' types", () => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- Swap has no fee
       router.read.quote([{ tokenIn: match.any(), fee: 1n } as never]),
     );
-    expectThrows(MockSetupError, "read.quote's swap.amountIn must be a uint256; got x.", () =>
+    expectThrows(MockSetupError, 'read.quote\'s swap.amountIn must be a uint256; got "x".', () =>
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       router.read.quote([match.partial({ amountIn: "x" as never })]),
     );
@@ -697,7 +697,7 @@ describe("the args' types", () => {
     const router = mock.contract({ abi: typesAbi, address: bob });
 
     for (const [value, shown] of [
-      ["5", "5"],
+      ["5", '"5"'],
       ["0x05", "0x05"],
       [true, "true"],
       [[5n], "[5n]"],
@@ -712,7 +712,7 @@ describe("the args' types", () => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       router.read.lookup([5n as never]),
     );
-    expectThrows(MockSetupError, "read.verify's sig must be bytes; got hello.", () =>
+    expectThrows(MockSetupError, 'read.verify\'s sig must be bytes; got "hello".', () =>
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       router.read.verify(["hello" as never]),
     );
@@ -780,11 +780,11 @@ describe("the args' types", () => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       [() => router.read.delta([1.5 as never]), "read.delta's change must be an int256; got 1.5."],
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
-      [() => router.read.delta(["5" as never]), "read.delta's change must be an int256; got 5."],
+      [() => router.read.delta(["5" as never]), 'read.delta\'s change must be an int256; got "5".'],
       [() => router.read.digest(["0xabcd"]), "read.digest's hash must be a bytes32; got 0xabcd."],
       [
         () => router.read.digest([`0x${"zz".repeat(32)}`]),
-        `read.digest's hash must be a bytes32; got 0x${"zz".repeat(32)}.`,
+        `read.digest's hash must be a bytes32; got "0x${"zz".repeat(32)}".`,
       ],
     ] as const)
       expectThrows(MockSetupError, message, call);
@@ -801,7 +801,7 @@ describe("the args' types", () => {
     );
     expectThrows(
       MockSetupError,
-      "read.batch's swaps[0].amountIn must be a uint256; got a lot.",
+      'read.batch\'s swaps[0].amountIn must be a uint256; got "a lot".',
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a fixture of the wrong type, cast as tests write one
       () => router.read.batch([[{ amountIn: "a lot" } as never]]),
     );

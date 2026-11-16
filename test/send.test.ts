@@ -562,7 +562,7 @@ describe("send mocks", () => {
     });
     expectThrows(
       MockSetupError,
-      'A send\'s status must be "success" or "reverted"; got failed.',
+      'A send\'s status must be "success" or "reverted"; got "failed".',
       () => {
         // @ts-expect-error -- not a status
         send.returns({ status: "failed" });

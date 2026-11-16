@@ -262,7 +262,7 @@ export function formatOutcome(outcome: MockOutcome, action?: string): string {
   if (outcome.type === "pending") return "… pending";
   if (outcome.type === "result") return `→ ${summarize(outcome.value, action)}`;
   if (outcome.type === "revert") {
-    if (outcome.reason !== undefined) return `✗ reverted: "${outcome.reason}"`;
+    if (outcome.reason !== undefined) return `✗ reverted: ${formatValue(outcome.reason)}`;
     if (outcome.errorName !== undefined)
       return `✗ reverted: ${formatCall(outcome.errorName, outcome.args ?? [], { short: true })}`;
     return `✗ reverted (${formatValue(outcome.data, { short: true })})`;

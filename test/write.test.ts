@@ -1385,10 +1385,14 @@ describe("registration refusals", () => {
     expectThrows(MockSetupError, "Only a deploy (to: null) has a contractAddress.", () => {
       write.returns({ contractAddress: USDC });
     });
-    expectThrows(MockSetupError, /^A send's log 0 isn't a log; got \{ eventName: Transfer/u, () => {
-      // @ts-expect-error -- not a log
-      write.returns({ logs: [{ eventName: "Transfer", args: { to: alice, value: 1n } }] });
-    });
+    expectThrows(
+      MockSetupError,
+      /^A send's log 0 isn't a log; got \{ eventName: "Transfer"/u,
+      () => {
+        // @ts-expect-error -- not a log
+        write.returns({ logs: [{ eventName: "Transfer", args: { to: alice, value: 1n } }] });
+      },
+    );
     expectThrows(InvalidAddressError, /Address "0x12" is invalid/u, () => {
       write.emits([{ address: "0x12", topics: [], data: "0x" }]);
     });
@@ -1700,8 +1704,8 @@ describe("writes in history", () => {
     expect(mock.formatHistory()).toBe(
       [
         "#1 eth_fillTransaction({ data: 0xa905…0005, from: 0x6E12…6bd2, to: 0x99d9…bfC7 }) ✗ rpc error -32601: the method eth_fillTransaction does not exist/is not available",
-        "#2 eth_getTransactionCount getTransactionCount({ address: 0x6E12…6bd2, blockNumber: 10n, blockTag: pending }) → 0",
-        "#3 eth_getBlockByNumber getBlock({ blockNumber: 10n, blockTag: latest, includeTransactions: false }) → block 10n, timestamp 1700000000n",
+        '#2 eth_getTransactionCount getTransactionCount({ address: 0x6E12…6bd2, blockNumber: 10n, blockTag: "pending" }) → 0',
+        '#3 eth_getBlockByNumber getBlock({ blockNumber: 10n, blockTag: "latest", includeTransactions: false }) → block 10n, timestamp 1700000000n',
         "#4 eth_maxPriorityFeePerGas estimateMaxPriorityFeePerGas() → 1000000000n",
         "#5 eth_estimateGas estimateGas USDC.transfer(0x4292…207f, 5n) → 100000n",
         "#6 eth_sendRawTransaction write USDC.transfer(0x4292…207f, 5n) → 0xa4a9…c417 (mined in block 11n, 1 log)",
@@ -1766,7 +1770,7 @@ describe("writes in history", () => {
     await wallet.sendTransaction({ to: bob, value: 1n });
 
     expect(mock.formatHistory({ builtIns: false })).toBe(
-      "#2 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, type: eip1559 }) → 0x340f…155f (mined in block 11n, 0 logs)",
+      '#2 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, type: "eip1559" }) → 0x340f…155f (mined in block 11n, 0 logs)',
     );
   });
 
@@ -1784,7 +1788,7 @@ describe("writes in history", () => {
     expect(mock.formatHistory({ builtIns: false })).toBe(
       [
         "(2 older requests dropped, past historyLimit)",
-        "#4 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, type: eip1559 }) → 0x7bff…b2a9 (mined in block 12n, 0 logs)",
+        '#4 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, type: "eip1559" }) → 0x7bff…b2a9 (mined in block 12n, 0 logs)',
       ].join("\n"),
     );
     mock.clearCalls();
@@ -1809,8 +1813,8 @@ describe("writes in history", () => {
         "",
         "Requests so far:",
         "#1 eth_fillTransaction({ data: 0xa905…0005, from: 0x6E12…6bd2, to: 0x99d9…bfC7 }) ✗ rpc error -32601: the method eth_fillTransaction does not exist/is not available",
-        "#2 eth_getTransactionCount getTransactionCount({ address: 0x6E12…6bd2, blockNumber: 10n, blockTag: pending }) → 0",
-        "#3 eth_getBlockByNumber getBlock({ blockNumber: 10n, blockTag: latest, includeTransactions: false }) → block 10n, timestamp 1700000000n",
+        '#2 eth_getTransactionCount getTransactionCount({ address: 0x6E12…6bd2, blockNumber: 10n, blockTag: "pending" }) → 0',
+        '#3 eth_getBlockByNumber getBlock({ blockNumber: 10n, blockTag: "latest", includeTransactions: false }) → block 10n, timestamp 1700000000n',
         "#4 eth_maxPriorityFeePerGas estimateMaxPriorityFeePerGas() → 1000000000n",
         "#5 eth_estimateGas estimateGas USDC.transfer(0x4292…207f, 5n) → 100000n",
         "#6 eth_sendRawTransaction write USDC.transfer(0x4292…207f, 5n) → 0xa4a9…c417 (mined in block 11n, 0 logs)",

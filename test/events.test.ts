@@ -447,7 +447,7 @@ describe("mock.buildLog()", () => {
         "mock.buildLog()'s transactionIndex must be a non-negative integer; got 1.5.",
       ],
       [{ logIndex: -1 }, "mock.buildLog()'s logIndex must be a non-negative integer; got -1."],
-      [{ logIndex: "x" }, "mock.buildLog()'s logIndex must be a non-negative integer; got x."],
+      [{ logIndex: "x" }, 'mock.buildLog()\'s logIndex must be a non-negative integer; got "x".'],
     ] as const)
       // @ts-expect-error -- some aren't the placement's types
       expectThrows(MockSetupError, message, () => mock.buildLog(content, placement));
@@ -559,7 +559,7 @@ describe("a log's content is checked wherever it's placed", () => {
     {
       name: "data that isn't hex",
       log: untyped({ ...content, data: "0xzz" }),
-      says: "has data that isn't hex; got 0xzz.",
+      says: 'has data that isn\'t hex; got "0xzz".',
     },
     {
       name: "a topic that isn't a 32-byte hash",

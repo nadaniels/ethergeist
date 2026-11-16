@@ -249,6 +249,23 @@ describe("history entries", () => {
 });
 
 describe("formatHistory()", () => {
+  test("a string is quoted, with its own quotes escaped; hex stays bare", async () => {
+    const { mock, read } = setup();
+    const usdc = mock.contract({ abi: tokenAbi, address: USDC, name: "USDC" });
+    usdc.read.symbol().returns("USDC");
+    usdc.read.decimals().reverts('not "owner"');
+
+    await read(USDC, "symbol");
+    await rejectionOf(read(USDC, "decimals"));
+
+    expect(mock.formatHistory()).toBe(
+      [
+        '#1 eth_call USDC.symbol() → "USDC"',
+        '#2 eth_call USDC.decimals() ✗ reverted: "not \\"owner\\""',
+      ].join("\n"),
+    );
+  });
+
   test("one line per request, and per multicall sub-call", async () => {
     const { mock, client, read } = setup({ retryCount: 1 });
     const usdc = mock.contract({ abi: tokenAbi, address: USDC, name: "USDC" });
@@ -281,8 +298,8 @@ describe("formatHistory()", () => {
         "   └ 0x6B17…1d0F.decimals() ✗ reverted: EnforcedPause()",
         "#3 eth_call USDC.symbol() ✗ fault: HTTP 503",
         "#4 eth_call (retry) USDC.symbol() ✗ fault: HTTP 503",
-        "#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n, blockTag: latest }) → 1000000000000000000n",
-        "#6 eth_getBlockTransactionCountByNumber(latest) ✗ not mocked",
+        '#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n, blockTag: "latest" }) → 1000000000000000000n',
+        '#6 eth_getBlockTransactionCountByNumber("latest") ✗ not mocked',
         "#7 eth_blockNumber → 10n",
       ].join("\n"),
     );
@@ -306,7 +323,7 @@ describe("formatHistory()", () => {
     await client.getBlockNumber();
     await client.getBlockTransactionCount();
     expect(mock.formatHistory({ builtIns: false })).toBe(
-      "#2 eth_getBlockTransactionCountByNumber(latest) → 0x1",
+      '#2 eth_getBlockTransactionCountByNumber("latest") → 0x1',
     );
   });
 
@@ -317,7 +334,7 @@ describe("formatHistory()", () => {
     await rejectionOf(client.getBlockTransactionCount());
     expectThrows(
       MockCheckError,
-      "Requests so far:\n#2 eth_getBlockTransactionCountByNumber(latest) ✗ not mocked",
+      'Requests so far:\n#2 eth_getBlockTransactionCountByNumber("latest") ✗ not mocked',
       () => {
         mock.assertNoUnhandled();
       },
@@ -332,7 +349,7 @@ describe("formatHistory()", () => {
     await client.getTransactionReceipt({ hash: zeroHash });
     expect(mock.formatHistory()).toBe(
       [
-        "#1 eth_getBlockByNumber getBlock({ blockNumber: 10n, blockTag: latest, includeTransactions: false }) → block 10n, timestamp 1700000000n",
+        '#1 eth_getBlockByNumber getBlock({ blockNumber: 10n, blockTag: "latest", includeTransactions: false }) → block 10n, timestamp 1700000000n',
         "#2 eth_getTransactionReceipt getTransactionReceipt({ hash: 0x0000…0000 }) → success, block 10n, 1 log(s)",
       ].join("\n"),
     );

@@ -231,7 +231,7 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
         "a panic code that's a string",
         { panic: "" },
         MockSetupError,
-        "A revert's panic must be a number or bigint; got .",
+        'A revert\'s panic must be a number or bigint; got "".',
       ],
       [
         "a panic code that's a boolean",
@@ -243,7 +243,7 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
         "data that isn't hex",
         { data: "0xzz" },
         MockSetupError,
-        "A revert's data must be hex; got 0xzz.",
+        'A revert\'s data must be hex; got "0xzz".',
       ],
       [
         "a panic and data",
