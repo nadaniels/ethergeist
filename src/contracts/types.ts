@@ -14,7 +14,7 @@ import type {
 } from "viem";
 
 import type { EmittedLog, EventArgsParameter, MockContractEvents } from "../logs/events.js";
-import type { MockOutcome } from "../mocking/outcomes.js";
+import type { MockCallOutcome } from "../mocking/outcomes.js";
 import type {
   SimulateErrorName,
   EstimateErrorName,
@@ -659,17 +659,30 @@ export type MockCallRecord = {
    */
   call: MockCall | undefined;
   /**
-   * How it was answered: see `MockOutcome`. In an estimate or a send, it's
-   * how the request ended, whichever mock answered it. A revert is decoded
-   * against the contract's ABI.
+   * How it was answered: see `MockCallOutcome`. In an estimate or a send,
+   * it's how the request ended, whichever mock answered it. A revert is
+   * decoded against the contract's ABI. It's `pending` until it's answered,
+   * and `notReached` if its request ended before getting to it.
    */
-  outcome: MockOutcome;
+  outcome: MockCallOutcome;
 };
 
-/** How a request's contract calls report back to its history entry. */
-export type Reporter = {
-  /** Hears each call's record: the request's own, or a multicall sub-call's. */
-  call: (record: MockCallRecord, context: CallContext) => void;
-  /** Hears a multicall's batch id, before its sub-calls. */
-  batch: (id: number) => void;
+/**
+ * Reports a call's outcome to the record history made as the request
+ * arrived; `index` is a sub-call's in its batch.
+ */
+export type Reporter = (outcome: MockCallOutcome, index: number | undefined) => void;
+
+/** Its answer reports the call's outcome, however it ends. */
+export type CallReading = {
+  record: MockCallRecord;
+  answer: (report: Reporter) => Promise<Hex>;
 };
+
+/**
+ * Params that don't decode have no call, and a batch has no id when its
+ * params don't decode or it isn't an `aggregate3` call.
+ */
+export type CallAsked =
+  | { type: "call"; to: Address | undefined; call: MockCallRecord | undefined }
+  | { type: "multicall"; batchId: number | undefined; calls: MockCallRecord[] };

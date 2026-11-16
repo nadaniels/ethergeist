@@ -44,7 +44,6 @@ export function createMockRpc(parameters: CreateMockRpcParameters = {}): MockRpc
     minedTransaction: transactions.minedRecord,
   };
   const recorder = createRecorder({
-    multicallAddress: state.multicallAddress,
     actionFor: actions.actionFor,
     debug: parameters.debug,
     formatContext,

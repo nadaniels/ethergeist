@@ -7,7 +7,7 @@ import type { PartSnapshot } from "../shared/parts.js";
 import type { RecordLimit } from "../shared/records.js";
 import { createMethods } from "./methods.js";
 import { createSends } from "./sends.js";
-import { type ActionReport, type Table, createTable, type ActionsContext } from "./table.js";
+import { type ActionReading, type Table, createTable, type ActionsContext } from "./table.js";
 import { type MockActions, type ActionName, actionMethods, typedActions } from "./typedActions.js";
 
 /** The typed actions and raw methods: see `createActions`. */
@@ -75,25 +75,19 @@ export function createActions(chain: ActionsContext, recordLimit: RecordLimit) {
     actions,
     method: methods.method,
     /**
-     * Answers a request with a typed or raw mock, or returns `undefined` if
-     * none applies. A method the mock doesn't support is refused unless it's
+     * `undefined` when no typed or raw mock applies. Throws for params that
+     * don't decode, and for a method the mock doesn't support unless it's
      * mocked.
      */
-    answer(
-      name: string,
-      params: unknown,
-      report: (report: ActionReport) => void,
-    ): Promise<unknown> | undefined {
+    read(name: string, params: unknown): ActionReading | undefined {
       const action = typedMethods.get(name);
       if (action === undefined && methods.isRefused(name))
-        return Promise.reject(
-          new MockRpcError(-32601, `the method ${name} does not exist/is not available`),
-        );
+        throw new MockRpcError(-32601, `the method ${name} does not exist/is not available`);
       const table = action === undefined ? methods.tableFor(name) : typed[action];
       // A raw method's params stay as sent, trailing nulls included: it isn't
       // the spec's.
       const given = action === undefined ? params : withoutTrailingNulls(params);
-      return table?.answer(name, Array.isArray(given) ? given : [], report);
+      return table?.read(name, Array.isArray(given) ? given : []);
     },
     /**
      * The typed action answering `method`, if any: history records those as

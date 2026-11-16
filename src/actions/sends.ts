@@ -10,15 +10,20 @@ import { isPlainTransfer, viewQuantity } from "./codec.js";
 import { decodeEstimateGas, estimateGas } from "./estimateGas.js";
 import { type MockSetOptions, createMockSet } from "./mockSet.js";
 import { decodeSend, sendTransaction } from "./sendTransaction.js";
-import { type ActionReport, type ActionsContext, reportAnswer } from "./table.js";
+import {
+  type ActionReading,
+  type ActionReport,
+  type ActionsContext,
+  reportAnswer,
+} from "./table.js";
 import type { SendTransactionCall } from "./types.js";
 
 /**
  * Sends and their estimates: `eth_estimateGas`, and `eth_sendTransaction`,
  * `eth_sendRawTransaction` and its Sync form. It holds
  * `mock.actions.estimateGas`'s and `mock.actions.sendTransaction`'s mocks,
- * and answers their requests: `answerEstimate` and `answerSend` are the
- * order of answers, read top to bottom.
+ * and reads and answers their requests: `answerEstimate` and `answerSend`
+ * are the order of answers, read top to bottom.
  *
  * Each action is returned in a table's shape (see `createTable`), so its
  * mocks, calls and requests are handled as a table's are.
@@ -48,6 +53,30 @@ export function createSends(
     return contract && { contract, data, context: callContext };
   }
 
+  type Called = ReturnType<typeof contractCalled>;
+
+  type Estimate = ReturnType<typeof decodeEstimateGas> & {
+    called: Called;
+    turn: ContractTurn<Hex> | undefined;
+  };
+
+  /**
+   * `repeated` is the raw bytes' hash when they're already mined, and then
+   * there's no `called` or `turn`.
+   */
+  type Send = ReturnType<typeof decodeSend> & {
+    repeated: Hash | undefined;
+    called: Called;
+    turn: ContractTurn<MockWriteOutcome> | undefined;
+  };
+
+  /**
+   * A record with the hash that isn't mined (one added to a future block)
+   * isn't the send: placing the send refuses the hash as taken.
+   */
+  const minedHash = (raw: { hash: Hash } | undefined) =>
+    raw !== undefined && transactions.minedAt(raw.hash) !== undefined ? raw.hash : undefined;
+
   /**
    * Where to mock a send no mock answers, when its `to` says more than the
    * definition's hint: a deploy, Multicall3, or an `empty()` address.
@@ -68,12 +97,22 @@ export function createSends(
    * nonpayable or payable functions, which the contract would answer. None
    * for any other transaction.
    */
-  const notAFunctionLines = (called: ReturnType<typeof contractCalled>) =>
+  const notAFunctionLines = (called: Called) =>
     called === undefined
       ? []
       : [
           `${called.contract.label} is a registered contract, but this transaction isn't a call to one of its nonpayable or payable functions.`,
         ];
+
+  function readEstimate(_method: string, params: readonly unknown[]): ActionReading {
+    const { call, sent } = decodeEstimateGas(params, state.resolveBlock);
+    const called = contractCalled(call, call.blockNumber);
+    const turn = called?.contract.turn("estimateGas", called.data, called.context);
+    return {
+      asked: { type: "action", call, contract: turn?.record },
+      answer: (report) => answerEstimate({ call, sent, called, turn }, report),
+    };
+  }
 
   /**
    * Answers an `eth_estimateGas`. An estimate of a registered contract's
@@ -105,21 +144,14 @@ export function createSends(
    *    the last restore removed, from the match of step 1.
    */
   async function answerEstimate(
-    _method: string,
-    params: readonly unknown[],
+    { call, sent, called, turn }: Estimate,
     report: (report: ActionReport) => void,
   ): Promise<Hex> {
-    const { call, sent } = decodeEstimateGas(params, state.resolveBlock);
-    // An estimate waits a microtask before its call is recorded, as a table
-    // does and as an `eth_sendTransaction` takes to decode: made at once,
-    // they reach their mocks in the order made.
-    await Promise.resolve();
     estimateGasMocks.calls.add(call);
-    // Prepared before anything answers, the send mock's revert included, so
-    // the call is recorded as the contract's however the estimate ends.
-    const called = contractCalled(call, call.blockNumber);
-    const turn = called?.contract.turn("estimateGas", called.data, called.context);
-    return await reportAnswer({ call, turn, report, view: viewQuantity }, async () => {
+    // Listed in the contract's calls before anything answers, the send
+    // mock's revert included, so it's there however the estimate ends.
+    turn?.receive();
+    return await reportAnswer({ turn, report, view: viewQuantity }, async () => {
       const functionMocks = turn?.functionMocks;
       if (called && functionMocks) {
         estimateGasMocks.markForContract(call);
@@ -160,6 +192,17 @@ export function createSends(
     });
   }
 
+  function readSend(method: string, params: readonly unknown[]): ActionReading {
+    const { call, raw } = decodeSend(method, params);
+    const repeated = minedHash(raw);
+    const called = repeated === undefined ? contractCalled(call, state.blockNumber) : undefined;
+    const turn = called?.contract.turn("write", called.data, called.context);
+    return {
+      asked: { type: "action", call, contract: turn?.record },
+      answer: (report) => answerSend({ call, raw, repeated, called, turn }, report),
+    };
+  }
+
   /**
    * Answers a send. In order:
    * 1. a repeated raw send's answer: the same bytes are the same
@@ -171,19 +214,13 @@ export function createSends(
    * answered, so the Sync method never times out.
    */
   async function answerSend(
-    method: string,
-    params: readonly unknown[],
+    { call, raw, repeated, called, turn }: Send,
     report: (report: ActionReport) => void,
   ) {
-    const { call, raw } = await decodeSend(method, params);
     sendTransactionMocks.calls.add(call);
-    /**
-     * The raw send's hash, if its transaction is mined. A record with its
-     * hash that isn't mined (one added to a future block) isn't the send:
-     * placing the send refuses the hash as taken.
-     */
-    const minedHash = () =>
-      raw !== undefined && transactions.minedAt(raw.hash) !== undefined ? raw.hash : undefined;
+    // Listed in the contract's calls before anything answers, so it's there
+    // however the send ends.
+    turn?.receive();
     /**
      * The send's answer: its hash, or for the Sync method the chain's
      * receipt, not a receipt mock's (the app asked for none). A send is
@@ -191,12 +228,8 @@ export function createSends(
      */
     const answerFor = (hash: Hash) => (raw?.sync === true ? transactions.receiptFor(hash)! : hash);
 
-    const repeated = minedHash();
-    const called = repeated === undefined ? contractCalled(call, state.blockNumber) : undefined;
-    const turn = called?.contract.turn("write", called.data, called.context);
     return await reportAnswer(
       {
-        call,
         turn,
         report,
         view: (rpc) => (typeof rpc === "string" ? rpc : formatTransactionReceipt(rpc)),
@@ -208,7 +241,7 @@ export function createSends(
         // its outcome before either is placed. Only one is placed, and the
         // second is answered as the first.
         const hash =
-          minedHash() ?? transactions.placeSend({ hash: raw?.hash, sent: call, outcome }).hash;
+          minedHash(raw) ?? transactions.placeSend({ hash: raw?.hash, sent: call, outcome }).hash;
         return answerFor(hash);
       },
     );
@@ -237,7 +270,7 @@ export function createSends(
    */
   async function outcomeOf(
     call: SendTransactionCall,
-    called: ReturnType<typeof contractCalled>,
+    called: Called,
     turn: ContractTurn<MockWriteOutcome> | undefined,
   ): Promise<MockWriteOutcome> {
     const functionMocks = turn?.functionMocks;
@@ -257,8 +290,8 @@ export function createSends(
   }
 
   return {
-    estimateGas: { ...estimateGasMocks, answer: answerEstimate },
-    sendTransaction: { ...sendTransactionMocks, answer: answerSend },
+    estimateGas: { ...estimateGasMocks, read: readEstimate },
+    sendTransaction: { ...sendTransactionMocks, read: readSend },
   };
 }
 

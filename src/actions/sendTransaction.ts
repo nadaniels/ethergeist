@@ -93,16 +93,16 @@ function decodeSendTransaction([tx]: readonly unknown[]): SendTransactionCall {
  * and whether it's the Sync method. An `eth_sendTransaction` has none:
  * placing it makes its hash.
  */
-export async function decodeSend(
+export function decodeSend(
   method: string,
   params: readonly unknown[],
-): Promise<{ call: SendTransactionCall; raw: { hash: Hash; sync: boolean } | undefined }> {
+): { call: SendTransactionCall; raw: { hash: Hash; sync: boolean } | undefined } {
   if (method === "eth_sendTransaction")
     return { call: decodeSendTransaction(params), raw: undefined };
   // The Sync method's timeout is ignored: a send is mined as it's answered,
   // and a node waits its default for an invalid one (EIP-7966).
   const sync = method === "eth_sendRawTransactionSync";
-  const { hash, from, fields } = await decodeRawTransaction(params[0]);
+  const { hash, from, fields } = decodeRawTransaction(params[0]);
   return { call: { from, ...fields }, raw: { hash, sync } };
 }
 

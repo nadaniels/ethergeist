@@ -1713,6 +1713,21 @@ describe("writes in history", () => {
     );
   });
 
+  test("a faulted raw send reads decoded, as the contract's call, as soon as it's rejected, and places nothing", async () => {
+    const { mock, usdc, transfer } = setup();
+    usdc.write.transfer([bob, 5n]).returns({});
+    mock.failRequests("timeout", { method: "eth_sendRawTransaction", times: 1 });
+
+    await rejectionOf(transfer(5n, { gas: 100_000n }));
+
+    expect(mock.formatHistory().split("\n").at(-1)).toBe(
+      "#5 eth_sendRawTransaction write USDC.transfer(0x4292…207f, 5n) ✗ fault: timeout (failRequests)",
+    );
+    expect(usdc.calls).toEqual([]);
+    expect(mock.actions.sendTransaction.calls).toEqual([]);
+    expect(mock.transactions).toEqual([]);
+  });
+
   test("a mined revert is a hash, mined reverted; a refused send is its refusal", async () => {
     const { mock, usdc, transfer } = setup("node");
     usdc.write.transfer([bob, 5n]).returns({ status: "reverted" });

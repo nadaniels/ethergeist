@@ -34,6 +34,19 @@ export type MockOutcome =
   | { type: "unhandled"; error: MockError };
 
 /**
+ * How a contract call ended, as its record has it. Only a call's record can
+ * be `notReached`: a history entry's outcome is a `MockOutcome`.
+ */
+export type MockCallOutcome =
+  | MockOutcome
+  /**
+   * A call its request ended before getting to: a `failRequests()` fault
+   * failed the request, or an earlier sub-call failed its batch. The
+   * request's outcome says how it ended.
+   */
+  | { type: "notReached" };
+
+/**
  * A fault's outcome: the request failed with a fault, from a mock or
  * `mock.failRequests()`.
  */

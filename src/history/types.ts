@@ -1,7 +1,8 @@
 import type { Address } from "viem";
 
+import type { ActionAsked } from "../actions/table.js";
 import type { ActionCalls } from "../actions/types.js";
-import type { MockCallRecord } from "../contracts/types.js";
+import type { CallAsked, MockCallRecord } from "../contracts/types.js";
 import type { MockOutcome } from "../mocking/outcomes.js";
 import type { MockError } from "../shared/errors.js";
 
@@ -29,18 +30,23 @@ export type MockHistoryEntry =
       /** The address called, checksummed; `undefined` without a valid one. */
       to: Address | undefined;
       /**
-       * The call's record; `undefined` when the request failed before it was
-       * dispatched.
+       * The call's record, from the moment the request arrives; `undefined`
+       * when its params don't decode.
        */
       call: MockCallRecord | undefined;
     })
   | (EntryBase<"multicall"> & {
       /**
-       * Its batch's `id`, as each sub-call's `MockBatch` has it; `undefined`
-       * when the request failed before it was dispatched.
+       * Its batch's `id`, as each sub-call's `MockBatch` has it, taken as
+       * the request arrives, so a faulted batch has one too. `undefined`
+       * when its params don't decode or it isn't an `aggregate3` call.
        */
       batchId: number | undefined;
-      /** Each sub-call's record, by its index in the batch. */
+      /**
+       * Each sub-call's record, by its index in the batch, from the moment
+       * the request arrives, those not reached included. Empty without a
+       * `batchId`.
+       */
       calls: MockCallRecord[];
     })
   | {
@@ -48,8 +54,8 @@ export type MockHistoryEntry =
         /** The typed action its method belongs to, e.g. `"getBalance"`. */
         action: action;
         /**
-         * The decoded call; `undefined` when the request failed before it was
-         * decoded.
+         * The decoded call, from the moment the request arrives; `undefined`
+         * when its params don't decode.
          */
         call: ActionCalls[action] | undefined;
         /**
@@ -62,6 +68,8 @@ export type MockHistoryEntry =
     }[keyof ActionCalls]
   | EntryBase<"method">
   | EntryBase<"builtIn">;
+
+export type Asked = CallAsked | ActionAsked;
 
 /**
  * A JSON-RPC request, as `mock.request()` and a transport take it: its
