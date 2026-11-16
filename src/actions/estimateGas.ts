@@ -24,14 +24,14 @@ export type EstimateGasContext = ActionContext<EstimateGasCall> &
   RefusalContext<EstimateErrorName> & {
     /**
      * Reverts the estimate, e.g. `revert("paused")`. Without an ABI, it takes
-     * a reason, a panic code, raw data or nothing: see `RevertSpec`.
+     * a reason, a panic code, raw data, or nothing: see `RevertSpec`.
      */
     revert: RevertFn<readonly []>;
   };
 
 /**
  * An estimate's mock, as `mock.actions.estimateGas()` returns it:
- * `.returns()` with gas, `.reverts()`, `.fails()` or `.refuses()` to answer,
+ * `.returns()` with gas, `.reverts()`, `.fails()`, or `.refuses()` to answer,
  * and `.once()` or `.times()` to limit it (see `WithLimits`).
  */
 export type MockEstimateBuilder<context> = WithLimits<
@@ -39,7 +39,7 @@ export type MockEstimateBuilder<context> = WithLimits<
     /**
      * Reverts every matching call, as a node's estimate reverts, so a client
      * that estimates first throws before it sends. Without an ABI, it takes
-     * a reason, a panic code, raw data or nothing: see `RevertSpec`.
+     * a reason, a panic code, raw data, or nothing: see `RevertSpec`.
      */
     reverts(spec?: RevertSpec<readonly []>): void;
   }

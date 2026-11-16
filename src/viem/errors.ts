@@ -84,7 +84,7 @@ function createFaultError(
 
 /**
  * `error`, thrown while answering `request`, as viem's error: a fault
- * (`MockFailure`), a revert or a node's refusal (`MockRefusal` by name, from
+ * (`MockFailure`), a revert, or a node's refusal (`MockRefusal` by name, from
  * the request's params, or `MockRpcError`) becomes what viem's `http`
  * transport throws for a node failing that way, so viem's retry rules and
  * error classes apply as in production. Anything else, what the mock

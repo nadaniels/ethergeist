@@ -150,7 +150,7 @@ describe("a raw send (local account)", () => {
     expect(mock.history.filter((r) => r.method === "eth_getTransactionReceipt")).toHaveLength(1);
   });
 
-  test("legacy, eip2930 and eip1559 transactions keep their type, fees and signer", async () => {
+  test("legacy, eip2930, and eip1559 transactions keep their type, fees, and signer", async () => {
     const { mock, client, wallet } = localSetup();
     const gasPrice = parseGwei("12");
 
@@ -592,7 +592,7 @@ describe("send mocks", () => {
     }).toThrow(
       new MockSetupError("blockNumber isn't a field of a send's outcome.", {
         metaMessages: [
-          "Its fields are logs, status, gasUsed, effectiveGasPrice and contractAddress; the rest " +
+          "Its fields are logs, status, gasUsed, effectiveGasPrice, and contractAddress; the rest " +
             "of its receipt comes from the transaction and the block it's mined in.",
         ],
       }),

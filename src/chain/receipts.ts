@@ -29,7 +29,7 @@ export type ReceiptFields = Partial<Omit<TransactionReceipt, "logs">>;
 /**
  * Refuses a status that isn't `"success"` or `"reverted"` (`undefined` is
  * left out), and logs on a reverted transaction, which emits none: for a
- * send's outcome, an added transaction and a receipt alike. `what` names
+ * send's outcome, an added transaction, and a receipt alike. `what` names
  * the status for messages; `metaMessages` say where the logs came from.
  */
 export function checkStatus(

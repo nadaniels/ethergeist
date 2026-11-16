@@ -45,7 +45,7 @@ export function createRequestHandler({
 }): RequestHandler {
   /**
    * Answers a request, recording it. `retryCount` is the transport's, when it
-   * came through one, for the retry hint. Throws answers (a fault, a revert
+   * came through one, for the retry hint. Throws answers (a fault, a revert,
    * or a node's refusal, as `isAnswer` names them), or the mock's own errors
    * for what it couldn't answer. An adapter turns the answers into its
    * client's errors, as `toViemError` does for viem.

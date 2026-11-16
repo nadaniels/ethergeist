@@ -213,7 +213,7 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
     "actions.sendTransaction": (mock: MockRpc) => mock.actions.sendTransaction(),
     "actions.estimateGas": (mock: MockRpc) => mock.actions.estimateGas(),
   };
-  const refused = "A revert spec has no reason, errorName, panic or data";
+  const refused = "A revert spec has no reason, errorName, panic, or data";
   const unencodable = "A revert was given a value it can't encode";
 
   for (const [name, register] of Object.entries(builders))
@@ -264,10 +264,16 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
         "A revert spec takes one of data, panic, or errorName; got panic and args.",
       ],
       [
+        "a panic, an errorName, and args",
+        { panic: 1, errorName: "EnforcedPause", args: [] },
+        MockSetupError,
+        "A revert spec takes one of data, panic, or errorName; got panic, errorName, and args.",
+      ],
+      [
         "a matcher in an error's args, as if it matched any",
         { errorName: "Failed", args: [match.any()] },
         MockSetupError,
-        "match.any() can't go in a revert spec; matchers only go in a mock's args, params and pins.",
+        "match.any() can't go in a revert spec; matchers only go in a mock's args, params, and pins.",
       ],
       [
         "a negative panic code, as viem refuses it",
@@ -344,6 +350,14 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
     expectThrows(MockSetupError, "A revert's args must be a list; got { code: 1n }.", () => {
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
       read.reverts({ errorName: "Failed", args: { code: 1n } } as never);
+    });
+    const third = parseAbi(["error Failed(uint256 code, address by)"]);
+    const threeForms = createMockRpc()
+      .contract({ abi: [...abi, ...third], address: NFT })
+      .read.ownerOf();
+    expectThrows(MockSetupError, "A revert of Failed takes 0, 1, or 2 args; got 3.", () => {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+      threeForms.reverts({ errorName: "Failed", args: [1n, 2n, 3n] } as never);
     });
   });
 

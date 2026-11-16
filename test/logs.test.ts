@@ -682,7 +682,7 @@ describe("the transaction an emit makes", () => {
     expect((await client.getBlock({ blockNumber: 10n })).transactions).toEqual([]);
   });
 
-  test("its receipt, transaction and block agree, raw too", async () => {
+  test("its receipt, transaction, and block agree, raw too", async () => {
     const { mock, client, usdc } = setup();
     mock.setFees({ baseFeePerGas: parseGwei("30"), maxPriorityFeePerGas: parseGwei("2") });
     const { transactionHash: hash } = usdc.emit.Transfer({ from: alice, to: bob });

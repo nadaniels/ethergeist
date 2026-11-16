@@ -617,7 +617,7 @@ describe("the args' types", () => {
       book.read.place([{ maker: alice, fee: 1n } as never]),
     );
     expect(three.metaMessages).toEqual([
-      "Its fields are address maker, uint256 amount and bool buy.",
+      "Its fields are address maker, uint256 amount, and bool buy.",
     ]);
   });
 
@@ -876,7 +876,7 @@ describe("the args' types", () => {
     ]);
   });
 
-  test("hex in any case, integer numbers, zero and an integer type's bounds still answer", async () => {
+  test("hex in any case, integer numbers, zero, and an integer type's bounds still answer", async () => {
     const { router, read } = withRouter();
     const hash = `0x${"ab".repeat(32)}` as const;
     router.read.verify(["0xABcd"]).returns(1n);
@@ -900,7 +900,7 @@ describe("the args' types", () => {
     ]).toEqual([1n, 2n, 3n, 4n, 5n, 6n, 7n]);
   });
 
-  test("an unnamed tuple as a list, a partial struct and a matcher anywhere still answer", async () => {
+  test("an unnamed tuple as a list, a partial struct, and a matcher anywhere still answer", async () => {
     const { mock, client, router, read } = withRouter();
     // As solc writes a tuple's unnamed fields: named "", where `parseAbi`
     // leaves the name out.

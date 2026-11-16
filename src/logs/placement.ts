@@ -28,7 +28,7 @@ export type LogPlacement = {
 
 const placementFields = new Set(["blockNumber", "transactionHash", "transactionIndex", "logIndex"]);
 const placementHint =
-  "Its fields are blockNumber, transactionHash, transactionIndex and logIndex; left out, the " +
+  "Its fields are blockNumber, transactionHash, transactionIndex, and logIndex; left out, the " +
   "current block and zeros.";
 
 /**

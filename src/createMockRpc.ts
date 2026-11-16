@@ -23,7 +23,7 @@ import type { CreateMockRpcParameters, MockRpc } from "./types.js";
 import { createViemAdapter } from "./viem/adapter.js";
 
 /**
- * A mock JSON-RPC node for viem: contracts, actions and raw methods mocked on
+ * A mock JSON-RPC node for viem: contracts, actions, and raw methods mocked on
  * it answer its requests, in viem's types, over a chain of its own. See
  * `MockRpc` for what it does, and `CreateMockRpcParameters` for its options.
  */

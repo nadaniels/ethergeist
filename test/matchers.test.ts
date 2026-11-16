@@ -620,7 +620,8 @@ describe("predicate labels from source", () => {
     const sources = Object.values(modules).map((m) => `(a) => [a].some(${m}.isAddressEqual)`);
     expect(labelsOf([...sources, "(order) => order.maker === x"])).toEqual([
       "(a) => [a].some(isAddressEqual)",
-      // Babel's, TypeScript's and Rolldown's look like real code, so they stay.
+      // Babel's, TypeScript's, and Rolldown's look like real code,
+      // so they stay.
       "(a) => [a].some(_viem.isAddressEqual)",
       "(a) => [a].some(viem_1.isAddressEqual)",
       "(a) => [a].some(isAddressEqual)",
@@ -695,7 +696,7 @@ describe("registration", () => {
     const { usdc, balanceOf } = setup();
     const refused = expectThrows(
       MockSetupError,
-      "match.any() can't go in read.balanceOf's answer; matchers only go in a mock's args, params and pins.",
+      "match.any() can't go in read.balanceOf's answer; matchers only go in a mock's args, params, and pins.",
       () => {
         usdc.read.balanceOf([alice]).returns(match.any());
       },
@@ -712,7 +713,7 @@ describe("registration", () => {
 
     usdc.read.balanceOf([bob]).returns(() => match.any());
     const error = expectCause(await rejectionOf(balanceOf(bob)), MockResolverError);
-    expect(error.shortMessage).toContain("matchers only go in a mock's args, params and pins");
+    expect(error.shortMessage).toContain("matchers only go in a mock's args, params, and pins");
   });
 });
 
@@ -1233,7 +1234,7 @@ describe("overloads", () => {
     );
   });
 
-  test("complete values choose a uint256, address or bytes32 overload by their type", async () => {
+  test("complete values choose a uint256, address, or bytes32 overload by their type", async () => {
     const { mock, client } = setup();
     const lookupAbi = parseAbi([
       "function find(uint256 id) view returns (uint256)",

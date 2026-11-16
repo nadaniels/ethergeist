@@ -26,7 +26,7 @@ export type SendTransactionContext = ActionContext<SendTransactionCall> &
   RefusalContext<SendErrorName> & {
     /**
      * Mines the transaction reverted, e.g. `revert("paused")`. Without an
-     * ABI, it takes a reason, a panic code, raw data or nothing: see
+     * ABI, it takes a reason, a panic code, raw data, or nothing: see
      * `RevertSpec`. A resolver runs only at the send, so the estimate doesn't
      * revert: see `.reverts()` for that.
      */
@@ -37,7 +37,7 @@ export type SendTransactionContext = ActionContext<SendTransactionCall> &
  * A send mock, as `mock.actions.sendTransaction()` returns it: it answers
  * with what the chain did, as `MockWriteAnswers` says, and `.once()` or
  * `.times()` limit it (see `WithLimits`). Without an ABI, `.reverts()`
- * takes a reason, a panic code, raw data or nothing.
+ * takes a reason, a panic code, raw data, or nothing.
  */
 export type MockSendTransactionBuilder = WithLimits<
   MockWriteAnswers<SendTransactionContext, RevertSpec<readonly []>>
@@ -50,7 +50,7 @@ export type MockSendTransactionBuilder = WithLimits<
  * mocks and `defaults.write` answer.
  *
  * An answered send is mined in a new block, which its receipt,
- * transaction, block and logs answer from (see `mock.transactions`); a
+ * transaction, block, and logs answer from (see `mock.transactions`); a
  * reverted one is mined too. Concurrent sends are mined in the order
  * they're answered, which isn't always the order they were sent. A send
  * failed or refused (`.fails()`, `.refuses()`, or `fail()` or `refuse()` in

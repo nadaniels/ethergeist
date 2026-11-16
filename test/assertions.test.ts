@@ -536,7 +536,7 @@ describe("assertAllUsed()", () => {
     const message = unusedMessage(mock);
     expect(message).toContain(
       `  - balanceOf(*) without an answer on ${USDC}\n` +
-        "    give it one with .returns(), .reverts() or .fails(), or don't register it",
+        "    give it one with .returns(), .reverts(), or .fails(), or don't register it",
     );
     expect(message).not.toContain("received no calls");
   });
@@ -562,15 +562,15 @@ describe("assertAllUsed()", () => {
     const message = unusedMessage(mock);
     expect(message).toContain(
       `  - estimateGas({ to: ${USDC} }) without an answer\n` +
-        "    give it one with .returns(), .reverts(), .fails() or .refuses(), or don't register it",
+        "    give it one with .returns(), .reverts(), .fails(), or .refuses(), or don't register it",
     );
     expect(message).toContain(
       `  - sendTransaction({ to: ${USDC} }) without an answer\n` +
-        "    give it one with .returns(), .reverts(), .fails() or .refuses(), or don't register it",
+        "    give it one with .returns(), .reverts(), .fails(), or .refuses(), or don't register it",
     );
   });
 
-  test("a contract's simulate, estimateGas or write mock without an answer can also be given .refuses()", () => {
+  test("a contract's simulate, estimateGas, or write mock without an answer can also be given .refuses()", () => {
     const { mock } = setup();
     const usdc = mock.contract({ abi: erc20Abi, address: USDC });
     usdc.simulate.transfer();
@@ -581,7 +581,7 @@ describe("assertAllUsed()", () => {
     for (const functionName of ["transfer", "approve", "transferFrom"])
       expect(message).toContain(
         `  - ${functionName}(*) without an answer on ${USDC}\n` +
-          "    give it one with .returns(), .reverts(), .fails() or .refuses(), or don't register it",
+          "    give it one with .returns(), .reverts(), .fails(), or .refuses(), or don't register it",
       );
   });
 

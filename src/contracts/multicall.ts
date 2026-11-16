@@ -33,7 +33,7 @@ export function decodeAggregate3(address: Address, data: Hex) {
 /**
  * As Multicall3 does, a revert is `success: false` when the sub-call allows
  * failure, and otherwise reverts the whole call. Any other error, like a
- * missing mock, a resolver's error or a fault, fails the request. Sub-calls
+ * missing mock, a resolver's error, or a fault, fails the request. Sub-calls
  * after one that fails the batch are `notReached`.
  */
 export async function answerAggregate3(

@@ -16,14 +16,14 @@ shared → mocking → chain → logs → transactions → contracts → actions
   test values (`testAddress`, `testHash`), and the `Part` type (see
   [Adding state](#adding-state)).
 - **`mocking/`:** the mock engine that contracts and actions share
-  (`handlers.ts`: registering mocks, picking the most specific match, limits
+  (`handlers.ts`: registering mocks, picking the most specific match, limits,
   and usage), plus matching, matchers, faults and refusals by name
   (`MockFailure`, `MockRefusal`, and their checks), `zeroResult`, outcomes
   (`MockOutcome`: how a mock answered, which history records, and
   `MockCallOutcome`, a call record's, which adds `notReached`), and the
   shared setup checks (`setupChecks.ts`).
 - **`chain/`:** the chain's own state (`createChainState`: block number, clock,
-  fees) and the node's shapes for blocks, transactions, receipts and errors,
+  fees) and the node's shapes for blocks, transactions, receipts, and errors,
   and for request params (`params.ts`: read to the Ethereum JSON-RPC spec,
   refused as invalid params where it rules them out).
 - **`logs/`:** a log's content (`contract.events`, `testLog`), placing
@@ -32,7 +32,7 @@ shared → mocking → chain → logs → transactions → contracts → actions
 - **`transactions/`:** the chain's transactions, one record each
   (`createTransactionStore`): what `mock.addTransaction` (its fields checked
   in `addTransaction.ts`) and sends put on the chain, and what
-  receipts, transactions, blocks and `eth_getLogs` answer from when no mock
+  receipts, transactions, blocks, and `eth_getLogs` answer from when no mock
   answers first. Every record goes in through `add`, and all mining through
   its `mine`; a record is on the chain once its block is mined (at or below
   the head). It also builds every receipt, a mock's and `mock.buildReceipt()`'s
@@ -51,7 +51,7 @@ shared → mocking → chain → logs → transactions → contracts → actions
   it decodes the call and answers with the mock that matches, or else the
   action's fallback. The two exceptions are sends and their estimates,
   answered in `sends.ts` (see [Sends and estimates](#sends-and-estimates)).
-  Receipts, transactions, blocks and `getLogs` read the transaction store,
+  Receipts, transactions, blocks, and `getLogs` read the transaction store,
   and sends and their estimates give a registered contract its turn, so it
   sits above both.
 - **`history/`:** what the mock received and how it answered: the recorder,
@@ -65,13 +65,14 @@ shared → mocking → chain → logs → transactions → contracts → actions
   params that don't decode, so a fault wins over them. Only the answer
   receives a call (adds it to the `.calls` lists). A record is built once,
   as the request is read, and the answer reports only its outcome.
-- **`viem/`:** the viem adapter: `request`, `transport` and `publicClient`, and
+- **`viem/`:** the viem adapter: `request`, `transport`, and `publicClient`, and
   turning the mock's errors into viem's.
 - **The top of `src/`:**
   - `createMockRpc.ts`, the composition root: it creates each part, wires them
     together, and returns the `MockRpc` object; it holds no logic of its own;
   - `types.ts`, the public `MockRpc` type and its documentation;
-  - `builders.ts`, the mock's `buildTransaction`, `buildReceipt` and `buildLog`;
+  - `builders.ts`, the mock's `buildTransaction`, `buildReceipt`, and
+    `buildLog`;
   - `index.ts`, the only public entry point: anything users need, types
     included, is exported from there.
 
@@ -102,7 +103,7 @@ The mock's errors:
 - Every error the mock raises itself is a `MockError`, with a stable `code`
   viem doesn't retry. Setup mistakes throw `MockSetupError`, failed checks
   `MockCheckError`; `test/architecture.test.ts` rejects plain `Error`,
-  `TypeError` and `RangeError`.
+  `TypeError`, and `RangeError`.
 - The short message says what's wrong; hints (how to fix it, what's
   registered, a list) go in `metaMessages`, a line each. Never `details` or
   `docsPath`: viem matches `details` against node errors, and its wrappers
@@ -142,7 +143,7 @@ The mock's errors:
    for what they hold (`handler`, not `h`), except `(a, b)` in a sort
    comparator and `i` for an index.
 5. **An exported type gets `Mock` when it's one of the mock's own things**:
-   its objects and their registrars, builders and answers (`MockRpc`,
+   its objects and their registrars, builders, and answers (`MockRpc`,
    `MockContract`, `MockReadFunction`, `MockAction`, `MockFunctionBuilder`,
    `MockActionAnswers`, `MockCheckpoint`, `MockFaultHandle`), the values its
    mocks answer with (`MockReceipt`, `MockBlock`, `MockFees`, `MockFault`,
@@ -151,7 +152,7 @@ The mock's errors:
    `MockBatch`), what it builds for you (`MockLogContent`), and types made
    from these (`MockTaggedCall`). It keeps `Mock` when it's also a
    parameter (`buildReceipt(MockReceipt)`, `failRequests(MockFault)`).
-   **None on what you hand the mock**: parameter, option and context types
+   **None on what you hand the mock**: parameter, option, and context types
    (`RestoreOptions`, `ContractDefaults`, `EventArgs`, `RevertSpec`,
    `CallPins`, `LogsContext`, `WriteResolverContext`), and a request's
    decoded call (`BalanceCall`, `LogsCall`). **None where a qualifier
@@ -200,7 +201,7 @@ everything, then mutate.
 ## Adding an action
 
 1. Add its file in `actions/`, named for the action (`getGasPrice.ts`). It
-   exports a function that takes the `ActionsContext` (`state`, `registry`
+   exports a function that takes the `ActionsContext` (`state`, `registry`,
    and `transactions`) and returns its `Definition<call, rpc>`: how to
    decode the call, encode and view answers, and what to answer when it
    isn't mocked (`fallback`).
@@ -261,10 +262,10 @@ functions, not a new hook on `Definition`.
   is built on too: registering, matching, answering with a mock, and the
   miss.
   `estimateGas.ts` and `sendTransaction.ts` keep their public types, their
-  mocks' `MockDefinition` and their decoders.
+  mocks' `MockDefinition`, and their decoders.
 - `createSends` returns the two actions in a table's shape, so
   `createActions` handles all fourteen alike: registration, `.calls`,
-  `clearCalls()`, unused mocks, snapshots and answering. Their JSON-RPC
+  `clearCalls()`, unused mocks, snapshots, and answering. Their JSON-RPC
   methods are in `actionMethods`, with every other typed action's; the
   `typedActions` catalog leaves them out.
 - Both functions tell history how the call ended through `reportAnswer`, as
@@ -292,8 +293,8 @@ The two functions keep these rules:
   their predicates again. Later, `assertAllUsed()`'s listing runs an unused
   mock's predicates on a call it received only where the call's exact values
   match, as matching would;
-- a send that throws (no mock answers it, or its mock fails, refuses or
-  throws) places nothing and takes no nonce; a reverted send is mined
+- a send that throws (no mock answers it, or its mock fails, refuses,
+  or throws) places nothing and takes no nonce; a reverted send is mined
   reverted, and takes one;
 - a repeated raw send asks no mock and gives no contract a turn;
 - a send's outcome is chosen inside the store's `whileSending`, which
@@ -318,7 +319,7 @@ The two functions keep these rules:
 
 The trade-off is more code for the order in one place: `sends.ts` spells
 out the steps a table's hooks would share (match, answer, miss), and in
-return the order isn't spread over the table, two definitions and the
+return the order isn't spread over the table, two definitions, and the
 contract.
 
 ## Adding state
@@ -330,7 +331,7 @@ Anything that holds state is a `Part` (`shared/parts.ts`), with any of:
 - `unusedMocks()`: mocks that never answered a call, for `assertAllUsed()`.
 
 Add the part to the list passed to `createCheckpoints` in `createMockRpc.ts`.
-`checkpoint()`, `reset()`, `clearCalls()` and `assertAllUsed()` then handle it
+`checkpoint()`, `reset()`, `clearCalls()`, and `assertAllUsed()` then handle it
 with every other part; nothing else needs to change. `reset()` restores a
 snapshot taken when the mock was created, so a part needs no `reset()` of its
 own.

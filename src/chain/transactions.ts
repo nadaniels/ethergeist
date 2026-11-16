@@ -149,7 +149,7 @@ const typeHexes: Record<MockTransactionType, Hex> = {
 
 /**
  * What a transaction's defaults come from: the request, and the mock's chain
- * id, blocks and fees.
+ * id, blocks, and fees.
  */
 type TransactionContext = {
   hash: Hash;
@@ -370,7 +370,7 @@ export function sentType(request: unknown, fees: SentFees): MockTransactionType 
 }
 
 /**
- * A signed transaction's fields, hash and sender, as a node reads them from
+ * A signed transaction's fields, hash, and sender, as a node reads them from
  * its bytes: the hash is `keccak256` of the bytes, and the sender is
  * recovered from the signature, as viem's `recoverTransactionAddress` does,
  * but synchronously, so a raw send reaches its mocks in the order it was

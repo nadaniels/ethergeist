@@ -106,7 +106,7 @@ describe("getTransactionReceipt", () => {
   test("returns a partial viem receipt with logs' content, or null", () => {
     mock.actions.getTransactionReceipt({ hash: "0x01" }).returns({ status: "reverted" });
     mock.actions.getTransactionReceipt().returns({ logs: [testLog("noise")] });
-    // @ts-expect-error -- a receipt mock's logs are content: address, topics and data
+    // @ts-expect-error -- a receipt mock's logs are content: address, topics, and data
     mock.actions.getTransactionReceipt().returns({ logs: [{ address: alice, data: "0x" }] });
     mock.actions.getTransactionReceipt().returns(null);
     // @ts-expect-error -- not a receipt status
@@ -336,7 +336,7 @@ describe("sendTransaction", () => {
     mock.actions.sendTransaction().returns((context) => {
       expectTypeOf(context).not.toHaveProperty("emit");
     });
-    // @ts-expect-error -- not a log: no address, topics or data
+    // @ts-expect-error -- not a log: no address, topics, or data
     mock.actions.sendTransaction().returns(() => ({ logs: [{ logIndex: 0 }] }));
     expectTypeOf(mock.actions.sendTransaction.calls).toEqualTypeOf<SendTransactionCall[]>();
     // @ts-expect-error -- a send mock answers with its outcome, not an ABI value

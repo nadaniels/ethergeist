@@ -241,7 +241,7 @@ export function createChecks({
 export type MockCheckpoint = {
   /**
    * Undoes every registration and answer made since the checkpoint, and puts
-   * the chain, fees, faults and batch ids back as they were, then clears the
+   * the chain, fees, faults, and batch ids back as they were, then clears the
    * lists of requests and calls, and usage. Can be called again, e.g. after
    * each test. Throws if the checkpoint is no longer valid, or, after
    * restoring, if a check in `options` fails.

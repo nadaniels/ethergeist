@@ -41,7 +41,7 @@ Use the Oxford comma in all writing: docs, comments, error messages, test names,
 - Run `vp check`, `vp run knip`, `vp run test`, and `vp run examples` before handing a change over. The pre-commit hook runs `vp staged` and then `vp run knip`, so a commit fails if Knip isn't satisfied.
 - `vp run test` is the test command: it adds `--typecheck`, so the `*.test-d.ts` type tests run too. The Vite+ checklist above names the built-in `vp test`, which runs without them.
 - `vp run examples` builds the library (`vp pack`), then runs the examples' lint, which type-checks them too, and each example's `test` against the built package. `vp run test` stays the library's suite.
-- Run `vp run smoke` when a change touches the public types, `exports`, `package.json` or the build. CI runs it on every push; it takes about 30 s and needs the network.
+- Run `vp run smoke` when a change touches the public types, `exports`, `package.json`, or the build. CI runs it on every push; it takes about 30 s and needs the network.
 - `vp run knip` runs [Knip](https://knip.dev) twice: the default mode (all code, tests included), then `--production --strict` (only what ships: `src/` minus colocated tests, with dependencies checked against what ships). Config is in `knip.json`.
 - Fix findings rather than configure around them: remove an `export` nothing outside its file uses, delete an unused file, add or remove the dependency. A file that a tool or a person runs directly is an `entry` in `knip.json`.
 - `vp run mutate` runs [Stryker](https://stryker-mutator.io) mutation testing (config in `stryker.config.mjs`; reports in `reports/mutation/`). It's slow, so it isn't part of the checks: run it before an engine or matching change, on the files the change touches (`vp run mutate --mutate "src/contracts/**/*.ts"`). Close the gaps it finds with tests of behavior the change keeps, through the public API in `test/` where possible, so they outlive the refactor; skip survivors in code the change removes, in error wording and display formatting (history lines, thresholds like where hex is shortened), and in answer fields viem doesn't read (see "Fidelity").
@@ -59,7 +59,7 @@ Use the Oxford comma in all writing: docs, comments, error messages, test names,
 - Don't compare addresses with `.toLowerCase()`.
 - The exception is matching arbitrary hex values, like `isMatch` in `src/mocking/matching.ts`. Those may be `bytes` or `bytes32` rather than addresses, so they compare case-insensitively.
 - Addresses in answers (receipts, logs, blocks) go out lowercase, as nodes send them: validate with `getAddress`, then lowercase with `nodeAddress` in `src/shared/values.ts`. Compare them after `getAddress`, never as sent.
-- Hashes (transaction, block, log and root hashes) have no checksum, so lowercase is their only form: addresses are checksummed to compare, hashes lowercase; both go out lowercase. Validate and lowercase a hash where it comes in (`nodeHash` in `src/chain/hashes.ts` for the mock's API and a mock's answers, `hashParam` for a request's), so records and lookups hold only lowercase and compare with `===`. Not calldata, `bytes` or topics: they aren't identifiers, and keep their case.
+- Hashes (transaction, block, log, and root hashes) have no checksum, so lowercase is their only form: addresses are checksummed to compare, hashes lowercase; both go out lowercase. Validate and lowercase a hash where it comes in (`nodeHash` in `src/chain/hashes.ts` for the mock's API and a mock's answers, `hashParam` for a request's), so records and lookups hold only lowercase and compare with `===`. Not calldata, `bytes`, or topics: they aren't identifiers, and keep their case.
 
 ## Values left out
 
@@ -74,12 +74,12 @@ These are runtime checks on the values a test hands the mock's setup API.
 - Check a value where a mistake would otherwise be silent (ignored, coerced, or merged into a plausible answer) or blamed on the wrong party, including values the types rule out: tests cast often, and the mock transforms what it's given. Drop a one-off check that only repeats what fails loudly and clearly anyway (viem's own error naming the value, or a check a line later). Where a shared helper covers the kind, use it regardless, so every setup mistake is a `MockSetupError`.
 - Check once, in the first part that reads the value, never in the composition root. The generic kinds use the helpers in `src/mocking/setupChecks.ts`: `checkAmount` (a non-negative bigint), `checkCount` (a safe integer of 0 or 1 or more), `checkHex`, `checkList`, `checkObject`, and `checkFields` (an object of known fields, holding no matcher). Domain checks stay with the shape they check, in its layer: logs' content in `src/logs/events.ts`, a status beside the receipt's fields in `src/chain/receipts.ts`, hashes in `src/chain/hashes.ts`.
 - Name a setup check `check*`: it throws `MockSetupError` and narrows (`asserts`). `assert*` is for the public checks, which throw `MockCheckError`.
-- A message's subject names the value as the user wrote it, qualified by the call that took it: "mock.addTransaction()'s gasUsed", "times()'s count", "getBalance's answer". A part of an answer follows it: "log 0 in getTransactionReceipt's answer". A value that several calls feed (a send's outcome comes from `.returns()`, a resolver, `.emits()` or `emit()`) is named for what it is: "A send's log 0". Each kind has one form, which its helper words: "`<subject>` must be a non-negative bigint; got `<value>`." A subject mid-sentence stays lowercase ("Expected an object for a send's outcome").
-- An entry that takes a value refuses matchers (`match.any()` type-checks in any field) with `checkNoMatchers`, naming the place; args, params and pins take them.
+- A message's subject names the value as the user wrote it, qualified by the call that took it: "mock.addTransaction()'s gasUsed", "times()'s count", "getBalance's answer". A part of an answer follows it: "log 0 in getTransactionReceipt's answer". A value that several calls feed (a send's outcome comes from `.returns()`, a resolver, `.emits()`, or `emit()`) is named for what it is: "A send's log 0". Each kind has one form, which its helper words: "`<subject>` must be a non-negative bigint; got `<value>`." A subject mid-sentence stays lowercase ("Expected an object for a send's outcome").
+- An entry that takes a value refuses matchers (`match.any()` type-checks in any field) with `checkNoMatchers`, naming the place; args, params, and pins take them.
 
 ## Errors
 
-- Throw the `MockError` family from `src/shared/errors.ts`, never a plain `Error`, `TypeError` or `RangeError` (`test/architecture.test.ts` checks): `MockSetupError` for the mock's API called wrong, `MockCheckError` for failed checks. A request param a node would refuse is `invalidParams` instead (`src/chain/params.ts`).
+- Throw the `MockError` family from `src/shared/errors.ts`, never a plain `Error`, `TypeError`, or `RangeError` (`test/architecture.test.ts` checks): `MockSetupError` for the mock's API called wrong, `MockCheckError` for failed checks. A request param a node would refuse is `invalidParams` instead (`src/chain/params.ts`).
 - The short message says what's wrong, as one sentence. Hints (how to fix it, what's registered, lists) go in `metaMessages`, a line each; never in `details` or `docsPath`. See "Clients and errors" in `docs/architecture.md`.
 - The exception is a failed check (`MockCheckError`): its list is the failure, so it stays in the short message, and the recent requests are its `metaMessages`. Checks never reach viem, so its reasons for the rule don't apply.
 - viem's and ox's own validation errors (e.g. `getAddress` at registration) pass through unwrapped.
@@ -88,7 +88,7 @@ These are runtime checks on the values a test hands the mock's setup API.
 ## Request params
 
 - Read a request's params to the Ethereum JSON-RPC spec ([ethereum/execution-apis](https://github.com/ethereum/execution-apis), `src/schemas`), with the helpers in `src/chain/params.ts`: accept what it allows, refuse what it rules out with `invalidParams`, treat hex digits as case-insensitive, read `data` as the spec's `input` (clients send `data`), read a `null` at the end of the params as a param left out (as `JSON.stringify` writes one), and ignore what the spec doesn't define. Check each method's block form there (`BlockForm`). Refusals use the mock's own wording: viem classifies them by code. What the mock answers (shapes, errors, messages) still imitates reth.
-- Why the spec and not reth: viem and ethers send spec-shaped requests, so they never hit a refusal, and a hand-written request has to conform instead of relying on one node's leniency. Reth is the lenient outlier: it alone accepts JSON-number quantities, and only it and zkSync accept leading zeros, where geth, Erigon, Nethermind and Arbitrum Nitro refuse both.
+- Why the spec and not reth: viem and ethers send spec-shaped requests, so they never hit a refusal, and a hand-written request has to conform instead of relying on one node's leniency. Reth is the lenient outlier: it alone accepts JSON-number quantities, and only it and zkSync accept leading zeros, where geth, Erigon, Nethermind, and Arbitrum Nitro refuse both.
 
 ## Fidelity: what's worth matching a node for
 
@@ -99,7 +99,7 @@ These are runtime checks on the values a test hands the mock's setup API.
 ## Bugs
 
 - Fix bugs red/green: first write a test that reproduces the bug and watch it fail for the reason reported, then fix the code and watch it pass. A bug that's only in a doc comment gets a test that pins the real behavior, where practical.
-- Fix bugs real use plausibly hits: what viem, ethers or an app sends, or what a test author would write (casts of fixtures and partial objects included, since tests cast often). A failure only contrived input reaches (a hand-built cyclic object, a request no client sends, a matcher where nobody would put one) isn't worth new machinery: leave it, or take it only if the fix removes code or is a one-line swap. Before fixing, say how real use reaches it.
+- Fix bugs real use plausibly hits: what viem, ethers, or an app sends, or what a test author would write (casts of fixtures and partial objects included, since tests cast often). A failure only contrived input reaches (a hand-built cyclic object, a request no client sends, a matcher where nobody would put one) isn't worth new machinery: leave it, or take it only if the fix removes code or is a one-line swap. Before fixing, say how real use reaches it.
 
 ## Independent review
 
@@ -131,4 +131,4 @@ Issues live as local markdown items in `docs/backlog/` (gitignored, not GitHub I
 
 ### Domain docs
 
-Single-context: the glossary is section 2 of `docs/backlog/reference/style-guide.md`; ADRs would go in `docs/adr/`. See `docs/agents/domain.md`.
+Single-context: the glossary is section 2 of `docs/backlog/reference/style-guide.md`; ADRs are in `docs/backlog/reference/adr/`. See `docs/agents/domain.md`.

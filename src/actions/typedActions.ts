@@ -143,7 +143,7 @@ export type MockActions = {
   /**
    * `eth_getLogs`, for viem's `getLogs()` and `getContractEvents()`.
    * Unmocked, the chain's logs answer it, from `mock.addTransaction()`,
-   * `contract.emit` and sends, filtered as a node filters them, at any
+   * `contract.emit`, and sends, filtered as a node filters them, at any
    * address: `[]` where nothing was emitted. A mock answers first, with
    * placed logs (from `mock.logs` or `mock.buildLog()`), or fails, e.g. for
    * a provider's block range cap. Its resolver gets the chain's logs the
@@ -215,7 +215,7 @@ export type MockActions = {
   estimateGas: MockEstimateGasAction;
   /**
    * `eth_sendTransaction` and `eth_sendRawTransaction`, for viem's
-   * `sendTransaction()`, `writeContract()` and `deployContract()`, and
+   * `sendTransaction()`, `writeContract()`, and `deployContract()`, and
    * `eth_sendRawTransactionSync` (EIP-7966), for a local account's
    * `sendTransactionSync()` and `writeContractSync()`. These mocks answer
    * sends of anything but a registered contract's nonpayable and payable

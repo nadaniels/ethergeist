@@ -40,9 +40,9 @@ const answerVerbs: Partial<Record<Answer["kind"], string>> = {
 
 /**
  * A mock as messages name it: its call, what else it pins, whether it
- * reverts, fails or refuses, its limit, and whether it's still without an
+ * reverts, fails, or refuses, its limit, and whether it's still without an
  * answer, e.g. `balanceOf(*) once`, `transfer(*) { from: 0x… } reverts`,
- * `getBalance(*) fails once` or `getBalance() without an answer`.
+ * `getBalance(*) fails once`, or `getBalance() without an answer`.
  */
 export function describeMock(name: string, mock: DescribedMock): string {
   const pins = mock.pins ? ` ${formatValue(mock.pins)}` : "";
@@ -205,6 +205,15 @@ export function formatValue(value: unknown, options: FormatOptions = {}): string
       ? `${value.slice(0, 6)}…${value.slice(-4)}`
       : value;
   return JSON.stringify(value);
+}
+
+/**
+ * `items` as a sentence lists them: "a", "a and b", "a, b, and c", or with
+ * `"or"`, "a, b, or c".
+ */
+export function formatList(items: readonly string[], conjunction: "and" | "or"): string {
+  if (items.length < 3) return items.join(` ${conjunction} `);
+  return `${items.slice(0, -1).join(", ")}, ${conjunction} ${items.at(-1)!}`;
 }
 
 /** Where a part sits inside a value: the indexes and keys to it. */

@@ -360,7 +360,8 @@ describe("malformed params", () => {
     ["a storage slot over 32 bytes", "eth_getStorageAt", [USDC, `0x${"11".repeat(33)}`, "latest"]],
     ["an estimate's sender that isn't an address", "eth_estimateGas", [{ from: "0xzz", to: USDC }]],
     ["an estimate's target that isn't an address", "eth_estimateGas", [{ to: "0x1234" }]],
-    // Estimates, sends and calls read a transaction the same way (the spec's GenericTransaction).
+    // Estimates, sends, and calls read a transaction the same way
+    // (the spec's GenericTransaction).
     ["an estimate without a transaction", "eth_estimateGas", []],
     ["an estimate's transaction that isn't an object", "eth_estimateGas", ["0x313ce567"]],
     ["an estimate's sender that's null", "eth_estimateGas", [{ from: null, to: USDC }]],

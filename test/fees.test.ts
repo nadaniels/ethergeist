@@ -186,7 +186,7 @@ describe("getFeeHistory", () => {
       ]);
   });
 
-  test("percentiles out of order, below 0 or past 100 are refused", async () => {
+  test("percentiles out of order, below 0, or past 100 are refused", async () => {
     const { mock, client } = setup();
 
     for (const rewardPercentiles of [[75, 25], [101], [50, 101], [-1], [-1, 50], [100.5]])

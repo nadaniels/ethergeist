@@ -111,7 +111,7 @@ export class MockNotFoundError extends MockError {
 
 /**
  * What `encode()` returns, with anything it throws that isn't the mock's,
- * viem's or ox's refused as a setup error: `given` was given a value it
+ * viem's, or ox's refused as a setup error: `given` was given a value it
  * can't encode, e.g. the engine's `SyntaxError` from `BigInt("soon")` inside
  * an encoder. The original is kept as the cause.
  */
@@ -151,7 +151,7 @@ const metaMessagesOf = (error: Error) =>
     : undefined;
 
 /**
- * Thrown when a resolver throws, other than by `revert()`, `fail()` or
+ * Thrown when a resolver throws, other than by `revert()`, `fail()`, or
  * `refuse()`, or returns an answer that doesn't fit, or when a
  * `match.where()` predicate throws while matching. The cause's hints carry
  * over, so a mock's own error thrown inside a resolver keeps them.

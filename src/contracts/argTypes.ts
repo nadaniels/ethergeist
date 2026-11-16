@@ -1,7 +1,7 @@
 import { AbiParameters } from "ox";
 import { type AbiFunction, type AbiParameter, getAddress, isAddress, isHex } from "viem";
 
-import { type Path, formatPath, formatValue } from "../mocking/format.js";
+import { type Path, formatList, formatPath, formatValue } from "../mocking/format.js";
 import { isMatcher, partialMatcher } from "../mocking/matchers.js";
 import { arrayElement, arraySize, decodesAsObject, isNamed } from "../shared/abiValues.js";
 import { MockSetupError } from "../shared/errors.js";
@@ -9,7 +9,7 @@ import { isNonArrayObject } from "../shared/values.js";
 
 /**
  * `parameter`'s type for messages, after "must be", e.g. "an address",
- * "bytes" and "bytes[]", or "a tuple (address tokenIn, uint256 amountIn)"
+ * "bytes", and "bytes[]", or "a tuple (address tokenIn, uint256 amountIn)"
  * and "a list of tuples (…)" for structs.
  */
 function describeType(parameter: AbiParameter): string {
@@ -58,18 +58,12 @@ function misfitHint(misfit: Misfit): string | undefined {
   const { parameter } = misfit;
   if (parameter.type !== "tuple" || !("components" in parameter)) return undefined;
   const fields = parameter.components.map((component) => AbiParameters.format([component]));
-  if ("field" in misfit) return `Its fields are ${andList(fields)}.`;
+  if ("field" in misfit) return `Its fields are ${formatList(fields, "and")}.`;
   if (!isNonArrayObject(misfit.value) || decodesAsObject(parameter.components)) return undefined;
   return (
     `Write it as a list, [${fields.join(", ")}]: viem decodes a struct as an object only ` +
     "when every field has a name."
   );
-}
-
-/** `items` as a sentence lists them: "a", "a and b", "a, b and c". */
-function andList(items: readonly string[]): string {
-  if (items.length < 2) return items.join("");
-  return `${items.slice(0, -1).join(", ")} and ${items.at(-1)!}`;
 }
 
 /**

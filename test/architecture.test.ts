@@ -77,8 +77,9 @@ describe("architecture", () => {
 
   test("tests check a thrown error's class, not only its message", () => {
     // A bare or message-only toThrow passes when the thrown value is undefined.
-    // Use expectThrows or expectRejects from test/utils.ts, or pass the class, an
-    // instance or expect.objectContaining. (`[T]` keeps this line from matching itself.)
+    // Use expectThrows or expectRejects from test/utils.ts, or pass the class,
+    // an instance, or expect.objectContaining. (`[T]` keeps this line from
+    // matching itself.)
     const tests = [
       ...files.filter((file) => file.endsWith(".test.ts")).map((file) => join(src, file)),
       ...readdirSync(import.meta.dirname, { recursive: true, encoding: "utf8" })

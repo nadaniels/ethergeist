@@ -123,8 +123,8 @@ export function unusedLine(
     mock.answer === undefined
       ? formatNoAnswer(
           mock.namespace === "read"
-            ? ".returns(), .reverts() or .fails()"
-            : ".returns(), .reverts(), .fails() or .refuses()",
+            ? ".returns(), .reverts(), or .fails()"
+            : ".returns(), .reverts(), .fails(), or .refuses()",
         )
       : formatReceived(
           name,

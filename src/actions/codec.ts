@@ -69,7 +69,7 @@ export function pinTransaction(pinned: unknown) {
 
 /**
  * An `eth_sendTransaction`'s call, from its request's fields
- * (`transactionParam`), its sender and its type: `to` is `null` for a
+ * (`transactionParam`), its sender, and its type: `to` is `null` for a
  * deploy, and empty `data` is left out. An estimate's send is one too, since
  * send mocks are matched against it.
  */

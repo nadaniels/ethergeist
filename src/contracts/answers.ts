@@ -8,7 +8,7 @@ import {
 } from "viem";
 import { formatAbiItem } from "viem/utils";
 
-import { formatValue } from "../mocking/format.js";
+import { formatList, formatValue } from "../mocking/format.js";
 import { checkNoMatchers } from "../mocking/matching.js";
 import { checkHex, checkList } from "../mocking/setupChecks.js";
 import { zeroResult } from "../mocking/zeroResult.js";
@@ -78,7 +78,7 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
   // `args` belong to `errorName`'s form.
   if (new Set(fields.map((field) => (field === "args" ? "errorName" : field))).size > 1)
     throw new MockSetupError(
-      `A revert spec takes one of data, panic, or errorName; got ${fields.join(" and ")}.`,
+      `A revert spec takes one of data, panic, or errorName; got ${formatList(fields, "and")}.`,
     );
   if (data !== undefined) {
     checkHex(data, "A revert's data");
@@ -110,7 +110,7 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
     );
     if (counts.length > 0 && !counts.includes(count)) {
       throw new MockSetupError(
-        `A revert of ${errorName} takes ${counts.join(" or ")} arg${counts.join() === "1" ? "" : "s"}; got ${count}.`,
+        `A revert of ${errorName} takes ${formatList(counts.map(String), "or")} arg${counts.join() === "1" ? "" : "s"}; got ${count}.`,
         {
           metaMessages: [
             ...new Set(errors.map((error) => formatAbiItem(error, { includeName: true }))),
@@ -125,8 +125,8 @@ export function createRevertError(abi: Abi, spec?: RevertSpec): MockRevertError 
 
 const notARevert = (spec: unknown) =>
   new MockSetupError(
-    `A revert spec has no reason, errorName, panic or data; got ${formatValue(spec)}.`,
+    `A revert spec has no reason, errorName, panic, or data; got ${formatValue(spec)}.`,
     {
-      metaMessages: ["A revert is a reason, { errorName, args }, { panic } or { data }."],
+      metaMessages: ["A revert is a reason, { errorName, args }, { panic }, or { data }."],
     },
   );

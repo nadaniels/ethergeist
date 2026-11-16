@@ -194,7 +194,7 @@ describe("reverts", () => {
     nft.read.ownerOf().reverts({ errorName: "Nope" });
     // @ts-expect-error -- args are required when the error has inputs
     nft.read.ownerOf().reverts({ errorName: "ERC721IncorrectOwner" });
-    // @ts-expect-error -- the error takes an address, a uint256 and an address
+    // @ts-expect-error -- the error takes an address, a uint256, and an address
     nft.read.ownerOf().reverts({ errorName: "ERC721IncorrectOwner", args: [1n, USDC, 1n] });
     // @ts-expect-error -- a revert spec takes one form: a panic or data, not both
     nft.read.ownerOf().reverts({ panic: 0x11, data: "0xdeadbeef" });
@@ -393,7 +393,7 @@ describe("write", () => {
     token.write.transfer().returns({ status: "reverted", gasUsed: 21_000n });
     token.write.transfer().emits([token.events.Transfer({ from: USDC, to: USDC, value: 1n })]);
     token.write.transfer().emits(token.events.Transfer({ from: USDC, to: USDC, value: 1n }));
-    // @ts-expect-error -- not a log: no address, topics or data
+    // @ts-expect-error -- not a log: no address, topics, or data
     token.write.transfer().emits({ logIndex: 0 });
     token.write.transfer().once().refuses("insufficientFunds");
     token.write.transfer().fails("timeout");
@@ -409,7 +409,7 @@ describe("write", () => {
     token.write.transfer().returns((context) => {
       expectTypeOf(context).not.toHaveProperty("emit");
     });
-    // @ts-expect-error -- not a log: no address, topics or data
+    // @ts-expect-error -- not a log: no address, topics, or data
     token.write.transfer().returns(() => ({ logs: [{ logIndex: 0 }] }));
     token.write.transfer().returns(() => Promise.resolve({ logs: [] }));
     expectTypeOf(token.write.transfer.calls[0]!.from).toEqualTypeOf<Address>();

@@ -43,7 +43,7 @@ export function nodeRevertMessage(data: Hex): string {
 
 /**
  * A request's transaction, for its error: `params[0]`, as `eth_estimateGas`,
- * `eth_call` and `eth_sendTransaction` take it, or decoded from a raw send's
+ * `eth_call`, and `eth_sendTransaction` take it, or decoded from a raw send's
  * bytes. Hex that doesn't decode (`getBalance`'s address, under a name its
  * types refuse) is no transaction.
  */

@@ -163,7 +163,7 @@ describe("contract.events", () => {
   });
 
   test("events with other arg names stay overloads, each chosen by its args", () => {
-    // WETH names Transfer's args src, dst and wad.
+    // WETH names Transfer's args src, dst, and wad.
     const abi = [
       ...erc20Abi,
       ...parseAbi(["event Transfer(address indexed src, address indexed dst, uint256 wad)"]),
@@ -294,7 +294,7 @@ describe("contract.events", () => {
 
     expectThrows(
       MockSetupError,
-      "match.any() can't go in event args; matchers only go in a mock's args, params and pins.",
+      "match.any() can't go in event args; matchers only go in a mock's args, params, and pins.",
       () => usdc.events.Transfer({ from: alice, to: bob, value: match.any() }),
     );
   });
@@ -373,7 +373,7 @@ describe("contractEvents()", () => {
 });
 
 describe("mock.buildLog()", () => {
-  test("places a log's content, from events, contractEvents() or testLog()", async () => {
+  test("places a log's content, from events, contractEvents(), or testLog()", async () => {
     const { mock, client, usdc } = setup();
     const block = await client.getBlock({ blockNumber: 7n });
     const hash = testHash("transfer");
@@ -494,7 +494,7 @@ describe("mock.buildLog()", () => {
     );
     expectThrows(
       MockSetupError,
-      "mock.buildLog()'s content has no field abi; a log's content is its address, topics and data.",
+      "mock.buildLog()'s content has no field abi; a log's content is its address, topics, and data.",
       () =>
         mock.buildLog({
           // @ts-expect-error -- an event's parameters, not a log's content
@@ -538,7 +538,7 @@ describe("mock.buildLog()", () => {
         mock.buildLog(content, { mine: true }),
     );
     expect(mine.metaMessages).toEqual([
-      "Its fields are blockNumber, transactionHash, transactionIndex and logIndex; left out, " +
+      "Its fields are blockNumber, transactionHash, transactionIndex, and logIndex; left out, " +
         "the current block and zeros.",
     ]);
   });
@@ -554,7 +554,7 @@ describe("a log's content is checked wherever it's placed", () => {
     {
       name: "the old { abi, eventName, args } shape",
       log: untyped({ abi: erc20Abi, address: USDC, eventName: "Transfer", args: {} }),
-      says: "has no field abi; a log's content is its address, topics and data.",
+      says: "has no field abi; a log's content is its address, topics, and data.",
     },
     {
       name: "data that isn't hex",
@@ -672,7 +672,7 @@ describe("a log's content is checked wherever it's placed", () => {
     expect(mock.transactions).toEqual([]);
   });
 
-  test("logs from contract.events, contractEvents(), testLog() and four topics are placed everywhere", () => {
+  test("logs from contract.events, contractEvents(), testLog(), and four topics are placed everywhere", () => {
     const { mock, usdc, shapes } = setup();
     const logs: MockLogContent[] = [
       usdc.events.Transfer({ from: alice, to: bob, value: 1n }),

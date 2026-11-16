@@ -97,7 +97,7 @@ export function asMockError(error: unknown): MockError {
 }
 
 /**
- * The outcome of an error thrown while answering, other than reverts, faults
+ * The outcome of an error thrown while answering, other than reverts, faults,
  * and refusals by name.
  */
 export function errorOutcome(error: unknown): MockOutcome {

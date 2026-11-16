@@ -19,7 +19,7 @@ const feeHistoryFields = new Set([
 ]);
 const fieldsHint =
   "Its fields are baseFeePerGas, baseFeePerBlobGas, gasUsedRatio, blobGasUsedRatio, " +
-  "oldestBlock and reward.";
+  "oldestBlock, and reward.";
 
 /** A fee history field's subject in messages. */
 const subject = (field: string) => `${field} in getFeeHistory's answer`;

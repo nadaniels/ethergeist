@@ -55,7 +55,7 @@ export function checkFault(fault: unknown): asserts fault is MockFault {
     throw new MockSetupError(message, {
       metaMessages: [
         `"${fault}" is a node's refusal: use .refuses("${fault}"), or refuse("${fault}") in a resolver.`,
-        "A node refuses only simulations, estimates and sends.",
+        "A node refuses only simulations, estimates, and sends.",
       ],
     });
   throw new MockSetupError(message, {

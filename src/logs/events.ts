@@ -29,9 +29,9 @@ import { MockSetupError, refuseUnencodable } from "../shared/errors.js";
 import { isNonArrayObject } from "../shared/values.js";
 
 /**
- * A log's content: who emitted it, its topics and its data, from
- * `contract.events`, `contractEvents()` or `testLog()`. It has no position:
- * the send, transaction, receipt or `mock.buildLog()` it goes to places it.
+ * A log's content: who emitted it, its topics, and its data, from
+ * `contract.events`, `contractEvents()`, or `testLog()`. It has no position:
+ * the send, transaction, receipt, or `mock.buildLog()` it goes to places it.
  */
 export type MockLogContent = {
   /** The emitting contract, checksummed. */
@@ -64,7 +64,7 @@ const isPlaced = (log: object) => positionFields.some((field) => field in log);
 const logsHint = "Logs come from contract.events, contractEvents(), or testLog().";
 
 /**
- * A log's content fields: content from `contract.events`, `contractEvents()`
+ * A log's content fields: content from `contract.events`, `contractEvents()`,
  * or `testLog()` has no others.
  */
 const contentFields = new Set(["address", "topics", "data"]);
@@ -97,7 +97,7 @@ export function checkLog(
     });
   const field = Object.keys(log).find((key) => !contentFields.has(key));
   if (field !== undefined)
-    throw refuse(`has no field ${field}; a log's content is its address, topics and data`);
+    throw refuse(`has no field ${field}; a log's content is its address, topics, and data`);
   if (log.data !== undefined && !isHex(log.data))
     throw refuse(`has data that isn't hex; got ${formatValue(log.data)}`);
   const topics: readonly unknown[] = log.topics ?? [];
@@ -154,7 +154,7 @@ type EventInputsArgs<inputs extends readonly AbiParameter[]> =
     : { readonly [index in keyof inputs]: EventInputValue<inputs[index]> };
 
 /**
- * An event's args, as `contract.events`, `contract.emit` and the events
+ * An event's args, as `contract.events`, `contract.emit`, and the events
  * `contractEvents()` returns take them. Indexed args are required, since
  * filters match on them and a zero would quietly miss. The rest may be left
  * out, at any depth of a struct, and are filled with zeros, as in

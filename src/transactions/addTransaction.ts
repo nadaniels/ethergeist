@@ -10,7 +10,7 @@ import { MockSetupError } from "../shared/errors.js";
  * What `mock.addTransaction()` takes: a transaction the app didn't send, in
  * a send's words. Its fields are its call's, its outcome's, and where it
  * goes. Every field may be left out: `mock.addTransaction()` adds a success
- * from and to the zero address, with no input, value, gas used or logs.
+ * from and to the zero address, with no input, value, gas used, or logs.
  */
 export type AddTransactionParameters = {
   /**
@@ -38,7 +38,7 @@ export type AddTransactionParameters = {
    */
   nonce?: number;
   /**
-   * Its logs: content from `contract.events`, `contractEvents()` or
+   * Its logs: content from `contract.events`, `contractEvents()`, or
    * `testLog()`, placed here, at any address but an `empty()` one's. A
    * swap's logs from several contracts go in one transaction, e.g.
    * `{ logs: [a, b] }`. A placed log is refused.
@@ -89,7 +89,7 @@ const addTransactionFields = new Set([
 export const transactionHashHint =
   "The transaction's hash is hash, as on a transaction; transactionHash is a log's.";
 const fieldsHint =
-  "Its fields are from, to, value, data, nonce, logs, status, gasUsed, blockNumber and hash; " +
+  "Its fields are from, to, value, data, nonce, logs, status, gasUsed, blockNumber, and hash; " +
   "without blockNumber, it mines a new block.";
 
 /**

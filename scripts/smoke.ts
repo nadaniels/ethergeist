@@ -2,7 +2,7 @@
  * Checks the package the way a consumer gets it. It packs the tarball
  * (`pnpm pack`, which builds it with `vp pack`), then:
  *
- * - fails on a file in the tarball outside `dist/`, the LICENSE, the README
+ * - fails on a file in the tarball outside `dist/`, the LICENSE, the README,
  *   and `package.json`, so colocated tests never ship;
  * - installs the tarball into two consumers, one with the oldest viem and ox
  *   its peer ranges allow and one with the repo's viem and the ox it
@@ -10,7 +10,7 @@
  * - type-checks `smoke-consumer.ts` in each consumer, without
  *   `skipLibCheck`, under TypeScript 5.8.2, the latest TypeScript 5 and 6,
  *   and the repo's own, with `nodenext` and `bundler` resolution, so a type
- *   or module missing from an older viem, ox or TypeScript fails, as does an
+ *   or module missing from an older viem, ox, or TypeScript fails, as does an
  *   import of a file that isn't shipped;
  * - emits the consumer's own declarations, which fails where a type the
  *   consumer infers can't be written with what the package exports, such
@@ -26,7 +26,7 @@
  *
  * Usage: vp run smoke
  *
- * It installs viem, ox and TypeScript from the registry, and removes the
+ * It installs viem, ox, and TypeScript from the registry, and removes the
  * temporary directory when it's done.
  */
 import { execFileSync } from "node:child_process";
@@ -240,7 +240,7 @@ try {
     throw new Error(
       `Declarations name types index.ts doesn't export:\n  ${unexported.join("\n  ")}`,
     );
-  console.log("\nThe package installs, type-checks and runs at every version.");
+  console.log("\nThe package installs, type-checks, and runs at every version.");
 } catch (error) {
   console.error(`\n${error instanceof Error ? error.message : String(error)}`);
   process.exitCode = 1;

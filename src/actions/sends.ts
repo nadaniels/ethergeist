@@ -19,14 +19,14 @@ import {
 import type { SendTransactionCall } from "./types.js";
 
 /**
- * Sends and their estimates: `eth_estimateGas`, and `eth_sendTransaction`,
- * `eth_sendRawTransaction` and its Sync form. It holds
- * `mock.actions.estimateGas`'s and `mock.actions.sendTransaction`'s mocks,
- * and reads and answers their requests: `answerEstimate` and `answerSend`
- * are the order of answers, read top to bottom.
+ * Sends and their estimates: `eth_estimateGas`, and the sends
+ * (`eth_sendTransaction`, `eth_sendRawTransaction`, and its Sync form). It
+ * holds `mock.actions.estimateGas`'s and `mock.actions.sendTransaction`'s
+ * mocks, and reads and answers their requests: `answerEstimate` and
+ * `answerSend` are the order of answers, read top to bottom.
  *
  * Each action is returned in a table's shape (see `createTable`), so its
- * mocks, calls and requests are handled as a table's are.
+ * mocks, calls, and requests are handled as a table's are.
  */
 export function createSends(
   context: ActionsContext,
@@ -171,7 +171,7 @@ export function createSends(
           ]),
         );
       }
-      // Matched once, for steps 1, 4 and 5, so its predicates run once.
+      // Matched once, for steps 1, 4, and 5, so its predicates run once.
       const sendMatch = sent && sendTransactionMocks.match(sent);
       const sendMock = foundMock(sendMatch?.handler);
       if (sendMock?.answer.kind === "revert") {

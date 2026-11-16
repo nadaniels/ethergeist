@@ -498,13 +498,13 @@ describe("mock.addTransaction", () => {
       "an unknown field",
       { gas: 1n },
       "gas isn't a field of mock.addTransaction()'s transaction.",
-      "Its fields are from, to, value, data, nonce, logs, status, gasUsed, blockNumber and hash; " +
+      "Its fields are from, to, value, data, nonce, logs, status, gasUsed, blockNumber, and hash; " +
         "without blockNumber, it mines a new block.",
     ],
     [
       "a matcher in a field",
       { status: match.any() },
-      "match.any() can't go in mock.addTransaction()'s transaction; matchers only go in a mock's args, params and pins.",
+      "match.any() can't go in mock.addTransaction()'s transaction; matchers only go in a mock's args, params, and pins.",
     ],
     ["a deploy", { to: null }, "mock.addTransaction() doesn't deploy: to can't be null."],
     [
@@ -573,7 +573,7 @@ describe("mock.addTransaction", () => {
     expect(mock.transactions).toEqual([]);
   });
 
-  test("takes zero for its amounts, nonce and block, and an explicit success", () => {
+  test("takes zero for its amounts, nonce, and block, and an explicit success", () => {
     const { mock } = setup();
     const record = mock.addTransaction({
       value: 0n,

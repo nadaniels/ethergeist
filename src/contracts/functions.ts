@@ -17,7 +17,7 @@ import type { MockNamespace } from "./types.js";
 /**
  * A contract's functions by kind (`reads`, view and pure; `writes`,
  * nonpayable and payable) and by namespace, as its mocks find them: reads
- * under `read`, writes under `simulate`, `estimateGas` and `write`, by name
+ * under `read`, writes under `simulate`, `estimateGas`, and `write`, by name
  * and overload, or by selector.
  */
 export function createFunctions(abi: Abi) {

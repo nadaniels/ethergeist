@@ -262,7 +262,7 @@ describe("getBalance", () => {
 
     expectThrows(
       MockSetupError,
-      "match.any() can't go in getBalance's answer; matchers only go in a mock's args, params and pins.",
+      "match.any() can't go in getBalance's answer; matchers only go in a mock's args, params, and pins.",
       () => {
         mock.actions.getBalance().returns(match.any());
       },
@@ -1282,7 +1282,7 @@ describe("bookkeeping", () => {
   });
 });
 
-describe("a block, transaction or receipt answer", () => {
+describe("a block, transaction, or receipt answer", () => {
   test.each([
     ["getBlock", 5, "5"],
     ["getTransaction", [], "[]"],

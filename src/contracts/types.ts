@@ -66,7 +66,7 @@ export type MockBatch = {
 
 /**
  * The EVM call's context, as a contract's mock sees it: who sent it, the
- * value, the block and the batch. A resolver gets it in `ResolverContext`.
+ * value, the block, and the batch. A resolver gets it in `ResolverContext`.
  */
 export type CallContext = {
   /**
@@ -88,7 +88,7 @@ export type CallContext = {
 };
 
 /**
- * A decoded contract call: the contract, the function and its args, with
+ * A decoded contract call: the contract, the function, and its args, with
  * the call's context (see `CallContext`).
  */
 export type MockCall<
@@ -154,7 +154,7 @@ export type RevertFn<abi extends Abi> = <
 
 /**
  * What a contract function's resolver gets: the call's fields (see
- * `MockCall`), `revert` and `fail`. In `simulate`, `estimateGas` and
+ * `MockCall`), `revert`, and `fail`. In `simulate`, `estimateGas`, and
  * `write`, it also gets `refuse` (see `RefusalContext`).
  */
 export type ResolverContext<abi extends Abi, args> = MockCall<args> & {
@@ -185,7 +185,7 @@ type ContextOf<abi extends Abi, args, mutability> = [mutability] extends [ReadMu
 type Resolver<result, context> = result | ((context: context) => result | Promise<result>);
 
 /**
- * How a contract function's mock answers: `.returns()`, `.reverts()` or
+ * How a contract function's mock answers: `.returns()`, `.reverts()`, or
  * `.fails()`. A resolver gets `context`.
  */
 export type MockFunctionAnswers<
@@ -219,7 +219,7 @@ export type MockFunctionAnswers<
 
 /**
  * A contract function's mock, as `read` and `simulate` return it:
- * `.returns()`, `.reverts()` or `.fails()` to answer, in `simulate` also
+ * `.returns()`, `.reverts()`, or `.fails()` to answer, in `simulate` also
  * `.refuses()` (see `MockRefusalAnswers`), and `.once()` or `.times()` to
  * limit it (see `WithLimits`).
  */
@@ -291,7 +291,7 @@ export type MockContractFunction<
 
 /**
  * How a contract function's estimate mock answers: with gas, `.reverts()`,
- * `.fails()` or `.refuses()`.
+ * `.fails()`, or `.refuses()`.
  */
 export type MockContractEstimateAnswers<abi extends Abi, args> = MockEstimateAnswers<
   ResolverContext<abi, args> & RefusalContext<EstimateErrorName>
@@ -330,7 +330,7 @@ export type MockEstimateGasFunction<
 
 /**
  * What a contract function's `write` resolver gets: the call's fields,
- * `fail`, `refuse` and `revert`.
+ * `fail`, `refuse`, and `revert`.
  */
 export type WriteResolverContext<abi extends Abi, args> = ResolverContext<abi, args> &
   RefusalContext<SendErrorName> & {
@@ -380,7 +380,7 @@ export type MockWriteFunction<
   ): WithLimits<MockContractWriteAnswers<abi, args>>;
   /**
    * Every send of this function the mock received, in order: the last
-   * `historyLimit` of each overload's. A send's nonce, gas and fees are in
+   * `historyLimit` of each overload's. A send's nonce, gas, and fees are in
    * `mock.actions.sendTransaction.calls`, and its transaction in
    * `mock.transactions`.
    */
@@ -473,7 +473,7 @@ export type MockContract<abi extends Abi> = {
   };
   /**
    * Its nonpayable and payable functions, by name, sent as transactions
-   * (`eth_sendTransaction`, `eth_sendRawTransaction` or its Sync form) as
+   * (`eth_sendTransaction`, `eth_sendRawTransaction`, or its Sync form) as
    * viem's `writeContract()` and `writeContractSync()` send them. A mock
    * answers with what the chain did, and the transaction is mined in a new
    * block: see `MockContractWriteAnswers`. Concurrent sends are mined in
@@ -495,7 +495,7 @@ export type MockContract<abi extends Abi> = {
   };
   /**
    * The contract's events by name, each building the content of the log its
-   * args would emit at this address, for a receipt mock's `logs`, a send's
+   * args would emit at this address, for a receipt mock's `logs`, a send's,
    * or `mock.addTransaction()`'s, e.g. `events.Transfer({ from, to, value })`.
    * Indexed args are required, and the rest are zero-filled. For a contract
    * the app never calls, `contractEvents({ abi, address })` builds the same
@@ -507,7 +507,7 @@ export type MockContract<abi extends Abi> = {
   events: MockContractEvents<abi>;
   /**
    * Emits one of the contract's events as a transaction of its own, e.g.
-   * `emit.Transfer({ from, to, value })`, for viem's `getLogs()`, watchers
+   * `emit.Transfer({ from, to, value })`, for viem's `getLogs()`, watchers,
    * and receipts to find, and returns the placed log: see
    * `MockContractEmit`. In a send mock's resolver, return `{ logs }` built
    * with `events` instead.

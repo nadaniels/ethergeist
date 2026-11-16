@@ -126,7 +126,7 @@ describe("a write mock", () => {
     },
   );
 
-  test("answers with the outcome: receipt, transaction, block and logs agree", async () => {
+  test("answers with the outcome: receipt, transaction, block, and logs agree", async () => {
     const { client, usdc, transfer } = setup();
     const noise = testLog("noise");
     usdc.write.transfer([bob, 5n]).returns({

@@ -34,7 +34,7 @@ describe("asMockError()", () => {
 });
 
 describe("isAnswer()", () => {
-  test("reverts, faults and a node's refusals are answers; the mock's errors aren't", () => {
+  test("reverts, faults, and a node's refusals are answers; the mock's errors aren't", () => {
     expect(isAnswer(new MockRevertError("0x"))).toBe(true);
     expect(isAnswer(new MockFailure("timeout"))).toBe(true);
     expect(isAnswer(new MockRpcError(-32602, "invalid params"))).toBe(true);

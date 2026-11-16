@@ -28,7 +28,7 @@ import type { MockWriteOutcome } from "./writes.js";
 
 /**
  * A placed transaction, as `mock.transactions` lists it: the facts it was
- * placed with, which its receipt, its transaction and its block answer
+ * placed with, which its receipt, its transaction, and its block answer
  * from. Frozen: once placed, a record never changes, and mining only moves
  * the head past it.
  */
@@ -38,7 +38,7 @@ export type TransactionRecord = {
   /**
    * How it was placed: `"added"` by the mock's API (`mock.addTransaction()`
    * or `contract.emit`), or `"sent"` over JSON-RPC (`eth_sendTransaction`,
-   * `eth_sendRawTransaction` or its Sync form), whoever sent it.
+   * `eth_sendRawTransaction`, or its Sync form), whoever sent it.
    */
   readonly origin: "added" | "sent";
   /**
@@ -89,7 +89,7 @@ export type TransactionRecord = {
  */
 export type MockReceipt = ReceiptFields & {
   /**
-   * Its logs' content, from `contract.events`, `contractEvents()` or
+   * Its logs' content, from `contract.events`, `contractEvents()`, or
    * `testLog()`, in place of any its transaction has. The receipt places
    * them in its block and transaction. They answer this receipt only:
    * viem's `getLogs()` and watchers don't see them. To have them seen, place
@@ -126,7 +126,7 @@ type NewRecord = Pick<TransactionRecord, "origin" | "fields" | "receipt"> & {
 };
 
 /**
- * Where a block mock answers its transactions: its number, hash and
+ * Where a block mock answers its transactions: its number, hash, and
  * timestamp.
  */
 type BlockPlacement = { blockNumber: bigint; blockHash: Hash; blockTimestamp: bigint };
@@ -139,7 +139,7 @@ export type TransactionStore = ReturnType<typeof createTransactionStore>;
 
 /**
  * The chain's transactions, one record each, in blocks of `state`: what
- * `addTransaction` and sends place, and what receipts, transactions, blocks
+ * `addTransaction` and sends place, and what receipts, transactions, blocks,
  * and `eth_getLogs` answer from when unmocked. A record is on the chain once
  * its block is mined (at or below the head); placed in a later block, it's
  * waiting, as a pending transaction is.

@@ -263,21 +263,21 @@ export function findMatcher(value: unknown): Matcher | undefined {
 
 /**
  * Throws if `value` holds a matcher anywhere: matchers go in a mock's args,
- * params and pins, not in values. `place` names the value for messages;
+ * params, and pins, not in values. `place` names the value for messages;
  * `hint` says what to do instead, where the place invites a matcher.
  */
 export function checkNoMatchers(value: unknown, place: string, hint?: string): void {
   const found = findMatcher(value);
   if (found)
     throw new MockSetupError(
-      `match.${found.type}() can't go in ${place}; matchers only go in a mock's args, params ` +
+      `match.${found.type}() can't go in ${place}; matchers only go in a mock's args, params, ` +
         "and pins.",
       hint === undefined ? undefined : { metaMessages: [hint] },
     );
 }
 
 /**
- * Where a value sits in a pin: its top-level arg, param or key, then the
+ * Where a value sits in a pin: its top-level arg, param, or key, then the
  * keys and indexes inside it.
  */
 type PinPath = readonly [Path[number], ...Path];
@@ -285,7 +285,7 @@ type PinPath = readonly [Path[number], ...Path];
 /** How a pin's engine words the refusal of an `undefined` in its list. */
 type LeftOutWording = {
   /**
-   * A top-level arg, param or key by name, qualified by the call that took
+   * A top-level arg, param, or key by name, qualified by the call that took
    * it, e.g. "read.allowance's spender".
    */
   name(key: number | string): string;

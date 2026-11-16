@@ -589,7 +589,7 @@ describe("a fault that isn't one", () => {
         expect(error.shortMessage).toBe(`Expected a fault; got "${name}".`);
         expect(error.metaMessages).toEqual([
           `"${name}" is a node's refusal: use .refuses("${name}"), or refuse("${name}") in a resolver.`,
-          "A node refuses only simulations, estimates and sends.",
+          "A node refuses only simulations, estimates, and sends.",
         ]);
       }
     },
@@ -630,7 +630,7 @@ describe("a fault that isn't one", () => {
       shortMessage: 'Expected a fault; got "insufficientFunds".',
       metaMessages: [
         '"insufficientFunds" is a node\'s refusal: use .refuses("insufficientFunds"), or refuse("insufficientFunds") in a resolver.',
-        "A node refuses only simulations, estimates and sends.",
+        "A node refuses only simulations, estimates, and sends.",
       ],
     });
   });

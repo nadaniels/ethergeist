@@ -67,7 +67,7 @@ features land; tick them off as pages get written.
 
 - [ ] Matching: pinned args, args-less mocks as fallbacks, most specific wins,
       ties go to the most recent.
-- [ ] Matchers: `match.any()`, `match.where(predicate, label?)` and
+- [ ] Matchers: `match.any()`, `match.where(predicate, label?)`, and
       `match.partial(fields)` in args and in action and method params, typed
       as the value they replace. Show:
   - Not Jest's or Vitest's: `expect.any(String)` and the like are refused
@@ -167,7 +167,7 @@ features land; tick them off as pages get written.
       behave inside a batch.
 - [ ] Writes: `usdc.write.transfer([bob, 5n]).emits([log])` answers the
       app's `writeContract`, then `waitForTransactionReceipt`, with nothing
-      for gas, fees or the nonce. Show:
+      for gas, fees, or the nonce. Show:
   - A write mock answers a send of its function (`eth_sendTransaction`,
     `eth_sendRawTransaction`) to the contract. Only write mocks and
     `defaults.write` answer it: `mock.actions.sendTransaction` doesn't,
@@ -216,7 +216,7 @@ features land; tick them off as pages get written.
   - `defaults.write`, like other defaults, answers every send of a
     function and is exempt from `assertAllUsed`.
   - Calls: `write.fn.calls` holds the function's calls (`from` always
-    set); nonce, gas and fees are on `mock.actions.sendTransaction.calls`,
+    set); nonce, gas, and fees are on `mock.actions.sendTransaction.calls`,
     and what was mined on `mock.transactions`. `contract.calls` and
     `mock.calls` tag them `namespace: "write"`.
 - [ ] `mock.empty(address)` for addresses without code.
@@ -239,10 +239,10 @@ features land; tick them off as pages get written.
   - `assertAllUsed()`: answering at least once counts as used; messages show
     what's left (`3 times, 2 left`).
 
-## 4. Failures: `.fails()`, `.refuses()` and `.reverts()`
+## 4. Failures: `.fails()`, `.refuses()`, and `.reverts()`
 
 - [ ] A fault is a network failure. It throws `HttpRequestError`,
-      `RpcRequestError` or `TimeoutError`, viem retries it by its own rules,
+      `RpcRequestError`, or `TimeoutError`, viem retries it by its own rules,
       and it fails a whole multicall batch.
 - [ ] A refusal is the node declining a transaction before running it,
       by name: `.refuses(name)`, and `refuse(name)` in a resolver. It
@@ -258,7 +258,7 @@ features land; tick them off as pages get written.
       transport, worded as reth words them (Ethereum's and Base's public
       endpoints run reth); faults use the `http` transport's own errors, with
       the same retries. Tested against responses captured from reth, geth and
-      its forks (Arbitrum, Avalanche, Linea), BSC, zkSync and Scroll.
+      its forks (Arbitrum, Avalanche, Linea), BSC, zkSync, and Scroll.
 - [ ] Classify errors by viem's classes and decoded data
       (`ContractFunctionRevertedError`, `errorName`, `reason`), never by
       message text: the wording differs by node (`<empty>` vs an empty
@@ -277,7 +277,7 @@ features land; tick them off as pages get written.
 - [ ] A node's refusals by name, where a node refuses a transaction:
       `.refuses("insufficientFunds" | "feeCapTooLow" | "tipAboveFeeCap")`
       (and `refuse(name)` in resolvers) on `estimateGas`, `simulate`,
-      `write` and `sendTransaction` mocks. Each sends reth's code and
+      `write`, and `sendTransaction` mocks. Each sends reth's code and
       message, which is what viem names them by (`InsufficientFundsError`,
       `FeeCapTooLowError`, `TipAboveFeeCapError`); writing the text by hand
       gets you `UnknownNodeError` if it's off. Each name is typed where a
@@ -298,7 +298,7 @@ features land; tick them off as pages get written.
     node's cap, 50,000,000. Not on sends: a send with too little gas is
     mined and runs out, `.returns({ status: "reverted", gasUsed })`
     with its gas limit.
-  - Replacement underpriced, underpriced and exceeds block gas limit stay
+  - Replacement underpriced, underpriced, and exceeds block gas limit stay
     faults, `.fails({ code: -32000, message })`: viem shows them as a
     generic `InvalidInputRpcError`, so a name adds nothing.
   - `"insufficientFunds"` is reth's balance check, `insufficient funds for
@@ -314,7 +314,7 @@ features land; tick them off as pages get written.
     InsufficientFundsError)`, not the code or text: those are reth's, and
     other clients send other codes and wordings that viem names the same.
     Checked against captures (2026-10-31) from geth, an OP Stack geth fork
-    (Mantle), Arbitrum Nitro, Erigon and Nethermind: the first three names
+    (Mantle), Arbitrum Nitro, Erigon, and Nethermind: the first three names
     give the same viem class. Besu wasn't checked (no public endpoint ran
     it). The rest send geth's messages, which viem's patterns match; they
     weren't captured.
@@ -347,7 +347,7 @@ features land; tick them off as pages get written.
 
 ## 5. Node data: `mock.actions` and `mock.method`
 
-- [ ] `getBalance`, `getCode`, `getStorageAt`, `getBlock`, `getTransactionReceipt`, `getTransaction`, `getTransactionCount` and the fee actions, with
+- [ ] `getBalance`, `getCode`, `getStorageAt`, `getBlock`, `getTransactionReceipt`, `getTransaction`, `getTransactionCount`, and the fee actions, with
       values in viem's types.
 - [ ] Generated blocks: what's generated (numbers, linked hashes, timestamps
       from `timestamp` and `chain.blockTime`, the base fee from `fees`), and
@@ -396,8 +396,8 @@ features land; tick them off as pages get written.
       (`.returns({ logs })`). An empty chain answers only what's mocked
       (`getLogs` answers `[]`). The rules, for every mock:
   - **The chain answers from its records.** A record is what
-    `mock.addTransaction`, `contract.emit` and the app's sends put there;
-    receipts, transactions, blocks and `getLogs` agree because they read
+    `mock.addTransaction`, `contract.emit`, and the app's sends put there;
+    receipts, transactions, blocks, and `getLogs` agree because they read
     the same record.
   - **A mock answers one method, over what the chain would answer that
     request: its fields win, the rest is the chain's.** For a block past
@@ -416,7 +416,7 @@ features land; tick them off as pages get written.
     over zeros (a pending transaction has no receipt), so the two disagree
     on `from` until it's mined.
   - **An answer places its parts.** A receipt's `blockNumber`,
-    `blockHash`, `transactionHash` and `transactionIndex` place its logs,
+    `blockHash`, `transactionHash`, and `transactionIndex` place its logs,
     with that block's timestamp, and their `logIndex` counts on from the
     logs of the chain's transactions before it in that block, whether
     they're the chain's logs or the mock's own. It's counted when the
@@ -424,7 +424,7 @@ features land; tick them off as pages get written.
     shifts it. A mock's logs over a record may still share an index with
     the block's later logs in `getLogs` (methods may disagree); for logs
     every method agrees on, use `mock.addTransaction`. A
-    block's `number`, `hash` and `timestamp` place the transactions it
+    block's `number`, `hash`, and `timestamp` place the transactions it
     lists. That's within one answer: a `getBlock` mock's `timestamp` doesn't
     move a receipt's logs, and `getTransaction` for a transaction it lists
     still answers the chain's block. Nothing else is
@@ -432,17 +432,17 @@ features land; tick them off as pages get written.
     stays zero.
   - **Every answer is one a node could send, as an object:** a reverted
     transaction has no logs, a pending transaction has no block, hash,
-    index or timestamp, and a log is placed once (mocks take a log's
+    index, or timestamp, and a log is placed once (mocks take a log's
     content). Whether it's the right answer for the request is the test's
     business: a receipt whose `transactionHash` isn't the one asked for is
     allowed.
-  - A node's refusals don't run under a mock: a `getLogs`, `getBlock` or
+  - A node's refusals don't run under a mock: a `getLogs`, `getBlock`, or
     `getFeeHistory` mock answers past the head, where the chain would
     refuse or find nothing.
 - [ ] Receipts: the defaults (status `"success"`, block), and
       `.returns(null)` for "not found".
   - Over a transaction on the chain, a mock changes only what it names:
-    `.returns({ status: "reverted" })` keeps the sender, gas and block. A
+    `.returns({ status: "reverted" })` keeps the sender, gas, and block. A
     reverted status over a transaction with logs is refused (a reverted
     transaction has none): answer this receipt without them,
     `{ status: "reverted", logs: [] }`, or add it reverted,
@@ -503,18 +503,18 @@ features land; tick them off as pages get written.
   - For a receipt with logs for a hash the app has, mock its receipt with
     `logs`, which answer that receipt only, or add its transaction,
     `mock.addTransaction({ hash, logs })`, whose receipt, transaction,
-    block and `getLogs` answer from it. A transaction mock over one placed
+    block, and `getLogs` answer from it. A transaction mock over one placed
     in a block not mined yet answers over the pending transaction, which
     has no block or index: to answer it mined, give `blockNumber` (and
     `transactionIndex`, 0 otherwise).
   - `mock.buildLog(content, placement?)` places a log's content (from
-    `contract.events`, `contractEvents()` or `testLog()`) as a complete viem
+    `contract.events`, `contractEvents()`, or `testLog()`) as a complete viem
     log where no mock places it (`toEqual`, Storybook props, a function that
     parses logs, a `getLogs` mock's answer). `placement` is in a log's own
     words, `{ blockNumber, transactionHash, transactionIndex, logIndex }`:
     left out, the current block and zeros, with nothing counted from the
     chain, so give `logIndex` to match a block with other logs. Receipt
-    mocks, added transactions and writes place logs themselves, so they take
+    mocks, added transactions, and writes place logs themselves, so they take
     content, and refuse a built log. For a receipt's
     logs from a contract the app decodes but never calls (an indexer, a
     receipt parser), `contractEvents({ abi, address })` builds the same logs
@@ -538,10 +538,10 @@ features land; tick them off as pages get written.
     transactions in two blocks: a swap's logs from several contracts go in
     one `mock.addTransaction({ logs: [a, b] })`.
   - `mock.addTransaction(fields)` takes a send's words, all optional:
-    `from`, `to`, `value`, `data`, `nonce` from the call; `logs`, `status`
+    `from`, `to`, `value`, `data`, `nonce` from the call; `logs`, `status`,
     and `gasUsed` from the outcome; and `blockNumber` and `hash` for where
     it goes. `mock.addTransaction()` is a placeholder: a success from and
-    to the zero address, with no input, value, gas or logs. It returns the
+    to the zero address, with no input, value, gas, or logs. It returns the
     record `mock.transactions` lists, where `data` reads back as
     `fields.input`, as in viem. A reverted one has no logs, and deploys
     (`to: null`) aren't supported. E.g. a wallet's replacement:
@@ -565,7 +565,7 @@ features land; tick them off as pages get written.
     block's next transaction, with a generated hash. Pass a hash the app
     already has (one from a URL); a hash already placed is refused,
     since a transaction's receipt never grows.
-  - Its receipt, transaction and block answer from it, from its fields or
+  - Its receipt, transaction, and block answer from it, from its fields or
     their defaults. A receipt or transaction mock for its hash answers over
     it. A `getBlock` mock still lists the block's added transactions,
     placed in the block it answers, unless it sets `transactions`.
@@ -685,7 +685,7 @@ features land; tick them off as pages get written.
       Unmocked, a plain transfer (no data) to an address without code is
       21000 gas, as a node estimates it, so sending ETH needs no mock;
       anything else isn't answered.
-  - 21000 is what reth, geth, Erigon, Nethermind and Arbitrum estimate. On
+  - 21000 is what reth, geth, Erigon, Nethermind, and Arbitrum estimate. On
     zkSync Era a plain transfer estimates far higher (146780 when
     captured): mock the estimate if a test there depends on the number.
   - The sender is `from`, as the request and a write mock's pins say it
@@ -701,7 +701,7 @@ features land; tick them off as pages get written.
     wallet isn't asked" for calldata to an address that isn't a
     registered contract. A JSON-RPC account's send isn't estimated by
     viem, and the mock's send doesn't ask estimate mocks, so it isn't
-    refused. Without an ABI it takes a reason, a panic code or raw data,
+    refused. Without an ABI it takes a reason, a panic code, or raw data,
     like a send's `.reverts()`; a custom error is
     `{ data: encodeErrorResult(…) }`. A resolver's `revert(spec)` takes
     the same forms and reverts the estimate too, e.g.
@@ -747,7 +747,7 @@ features land; tick them off as pages get written.
 - [ ] Sends: `mock.actions.sendTransaction({ from, to, value, data })`
       answers `eth_sendTransaction` (a node's account, unsigned, with
       `from`) and `eth_sendRawTransaction` (a local account's signed bytes),
-      for `sendTransaction`, `writeContract` and `deployContract`. The
+      for `sendTransaction`, `writeContract`, and `deployContract`. The
       call's `from` is the sender: the request's, or a raw send's signer,
       recovered from its signature.
   - A local account's `sendTransactionSync` and `writeContractSync` send
@@ -763,7 +763,7 @@ features land; tick them off as pages get written.
     `TransactionReceiptRevertedError` only with `throwOnReceiptRevert:
     true`.
   - Sends always go on the chain: a successful send is a transaction
-    mined in a new block, and its receipt, transaction, block and logs
+    mined in a new block, and its receipt, transaction, block, and logs
     answer from it, so `waitForTransactionReceipt` resolves on its first
     poll, and `getTransaction` answers from the moment of the send. Any of
     them can still be mocked over it. There's no mode that answers a hash
@@ -817,7 +817,7 @@ features land; tick them off as pages get written.
       once refused, fills the nonce, fees, and gas with their own requests,
       which are what tests mock. Mock it with
       `mock.method("eth_fillTransaction")` to test code that relies on it.
-  - In production it varies (captured 2026-10-31): reth, geth, Nethermind
+  - In production it varies (captured 2026-10-31): reth, geth, Nethermind,
     and zkSync support it; Arbitrum and Erigon refuse it with `-32601`, as
     the mock does, which viem remembers per client. Some gateways refuse it
     another way (Base's public RPC with HTTP 401, Mantle's with HTTP 403),
@@ -826,7 +826,7 @@ features land; tick them off as pages get written.
     transaction viem builds is the same either way.
   - `wallet_sendTransaction` and `wallet_sendCalls`, which nodes don't
     support. viem retries an `eth_sendTransaction` that fails with
-    `-32000`, `-32602`, `-32601` or `-32004` as `wallet_sendTransaction`;
+    `-32000`, `-32602`, `-32601`, or `-32004` as `wallet_sendTransaction`;
     refused, it rethrows the send's own error, so a test's
     `mock.actions.sendTransaction().refuses(…)` is what the app sees.
     viem remembers the refusal per client, so it retries only once.
@@ -902,7 +902,7 @@ features land; tick them off as pages get written.
 - [ ] How to read "answered no call": usage counts from the last clear
       (`clearCalls()`, `restore()`, `reset()`), so a `.times(n)` mock that
       answered before it can read "3 times, 2 left". Under each unused mock, the calls
-      its function received (up to 3, then a count) and the first arg, field
+      its function received (up to 3, then a count) and the first arg, field,
       or param that didn't match, by its ABI name; "matches; another mock
       answered it" for a shadowed mock; "matches; it's to a registered
       contract's function, which action mocks don't answer" under an action
@@ -917,15 +917,15 @@ features land; tick them off as pages get written.
       mined with logs after it's registered),
       `MockCheckError` (a failed check), `MockNotFoundError` (not mocked),
       `MockResolverError` (a resolver or predicate threw; its cause is what
-      it threw) and `MockInternalError` (a bug in the mock, unless it was
+      it threw), and `MockInternalError` (a bug in the mock, unless it was
       given a value its types don't allow: report it).
-      Everything else is viem's: reverts, faults and a node's refusals reach
+      Everything else is viem's: reverts, faults, and a node's refusals reach
       the app as viem's own classes, as in production, and viem's and ox's
       validation errors (an invalid address at registration) pass through.
       A setup message names the call and field it's about
       ("mock.addTransaction()'s gasUsed must be a non-negative bigint"). A
       matcher can't stand in for a value: `match.any()` type-checks in any
-      field, but it's refused outside args, params and pins.
+      field, but it's refused outside args, params, and pins.
       A message is its short message, then hint lines (`metaMessages`, which
       viem's errors carry too); `details` is always empty, so viem never
       mistakes a hint for a node error. Assert with `toThrow(MockSetupError)`
@@ -1015,7 +1015,7 @@ features land; tick them off as pages get written.
       small, while `restore()` after each test clears the records, so a
       single test rarely reaches it; one that does gets the warning, and
       `Infinity` keeps everything. Not records: registered mocks,
-      `mock.logs` and `mock.transactions`, which grow only as code adds to
+      `mock.logs`, and `mock.transactions`, which grow only as code adds to
       them: `clearCalls()` keeps them, and a send dropped from history is
       still on the chain.
 
@@ -1061,7 +1061,7 @@ features land; tick them off as pages get written.
     checkpoint's restore or `reset()` invalidated it, with the usual cause:
     a parent describe's per-test restore;
   - the mock remembers what the last `restore()` or `reset()` removed
-    (contracts, mocks and transactions; the next one replaces it). "No
+    (contracts, mocks, and transactions; the next one replaces it). "No
     mocked contract at …" for an address it removed says so, and a "No
     mock for …" lists the removed mocks that match the call; both then give
     the layout as a condition ("If this test is in a nested describe, …"),
@@ -1098,10 +1098,10 @@ features land; tick them off as pages get written.
       for a hash it never sent. Await the wait (or whatever the app exposes
       to settle), stop the watcher, or pass the wait a `timeout`. The
       not-found errors for a hash the last restore removed say so (as do
-      a call, estimate or send to a contract it removed), and
+      a call, estimate, or send to a contract it removed), and
       `assertNoUnhandled` (on its own or in `restore()`) ends with a line
       when a request it lists got one of these hints (this one, the
-      removed-contract one or the removed mocks), so exactly what they
+      removed-contract one, or the removed mocks), so exactly what they
       cover: a request missing what the last restore removed and that isn't
       back.
 - [ ] A hash the chain doesn't know isn't an instant failure either: viem's
@@ -1211,10 +1211,10 @@ features land; tick them off as pages get written.
       write mock implies doesn't run its resolver, so estimating first
       changes nothing; an `estimateGas` mock's resolver, like a simulate's,
       runs per estimate and only answers.
-- [ ] Change state last, after every `revert()`, `fail()` and `refuse()`
+- [ ] Change state last, after every `revert()`, `fail()`, and `refuse()`
       check. `revert()` mines the transaction reverted, but the mock can't
       undo the closure: a change made before it stays. A resolver that
-      throws, `fail()`s or `refuse()`s puts nothing on the chain, yet keeps
+      throws, `fail()`s, or `refuse()`s puts nothing on the chain, yet keeps
       what it changed too, so the app's next attempt starts from a ledger
       that already moved.
 - [ ] Native balances: `mock.actions.getBalance().returns(({ address }) =>

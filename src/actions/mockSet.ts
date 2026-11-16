@@ -49,7 +49,7 @@ type Encoding<call extends object> = {
 };
 
 /**
- * How an action's mocks register, match a call and encode their answers.
+ * How an action's mocks register, match a call, and encode their answers.
  * `call` is the action's decoded call, which every member receives, and
  * `answer` what `encode` gives.
  *
@@ -103,7 +103,7 @@ export type MockDefinition<call extends object = object, answer = unknown> = {
    */
   actual?(pinned: unknown, call: call): unknown;
   /**
-   * Adds to what a resolver gets, beyond the call, `fail`, `revert` and
+   * Adds to what a resolver gets, beyond the call, `fail`, `revert`, and
    * `refuse`.
    */
   extendContext?(context: object, call: call): void;
@@ -199,7 +199,7 @@ export function createMockSet<answer>(
   const answers =
     definition.revertError === undefined
       ? ".returns() or .fails()"
-      : ".returns(), .reverts(), .fails() or .refuses()";
+      : ".returns(), .reverts(), .fails(), or .refuses()";
 
   /**
    * Registers a mock pinning `params`, and returns its builder. A test

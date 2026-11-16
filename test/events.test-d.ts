@@ -99,7 +99,7 @@ describe("contract.events", () => {
     shapes.events.Paused({ account: alice });
   });
 
-  test("goes into a mocked receipt's logs, an added transaction's and a built receipt's", () => {
+  test("goes into a mocked receipt's logs, an added transaction's, and a built receipt's", () => {
     mock.actions
       .getTransactionReceipt()
       .returns({ logs: [usdc.events.Transfer({ from: alice, to: bob })] });

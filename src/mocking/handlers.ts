@@ -110,7 +110,7 @@ export type Builder = {
 /**
  * What a resolver throws that's an answer, not a resolver error: a revert, a
  * fault, a node's refusal, or that it doesn't answer this call
- * (`MockNotFoundError`). Its context's `revert()`, `fail()` and `refuse()`
+ * (`MockNotFoundError`). Its context's `revert()`, `fail()`, and `refuse()`
  * throw these.
  */
 const isDeliberate = (error: unknown) => isAnswer(error) || error instanceof MockNotFoundError;

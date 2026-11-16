@@ -69,13 +69,13 @@ export type CreateMockRpcParameters = {
   /**
    * How many of the most recent requests a failed check's error shows, as
    * `formatHistory()` formats them without built-ins. The checks are
-   * `assertNoUnhandled()`, `assertAllUsed()`, `checkpoint()` and
+   * `assertNoUnhandled()`, `assertAllUsed()`, `checkpoint()`, and
    * `restore()`'s. `false` or `0` leaves them out. Defaults to `10`.
    */
   historyOnFailure?: number | false;
   /**
    * How many entries each list of requests keeps: `history`, `calls`,
-   * `unhandled`, and each action's, contract's and function's `.calls`, each
+   * `unhandled`, and each action's, contract's, and function's `.calls`, each
    * on its own. Past it, the oldest are dropped; `history` keeps its
    * numbering and says how many were dropped, and checks count every
    * request. Defaults to `1000`, warning the first time an entry is dropped;
@@ -97,8 +97,8 @@ export type MockRpc = {
   /**
    * Answers a JSON-RPC request directly, without a client or its retries.
    * It throws viem's errors, the ones `mock.transport()` hands a client: a
-   * fault, a revert or a node's refusal is an `HttpRequestError`,
-   * `RpcRequestError` or `TimeoutError`, not yet sorted into viem's classes
+   * fault, a revert, or a node's refusal is an `HttpRequestError`,
+   * `RpcRequestError`, or `TimeoutError`, not yet sorted into viem's classes
    * by code. A request the mock can't answer throws a `MockError`.
    */
   request(rpcRequest: RpcRequest): Promise<unknown>;
@@ -162,7 +162,7 @@ export type MockRpc = {
   /**
    * A log's content placed as a complete viem log, for where no mock places
    * it: `toEqual`, props, a function that parses logs, or a `getLogs` mock's
-   * answer. The content is from a contract's `events`, `contractEvents()` or
+   * answer. The content is from a contract's `events`, `contractEvents()`, or
    * `testLog()`. It's in the current block unless `placement` says
    * otherwise (see `LogPlacement`), with other position fields zero. The
    * chain doesn't count it, so give `logIndex` to match a block with other
@@ -180,7 +180,7 @@ export type MockRpc = {
    * `blockNumber` places it in a given block instead (`mock.blockNumber` for
    * the current one). Read the block from the record rather than pinning
    * it. Its fields are a send's, all optional: see
-   * `AddTransactionParameters`. Its receipt, transaction and block answer
+   * `AddTransactionParameters`. Its receipt, transaction, and block answer
    * from it, unless a mock for its hash answers first. For one event,
    * `contract.emit.X(args)` is shorter.
    */
@@ -207,7 +207,7 @@ export type MockRpc = {
    * `eth_call`, and each method with a typed mock. Written as a literal, it
    * doesn't compile; held in a `string`, it throws, naming where to mock it.
    * A method that gets a typed mock in a later version is refused too: the
-   * likely ones are `eth_simulateV1`, the wallet methods and
+   * likely ones are `eth_simulateV1`, the wallet methods, and
    * `eth_getTransactionByBlock*AndIndex`.
    */
   // oxlint-disable-next-line typescript/ban-types -- it's any string, kept from absorbing the suggested names
@@ -264,7 +264,7 @@ export type MockRpc = {
   /**
    * Every request the mock received, in order, with how it was answered:
    * the last `historyLimit` of them. Each is a contract call, a multicall
-   * with its sub-calls, an action, a raw method or a built-in, and its
+   * with its sub-calls, an action, a raw method, or a built-in, and its
    * outcome is a result in viem's types, a revert, a fault, a node's
    * refusal, or unhandled (see `MockOutcome`). Retries are separate entries,
    * and one still in flight is pending.
@@ -284,14 +284,14 @@ export type MockRpc = {
   /**
    * Throws if any request went unanswered, e.g. for a missing mock or a
    * resolver that threw (see `UnhandledRequest`). It catches errors the app
-   * swallowed. Reverts, faults and a node's refusals are answers.
+   * swallowed. Reverts, faults, and a node's refusals are answers.
    */
   assertNoUnhandled(): void;
   /**
    * Throws if a mock never answered a call: its pins are wrong and a broader
    * mock answered instead, the app doesn't make the call it stands for, or
    * it was registered without an answer (`.returns()`, `.reverts()`,
-   * `.fails()` or `.refuses()`), so it never could. A contract's `defaults`
+   * `.fails()`, or `.refuses()`), so it never could. A contract's `defaults`
    * aren't checked: they're shared setup for the whole suite, which one test
    * may not use.
    *
@@ -308,7 +308,7 @@ export type MockRpc = {
    */
   clearCalls(): void;
   /**
-   * Saves the mock's registrations, chain and faults, as a baseline to
+   * Saves the mock's registrations, chain, and faults, as a baseline to
    * `restore()` to, e.g. after each test, so shared setup is registered
    * once. Throws if requests since the last clear went unanswered: a broken
    * setup isn't a baseline. See `MockCheckpoint` for nesting and caveats.

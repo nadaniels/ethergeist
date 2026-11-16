@@ -156,7 +156,7 @@ describe("estimateGas", () => {
     ]);
   });
 
-  test("an estimate that reverts, fails or isn't answered is still one of its calls", async () => {
+  test("an estimate that reverts, fails, or isn't answered is still one of its calls", async () => {
     const { mock, client } = setup();
     const carol = testAddress("carol");
     mock.actions.estimateGas({ to: bob }).reverts("paused");

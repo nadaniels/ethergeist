@@ -59,7 +59,7 @@ const unfunded = keyless("unfunded sender");
 const recipient = keyless("recipient");
 
 /**
- * The node's head: its number, hash and base fee, and when a case needs them,
+ * The node's head: its number, hash, and base fee, and when a case needs them,
  * a hash of each transaction type in a recent block, by type (`eip1559`), and
  * of a recent transaction that emitted logs.
  */

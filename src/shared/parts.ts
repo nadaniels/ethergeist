@@ -1,6 +1,6 @@
 /**
  * One piece of the mock's state: contracts, actions, logs, the chain's own
- * state, faults. `checkpoint()`, `restore()`, `reset()`, `clearCalls()` and
+ * state, faults. `checkpoint()`, `restore()`, `reset()`, `clearCalls()`, and
  * `assertAllUsed()` go through every part the same way, so a new piece of
  * state is looked after by being a part.
  */

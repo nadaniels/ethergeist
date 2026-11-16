@@ -96,7 +96,7 @@ export type ContractTurn<answer = unknown> = {
 
 /**
  * A mocked contract as the mock holds it: its public API, and the hooks that
- * `eth_call` dispatch, the actions and the registry call.
+ * `eth_call` dispatch, the actions, and the registry call.
  */
 export type InternalMockContract<abi extends Abi = Abi> = {
   /** Its public API, as `mock.contract()` returns it. */

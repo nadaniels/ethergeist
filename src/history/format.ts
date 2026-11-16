@@ -295,7 +295,7 @@ export function formatOutcome(outcome: MockOutcome, action?: string): string {
 }
 
 /**
- * An answer for history: what identifies a block, a receipt, a transaction
+ * An answer for history: what identifies a block, a receipt, a transaction,
  * or a list of logs, which are long, and any other value shortened.
  */
 function summarize(value: unknown, action: string | undefined): string {

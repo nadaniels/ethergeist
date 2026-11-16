@@ -14,7 +14,7 @@ import type { MockReceipt, TransactionStore } from "./transactions/store.js";
 
 /**
  * The mock's builders of what it answers, in viem's types, with its answers'
- * defaults: `state`'s current block, fees and chain. A value is in the block
+ * defaults: `state`'s current block, fees, and chain. A value is in the block
  * current when it's built, as a static answer is in the block current at
  * registration. For `toEqual` against what the app got, and for props; see
  * `MockRpc` for each.

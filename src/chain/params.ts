@@ -64,7 +64,7 @@ function optionalData(value: unknown, what: string): Hex | undefined {
 const optionalAddress = (value: unknown) => (value === undefined ? undefined : addressParam(value));
 
 /**
- * A transaction request's fields, as `eth_call`, `eth_estimateGas` and
+ * A transaction request's fields, as `eth_call`, `eth_estimateGas`, and
  * `eth_sendTransaction` take it (the spec's `GenericTransaction`): addresses
  * checksummed, `to: null` (a creation) as left out, the spec's `input` or the
  * `data` clients send, and `value` as `0n` when it has none. Fields it leaves
@@ -96,7 +96,7 @@ export function transactionParam(tx: unknown) {
 /**
  * The block params the spec takes, by method: a number or tag
  * (`eth_getBlockByNumber`, `eth_feeHistory`), also a hash or an EIP-1898
- * object (`eth_call`, `eth_getBalance` and the like). A log range's bounds
+ * object (`eth_call`, `eth_getBalance`, and the like). A log range's bounds
  * are numbers or tags, but not `pending`: `logs/filter.ts` refuses that.
  */
 export type BlockForm = "numberOrTag" | "numberTagOrHash";

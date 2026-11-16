@@ -89,7 +89,7 @@ const outcomeFields = new Set([
   "contractAddress",
 ]);
 const fieldsHint =
-  "Its fields are logs, status, gasUsed, effectiveGasPrice and contractAddress; the rest of " +
+  "Its fields are logs, status, gasUsed, effectiveGasPrice, and contractAddress; the rest of " +
   "its receipt comes from the transaction and the block it's mined in.";
 
 /**

@@ -553,7 +553,7 @@ The `MockError` classes' JSON-RPC codes are stable, and `-32099` to `-32090` is
 reserved for them.
 
 Generated hashes are the same in every run, but how they're derived isn't
-promised: read a hash from what made it (the hash a send returns, the record
+promised: read a hash from what made it (the hash a send returns, the record,
 or the receipt) rather than pinning it.
 
 ## Reference

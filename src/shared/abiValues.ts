@@ -115,8 +115,8 @@ export const builtinErrors = parseAbi(["error Error(string)", "error Panic(uint2
 /**
  * `items` without repeats: a function or event that's the same to the mock
  * as an earlier one, as when two standards' ABIs are spread together
- * (`[...erc4626Abi, ...erc20Abi]`). The same means the same name, types and
- * param names, and a function's mutability or an event's `indexed` and
+ * (`[...erc4626Abi, ...erc20Abi]`). The same means the same name, types,
+ * and param names, and a function's mutability or an event's `indexed` and
  * `anonymous`. A function's input names don't count, since its args are
  * positional (`erc20Abi` names `transfer`'s `recipient` where others say
  * `to`). The first is kept; anything else stays an overload.

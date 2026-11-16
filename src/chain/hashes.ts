@@ -8,7 +8,7 @@ import { lowercase } from "../shared/values.js";
  * `hash` as the mock holds it and nodes send it: lowercase, its only form,
  * since a hash has no checksum, unlike an address. Validated first, so a
  * malformed one fails where it's given; `name` says which it is ("A
- * transaction hash"). For identifiers only: calldata, bytes and topics keep
+ * transaction hash"). For identifiers only: calldata, bytes, and topics keep
  * their case.
  */
 export function nodeHash(hash: string, name: string): Hash {
