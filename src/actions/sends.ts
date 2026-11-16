@@ -110,10 +110,6 @@ export function createSends(
     report: (report: ActionReport) => void,
   ): Promise<Hex> {
     const { call, sent } = decodeEstimateGas(params, state.resolveBlock);
-    // An estimate waits a microtask before its call is recorded, as a table
-    // does and as an `eth_sendTransaction` takes to decode: made at once,
-    // they reach their mocks in the order made.
-    await Promise.resolve();
     estimateGasMocks.calls.add(call);
     // Prepared before anything answers, the send mock's revert included, so
     // the call is recorded as the contract's however the estimate ends.
@@ -175,7 +171,7 @@ export function createSends(
     params: readonly unknown[],
     report: (report: ActionReport) => void,
   ) {
-    const { call, raw } = await decodeSend(method, params);
+    const { call, raw } = decodeSend(method, params);
     sendTransactionMocks.calls.add(call);
     /**
      * The raw send's hash, if its transaction is mined. A record with its

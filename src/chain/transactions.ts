@@ -1,3 +1,4 @@
+import { Secp256k1 } from "ox";
 import {
   type AccessList,
   type Address,
@@ -9,14 +10,13 @@ import {
   type TransactionEIP4844,
   type TransactionEIP7702,
   type TransactionLegacy,
-  type TransactionSerialized,
   getAddress,
   hexToBigInt,
   isHex,
   keccak256,
   numberToHex,
   parseTransaction,
-  recoverTransactionAddress,
+  serializeTransaction,
   zeroAddress,
 } from "viem";
 
@@ -372,10 +372,13 @@ export function sentType(request: unknown, fees: SentFees): MockTransactionType 
 /**
  * A signed transaction's fields, hash and sender, as a node reads them from
  * its bytes: the hash is `keccak256` of the bytes, and the sender is
- * recovered from the signature. Refused as invalid params unless it's a
- * signed transaction. Its chain id isn't checked: clients check it themselves.
+ * recovered from the signature, as viem's `recoverTransactionAddress` does,
+ * but synchronously, so a raw send reaches its mocks in the order it was
+ * made (see "Sends and estimates" in `docs/architecture.md`). Refused as
+ * invalid params unless it's a validly signed transaction. Its chain id
+ * isn't checked: clients check it themselves.
  */
-export async function decodeRawTransaction(serialized: unknown) {
+export function decodeRawTransaction(serialized: unknown) {
   const refused = () =>
     invalidParams(`expected a signed transaction; got ${formatValue(serialized)}`);
   if (!isHex(serialized)) throw refused();
@@ -383,9 +386,21 @@ export async function decodeRawTransaction(serialized: unknown) {
   let from: Address;
   try {
     parsed = parseTransaction(serialized);
-    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- it parsed, so it's one
-    const serializedTransaction = serialized as TransactionSerialized;
-    from = await recoverTransactionAddress({ serializedTransaction });
+    // A legacy transaction's parity is parsed from its `v`.
+    const { r, s, yParity } = parsed;
+    if (r === undefined || s === undefined || yParity === undefined) throw refused();
+    // What was signed: the transaction without its signature, and a blob
+    // transaction without its sidecars, as viem's recovery serializes it.
+    const unsigned = serializeTransaction({
+      ...parsed,
+      r: undefined,
+      s: undefined,
+      v: undefined,
+      yParity: undefined,
+      sidecars: undefined,
+    });
+    const signature = { r: hexToBigInt(r), s: hexToBigInt(s), yParity };
+    from = getAddress(Secp256k1.recoverAddress({ payload: keccak256(unsigned), signature }));
   } catch {
     throw refused();
   }

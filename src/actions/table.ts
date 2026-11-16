@@ -117,10 +117,6 @@ export function createTable(
       report: (report: ActionReport) => void,
     ): Promise<unknown> {
       const call = definition.decode(params, method);
-      // Waits a microtask before the call is recorded, as an
-      // `eth_sendTransaction` takes one to decode: this request and that
-      // send, made at once, reach their mocks in the order made.
-      await Promise.resolve();
       mockSet.calls.add(call);
       return await reportAnswer({ call, report, view }, () => answerCall(call));
     },

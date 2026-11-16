@@ -1,5 +1,6 @@
 import {
   type Address,
+  type Hex,
   ExecutionRevertedError,
   InsufficientFundsError,
   IntrinsicGasTooLowError,
@@ -172,6 +173,42 @@ describe("a raw send (local account)", () => {
     ]);
   });
 
+  test.each([
+    { name: "legacy, before EIP-155", fields: { type: "legacy", gasPrice: 7n } },
+    { name: "legacy", fields: { type: "legacy", gasPrice: 7n, chainId: 8453 } },
+    { name: "eip2930", fields: { type: "eip2930", gasPrice: 7n, chainId: 8453 } },
+    { name: "eip1559", fields: { type: "eip1559", maxFeePerGas: 7n, chainId: 8453 } },
+    {
+      name: "eip4844",
+      fields: {
+        type: "eip4844",
+        maxFeePerGas: 7n,
+        maxFeePerBlobGas: 1n,
+        blobVersionedHashes: [`0x01${"ab".repeat(31)}`],
+        chainId: 8453,
+      },
+    },
+    {
+      name: "eip7702",
+      fields: {
+        type: "eip7702",
+        maxFeePerGas: 7n,
+        chainId: 8453,
+        // The mock doesn't check an authorization's signature.
+        authorizationList: [
+          { address: USDC, chainId: 8453, nonce: 1, r: "0x1", s: "0x1", yParity: 0 },
+        ],
+      },
+    },
+  ] as const)("an $name transaction's sender is its signer", async ({ fields }) => {
+    const { mock } = setup();
+    const raw = await signer.signTransaction({ to: bob, gas: 21_000n, ...fields });
+
+    await mock.request({ method: "eth_sendRawTransaction", params: [raw] });
+
+    expect(mock.actions.sendTransaction.calls).toMatchObject([{ from: signer.address }]);
+  });
+
   test("a deploy's to is null, and its data is the call's", async () => {
     const { mock, client, wallet } = localSetup();
     mock.actions.sendTransaction({ to: null }).returns();
@@ -236,9 +273,7 @@ describe("a raw send (local account)", () => {
     const { mock, wallet } = localSetup();
     const resolver = vi.fn(() => ({}));
     mock.actions.sendTransaction({ to: bob }).once().returns(resolver);
-    const raw = await wallet.signTransaction(
-      await wallet.prepareTransactionRequest({ to: bob, data: "0x12", gas: 50_000n }),
-    );
+    const raw = await signedTransfer(wallet, { data: "0x12", gas: 50_000n });
 
     const first = await mock.request({ method: "eth_sendRawTransaction", params: [raw] });
     const again = await mock.request({ method: "eth_sendRawTransaction", params: [raw] });
@@ -298,12 +333,17 @@ describe("a raw send (local account)", () => {
     expect(mock.blockNumber).toBe(11n);
   });
 
-  test("bytes that aren't a signed transaction are invalid params", async () => {
+  test("bytes that aren't a validly signed transaction are invalid params", async () => {
     const { mock } = setup();
-    const unsigned = serializeTransaction({ to: bob, chainId: 1, maxFeePerGas: 1n });
+    const fields = { to: bob, chainId: 1, maxFeePerGas: 1n } as const;
+    const unsigned = serializeTransaction(fields);
+    // r of 0, and r of the curve's order: neither recovers a signer.
+    const order = "0xfffffffffffffffffffffffffffffffebaaedce6af48a03bbfd25e8cd0364141";
+    const badR = ["0x0", order] as const;
+    const badlySigned = badR.map((r) => serializeTransaction(fields, { r, s: "0x1", yParity: 0 }));
 
     const errors = await Promise.all(
-      ["0x1234", "not hex", unsigned].map((raw) =>
+      ["0x1234", "not hex", unsigned, ...badlySigned].map((raw) =>
         rejectionOf(mock.request({ method: "eth_sendRawTransaction", params: [raw] })),
       ),
     );
@@ -1437,7 +1477,7 @@ describe("eth_sendRawTransactionSync (EIP-7966, a local account's *Sync sends)",
   });
 });
 
-describe("an eth_sendTransaction and other requests made at once reach their mocks in the order they were made", () => {
+describe("a send, raw or not, and other requests made at once reach their mocks in the order they were made", () => {
   test("a send made before its estimate takes a .once().reverts() mock: it's mined reverted, and nothing answers the estimate", async () => {
     const { mock } = setup();
     mock.actions.sendTransaction({ to: bob }).once().reverts("paused");
@@ -1470,12 +1510,93 @@ describe("an eth_sendTransaction and other requests made at once reach their moc
 
     expect(read).toBe("0x7");
   });
+
+  test("an eth_call made after a balance read reaches its mock after it", async () => {
+    const { mock } = setup();
+    const reached: string[] = [];
+    mock.actions.getBalance({ address: alice }).returns(() => {
+      reached.push("getBalance");
+      return 1n;
+    });
+    mock
+      .contract({ abi: erc20Abi, address: USDC })
+      .read.decimals()
+      .returns(() => {
+        reached.push("decimals");
+        return 6;
+      });
+    const decimals = encodeFunctionData({ abi: erc20Abi, functionName: "decimals" });
+
+    await Promise.all([
+      mock.request({ method: "eth_getBalance", params: [alice, "latest"] }),
+      mock.request({ method: "eth_call", params: [{ to: USDC, data: decimals }, "latest"] }),
+    ]);
+
+    expect(reached).toEqual(["getBalance", "decimals"]);
+  });
+
+  test("a raw send made before its estimate takes a .once().reverts() mock: it's mined reverted, and nothing answers the estimate", async () => {
+    const { mock, wallet } = localSetup();
+    const raw = await signedTransfer(wallet, { data: "0x12", gas: 50_000n });
+    mock.actions.sendTransaction({ to: bob }).once().reverts("paused");
+    const estimate = { from: signer.address, to: bob, data: "0x12" };
+
+    const [hash, estimateError] = await Promise.all([
+      mock.request({ method: "eth_sendRawTransaction", params: [raw] }),
+      rejectionOf(mock.request({ method: "eth_estimateGas", params: [estimate] })),
+    ]);
+
+    expect(mock.transactions).toMatchObject([{ hash, receipt: { status: "reverted" } }]);
+    expectCause(estimateError, MockNotFoundError);
+  });
+
+  test("an estimate made before a raw send takes a .once().reverts() mock: it reverts, and nothing answers the send", async () => {
+    const { mock, wallet } = localSetup();
+    const raw = await signedTransfer(wallet, { data: "0x12", gas: 50_000n });
+    mock.actions.sendTransaction({ to: bob }).once().reverts("paused");
+    const estimate = { from: signer.address, to: bob, data: "0x12" };
+
+    const [estimateError, sendError] = await Promise.all([
+      rejectionOf(mock.request({ method: "eth_estimateGas", params: [estimate] })),
+      rejectionOf(mock.request({ method: "eth_sendRawTransaction", params: [raw] })),
+    ]);
+
+    expect(expectCause(estimateError, RpcRequestError).code).toBe(3);
+    expectCause(sendError, MockNotFoundError);
+    expect(mock.transactions).toEqual([]);
+  });
+
+  test("a balance read made after a raw send gets what the send's resolver left, and one made before doesn't", async () => {
+    const { mock, wallet } = localSetup();
+    const raw = await signedTransfer(wallet);
+    let balance = 10n;
+    mock.actions.sendTransaction({ to: bob }).returns(({ value }) => {
+      balance -= value;
+    });
+    mock.actions.getBalance({ address: alice }).returns(() => balance);
+    const read = () => mock.request({ method: "eth_getBalance", params: [alice, "latest"] });
+
+    const [before, , after] = await Promise.all([
+      read(),
+      mock.request({ method: "eth_sendRawTransaction", params: [raw] }),
+      read(),
+    ]);
+
+    expect([before, after]).toEqual(["0xa", "0x9"]);
+  });
 });
 
-/** Signed bytes for a plain transfer to `bob`. */
-async function signedTransfer(wallet: ReturnType<typeof localSetup>["wallet"]) {
+/**
+ * Signed bytes for a transfer of 1 wei to `bob`, a plain one unless `fields`
+ * add data. A transaction with data gives its `gas`, so preparing it asks no
+ * mock for an estimate.
+ */
+async function signedTransfer(
+  wallet: ReturnType<typeof localSetup>["wallet"],
+  fields: { data?: Hex; gas?: bigint } = {},
+) {
   return await wallet.signTransaction(
-    await wallet.prepareTransactionRequest({ to: bob, value: 1n }),
+    await wallet.prepareTransactionRequest({ to: bob, value: 1n, ...fields }),
   );
 }
 

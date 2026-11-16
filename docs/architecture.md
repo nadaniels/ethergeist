@@ -297,11 +297,13 @@ The two functions keep these rules:
 - a send awaits its outcome before it's placed, a plain transfer's too, so
   the same bytes sent twice at once both get that far, and only one is
   placed;
-- an estimate waits a microtask between decoding its call and recording
-  it, as a table does and as an `eth_sendTransaction` takes to decode, so
-  those requests made at once reach their mocks in the order they were
-  made. A raw send takes longer, to recover its signer, so the order
-  doesn't hold against one.
+- nothing awaits before a request's first call reaches its mocks: every
+  request decodes synchronously, a raw send's signer too (recovered with
+  ox's `Secp256k1.recoverAddress`, since viem's `recoverTransactionAddress`
+  is async), so requests made at once reach their mocks in the order they
+  were made. An `await` before matching, in any of them, would break that
+  order. A multicall's later sub-calls wait for the earlier ones, so
+  another request can reach its mocks between them.
 
 The trade-off is more code for the order in one place: `sends.ts` spells
 out the steps a table's hooks would share (match, answer, miss), and in
