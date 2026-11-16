@@ -61,7 +61,7 @@ const positionFields = [
  */
 const isPlaced = (log: object) => positionFields.some((field) => field in log);
 
-const logsHint = "Logs come from contract.events, contractEvents() or testLog().";
+const logsHint = "Logs come from contract.events, contractEvents(), or testLog().";
 
 /**
  * A log's content fields: content from `contract.events`, `contractEvents()`

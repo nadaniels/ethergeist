@@ -603,7 +603,7 @@ describe("getTransactionReceipt", () => {
       },
     );
     expect(error.metaMessages).toEqual([
-      "Logs come from contract.events, contractEvents() or testLog().",
+      "Logs come from contract.events, contractEvents(), or testLog().",
     ]);
   });
 

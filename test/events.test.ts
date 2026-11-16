@@ -367,7 +367,7 @@ describe("contractEvents()", () => {
       },
     );
     expect(error.metaMessages).toEqual([
-      "Logs come from contract.events, contractEvents() or testLog().",
+      "Logs come from contract.events, contractEvents(), or testLog().",
     ]);
   });
 });
@@ -469,7 +469,7 @@ describe("mock.buildLog()", () => {
         () => mock.buildLog(log),
       );
       expect(error.metaMessages).toEqual([
-        "Logs come from contract.events, contractEvents() or testLog().",
+        "Logs come from contract.events, contractEvents(), or testLog().",
         "Give its position as buildLog()'s placement.",
       ]);
     }
@@ -486,7 +486,7 @@ describe("mock.buildLog()", () => {
         mock.buildLog(5),
     );
     expect(error.metaMessages).toEqual([
-      "Logs come from contract.events, contractEvents() or testLog().",
+      "Logs come from contract.events, contractEvents(), or testLog().",
     ]);
     expectThrows(MockSetupError, "mock.buildLog()'s content isn't a log; got undefined.", () =>
       // @ts-expect-error -- not a log
@@ -627,7 +627,7 @@ describe("a log's content is checked wherever it's placed", () => {
         place(placed, log);
       });
       expect(error.metaMessages).toEqual([
-        "Logs come from contract.events, contractEvents() or testLog().",
+        "Logs come from contract.events, contractEvents(), or testLog().",
       ]);
       expect(placed.mock.transactions).toEqual([]);
       expect(placed.mock.blockNumber).toBe(10n);
@@ -645,7 +645,7 @@ describe("a log's content is checked wherever it's placed", () => {
       },
     );
     expect(error.metaMessages).toEqual([
-      "Logs come from contract.events, contractEvents() or testLog().",
+      "Logs come from contract.events, contractEvents(), or testLog().",
       ...(site.position === undefined ? [] : [site.position]),
     ]);
     expect(placed.mock.transactions).toEqual([]);
