@@ -1,25 +1,20 @@
-import {
-  decodeFunctionResult,
-  hexToBigInt,
-  hexToNumber,
-  isHex,
-  multicall3Abi,
-  type Address,
-  getAddress,
-  isAddress,
-} from "viem";
+import { decodeFunctionResult, hexToBigInt, hexToNumber, isHex, multicall3Abi } from "viem";
 
 import type { ActionReport } from "../actions/table.js";
 import type { ActionName } from "../actions/typedActions.js";
-import type { Reporter, MockTaggedCall } from "../contracts/types.js";
+import type { MockCallRecord, Reporter, MockTaggedCall } from "../contracts/types.js";
 import { formatValue } from "../mocking/format.js";
-import { type FaultOutcome, failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
+import {
+  type FaultOutcome,
+  failureOutcome,
+  type MockCallOutcome,
+  type MockOutcome,
+} from "../mocking/outcomes.js";
 import type { MockFault } from "../mocking/types.js";
 import { MockInternalError, MockRevertError, MockSetupError, summaryOf } from "../shared/errors.js";
 import { createRecordList, type RecordLimit } from "../shared/records.js";
-import { isNonArrayObject } from "../shared/values.js";
 import { type FormatContext, type HistoryView, formatEntry } from "./format.js";
-import type { MockHistoryEntry, RpcRequest, UnhandledRequest } from "./types.js";
+import type { Asked, MockHistoryEntry, RpcRequest, UnhandledRequest } from "./types.js";
 
 /**
  * How a request that threw `error` ended, for history: a revert as the
@@ -33,27 +28,21 @@ function outcomeOf(entry: MockHistoryEntry, error: unknown): MockOutcome {
   return failureOutcome(error);
 }
 
-/**
- * Where contract calls report their records: the entry's call, or its
- * batch's slots.
- */
-function reporterFor(entry: MockHistoryEntry): Reporter {
-  if (entry.type === "multicall")
-    return {
-      batch(id) {
-        entry.batchId = id;
-      },
-      call(record, { batch }) {
-        if (batch) entry.calls[batch.index] = record;
-      },
-    };
-  return {
-    batch() {},
-    call(record) {
-      if (entry.type === "call") entry.call = record;
-    },
+const withOutcome = (record: MockCallRecord, outcome: MockCallOutcome): MockCallRecord => ({
+  ...record,
+  outcome,
+});
+
+const notReached = (record: MockCallRecord) => withOutcome(record, { type: "notReached" });
+
+const reporterFor =
+  (entry: MockHistoryEntry): Reporter =>
+  (outcome, index) => {
+    if (entry.type === "multicall" && index !== undefined && entry.calls[index])
+      entry.calls[index] = withOutcome(entry.calls[index], outcome);
+    else if (entry.type === "call" && entry.call) entry.call = withOutcome(entry.call, outcome);
+    else throw new MockInternalError(`No call record to report to at ${String(index)}`);
   };
-}
 
 /**
  * A request's answer in viem's types, for history: a built-in's number, a
@@ -80,12 +69,7 @@ export type Recorder = ReturnType<typeof createRecorder>;
  */
 export type Recording = {
   entry: MockHistoryEntry;
-  /** Where the request's contract calls report their records. */
   reporter: Reporter;
-  /**
-   * Hears an action's report: its decoded call, the contract's record if
-   * the contract had a turn, and the answer in viem's types if it answered.
-   */
   reportAction: (report: ActionReport) => void;
   /** Records a `failRequests()` fault as how the request ended. */
   fault: (fault: MockFault) => void;
@@ -105,13 +89,11 @@ export type Recording = {
  * As a part, `clearCalls()` clears them; they're never saved.
  */
 export function createRecorder({
-  multicallAddress,
   actionFor,
   debug,
   formatContext,
   recordLimit,
 }: {
-  multicallAddress: Address | undefined;
   /** The typed action answering a JSON-RPC method, if any. */
   actionFor: (method: string) => ActionName | undefined;
   /** `createMockRpc()`'s `debug` option. */
@@ -186,14 +168,16 @@ export function createRecorder({
     return {
       entry,
       reporter: reporterFor(entry),
-      reportAction({ call, outcome, contract }) {
+      reportAction({ outcome, contractOutcome }) {
         if (entry.type !== "action") return;
-        // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- entry.action's decoder made it
-        entry.call = call as typeof entry.call;
-        if (contract) entry.contract = contract;
+        if (contractOutcome && entry.contract)
+          entry.contract = withOutcome(entry.contract, contractOutcome);
         actionOutcome = outcome;
       },
       fault(fault) {
+        if (entry.type === "call" && entry.call) entry.call = notReached(entry.call);
+        if (entry.type === "multicall") entry.calls = entry.calls.map(notReached);
+        if (entry.type === "action" && entry.contract) entry.contract = notReached(entry.contract);
         end({ type: "fault", fault, source: "failRequests" });
       },
       settle(ended) {
@@ -210,25 +194,26 @@ export function createRecorder({
     };
   }
 
-  /**
-   * A history entry for a request, typed by what it asks for; details fill
-   * in as it's answered.
-   */
-  function entryFor(method: string, params: unknown): MockHistoryEntry {
+  function entryFor(method: string, params: unknown, asked: Asked | undefined): MockHistoryEntry {
     const base = { method, params, outcome: { type: "pending" } as const };
     if (method === "eth_chainId" || method === "eth_blockNumber")
       return { ...base, type: "builtIn" };
-    if (method === "eth_call") {
-      const to = Array.isArray(params) && isNonArrayObject(params[0]) ? params[0].to : undefined;
-      const target =
-        typeof to === "string" && isAddress(to, { strict: false }) ? getAddress(to) : undefined;
-      return target !== undefined && target === multicallAddress
-        ? { ...base, type: "multicall", batchId: undefined, calls: [] }
-        : { ...base, type: "call", to: target, call: undefined };
-    }
+    if (asked?.type === "call" || asked?.type === "multicall") return { ...base, ...asked };
+    // Reading an `eth_call` never throws, so only a bug in the mock gets here.
+    if (method === "eth_call") return { ...base, type: "call", to: undefined, call: undefined };
     const action = actionFor(method);
-    if (action !== undefined) return { ...base, type: "action", action, call: undefined };
-    return { ...base, type: "method" };
+    if (action === undefined) return { ...base, type: "method" };
+    const { call, contract } = asked?.type === "action" ? asked : {};
+    const entry: MockHistoryEntry = {
+      ...base,
+      type: "action",
+      action,
+      call: undefined,
+      ...(contract && { contract }),
+    };
+    // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the action's decoder made it
+    if (entry.type === "action") entry.call = call as typeof entry.call;
+    return entry;
   }
 
   return {
@@ -239,11 +224,11 @@ export function createRecorder({
     /** The history, for formatting: see `HistoryView`. */
     view,
     /**
-     * Records a request as received, marked a retry if the request before
-     * it faulted and this one repeats it, and returns its recording.
+     * Records a request, marked a retry if the request before it faulted and
+     * this one repeats it.
      */
-    start(request: RpcRequest): Recording {
-      const entry = entryFor(request.method, request.params);
+    start(request: RpcRequest, asked: Asked | undefined): Recording {
+      const entry = entryFor(request.method, request.params, asked);
       // viem retries only once the attempt before has failed, so its outcome
       // is known by now.
       const fault = last === undefined ? undefined : retriedFault(last, entry);

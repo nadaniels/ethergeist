@@ -181,6 +181,52 @@ describe("other Multicall3 functions", () => {
   });
 });
 
+describe("a sub-call to Multicall3 itself", () => {
+  test("isn't mocked, as any other Multicall3 call isn't: only aggregate3 is", async () => {
+    const { mock, client } = setup();
+    const multicall3 = mainnet.contracts.multicall3.address;
+
+    const error = await rejectionOf(
+      client.multicall({
+        contracts: [
+          { abi: erc20Abi, address: USDC, functionName: "decimals" },
+          { abi: multicall3Abi, address: multicall3, functionName: "getEthBalance", args: [alice] },
+        ],
+        allowFailure: false,
+      }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).shortMessage).toBe(
+      `Unsupported Multicall3 call on ${getAddress(multicall3)}; only aggregate3 is mocked.`,
+    );
+    expect(mock.formatHistory().split("\n")).toEqual([
+      "#1 eth_call multicall, batch 1 (2 calls) ✗ not mocked",
+      "   ├ 0xA0b8…eB48.decimals() → 6",
+      "   └ 0xcA11…CA11 ✗ not mocked",
+    ]);
+  });
+
+  test("batched by the client, it isn't mocked either", async () => {
+    const { client } = setup({ batch: true });
+    const multicall3 = mainnet.contracts.multicall3.address;
+
+    const [timestamp] = await Promise.allSettled([
+      client.readContract({
+        abi: multicall3Abi,
+        address: multicall3,
+        functionName: "getCurrentBlockTimestamp",
+      }),
+      client.readContract({ abi: erc20Abi, address: USDC, functionName: "decimals" }),
+    ]);
+
+    expect(timestamp.status).toBe("rejected");
+    const reason: unknown = timestamp.status === "rejected" ? timestamp.reason : undefined;
+    expect(expectCause(reason, MockNotFoundError).shortMessage).toBe(
+      `Unsupported Multicall3 call on ${getAddress(multicall3)}; only aggregate3 is mocked.`,
+    );
+  });
+});
+
 const readAll = (client: ReturnType<typeof setup>["client"]) =>
   Promise.all([
     client.readContract({ abi: erc20Abi, address: USDC, functionName: "decimals" }),

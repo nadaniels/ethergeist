@@ -19,7 +19,8 @@ shared → mocking → chain → logs → transactions → contracts → actions
   (`handlers.ts`: registering mocks, picking the most specific match, limits
   and usage), plus matching, matchers, faults and refusals by name
   (`MockFailure`, `MockRefusal`, and their checks), `zeroResult`, outcomes
-  (`MockOutcome`: how a mock answered, which history records), and the
+  (`MockOutcome`: how a mock answered, which history records, and
+  `MockCallOutcome`, a call record's, which adds `notReached`), and the
   shared setup checks (`setupChecks.ts`).
 - **`chain/`:** the chain's own state (`createChainState`: block number, clock,
   fees) and the node's shapes for blocks, transactions, receipts and errors,
@@ -39,10 +40,10 @@ shared → mocking → chain → logs → transactions → contracts → actions
   `mock.buildLog()`'s), so a log's index counts across its block in one place.
 - **`contracts/`:** mocked contracts, their registry, and `eth_call`
   dispatch, multicall included; a contract also takes a turn at the
-  estimates and sends to it with data (`turn()`, which prepares a
-  `ContractTurn`), where its mocks alone answer a call to one of its
-  functions in that namespace. It emits logs, so it sits above
-  `transactions/`; it owns `MockCallRecord`, the record of a call it
+  estimates and sends to it with data (`turn()`, which reads a
+  `ContractTurn` as the request arrives), where its mocks alone answer a
+  call to one of its functions in that namespace. It emits logs, so it sits
+  above `transactions/`; it owns `MockCallRecord`, the record of a call it
   answered.
 - **`actions/`:** typed actions (`mock.actions.getBalance`, …), one file each,
   and raw `mock.method()` mocks. Each action's or raw method's mocks are a
@@ -57,6 +58,13 @@ shared → mocking → chain → logs → transactions → contracts → actions
   history entries, and formatting.
 - **`rpc/`:** the request pipeline (`createRequestHandler`, a
   `RequestHandler`), `failRequests()` faults, checkpoints, and the assertions.
+  Each request is read as it arrives by the part that answers it (its
+  `read`), recorded with what it asks, failed if a `failRequests()` fault
+  applies, and only then answered: a faulted request's entry shows its
+  call, which no mock received. Reading never throws: the answer refuses
+  params that don't decode, so a fault wins over them. Only the answer
+  receives a call (adds it to the `.calls` lists). A record is built once,
+  as the request is read, and the answer reports only its outcome.
 - **`viem/`:** the viem adapter: `request`, `transport` and `publicClient`, and
   turning the mock's errors into viem's.
 - **The top of `src/`:**
@@ -139,9 +147,9 @@ The mock's errors:
    `MockActionAnswers`, `MockCheckpoint`, `MockFaultHandle`), the values its
    mocks answer with (`MockReceipt`, `MockBlock`, `MockFees`, `MockFault`,
    `MockWriteOutcome`), what it records of the requests it gets
-   (`MockHistoryEntry`, `MockCallRecord`, `MockOutcome`, `MockBatch`), what
-   it builds for you (`MockLogContent`), and types made from these
-   (`MockTaggedCall`). It keeps `Mock` when it's also a
+   (`MockHistoryEntry`, `MockCallRecord`, `MockOutcome`, `MockCallOutcome`,
+   `MockBatch`), what it builds for you (`MockLogContent`), and types made
+   from these (`MockTaggedCall`). It keeps `Mock` when it's also a
    parameter (`buildReceipt(MockReceipt)`, `failRequests(MockFault)`).
    **None on what you hand the mock**: parameter, option and context types
    (`RestoreOptions`, `ContractDefaults`, `EventArgs`, `RevertSpec`,
@@ -239,14 +247,15 @@ so not a view function), and the actions' otherwise. Only one side is
 asked, each with its own order, and neither falls through to the other.
 
 `createSends` in `actions/sends.ts` holds both actions' mocks and two
-functions, `answerEstimate` and `answerSend`. Each is the order of answers,
-read top to bottom, and its doc comment lists the steps. `answerEstimate`
-has a block for each side; `answerSend` continues in `outcomeOf`, under it,
-which has a block for each side and chooses a send's outcome. The contract
-says which side a transaction is: its turn has `functionMocks` only for a
-call that's the contract's. A new rule
-for a send or an estimate (what answers first, what a mock implies) is an
-edit to those functions, not a new hook on `Definition`.
+functions, `answerEstimate` and `answerSend`, each after the one that reads
+its request (`readEstimate`, `readSend`). Each answer function is the order
+of answers, read top to bottom, and its doc comment lists the steps.
+`answerEstimate` has a block for each side; `answerSend` continues in
+`outcomeOf`, under it, which has a block for each side and chooses a send's
+outcome. The contract says which side a transaction is: its turn has
+`functionMocks` only for a call that's the contract's. A new rule for a send
+or an estimate (what answers first, what a mock implies) is an edit to those
+functions, not a new hook on `Definition`.
 
 - The mocks are mock sets (`createMockSet` in `mockSet.ts`), which a table
   is built on too: registering, matching, answering with a mock, and the
@@ -263,8 +272,10 @@ edit to those functions, not a new hook on `Definition`.
 
 The two functions keep these rules:
 
-- a contract's turn is prepared before anything answers, so its call is
-  recorded however the request ends, and whichever side answers it;
+- a contract's turn is read as the request arrives, so history shows its
+  call however the request ends, a fault included. Its `receive()` runs
+  before anything answers, so the contract's calls list it however the
+  answer ends, and whichever side answers it;
 - a call that's the contract's is marked in its action's mock set
   (`markForContract`), since the action receives it too: under an unused
   action mock that matches it, `assertAllUsed()` says action mocks don't

@@ -153,10 +153,17 @@ export function formatEntry(
   const retry = view.faultRetried(entry) ? " (retry)" : "";
   const head = `#${number ?? "–"} ${entry.method}`;
 
-  if (entry.type === "call")
-    return entry.call
-      ? `${head} ${formatLabel(entry.call)}${retry} ${recordOutcome(entry.call)}`
-      : `${head} ${entry.to ?? "(no to)"}${retry} ${formatOutcome(entry.outcome)}`;
+  if (entry.type === "call") {
+    if (entry.call === undefined)
+      return `${head} ${entry.to ?? "(no to)"}${retry} ${formatOutcome(entry.outcome)}`;
+    // Not reached, it prints the request's outcome: on its one line,
+    // `– not reached` would hide how the request ended.
+    const outcome =
+      entry.call.outcome.type === "notReached"
+        ? formatOutcome(entry.outcome)
+        : recordOutcome(entry.call);
+    return `${head} ${formatLabel(entry.call)}${retry} ${outcome}`;
+  }
   if (entry.type === "multicall") {
     const batch = entry.batchId === undefined ? "" : `, batch ${entry.batchId}`;
     const outcome = entry.outcome.type === "result" ? "" : ` ${formatOutcome(entry.outcome)}`;
@@ -166,9 +173,8 @@ export function formatEntry(
     );
     return [`${head} multicall${batch}${callCount(entry)}${retry}${outcome}`, ...lines].join("\n");
   }
-  // An action without its call (refused for its params, failed by
-  // `failRequests()`, or still pending) prints its params as sent, as a raw
-  // method's does: `(*)` would claim any args.
+  // An action without its call (its params don't decode) prints its params
+  // as sent, as a raw method's does: `(*)` would claim any args.
   if (entry.type === "action" && entry.call !== undefined) {
     if (entry.action === "getLogs")
       return `${head} ${context.describeLogs?.(entry.call) ?? formatCall("getLogs", entry.call, { short: true })}${retry} ${formatOutcome(entry.outcome, entry.action)}`;
@@ -181,14 +187,9 @@ export function formatEntry(
   return `${head}${formatParams(entry.params)}${retry} ${formatOutcome(entry.outcome)}`;
 }
 
-/**
- * A batch's count of calls, ` (2 calls)`. None when no call was recorded and
- * the request didn't succeed: it failed before its batch was read
- * (`failRequests()`, its params, a Multicall3 function other than
- * `aggregate3`), or is still pending, so the count isn't known.
- */
-function callCount({ calls, outcome }: Extract<MockHistoryEntry, { type: "multicall" }>) {
-  if (calls.length === 0 && outcome.type !== "result") return "";
+/** ` (2 calls)`, or none without a `batchId`: the count isn't known. */
+function callCount({ batchId, calls }: Extract<MockHistoryEntry, { type: "multicall" }>) {
+  if (batchId === undefined) return "";
   return ` (${calls.length} ${calls.length === 1 ? "call" : "calls"})`;
 }
 
@@ -241,6 +242,7 @@ function formatLabel({ address, name, call }: MockCallRecord): string {
 
 /** A contract call's outcome: `→` and its decoded result, or how it ended. */
 function recordOutcome({ abiItem, outcome }: MockCallRecord): string {
+  if (outcome.type === "notReached") return "– not reached";
   if (outcome.type === "result" && abiItem) return `→ ${formatResult(abiItem, outcome.value)}`;
   return formatOutcome(outcome);
 }

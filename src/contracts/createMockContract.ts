@@ -32,6 +32,7 @@ import { type AnswerIn, answersIn } from "./namespaces.js";
 import type {
   MockCallRecord,
   CallContext,
+  CallReading,
   CreateMockContractParameters,
   MockCall,
   MockContract,
@@ -61,13 +62,14 @@ type ContractFunction = {
 type Handler = MockHandler<Context, ContractFunction>;
 
 /**
- * A contract's turn at an estimate or a send to it with data, prepared when
- * the call arrives: a call that decodes is added to the contract's calls
- * then. Only the contract's mocks answer a call to one of its functions in
- * the turn's namespace, and only action mocks answer any other data sent to
- * it.
+ * Only the contract's mocks answer a call to one of its functions in the
+ * turn's namespace, and only action mocks answer any other data sent to it.
  */
 export type ContractTurn<answer = unknown> = {
+  /** Still pending: history fills in its outcome. */
+  record: MockCallRecord;
+  /** A no-op for a call that doesn't decode. Only the answer calls it. */
+  receive(): void;
   /**
    * The mocks of the function the call is to, which alone answer it.
    * `undefined` when the call is to none of the contract's functions in the
@@ -88,12 +90,8 @@ export type ContractTurn<answer = unknown> = {
         miss(after: readonly string[]): MockNotFoundError;
       }
     | undefined;
-  /**
-   * The call's record in its namespace, for history, with how its request
-   * ended: `ended` is the request's outcome, or what it threw. A revert is
-   * decoded against the contract's ABI, whichever mock raised it.
-   */
-  record(ended: { outcome: MockOutcome } | { error: unknown }): MockCallRecord;
+  /** A revert is decoded against the contract's ABI, whatever raised it. */
+  outcomeOf(ended: { outcome: MockOutcome } | { error: unknown }): MockOutcome;
 };
 
 /**
@@ -110,14 +108,9 @@ export type InternalMockContract<abi extends Abi = Abi> = {
    * checksummed.
    */
   matches(address: Address): boolean;
+  /** Only the answer adds the call to the contract's calls. */
+  callOf(data: Hex, context: CallContext): CallReading;
   /**
-   * Answers an `eth_call` of `data`; `report` hears the decoded call and its
-   * outcome, however it ends.
-   */
-  resolve(data: Hex, context: CallContext, report: (record: MockCallRecord) => void): Promise<Hex>;
-  /**
-   * Prepares the contract's turn at an estimate of `data`, in
-   * `"estimateGas"`, or at a send of it, in `"write"`: see `ContractTurn`.
    * An estimate's turn answers gas, and a send's what the chain did.
    */
   turn<namespace extends "estimateGas" | "write">(
@@ -308,39 +301,46 @@ export function createMockContract<const abi extends Abi>(
     checkAttached,
   });
 
-  /**
-   * The record of a call in `namespace` that ended with `outcome`; `decoded`
-   * is the call, `undefined` when it didn't decode.
-   */
-  const recordOf = (
+  const pendingRecord = (
     namespace: MockNamespace | undefined,
     decoded: Pick<Decoded, "abiItem" | "call"> | undefined,
-    outcome: MockOutcome,
   ): MockCallRecord => ({
     address,
     name,
     namespace,
     abiItem: decoded?.abiItem,
     call: decoded?.call,
-    outcome,
+    outcome: { type: "pending" },
   });
 
-  async function resolve(
+  /** See `InternalMockContract.callOf`. */
+  function callOf(data: Hex, context: CallContext): CallReading {
+    const found = decode(data, context);
+    const decoded: Decoded<"read" | "simulate"> | undefined = found && {
+      ...found,
+      namespace: reads.includes(found.abiItem) ? "read" : "simulate",
+    };
+    return {
+      record: pendingRecord(decoded?.namespace, decoded),
+      answer: (report) =>
+        answerCall(data, decoded, (outcome) => {
+          report(outcome, context.batch?.index);
+        }),
+    };
+  }
+
+  /** `report` hears the call's outcome, however it ends. */
+  async function answerCall(
     data: Hex,
-    context: CallContext,
-    report: (record: MockCallRecord) => void,
+    decoded: Decoded<"read" | "simulate"> | undefined,
+    report: (outcome: MockOutcome) => void,
   ): Promise<Hex> {
-    let decoded: Decoded | undefined;
-    const record = (outcome: MockOutcome) => recordOf(decoded?.namespace, decoded, outcome);
     try {
-      const found = decode(data, context);
-      if (found === undefined)
+      if (decoded === undefined)
         throw new MockNotFoundError(
           `No function with selector ${slice(data, 0, 4)} on mocked contract ${label}.`,
         );
-      const { selector, abiItem, call } = found;
-      const namespace = reads.includes(abiItem) ? "read" : "simulate";
-      decoded = { namespace, selector, abiItem, call };
+      const { namespace, abiItem, call } = decoded;
       receive(decoded);
       const { handler, missed, removed } = match(decoded);
       if (!handler)
@@ -355,10 +355,10 @@ export function createMockContract<const abi extends Abi>(
         );
       const hex = await run(handler, call, namespace);
       const value = decodeFunctionResult({ abi: [abiItem], functionName: abiItem.name, data: hex });
-      report(record({ type: "result", value }));
+      report({ type: "result", value });
       return hex;
     } catch (error) {
-      report(record(failureOutcome(error, abi)));
+      report(failureOutcome(error, abi));
       throw error;
     }
   }
@@ -370,16 +370,16 @@ export function createMockContract<const abi extends Abi>(
     context: CallContext,
   ): ContractTurn<AnswerIn<namespace>> {
     const decoded = decodeIn(namespace, data, context);
-    const record: ContractTurn["record"] = (ended) =>
-      recordOf(
-        namespace,
-        decoded,
+    const base = {
+      record: pendingRecord(namespace, decoded),
+      receive() {
+        if (decoded) receive(decoded);
+      },
+      outcomeOf: (ended: { outcome: MockOutcome } | { error: unknown }) =>
         "error" in ended ? failureOutcome(ended.error, abi) : ended.outcome,
-      );
-    if (decoded === undefined) return { functionMocks: undefined, record };
-    receive(decoded);
-    if (!functionsIn[namespace].includes(decoded.abiItem))
-      return { functionMocks: undefined, record };
+    };
+    if (decoded === undefined || !functionsIn[namespace].includes(decoded.abiItem))
+      return { ...base, functionMocks: undefined };
     const { call } = decoded;
     // Matched when the turn comes, once: an estimate that its send's
     // `.reverts()` mock reverts first runs none of these mocks' predicates.
@@ -413,7 +413,7 @@ export function createMockContract<const abi extends Abi>(
         });
       },
     };
-    return { functionMocks, record };
+    return { ...base, functionMocks };
   }
 
   /** See `InternalMockContract.writeMock`. */
@@ -439,7 +439,12 @@ export function createMockContract<const abi extends Abi>(
    * A call to one of the contract's functions, decoded, and the namespace
    * it's answered in.
    */
-  type Decoded = { namespace: MockNamespace; selector: Hex; abiItem: AbiFunction; call: MockCall };
+  type Decoded<namespace extends MockNamespace = MockNamespace> = {
+    namespace: namespace;
+    selector: Hex;
+    abiItem: AbiFunction;
+    call: MockCall;
+  };
 
   /**
    * Decodes a call to one of the contract's functions; `undefined` when none
@@ -579,7 +584,7 @@ export function createMockContract<const abi extends Abi>(
     contract,
     label,
     matches: (other) => other === address,
-    resolve,
+    callOf,
     turn,
     writeMock,
     clearCalls() {

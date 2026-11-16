@@ -955,7 +955,12 @@ features land; tick them off as pages get written.
       `outcome` (`result` in viem's types, `revert` decoded, `fault` with its
       source, `rpcError`, `unhandled`, `pending`). `unhandled` holds a
       `MockError`: not mocked, a resolver threw, or the mock itself failed.
-      Retries are separate entries.
+      Retries are separate entries. An entry says what its request asked
+      from the moment it arrives, even when a `failRequests()` fault fails
+      it before any mock receives it. A contract call its request ended
+      before getting to (the request faulted, or an earlier sub-call failed
+      its batch) is `notReached`, printed `– not reached`: only a record's
+      outcome (`MockCallOutcome`) has it, never an entry's.
 - [ ] `mock.formatHistory({ builtIns })` for `console.log` while debugging,
       with an example of its output.
 - [ ] `createMockRpc({ debug })`: `true` for `console.log`, or a function

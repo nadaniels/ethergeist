@@ -80,7 +80,7 @@ export type { LogsCall, LogsTopic } from "./logs/filter.js";
 export type { MockCheckpoint, RestoreOptions } from "./rpc/checks.js";
 export type { MockCallRecord } from "./contracts/types.js";
 export type { MockHistoryEntry } from "./history/types.js";
-export type { MockOutcome } from "./mocking/outcomes.js";
+export type { MockCallOutcome, MockOutcome } from "./mocking/outcomes.js";
 export type { FormatHistoryOptions } from "./history/format.js";
 export {
   MockCheckError,

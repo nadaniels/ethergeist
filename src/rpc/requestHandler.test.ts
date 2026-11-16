@@ -26,7 +26,6 @@ function setup(thrown: unknown) {
   const transactions = createTransactionStore({ state, registry });
   const actions = createActions({ state, registry, transactions }, unlimited);
   const recorder = createRecorder({
-    multicallAddress: state.multicallAddress,
     actionFor: actions.actionFor,
     debug: undefined,
     formatContext: {},
@@ -34,7 +33,7 @@ function setup(thrown: unknown) {
   });
   const dispatcher = {
     ...createDispatch({ state, registry }),
-    call: () => {
+    read: () => {
       throw thrown;
     },
   };
@@ -58,6 +57,11 @@ describe("createRequestHandler()", () => {
 
     expect(error).toBeInstanceOf(MockInternalError);
     expect(error).toHaveProperty("cause", thrown);
+    expect(recorder.view.entries[0]).toMatchObject({
+      type: "call",
+      to: undefined,
+      call: undefined,
+    });
     expect(recorder.view.entries[0]?.outcome).toEqual({ type: "unhandled", error });
     expect(recorder.unhandled.kept.map((entry) => entry.error)).toEqual([error]);
   });

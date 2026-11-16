@@ -6,7 +6,7 @@ import type { ChainState } from "../chain/state.js";
 import type { Dispatcher } from "../contracts/dispatch.js";
 import { retryHint } from "../history/format.js";
 import type { Recorder, Recording } from "../history/recorder.js";
-import type { MockHistoryEntry, RpcRequest } from "../history/types.js";
+import type { Asked, MockHistoryEntry, RpcRequest } from "../history/types.js";
 import { MockFailure } from "../mocking/faults.js";
 import { asMockError, isAnswer } from "../mocking/outcomes.js";
 import { MockNotFoundError } from "../shared/errors.js";
@@ -18,10 +18,17 @@ import type { Faults } from "./faults.js";
  */
 export type RequestHandler = (request: RpcRequest, retryCount?: number) => Promise<unknown>;
 
+/** `asked` is `undefined` for a built-in or when its params don't decode. */
+type RequestReading = {
+  asked: Asked | undefined;
+  answer: (recording: Recording) => Promise<unknown>;
+};
+
 /**
- * The mock's request pipeline: it records the request, fails it if a
- * `failRequests()` fault applies, answers it (built-ins, `eth_call`, then
- * actions and raw methods), and records how it ended.
+ * The mock's request pipeline: it reads what the request asks, records it,
+ * fails it if a `failRequests()` fault applies, answers it, and records how
+ * it ended. Nothing awaits before the answer, so requests made at once
+ * reach their mocks in the order made.
  */
 export function createRequestHandler({
   state,
@@ -47,7 +54,10 @@ export function createRequestHandler({
     const { method, params } = given;
     // `unhandled` lists only `method` and `params`, and no `params` if none.
     const request: RpcRequest = params === undefined ? { method } : { method, params };
-    const recording = recorder.start(request);
+    // Read before the fault applies, so a faulted request's entry shows what
+    // it asked, and answered only after, so a faulted one reaches no mock.
+    const { asked, answer } = read(request);
+    const recording = recorder.start(request, asked);
 
     const fault = faults.applyTo(method);
     if (fault !== undefined) {
@@ -57,7 +67,7 @@ export function createRequestHandler({
 
     let rpc: unknown;
     try {
-      rpc = await answer(request, recording);
+      rpc = await answer(recording);
     } catch (caught) {
       const error = withRetryHint(
         isAnswer(caught) ? caught : asMockError(caught),
@@ -73,21 +83,37 @@ export function createRequestHandler({
     return rpc;
   }
 
-  async function answer({ method, params }: RpcRequest, recording: Recording): Promise<unknown> {
-    switch (method) {
-      case "eth_chainId":
-        return numberToHex(state.chain.id);
-      case "eth_blockNumber":
-        return numberToHex(state.blockNumber);
-      case "eth_call":
-        return await dispatcher.call(withoutTrailingNulls(params), recording.reporter);
-      default: {
-        const answered = actions.answer(method, params, recording.reportAction);
-        if (answered) return await answered;
-        throw new MockNotFoundError(`RPC method "${method}" is not mocked.`, {
-          metaMessages: [`Mock it with mock.method("${method}", …).returns(…).`],
-        });
+  /**
+   * Never throws: the answer refuses params that don't decode, so a fault
+   * still wins over them, as a node that's down never reads them.
+   */
+  function read({ method, params }: RpcRequest): RequestReading {
+    try {
+      switch (method) {
+        case "eth_chainId":
+          return { asked: undefined, answer: () => Promise.resolve(numberToHex(state.chain.id)) };
+        case "eth_blockNumber":
+          return {
+            asked: undefined,
+            answer: () => Promise.resolve(numberToHex(state.blockNumber)),
+          };
+        case "eth_call": {
+          const { asked, answer } = dispatcher.read(withoutTrailingNulls(params));
+          return { asked, answer: (recording) => answer(recording.reporter) };
+        }
+        default: {
+          const reading = actions.read(method, params);
+          if (reading === undefined)
+            throw new MockNotFoundError(`RPC method "${method}" is not mocked.`, {
+              metaMessages: [`Mock it with mock.method("${method}", …).returns(…).`],
+            });
+          const { asked, answer } = reading;
+          return { asked, answer: (recording) => answer(recording.reportAction) };
+        }
       }
+    } catch (error) {
+      // oxlint-disable-next-line typescript/prefer-promise-reject-errors -- it's what reading threw
+      return { asked: undefined, answer: () => Promise.reject(error) };
     }
   }
 

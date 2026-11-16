@@ -28,7 +28,7 @@ function numberOfHash(hash: Hash): bigint {
 /** What each block form takes, for the error. */
 const expectedBlock: Record<BlockForm, string> = {
   numberOrTag: "a block number or tag",
-  numberTagOrHash: "a block number, tag or hash",
+  numberTagOrHash: "a block number, tag, or hash",
 };
 
 /** A chain's block time, in milliseconds: 12s if it doesn't say. */
