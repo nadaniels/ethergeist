@@ -312,7 +312,7 @@ describe("match.where()", () => {
 
     expectThrows(
       MockCheckError,
-      `getBalance({ address: ${getAddress(alice)}, blockNumber: 1n, blockTag: latest })  ← params didn't match`,
+      `getBalance({ address: ${getAddress(alice)}, blockNumber: 1n, blockTag: "latest" })  ← params didn't match`,
       () => {
         mock.assertAllUsed();
       },
@@ -590,7 +590,7 @@ describe("a miss's reasons", () => {
     expectThrows(
       MockCheckError,
       "  - getBalance(where(never))\n    received 1 call to getBalance:\n" +
-        `      getBalance({ address: ${getAddress(alice)}, blockNumber: 1n, blockTag: latest })  ← params didn't match`,
+        `      getBalance({ address: ${getAddress(alice)}, blockNumber: 1n, blockTag: "latest" })  ← params didn't match`,
       () => {
         mock.assertAllUsed();
       },
@@ -966,7 +966,7 @@ describe("overloads", () => {
 
   test("args no overload takes throw", () => {
     const { token } = setupOverloads();
-    const error = expectThrows(MockSetupError, "No overload takes read.quote(any, five).", () =>
+    const error = expectThrows(MockSetupError, 'No overload takes read.quote(any, "five").', () =>
       // @ts-expect-error -- neither overload of `quote` takes a string second
       token.read.quote([match.any(), "five"]),
     );
@@ -981,7 +981,7 @@ describe("overloads", () => {
     const { token } = setupOverloads();
     const error = expectThrows(
       MockSetupError,
-      "read.balanceOf's id must be a uint256; got five.",
+      'read.balanceOf\'s id must be a uint256; got "five".',
       () =>
         // @ts-expect-error -- neither overload of `balanceOf` takes a string second
         token.read.balanceOf([alice, "five"]),
@@ -1068,7 +1068,7 @@ describe("overloads", () => {
       await read("list", [[1n, 2n]]),
       await read("pair", [[1n, 2n]]),
     ]).toEqual([1n, 2n, 3n]);
-    expectThrows(MockSetupError, "No overload takes read.list([1n, x]).", () =>
+    expectThrows(MockSetupError, 'No overload takes read.list([1n, "x"]).', () =>
       // @ts-expect-error -- a string in a list of uints
       token.read.list([[1n, "x"]]),
     );
@@ -1214,7 +1214,7 @@ describe("overloads", () => {
       // @ts-expect-error -- the struct has two fields
       contract.read.f([[uppercase, 5n, 6n]]),
     );
-    expectThrows(MockSetupError, `No overload takes read.f([${uppercase}, x]).`, () =>
+    expectThrows(MockSetupError, `No overload takes read.f([${uppercase}, "x"]).`, () =>
       // @ts-expect-error -- a string where a uint goes
       contract.read.f([[uppercase, "x"]]),
     );
@@ -1223,7 +1223,7 @@ describe("overloads", () => {
   test("a value the encoder would coerce fits no overload", () => {
     const { token } = setupFitOverloads();
 
-    expectThrows(MockSetupError, "No overload takes read.w(5).", () =>
+    expectThrows(MockSetupError, 'No overload takes read.w("5").', () =>
       // @ts-expect-error -- a string where a uint goes
       token.read.w(["5"]),
     );

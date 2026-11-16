@@ -16,7 +16,7 @@ function toWord(value: unknown, what: string): Hex {
     throw new MockSetupError(`${what} must be hex of up to 32 bytes; got ${formatValue(value)}.`);
   if (size(value) > 32)
     throw new MockSetupError(
-      `${what} must be hex of up to 32 bytes; got ${size(value)} bytes: ${value}.`,
+      `${what} must be hex of up to 32 bytes; got ${size(value)} bytes: ${formatValue(value)}.`,
     );
   return pad(lowercase(value), { size: 32 });
 }

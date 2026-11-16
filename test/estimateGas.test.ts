@@ -229,7 +229,7 @@ describe("estimateGas reverts", () => {
     );
     expect(expectCause(error, ExecutionRevertedError).details).toBe("execution reverted: paused");
     expect(mock.formatHistory()).toBe(
-      '#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, data: 0x12, blockNumber: 10n, blockTag: latest }) ✗ reverted: "paused"',
+      '#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, data: 0x12, blockNumber: 10n, blockTag: "latest" }) ✗ reverted: "paused"',
     );
 
     const sent = await rejectionOf(wallet.sendTransaction({ to: bob, data: "0x12" }));
@@ -484,7 +484,7 @@ describe("named node errors", () => {
 
     expect(mock.formatHistory()).toBe(
       "#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, " +
-        "blockNumber: 10n, blockTag: latest }) ✗ refused: insufficientFunds",
+        'blockNumber: 10n, blockTag: "latest" }) ✗ refused: insufficientFunds',
     );
   });
 
@@ -764,7 +764,7 @@ describe("whose mocks answer an estimate sent to a contract", () => {
     });
     expect(mock.formatHistory().split("\n")[1]).toBe(
       "#2 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x0dc7…41c6, value: 0n, " +
-        "data: 0x095e…0001, blockNumber: 10n, blockTag: latest }) → 60000n",
+        'data: 0x095e…0001, blockNumber: 10n, blockTag: "latest" }) → 60000n',
     );
     expect(token.calls).toEqual([]);
   });

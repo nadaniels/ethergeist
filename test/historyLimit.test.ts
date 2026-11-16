@@ -176,7 +176,9 @@ describe("historyLimit", () => {
       MockNotFoundError,
     );
     expect(hintsOf(error)).toContain("This is viem retrying after a `.once()`/`.times(n)` fault");
-    expect(mock.formatHistory()).toContain("#2 eth_call (retry)");
+    expect(mock.formatHistory()).toContain(
+      "#2 eth_call 0xA0b8…eB48.totalSupply() (retry) ✗ not mocked",
+    );
   });
 
   test("checks count every request, and say which they list", async () => {

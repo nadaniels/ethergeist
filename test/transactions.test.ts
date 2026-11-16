@@ -239,13 +239,17 @@ describe("getTransaction", () => {
       // @ts-expect-error -- an eip1559 transaction, the default type, has no authorizationList
       mock.actions.getTransaction().returns({ authorizationList: [] });
     });
-    expectThrows(MockSetupError, 'A transaction has no field "data".', () => {
+    expectThrows(MockSetupError, "A transaction has no data field.", () => {
       // @ts-expect-error -- `data` isn't a transaction field
       mock.actions.getTransaction().returns({ data: "0x" });
     });
     expectThrows(MockSetupError, 'Unknown transaction type "eip9999"', () => {
       // @ts-expect-error -- not a transaction type viem knows
       mock.actions.getTransaction().returns({ type: "eip9999" });
+    });
+    expectThrows(MockSetupError, "Unknown transaction type 2;", () => {
+      // @ts-expect-error -- a type is a name, not a number
+      mock.actions.getTransaction().returns({ type: 2 });
     });
   });
 
@@ -522,7 +526,7 @@ describe("mock.addTransaction", () => {
     [
       "an unknown status",
       { status: "pending" },
-      'mock.addTransaction()\'s status must be "success" or "reverted"; got pending.',
+      'mock.addTransaction()\'s status must be "success" or "reverted"; got "pending".',
     ],
     [
       "a negative value",
@@ -537,7 +541,7 @@ describe("mock.addTransaction", () => {
     [
       "data that isn't hex",
       { data: "0xzz" },
-      "mock.addTransaction()'s data must be hex; got 0xzz.",
+      'mock.addTransaction()\'s data must be hex; got "0xzz".',
     ],
     [
       "a fractional nonce",

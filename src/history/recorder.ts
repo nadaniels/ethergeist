@@ -270,8 +270,7 @@ export function createRecorder({
 
 /**
  * The fault `entry` retries: `previous`'s, if it faulted and `entry` is the
- * same request. Requests are compared as printed, so a rare false match
- * (`[1n]` and `["1n"]`) mislabels a history line and nothing else.
+ * same request, compared as printed.
  */
 function retriedFault(
   previous: MockHistoryEntry,

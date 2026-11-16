@@ -1,6 +1,14 @@
-import { type BlockTag, createPublicClient, erc20Abi, getAddress, parseAbi, zeroHash } from "viem";
+import {
+  type BlockTag,
+  createPublicClient,
+  encodeFunctionData,
+  erc20Abi,
+  getAddress,
+  parseAbi,
+  zeroHash,
+} from "viem";
 import { base } from "viem/chains";
-import { describe, expect, expectTypeOf, test } from "vite-plus/test";
+import { describe, expect, expectTypeOf, test, vi } from "vite-plus/test";
 
 import {
   MockCheckError,
@@ -249,6 +257,23 @@ describe("history entries", () => {
 });
 
 describe("formatHistory()", () => {
+  test("a string is quoted, with its own quotes escaped; hex stays bare", async () => {
+    const { mock, read } = setup();
+    const usdc = mock.contract({ abi: tokenAbi, address: USDC, name: "USDC" });
+    usdc.read.symbol().returns("USDC");
+    usdc.read.decimals().reverts('not "owner"');
+
+    await read(USDC, "symbol");
+    await rejectionOf(read(USDC, "decimals"));
+
+    expect(mock.formatHistory()).toBe(
+      [
+        '#1 eth_call USDC.symbol() → "USDC"',
+        '#2 eth_call USDC.decimals() ✗ reverted: "not \\"owner\\""',
+      ].join("\n"),
+    );
+  });
+
   test("one line per request, and per multicall sub-call", async () => {
     const { mock, client, read } = setup({ retryCount: 1 });
     const usdc = mock.contract({ abi: tokenAbi, address: USDC, name: "USDC" });
@@ -280,9 +305,9 @@ describe("formatHistory()", () => {
         "   ├ USDC.balanceOf(0xa41f…2D9e) → 5n",
         "   └ 0x6B17…1d0F.decimals() ✗ reverted: EnforcedPause()",
         "#3 eth_call USDC.symbol() ✗ fault: HTTP 503",
-        "#4 eth_call (retry) USDC.symbol() ✗ fault: HTTP 503",
-        "#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n, blockTag: latest }) → 1000000000000000000n",
-        "#6 eth_getBlockTransactionCountByNumber(latest) ✗ not mocked",
+        "#4 eth_call USDC.symbol() (retry) ✗ fault: HTTP 503",
+        '#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n, blockTag: "latest" }) → 1000000000000000000n',
+        '#6 eth_getBlockTransactionCountByNumber("latest") ✗ not mocked',
         "#7 eth_blockNumber → 10n",
       ].join("\n"),
     );
@@ -296,7 +321,115 @@ describe("formatHistory()", () => {
 
     await rejectionOf(mock.request(request));
     expect(await mock.request(request)).toBe(1);
-    expect(mock.formatHistory()).toContain("#2 x_y (retry)");
+    expect(mock.formatHistory()).toContain("#2 x_y(1n) (retry) → 1");
+  });
+
+  test("a retry is marked just before its outcome, on every kind of line", async () => {
+    const { mock, client, read } = setup({ retryCount: 1 });
+    const usdc = mock.contract({ abi: tokenAbi, address: USDC, name: "USDC" });
+    mock.method("eth_getBlockTransactionCountByNumber").once().fails("timeout");
+    mock.method("eth_getBlockTransactionCountByNumber").returns("0x1");
+    usdc.read.symbol().once().fails("timeout");
+    usdc.read.symbol().returns("USDC");
+    mock.actions.getBalance().once().fails("timeout");
+    mock.actions.getBalance().returns(5n);
+    usdc.read.decimals().returns(6);
+    usdc.estimateGas.transfer().once().fails("timeout");
+    usdc.estimateGas.transfer().returns(65_000n);
+    mock.actions.getLogs().once().fails("timeout");
+    mock.actions.getLogs().returns([]);
+
+    await client.getBlockTransactionCount();
+    await read(USDC, "symbol");
+    await client.getBalance({ address: alice });
+    mock.failRequests("timeout", { times: 1 });
+    await client.multicall({
+      contracts: [
+        { abi: tokenAbi, address: USDC, functionName: "symbol" },
+        { abi: tokenAbi, address: USDC, functionName: "decimals" },
+      ],
+    });
+    const transfer = { abi: tokenAbi, functionName: "transfer", args: [alice, 1n] } as const;
+    await client.estimateContractGas({ ...transfer, address: USDC, account: alice });
+    await client.getLogs({ address: USDC });
+    mock.failRequests("timeout", { times: 2 });
+    await rejectionOf(client.call({ to: NOWHERE, data: "0x12" }));
+
+    expect(mock.formatHistory()).toBe(
+      [
+        '#1 eth_getBlockTransactionCountByNumber("latest") ✗ fault: timeout',
+        '#2 eth_getBlockTransactionCountByNumber("latest") (retry) → 0x1',
+        "#3 eth_call USDC.symbol() ✗ fault: timeout",
+        '#4 eth_call USDC.symbol() (retry) → "USDC"',
+        '#5 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n, blockTag: "latest" }) ✗ fault: timeout',
+        '#6 eth_getBalance getBalance({ address: 0xa41f…2D9e, blockNumber: 10n, blockTag: "latest" }) (retry) → 5n',
+        "#7 eth_call multicall ✗ fault: timeout (failRequests)",
+        "#8 eth_call multicall, batch 1 (2 calls) (retry)",
+        '   ├ USDC.symbol() → "USDC"',
+        "   └ USDC.decimals() → 6",
+        "#9 eth_estimateGas estimateGas USDC.transfer(0xa41f…2D9e, 1n) ✗ fault: timeout",
+        "#10 eth_estimateGas estimateGas USDC.transfer(0xa41f…2D9e, 1n) (retry) → 65000n",
+        "#11 eth_getLogs getLogs(USDC, block 10n) ✗ fault: timeout",
+        "#12 eth_getLogs getLogs(USDC, block 10n) (retry) → 0 logs",
+        `#13 eth_call ${NOWHERE} ✗ fault: timeout (failRequests)`,
+        `#14 eth_call ${NOWHERE} (retry) ✗ fault: timeout (failRequests)`,
+      ].join("\n"),
+    );
+  });
+
+  test("an action without its call prints its params as sent, and a batch never read no count", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance().returns(5n);
+    const multicall3 = base.contracts.multicall3.address;
+
+    await rejectionOf(mock.request({ method: "eth_getBalance", params: ["0x12", "latest"] }));
+    mock.failRequests("timeout", { times: 2 });
+    await rejectionOf(client.getBalance({ address: alice }));
+    await rejectionOf(mock.request({ method: "eth_sendRawTransaction", params: ["0x02f8"] }));
+    await rejectionOf(
+      mock.request({ method: "eth_call", params: [{ to: multicall3, data: "0xzz" }, "latest"] }),
+    );
+    const getBlockNumber = encodeFunctionData({
+      abi: parseAbi(["function getBlockNumber() view returns (uint256)"]),
+      functionName: "getBlockNumber",
+    });
+    await rejectionOf(client.call({ to: multicall3, data: getBlockNumber }));
+
+    expect(mock.formatHistory().split("\n")).toEqual([
+      '#1 eth_getBalance(0x12, "latest") ✗ rpc error -32602: invalid params: expected an address; got 0x12',
+      '#2 eth_getBalance(0xa41f…2D9e, "latest") ✗ fault: timeout (failRequests)',
+      "#3 eth_sendRawTransaction(0x02f8) ✗ fault: timeout (failRequests)",
+      '#4 eth_call multicall ✗ rpc error -32602: invalid params: expected hex data for `data`; got "0xzz"',
+      "#5 eth_call multicall, batch 1 ✗ not mocked",
+    ]);
+  });
+
+  test("a request still pending prints what's known of it", async () => {
+    const { mock, client } = setup();
+    const { promise: gate, resolve: release } = Promise.withResolvers<void>();
+    const usdc = mock.contract({ abi: tokenAbi, address: USDC, name: "USDC" });
+    usdc.read.decimals().returns(async () => {
+      await gate;
+      return 6;
+    });
+    mock.actions.getBalance().returns(async () => {
+      await gate;
+      return 5n;
+    });
+
+    const balance = client.getBalance({ address: alice });
+    const batch = client.multicall({
+      contracts: [{ abi: tokenAbi, address: USDC, functionName: "decimals" }],
+    });
+    await vi.waitFor(() => {
+      expect(mock.history.filter((entry) => entry.type !== "builtIn")).toHaveLength(2);
+    });
+    expect(mock.formatHistory({ builtIns: false }).split("\n")).toEqual([
+      '#1 eth_getBalance(0xa41f…2D9e, "latest") … pending',
+      "#2 eth_call multicall, batch 1 … pending",
+    ]);
+    release();
+    await Promise.all([balance, batch]);
   });
 
   test("builtIns: false leaves out eth_chainId and eth_blockNumber, keeping numbers", async () => {
@@ -306,7 +439,7 @@ describe("formatHistory()", () => {
     await client.getBlockNumber();
     await client.getBlockTransactionCount();
     expect(mock.formatHistory({ builtIns: false })).toBe(
-      "#2 eth_getBlockTransactionCountByNumber(latest) → 0x1",
+      '#2 eth_getBlockTransactionCountByNumber("latest") → 0x1',
     );
   });
 
@@ -317,7 +450,7 @@ describe("formatHistory()", () => {
     await rejectionOf(client.getBlockTransactionCount());
     expectThrows(
       MockCheckError,
-      "Requests so far:\n#2 eth_getBlockTransactionCountByNumber(latest) ✗ not mocked",
+      'Requests so far:\n#2 eth_getBlockTransactionCountByNumber("latest") ✗ not mocked',
       () => {
         mock.assertNoUnhandled();
       },
@@ -332,7 +465,7 @@ describe("formatHistory()", () => {
     await client.getTransactionReceipt({ hash: zeroHash });
     expect(mock.formatHistory()).toBe(
       [
-        "#1 eth_getBlockByNumber getBlock({ blockNumber: 10n, blockTag: latest, includeTransactions: false }) → block 10n, timestamp 1700000000n",
+        '#1 eth_getBlockByNumber getBlock({ blockNumber: 10n, blockTag: "latest", includeTransactions: false }) → block 10n, timestamp 1700000000n',
         "#2 eth_getTransactionReceipt getTransactionReceipt({ hash: 0x0000…0000 }) → success, block 10n, 1 log(s)",
       ].join("\n"),
     );
@@ -596,7 +729,7 @@ describe("historyOnFailure", () => {
       messageOf(() => {
         mock.assertAllUsed();
       }),
-    ).toContain("#2 eth_call (retry) USDC.decimals()");
+    ).toContain("#2 eth_call USDC.decimals() (retry) → 6");
   });
 
   test("no requests, no section", () => {

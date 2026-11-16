@@ -266,7 +266,7 @@ describe("emit", () => {
     expectThrows(
       MockSetupError,
       "mock.addTransaction()'s log 0 is already placed (e.g. by mock.buildLog()).\n\n" +
-        "Logs come from contract.events, contractEvents() or testLog().\n" +
+        "Logs come from contract.events, contractEvents(), or testLog().\n" +
         "Give its position as addTransaction()'s blockNumber or hash.",
       () =>
         mock.addTransaction({

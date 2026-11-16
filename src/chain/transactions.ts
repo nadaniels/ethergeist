@@ -173,7 +173,9 @@ function checkTransaction(transaction: TransactionFields): MockTransactionType {
   // Untyped callers can pass any type.
   if (own === undefined)
     throw new MockSetupError(
-      `Unknown transaction type "${type}"; types: ${Object.keys(typeFields).join(", ")}.`,
+      `Unknown transaction type ${formatValue(type)}; types: ${Object.keys(typeFields)
+        .map((name) => formatValue(name))
+        .join(", ")}.`,
     );
   for (const field of Object.keys(transaction)) {
     if (sharedFields.has(field) || own.includes(field)) continue;
@@ -182,7 +184,7 @@ function checkTransaction(transaction: TransactionFields): MockTransactionType {
       .map(([name]) => name);
     throw new MockSetupError(
       types.length === 0
-        ? `A transaction has no field "${field}".`
+        ? `A transaction has no ${field} field.`
         : `${type === "legacy" ? "A" : "An"} ${type} transaction has no ${field}: set \`type\` to one that has it (${types.join(", ")}).`,
     );
   }

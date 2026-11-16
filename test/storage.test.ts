@@ -152,7 +152,7 @@ describe("getStorageAt", () => {
     await client.getStorageAt({ address: proxy, slot: "0x0" });
 
     expect(mock.formatHistory()).toBe(
-      "#1 eth_getStorageAt getStorageAt({ address: 0x7D28…F91D, slot: 0x0000…0000, blockNumber: 10n, blockTag: latest }) → 0x0000…0001",
+      '#1 eth_getStorageAt getStorageAt({ address: 0x7D28…F91D, slot: 0x0000…0000, blockNumber: 10n, blockTag: "latest" }) → 0x0000…0001',
     );
     expectThrows(
       MockSetupError,

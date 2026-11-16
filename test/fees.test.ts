@@ -253,7 +253,7 @@ describe("getFeeHistory", () => {
     });
     expectThrows(
       MockSetupError,
-      "gasUsedRatio in getFeeHistory's answer must be a list of numbers; got [0.5]",
+      'gasUsedRatio in getFeeHistory\'s answer must be a list of numbers; got ["0.5"]',
       () => {
         // @ts-expect-error -- ratios are numbers
         mock.actions.getFeeHistory().returns({ gasUsedRatio: ["0.5"] });

@@ -172,7 +172,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
     await rejectionOf(client.getBalance({ address: alice }));
     expect(unhandledList(mock)).toBe(
       "The mock couldn't answer 2 request(s):\n" +
-        `  - No mock for getBalance({ address: ${alice}, blockNumber: 1n, blockTag: latest }) (×2).\n` +
+        `  - No mock for getBalance({ address: ${alice}, blockNumber: 1n, blockTag: "latest" }) (×2).\n` +
         "      Registered:\n" +
         `        getBalance({ address: ${getAddress(bob)} })  ← address didn't match`,
     );
@@ -187,7 +187,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
     mock.actions.getBalance({ address: DAI }).returns(1n);
     await rejectionOf(client.getBalance({ address: alice }));
     await rejectionOf(balanceOf(alice));
-    const miss = `  - No mock for getBalance({ address: ${alice}, blockNumber: 1n, blockTag: latest }).`;
+    const miss = `  - No mock for getBalance({ address: ${alice}, blockNumber: 1n, blockTag: "latest" }).`;
     expect(unhandledList(mock)).toBe(
       "The mock couldn't answer 4 request(s):\n" +
         `${miss}\n` +
@@ -703,7 +703,7 @@ describe("assertAllUsed(): what the function received instead", () => {
 
     await client.getBalance({ address: alice });
     expect(unusedMessage(mock)).toContain(
-      `      getBalance({ address: ${alice}, blockNumber: 1n, blockTag: latest })  ← matches; another mock answered it`,
+      `      getBalance({ address: ${alice}, blockNumber: 1n, blockTag: "latest" })  ← matches; another mock answered it`,
     );
   });
 
