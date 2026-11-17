@@ -63,17 +63,24 @@ type-checks every example.
 - `setup(market)` gives each test a fresh mock: USDC, WETH, and the router,
   registered from their ABIs at `testAddress()` addresses. Their reads answer
   from `market` (decimals, balance, allowance, and quote), so a test states only
-  what differs.
-- It also registers `onTestFinished(() => mock.assertNoUnhandled())`. A request
-  no mock answers then fails the test, naming the request, even one the app
-  caught.
+  what differs, and the swap's simulation answers with the amounts it was given.
+- It ends with `mock.checkpoint()`, and restores it when the test finishes, with
+  both checks: `restore({ assertNoUnhandled: true, assertAllUsed: true })`. A
+  request no mock answers then fails the test, naming the request, even one the
+  app caught. So does a mock the test registered that never answered a call.
+  The fixture's own mocks come before the checkpoint, so a test may leave them
+  unused.
 - `botClient(mock)` is the client `main.ts` builds, on `mock.transport()`, with
   a short `pollingInterval` so the bot sees `mock.mine()` at once.
-- `fillable()` mocks the approve and the swap. Nothing can be sent until a test
-  calls it.
 
-A test overrides a fixture's mock by registering one with the same pins after
-it: of two mocks that match equally, the one registered last answers.
+Nothing can be sent until a test mocks it, so each test registers the sends it
+expects: the swap's, and the approve's when the allowance is short. A test for
+"doesn't approve" registers no approve mock, and an approve would fail it as a
+request no mock answers.
+
+A test overrides a fixture's mock by registering one with the same pins: of two
+mocks that match equally, the one registered last answers. An override with
+fewer pins never answers, and the check on unused mocks reports it.
 
 ### `test/tick.test.ts`
 

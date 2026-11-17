@@ -4,7 +4,7 @@ import { describe, expect, test, vi } from "vitest";
 
 import { run } from "../src/run.ts";
 import type { TickResult } from "../src/tick.ts";
-import { botClient, fillable, pollingInterval, setup, slippageReason } from "./fixture.ts";
+import { botClient, pollingInterval, setup, slippageReason } from "./fixture.ts";
 
 /** How many `eth_blockNumber` requests the mock has had, failed ones included: the block watcher's polls. */
 function polls(mock: MockRpc): number {
@@ -64,7 +64,7 @@ function holdQuotes(s: ReturnType<typeof setup>, quote: string) {
 describe("filling", () => {
   test("ticks on the first block, and resolves with the swap's hash once it fills", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     const results: TickResult[] = [];
 
     const hash = await run({ ...s, onTick: (result) => results.push(result) });
@@ -76,7 +76,7 @@ describe("filling", () => {
 
   test("ticks on each new block until the price meets the limit", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     s.router.read
       .getAmountsOut()
       .times(2)
@@ -102,7 +102,8 @@ describe("filling", () => {
 
   test("approves, then swaps, in a single tick", async () => {
     const s = setup();
-    fillable(s);
+    s.tokenIn.write.approve().returns();
+    s.router.write.swapExactTokensForTokens().returns();
 
     const hash = await run(s);
 
@@ -125,7 +126,7 @@ describe("filling", () => {
 
   test("keeps going after slippage", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     s.router.simulate.swapExactTokensForTokens().once().reverts(slippageReason);
     const results: TickResult["kind"][] = [];
 
@@ -142,7 +143,7 @@ describe("filling", () => {
 
   test("skips the blocks that arrive while a tick is running", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     const held = holdQuotes(s, "0.8");
     const results: TickResult[] = [];
     const filled = run({ ...s, onTick: (result) => results.push(result) });
@@ -212,7 +213,7 @@ describe("errors", () => {
 
   test("rides out a watcher poll that viem's retries recover from", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     s.router.read
       .getAmountsOut()
       .once()
@@ -230,7 +231,6 @@ describe("errors", () => {
 
   test("lets a running tick finish when the watcher fails, then rejects unless it filled", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
     const held = holdQuotes(s, "0.8");
     const stopped = run({ client: botClient(s.mock, { retryCount: 0 }), order: s.order });
 
@@ -248,7 +248,7 @@ describe("errors", () => {
 
   test("resolves when the tick running as the watcher fails fills the order", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     const held = holdQuotes(s, "1");
     const filled = run({ client: botClient(s.mock, { retryCount: 0 }), order: s.order });
 
@@ -293,7 +293,7 @@ describe("aborting", () => {
 
   test("lets a running tick finish: a fill wins over the abort", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     const held = holdQuotes(s, "1");
     const controller = new AbortController();
     const filled = run({ ...s, signal: controller.signal });

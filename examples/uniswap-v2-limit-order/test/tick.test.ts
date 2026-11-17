@@ -8,7 +8,7 @@ import {
 import { afterEach, describe, expect, test, vi } from "vitest";
 
 import { tick } from "../src/tick.ts";
-import { fillable, owner, setup, slippageReason } from "./fixture.ts";
+import { owner, setup, slippageReason } from "./fixture.ts";
 
 afterEach(() => {
   vi.useRealTimers();
@@ -34,7 +34,7 @@ describe("the limit", () => {
 
   test("fills when the quote is exactly the minimum", async () => {
     const s = setup({ quote: "0.9", allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     expect(await tick(s)).toMatchObject({ kind: "filled" });
   });
 
@@ -47,14 +47,13 @@ describe("the limit", () => {
 describe("the balance", () => {
   test("skips an order the owner can't pay for, without approving", async () => {
     const s = setup({ balance: "1499.999999" });
-    fillable(s);
     expect(await tick(s)).toEqual({ kind: "skipped", reason: "insufficientBalance" });
     expect(s.mock.transactions).toEqual([]);
   });
 
   test("swaps a balance of exactly the amount", async () => {
     const s = setup({ balance: "1500", allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     expect(await tick(s)).toMatchObject({ kind: "filled" });
   });
 });
@@ -62,7 +61,8 @@ describe("the balance", () => {
 describe("the approval", () => {
   test("approves the router for exactly the amount, and waits for it before swapping", async () => {
     const s = setup({ allowance: "1499.999999" });
-    fillable(s);
+    s.tokenIn.write.approve().returns();
+    s.router.write.swapExactTokensForTokens().returns();
     await tick(s);
 
     expect(s.tokenIn.write.approve.calls).toMatchObject([
@@ -88,14 +88,13 @@ describe("the approval", () => {
 
   test("doesn't approve when the allowance covers the amount", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     await tick(s);
     expect(s.tokenIn.write.approve.calls).toEqual([]);
   });
 
   test("throws when the approval reverts on chain, and doesn't swap", async () => {
     const s = setup();
-    fillable(s);
     s.tokenIn.write.approve().returns({ status: "reverted" });
     await expect(tick(s)).rejects.toThrow(/^The approve transaction 0x[0-9a-f]{64} reverted\.$/);
     expect(s.router.simulate.swapExactTokensForTokens.calls).toEqual([]);
@@ -103,7 +102,6 @@ describe("the approval", () => {
 
   test("throws when the approval's estimate reverts", async () => {
     const s = setup();
-    fillable(s);
     s.tokenIn.write.approve().reverts("Pausable: paused");
     await expect(tick(s)).rejects.toThrow("Pausable: paused");
     expect(s.mock.transactions).toEqual([]);
@@ -111,14 +109,13 @@ describe("the approval", () => {
 
   test("approves once: a tick after a slipped swap uses the allowance already sent", async () => {
     const s = setup();
-    fillable(s);
-    // After fillable(): of two mocks with the same pins, the one registered last answers.
     let allowance = 0n;
     s.tokenIn.read.allowance([owner, s.router.address]).returns(() => allowance);
     s.tokenIn.write.approve().returns(({ args: [, amount] }) => {
       allowance = amount;
     });
     s.router.simulate.swapExactTokensForTokens().once().reverts(slippageReason);
+    s.router.write.swapExactTokensForTokens().returns();
 
     expect(await tick(s)).toEqual({ kind: "skipped", reason: "slippage" });
     expect(await tick(s)).toMatchObject({ kind: "filled" });
@@ -133,7 +130,7 @@ describe("the swap", () => {
     const now = 1_767_225_600n;
 
     const s = setup({ allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     await tick(s);
 
     const args = [
@@ -150,7 +147,7 @@ describe("the swap", () => {
 
   test("returns the hash of the swap, once it's mined", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
+    s.router.write.swapExactTokensForTokens().returns();
     const result = await tick(s);
 
     const swap = s.mock.transactions.at(-1);
@@ -176,7 +173,7 @@ describe("the swap", () => {
         allowance: amountIn,
         quote: minAmountOut,
       });
-      fillable(s);
+      s.router.write.swapExactTokensForTokens().returns();
       expect(
         await tick({ client: s.client, order: { ...s.order, amountIn, minAmountOut } }),
       ).toMatchObject({
@@ -193,7 +190,6 @@ describe("the swap", () => {
 describe("slippage", () => {
   test("skips when the simulation reverts for too little output, and sends nothing", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
     s.router.simulate.swapExactTokensForTokens().reverts(slippageReason);
     expect(await tick(s)).toEqual({ kind: "skipped", reason: "slippage" });
     expect(s.mock.transactions).toEqual([]);
@@ -201,7 +197,6 @@ describe("slippage", () => {
 
   test("skips when the price moves between the simulation and the write's estimate", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
     s.router.write.swapExactTokensForTokens().reverts(slippageReason);
     expect(await tick(s)).toEqual({ kind: "skipped", reason: "slippage" });
     expect(s.mock.transactions).toEqual([]);
@@ -239,7 +234,6 @@ describe("slippage", () => {
   // is an error even when the price moved while it was pending, and run() stops on it.
   test("throws when the swap is mined reverted", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
     s.router.write.swapExactTokensForTokens().returns({ status: "reverted" });
     await expect(tick(s)).rejects.toThrow(/^The swap transaction 0x[0-9a-f]{64} reverted\.$/);
   });
@@ -255,7 +249,8 @@ describe("the node", () => {
 
   test("rides out a flaky node, as viem retries", async () => {
     const s = setup();
-    fillable(s);
+    s.tokenIn.write.approve().returns();
+    s.router.write.swapExactTokensForTokens().returns();
     const outage = s.mock.failRequests({ status: 503 }, { times: 2 });
     expect(await tick(s)).toMatchObject({ kind: "filled" });
     expect(outage.count).toBe(2);
@@ -263,7 +258,6 @@ describe("the node", () => {
 
   test("throws once the node is still down past viem's retries, and sends nothing", async () => {
     const s = setup();
-    fillable(s);
     const outage = s.mock.failRequests({ status: 503 });
     const error = await tick(s).catch((error: unknown) => error);
     expect(error).toBeInstanceOf(ContractFunctionExecutionError);
@@ -277,7 +271,6 @@ describe("the node", () => {
 
   test("throws, not skips, when the node refuses the swap", async () => {
     const s = setup({ allowance: "1500" });
-    fillable(s);
     s.router.write.swapExactTokensForTokens().refuses("insufficientFunds");
     const error = await tick(s).catch((error: unknown) => error);
     expect(error).toBeInstanceOf(ContractFunctionExecutionError);
