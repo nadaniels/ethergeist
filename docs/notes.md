@@ -168,10 +168,10 @@ features land; tick them off as pages get written.
   - A write mock's pins narrow the estimate it implies or reverts too: a
     send's estimate from someone else isn't implied, and the miss says the
     write mock's `from` didn't match.
-  - Messages show pins after the call: `transfer(*) { from: 0x… }`, `← {
-    from } didn't match` (braced, so it can't be read as an input named
-    `from`, as in `transferFrom`), and the call's own `from` or `value`
-    where they differ.
+  - Messages show pins after the call: `write.transfer(*) { from: 0x… }`,
+    `← { from } didn't match` (braced, so it can't be read as an input
+    named `from`, as in `transferFrom`), and the call's own `from` or
+    `value` where they differ.
   - `defaults` take no pins: they're one answer per function.
 - [ ] Return values: named outputs as objects, partial structs zero-filled,
       `zeroResult`, resolvers that receive the call.
@@ -886,8 +886,8 @@ features land; tick them off as pages get written.
       The mock couldn't answer 3 request(s):
         - No mock for previewRedeem(3900000n) on Vault (0x6B17…).
             Registered:
-              previewRedeem(2000000000000000000n)  ← shares didn't match
-              previewRedeem(5n)  ← shares didn't match
+              read.previewRedeem(2000000000000000000n)  ← shares didn't match
+              read.previewRedeem(5n)  ← shares didn't match
         - No mock for getBalance({ address: 0xa41f…, … }) (×2).
             Registered:
               getBalance({ address: 0x4292… })  ← address didn't match
@@ -916,9 +916,11 @@ features land; tick them off as pages get written.
       `restore({ assertAllUsed: true })`. That includes a per-test setup
       function: end it with `mock.checkpoint()` and return the checkpoint.
 - [ ] How to read "No mock for …" and its "Registered:" list: each mock
-      registered for the function, with why it didn't answer. A mock whose
-      args differ says which (`← owner didn't match`, by the ABI's input
-      names, `arg N` for unnamed ones, the key for action params), as
+      registered for the function, with why it didn't answer. A contract's
+      mock is named with its namespace, as it's registered
+      (`write.withdraw(150n)`), and the call bare (`withdraw(150n)`). A mock
+      whose args differ says which (`← owner didn't match`, by the ABI's
+      input names, `arg N` for unnamed ones, the key for action params), as
       matching found it, including the predicate that said no. A mock used
       up or without an answer says so, and still names an exact arg that
       differs (it wouldn't have matched either); its predicates aren't run
@@ -951,7 +953,10 @@ features land; tick them off as pages get written.
       (`clearCalls()`, `restore()`, `reset()`), so a `.times(n)` mock that
       answered before it can read "3 times, 2 left". Under each unused mock, the calls
       its function received (up to 3, then a count) and the first arg, field,
-      or param that didn't match, by its ABI name; "matches; another mock
+      or param that didn't match, by its ABI name. Under a contract's mock,
+      the count names its namespace ("received 2 calls to
+      write.withdraw:"), since it counts only that namespace's calls to the
+      mock's own overload; "matches; another mock
       answered it" for a shadowed mock; "matches; it's to a registered
       contract's function, which action mocks don't answer" under an action
       mock, for an estimate or a send that was the contract's, answered or

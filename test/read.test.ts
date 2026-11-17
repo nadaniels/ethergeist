@@ -245,7 +245,7 @@ describe("balanceOf", () => {
     );
     expect(error.message).toContain(`No mock for balanceOf(${getAddress(alice)})`);
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
-      `Registered:\n  balanceOf(${getAddress(bob)})  ← account didn't match`,
+      `Registered:\n  read.balanceOf(${getAddress(bob)})  ← account didn't match`,
     );
     expect(mock.history).toHaveLength(1);
   });
@@ -287,8 +287,8 @@ describe("balanceOf", () => {
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       [
         "Registered:",
-        `  allowance(${getAddress(alice)}, ${getAddress(bob)})  ← spender didn't match`,
-        `  allowance(${getAddress(bob)}, any)  ← owner didn't match`,
+        `  read.allowance(${getAddress(alice)}, ${getAddress(bob)})  ← spender didn't match`,
+        `  read.allowance(${getAddress(bob)}, any)  ← owner didn't match`,
       ].join("\n"),
     );
   });
@@ -309,7 +309,7 @@ describe("balanceOf", () => {
     );
 
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
-      `Registered:\n  rate(${alice}, ${bob})  ← arg 2 didn't match`,
+      `Registered:\n  read.rate(${alice}, ${bob})  ← arg 2 didn't match`,
     );
   });
 
@@ -327,7 +327,7 @@ describe("balanceOf", () => {
     );
     expect(mock.unhandled[0]?.error).toBeInstanceOf(MockNotFoundError);
     expect(hintsOf(mock.unhandled[0]?.error)).toBe(
-      `Registered:\n  balanceOf(${getAddress(alice)}) without an answer`,
+      `Registered:\n  read.balanceOf(${getAddress(alice)}) without an answer`,
     );
   });
 

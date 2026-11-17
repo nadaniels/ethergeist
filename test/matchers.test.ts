@@ -440,11 +440,11 @@ describe("messages", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        "  balanceOf(where(isCarol))  ← account didn't match",
-        "  balanceOf(where(() => false))  ← account didn't match",
-        "  balanceOf(where(isTreasury))  ← account didn't match",
+        "  read.balanceOf(where(isCarol))  ← account didn't match",
+        "  read.balanceOf(where(() => false))  ← account didn't match",
+        "  read.balanceOf(where(isTreasury))  ← account didn't match",
         // Unnamed: the source on one line, cut to 60 characters.
-        "  balanceOf(where((account) => isAddressEqual(account, carol) || isAddressEqu…))  ← account didn't match",
+        "  read.balanceOf(where((account) => isAddressEqual(account, carol) || isAddressEqu…))  ← account didn't match",
       ].join("\n"),
     );
     expectThrows(MockCheckError, `allowance(${getAddress(alice)}, any) on USDC (${USDC})`, () => {
@@ -505,8 +505,8 @@ describe("a miss's reasons", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        "  allowance(where(yes), where(no))  ← spender didn't match",
-        `  allowance(${getAddress(bob)}, where(no))  ← owner didn't match`,
+        "  read.allowance(where(yes), where(no))  ← spender didn't match",
+        `  read.allowance(${getAddress(bob)}, where(no))  ← owner didn't match`,
       ].join("\n"),
     );
     // Once each, for the one mock in contention; none for the message.
@@ -526,9 +526,9 @@ describe("a miss's reasons", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        `  balanceOf(${getAddress(bob)}) once, used up  ← account didn't match`,
-        `  balanceOf(${getAddress(carol)}) without an answer  ← account didn't match`,
-        "  balanceOf(where(never)) without an answer",
+        `  read.balanceOf(${getAddress(bob)}) once, used up  ← account didn't match`,
+        `  read.balanceOf(${getAddress(carol)}) without an answer  ← account didn't match`,
+        "  read.balanceOf(where(never)) without an answer",
       ].join("\n"),
     );
     expect(never.calls).toHaveLength(0);
@@ -545,8 +545,8 @@ describe("a miss's reasons", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        `  filled({ sell: { token: ${USDC}, amount: where(() => false) }, … })  ← order didn't match`,
-        `  filled({ maker: ${getAddress(bob)}, … })  ← order didn't match`,
+        `  read.filled({ sell: { token: ${USDC}, amount: where(() => false) }, … })  ← order didn't match`,
+        `  read.filled({ maker: ${getAddress(bob)}, … })  ← order didn't match`,
       ].join("\n"),
     );
   });
@@ -568,7 +568,7 @@ describe("a miss's reasons", () => {
       MockNotFoundError,
     );
     expect(hintsOf(error)).toBe(
-      `estimateGas mocks:\n  transfer(${getAddress(bob)}, 1n)  ← amount didn't match`,
+      `estimateGas mocks:\n  estimateGas.transfer(${getAddress(bob)}, 1n)  ← amount didn't match`,
     );
   });
 
@@ -764,7 +764,7 @@ describe("overloads", () => {
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "No mocks registered for balanceOf(address).",
       "Mocks on balanceOf's other overloads, which don't answer this one:",
-      `  balanceOf(${alice}, 1n)`,
+      `  read.balanceOf(${alice}, 1n)`,
     ]);
   });
 
@@ -784,9 +784,9 @@ describe("overloads", () => {
 
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "Registered:",
-      `  balanceOf(${carol})  ← owner didn't match`,
+      `  read.balanceOf(${carol})  ← owner didn't match`,
       "Mocks on balanceOf's other overloads, which don't answer this one:",
-      `  balanceOf(${alice}, 1n)`,
+      `  read.balanceOf(${alice}, 1n)`,
     ]);
   });
 
@@ -806,7 +806,7 @@ describe("overloads", () => {
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "No mocks registered for quote(uint256).",
       "Mocks on quote's other overloads, which don't answer this one:",
-      `  quote(${alice}), a simulate mock`,
+      `  simulate.quote(${alice})`,
     ]);
   });
 
@@ -826,7 +826,7 @@ describe("overloads", () => {
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "No simulate mocks registered for quote(address); a write mock doesn't answer simulations.",
       "Mocks on quote's other overloads, which don't answer this one:",
-      "  quote(5n), a read mock",
+      "  read.quote(5n)",
     ]);
   });
 

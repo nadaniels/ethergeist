@@ -202,7 +202,7 @@ describe("simulate", () => {
     expect(error.shortMessage).toBe(`No simulate mock for transfer(${bob}, 1n) on ${TOKEN}.`);
     expect(error.metaMessages).toEqual([
       "Registered:",
-      `  transfer(${bob}, 5n)  ← amount didn't match`,
+      `  simulate.transfer(${bob}, 5n)  ← amount didn't match`,
     ]);
   });
 

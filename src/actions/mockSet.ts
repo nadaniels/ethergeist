@@ -187,6 +187,7 @@ export function createMockSet<answer>(
   const forContract = new WeakSet<object>();
   const actualOf = (pinned: unknown, call: object) =>
     definition.actual === undefined ? call : definition.actual(pinned, call);
+  const describeActionMock = (handler: Handler) => describeMock(definition.name, handler);
 
   /**
    * The builder methods that answer, named for a mock registered without
@@ -232,7 +233,7 @@ export function createMockSet<answer>(
   const describeUnused = (list: Handler[]) =>
     list.map(
       (handler) =>
-        `${describeMock(definition.name, handler)}${
+        `${describeActionMock(handler)}${
           handler.answer === undefined
             ? formatNoAnswer(answers)
             : formatReceived(definition.name, received(handler), calls.total)
@@ -303,8 +304,8 @@ export function createMockSet<answer>(
    * again; another action's miss lists them as `others`.
    */
   const missListing = ({ missed, removed }: ReturnType<typeof match>): MissListing => ({
-    registered: missedLines(definition.name, mocks.handlers, missed, (_, key) => paramName(key)),
-    removed: removed.map((handler) => `  ${describeMock(definition.name, handler)}`),
+    registered: missedLines(mocks.handlers, missed, describeActionMock, (_, key) => paramName(key)),
+    removed: removed.map((handler) => `  ${describeActionMock(handler)}`),
   });
 
   /**
@@ -364,7 +365,7 @@ export function createMockSet<answer>(
     matchingLines: (call: object) =>
       mocks
         .matchingByValues(differsFrom(call))
-        .map((handler) => `  ${describeMock(definition.name, handler)}`),
+        .map((handler) => `  ${describeActionMock(handler)}`),
     /** The calls this action received, as they arrive. */
     calls,
     /**

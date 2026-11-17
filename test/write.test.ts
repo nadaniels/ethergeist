@@ -359,7 +359,7 @@ describe("a write mock", () => {
     );
     expect(notFound.metaMessages).toEqual([
       "Write mocks, which imply the estimate of a send they match:",
-      `  transfer(${bob}, 5n)  ← amount didn't match`,
+      `  write.transfer(${bob}, 5n)  ← amount didn't match`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       `  sendTransaction({ to: ${USDC} })`,
     ]);
@@ -376,7 +376,7 @@ describe("a write mock", () => {
     expect(notFound.shortMessage).toBe(`No write mock for transfer(${bob}, 6n) on USDC (${USDC}).`);
     expect(notFound.metaMessages).toEqual([
       "Registered:",
-      `  transfer(${bob}, 5n)  ← amount didn't match`,
+      `  write.transfer(${bob}, 5n)  ← amount didn't match`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       `  sendTransaction({ to: ${USDC} })`,
     ]);
@@ -451,7 +451,7 @@ describe("the estimate a write mock implies", () => {
     expect(usdc.calls.map(({ namespace }) => namespace)).toEqual(["estimateGas"]);
     expectThrows(
       MockCheckError,
-      /transfer\(.*\) once on USDC .*\n.*received no calls to transfer/u,
+      /write\.transfer\(.*\) once on USDC .*\n.*received no calls to write\.transfer/u,
       () => {
         mock.assertAllUsed();
       },
@@ -537,7 +537,7 @@ describe("the estimate a write mock implies", () => {
     const notFound = expectCause(error, MockNotFoundError);
     expect(notFound.shortMessage).toMatch(/^No write or estimateGas mock for transfer/u);
     expect(hintsOf(notFound)).toBe(
-      "Write mocks, which imply the estimate of a send they match:\n  transfer(*) once, used up",
+      "Write mocks, which imply the estimate of a send they match:\n  write.transfer(*) once, used up",
     );
   });
 
@@ -554,8 +554,8 @@ describe("the estimate a write mock implies", () => {
     expect(hintsOf(notFound)).toBe(
       [
         "Write mocks, which imply the estimate of a send they match:",
-        `  transfer(${bob}, 5n)  ← amount didn't match`,
-        `  transfer(${bob}, 6n)  ← amount didn't match`,
+        `  write.transfer(${bob}, 5n)  ← amount didn't match`,
+        `  write.transfer(${bob}, 6n)  ← amount didn't match`,
       ].join("\n"),
     );
   });
@@ -567,7 +567,9 @@ describe("the estimate a write mock implies", () => {
     const notFound = expectCause(await rejectionOf(transfer(7n)), MockNotFoundError);
 
     expect(notFound.shortMessage).toBe(`No write mock for transfer(${bob}, 7n) on USDC (${USDC}).`);
-    expect(hintsOf(notFound)).toBe(`Registered:\n  transfer(${bob}, 5n)  ← amount didn't match`);
+    expect(hintsOf(notFound)).toBe(
+      `Registered:\n  write.transfer(${bob}, 5n)  ← amount didn't match`,
+    );
   });
 
   test("an estimate's miss lists its estimateGas mocks, then its write mocks", async () => {
@@ -580,9 +582,9 @@ describe("the estimate a write mock implies", () => {
     expect(hintsOf(notFound)).toBe(
       [
         "estimateGas mocks:",
-        `  transfer(${alice}, 7n)  ← recipient didn't match`,
+        `  estimateGas.transfer(${alice}, 7n)  ← recipient didn't match`,
         "Write mocks, which imply the estimate of a send they match:",
-        `  transfer(${bob}, 5n)  ← amount didn't match`,
+        `  write.transfer(${bob}, 5n)  ← amount didn't match`,
       ].join("\n"),
     );
   });
@@ -607,7 +609,7 @@ describe("the estimate a write mock implies", () => {
     );
     expect(notFound.metaMessages).toEqual([
       "estimateGas mocks:",
-      `  transfer(${bob}, 1n)  ← amount didn't match`,
+      `  estimateGas.transfer(${bob}, 1n)  ← amount didn't match`,
     ]);
   });
 
@@ -631,7 +633,7 @@ describe("the estimate a write mock implies", () => {
     );
     expect(notFound.metaMessages).toEqual([
       "Registered:",
-      `  transfer(${bob}, 1n)  ← amount didn't match`,
+      `  estimateGas.transfer(${bob}, 1n)  ← amount didn't match`,
     ]);
   });
 
@@ -709,8 +711,8 @@ describe("the estimate a write mock implies", () => {
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "No write or estimateGas mocks registered for withdraw(uint256,address): a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.",
       "Mocks on withdraw's other overloads, which don't answer this one:",
-      "  withdraw(5n)",
-      "  withdraw(6n), a write mock",
+      "  estimateGas.withdraw(5n)",
+      "  write.withdraw(6n)",
     ]);
   });
 
@@ -751,7 +753,7 @@ describe("the estimate a write mock implies", () => {
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "No write mocks registered for withdraw(uint256,address); a simulate mock doesn't answer sends.",
       "Mocks on withdraw's other overloads, which don't answer this one:",
-      "  withdraw(5n)",
+      "  write.withdraw(5n)",
     ]);
   });
 });
@@ -1864,8 +1866,8 @@ describe("state the test owns (controlled mocks)", () => {
         mock.assertAllUsed();
       });
       expect(error.message).toContain(
-        "  - transfer(any, where(overBalance)) reverts on Token " +
-          `(${TOKEN})\n    received 1 call to transfer:\n      transfer(${bob}, 11n)  ` +
+        "  - write.transfer(any, where(overBalance)) reverts on Token " +
+          `(${TOKEN})\n    received 1 call to write.transfer:\n      transfer(${bob}, 11n)  ` +
           "← matches; another mock answered it",
       );
     });
@@ -2026,8 +2028,8 @@ describe("writes in history", () => {
       MockCheckError,
       [
         "1 mock(s) answered no call:",
-        `  - transfer(${bob}, 6n) on USDC (${USDC})`,
-        "    received 1 call to transfer:",
+        `  - write.transfer(${bob}, 6n) on USDC (${USDC})`,
+        "    received 1 call to write.transfer:",
         "      transfer(…, 5n)  ← amount didn't match",
         "",
         "Requests so far:",

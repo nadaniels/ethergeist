@@ -877,7 +877,7 @@ describe("contract estimate mocks", () => {
 
     expectThrows(
       MockCheckError,
-      `received 1 call to transfer:\n      transfer(${bob}, …)  ← to didn't match`,
+      `received 1 call to estimateGas.transfer:\n      transfer(${bob}, …)  ← to didn't match`,
       () => {
         mock.assertAllUsed();
       },

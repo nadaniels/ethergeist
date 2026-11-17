@@ -30,6 +30,15 @@ type Mock = {
 };
 
 /**
+ * A contract's mock is named as it's registered, under its namespace, e.g.
+ * `write.withdraw`: a function's mocks in two namespaces would otherwise
+ * read the same.
+ */
+const mockName = (mock: Mock) => `${mock.namespace}.${mock.abiItem.name}`;
+
+const describeContractMock = (mock: Mock) => describeMock(mockName(mock), mock);
+
+/**
  * A namespace's mocks for a call's function, the arg or pin each one
  * `missed` on, and those the last restore removed that match the call.
  */
@@ -46,10 +55,9 @@ type Candidates = {
  * send's. Its function's `write` mocks imply the estimate of a send they
  * match, so the error names both kinds of mock and lists both. Then come the
  * mocks on the function's other overloads (`overloads.others`), which can't
- * answer it, each in another namespace than the call's marked with it; with
- * any, the call's own overload (`overloads.called`) is named by its
- * signature. Then the mocks of both that the last restore removed, and last
- * the `after` lines of a turn's caller.
+ * answer it; with any, the call's own overload (`overloads.called`) is named
+ * by its signature. Then the mocks of both that the last restore removed, and
+ * last the `after` lines of a turn's caller.
  */
 export function missError(
   call: MockCall,
@@ -66,10 +74,10 @@ export function missError(
     after?: readonly string[];
   } = {},
 ): MockNotFoundError {
-  const describe = ({ registered, missed }: Candidates) =>
-    missedLines(call.functionName, registered, missed, argName);
-  const lines = describe(own);
-  const writeLines = writes === undefined ? [] : describe(writes);
+  const linesOf = ({ registered, missed }: Candidates) =>
+    missedLines(registered, missed, describeContractMock, argName);
+  const lines = linesOf(own);
+  const writeLines = writes === undefined ? [] : linesOf(writes);
   const others = overloads?.others ?? [];
   const name =
     overloads !== undefined && others.length > 0
@@ -101,13 +109,10 @@ export function missError(
   if (others.length > 0)
     metaMessages.push(
       `Mocks on ${call.functionName}'s other overloads, which don't answer this one:`,
-      ...others.map(
-        (mock) =>
-          `  ${describeMock(call.functionName, mock)}${mock.namespace === namespace ? "" : `, a ${mock.namespace} mock`}`,
-      ),
+      ...others.map((mock) => `  ${describeContractMock(mock)}`),
     );
   const removed = [...own.removed, ...(writes?.removed ?? [])].map(
-    (mock) => `  ${describeMock(call.functionName, mock)}`,
+    (mock) => `  ${describeContractMock(mock)}`,
   );
   metaMessages.push(...removedLines(removed), ...after);
   return new MockNotFoundError(
@@ -127,7 +132,6 @@ export function unusedLine(
   /** Every call received, including those dropped past `historyLimit`. */
   total: number,
 ): string {
-  const name = mock.abiItem.name;
   const after =
     mock.answer === undefined
       ? formatNoAnswer(
@@ -136,11 +140,11 @@ export function unusedLine(
             : ".returns(), .reverts(), .fails(), or .refuses()",
         )
       : formatReceived(
-          name,
+          mockName(mock),
           calls.map((call) => received(mock, call)),
           total,
         );
-  return `${describeMock(name, mock)} on ${label}${after}`;
+  return `${describeContractMock(mock)} on ${label}${after}`;
 }
 
 /**

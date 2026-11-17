@@ -295,7 +295,7 @@ missed:
 ```text
 No mock for balanceOf(0xa0Cf…5e1C)
 Registered:
-  balanceOf(0x3c4D…91aB)  ← account didn't match
+  read.balanceOf(0x3c4D…91aB)  ← account didn't match
 ```
 
 ## The Chain

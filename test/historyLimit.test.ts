@@ -233,7 +233,7 @@ describe("historyLimit", () => {
 
     expectThrows(
       MockCheckError,
-      /received 3 calls to balanceOf \(the last 2 kept, past historyLimit\):/u,
+      /received 3 calls to read\.balanceOf \(the last 2 kept, past historyLimit\):/u,
       () => {
         mock.assertAllUsed();
       },

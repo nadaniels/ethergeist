@@ -90,8 +90,8 @@ describe("once() and times()", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        "  balanceOf(*) once, used up",
-        `  balanceOf(${USDC}) 3 times  ← account didn't match`,
+        "  read.balanceOf(*) once, used up",
+        `  read.balanceOf(${USDC}) 3 times  ← account didn't match`,
       ].join("\n"),
     );
   });
@@ -207,7 +207,7 @@ describe("retries past a limited fault", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        "  balanceOf(*) fails once, used up",
+        "  read.balanceOf(*) fails once, used up",
         "This is viem retrying after a `.once()`/`.times(n)` fault (this transport's " +
           "`retryCount` is 3); each attempt used up an answer. Register a mock to answer " +
           "after it, or use `.fails()` without a limit to fail every attempt.",

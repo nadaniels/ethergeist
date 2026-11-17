@@ -87,7 +87,7 @@ describe("pinning from", () => {
       `No mock for balanceOf(${bob}) { from: undefined } on USDC (${USDC}).`,
     );
     expect(hintsOf(miss)).toBe(
-      `Registered:\n  balanceOf(${bob}) { from: where(isAlice) }  ← { from } didn't match`,
+      `Registered:\n  read.balanceOf(${bob}) { from: where(isAlice) }  ← { from } didn't match`,
     );
   });
 
@@ -106,8 +106,8 @@ describe("pinning from", () => {
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       [
         "Registered:",
-        `  pull(${alice}, 1n)  ← from didn't match`,
-        `  pull(${bob}, 1n) { from: ${alice} }  ← { from } didn't match`,
+        `  read.pull(${alice}, 1n)  ← from didn't match`,
+        `  read.pull(${bob}, 1n) { from: ${alice} }  ← { from } didn't match`,
       ].join("\n"),
     );
   });
@@ -180,8 +180,8 @@ describe("pinning from", () => {
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       [
         "Registered:",
-        `  transfer(${bob}, 5n)  ← amount didn't match`,
-        `  transfer(*) { from: ${alice} }  ← { from } didn't match`,
+        `  write.transfer(${bob}, 5n)  ← amount didn't match`,
+        `  write.transfer(*) { from: ${alice} }  ← { from } didn't match`,
       ].join("\n"),
     );
   });
@@ -231,8 +231,8 @@ describe("pinning value", () => {
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       [
         "Registered:",
-        "  deposit() { value: 1n }  ← { value } didn't match",
-        "  deposit() { value: where(large) }  ← { value } didn't match",
+        "  write.deposit() { value: 1n }  ← { value } didn't match",
+        "  write.deposit() { value: where(large) }  ← { value } didn't match",
       ].join("\n"),
     );
   });
@@ -379,7 +379,7 @@ describe("pins and the estimate a write mock implies", () => {
     expect(hintsOf(miss)).toBe(
       [
         "Write mocks, which imply the estimate of a send they match:",
-        `  deposit() { from: ${alice}, value: 1n }  ← { from } didn't match`,
+        `  write.deposit() { from: ${alice}, value: 1n }  ← { from } didn't match`,
       ].join("\n"),
     );
     expect(hintsOf(expectCause(await rejectionOf(estimate(alice, 2n)), MockNotFoundError))).toMatch(
@@ -396,7 +396,7 @@ describe("pins in assertAllUsed()", () => {
     usdc.read.balanceOf().returns(2n);
 
     expect(await balanceOf(alice)).toBe(2n);
-    expectThrows(MockCheckError, `  - balanceOf(*) on USDC (${USDC})\n`, () => {
+    expectThrows(MockCheckError, `  - read.balanceOf(*) on USDC (${USDC})\n`, () => {
       mock.assertAllUsed();
     });
   });
@@ -431,11 +431,11 @@ describe("pins in assertAllUsed()", () => {
     expectThrows(
       MockCheckError,
       [
-        `  - balanceOf(${bob}) { from: ${alice} } on USDC (${USDC})`,
-        "    received 1 call to balanceOf:",
+        `  - read.balanceOf(${bob}) { from: ${alice} } on USDC (${USDC})`,
+        "    received 1 call to read.balanceOf:",
         "      balanceOf(…) { from: undefined }  ← { from } didn't match",
-        `  - deposit() { value: 1n } on Vault (${VAULT})`,
-        "    received 1 call to deposit:",
+        `  - write.deposit() { value: 1n } on Vault (${VAULT})`,
+        "    received 1 call to write.deposit:",
         "      deposit() { value: 2n }  ← { value } didn't match",
       ].join("\n"),
       () => {
@@ -458,15 +458,15 @@ describe("pins in assertAllUsed()", () => {
       MockCheckError,
       [
         "3 mock(s) answered no call:",
-        `  - balanceOf(${bob}) { from: ${alice} } on USDC (${USDC})`,
-        "    received 1 call to balanceOf:",
+        `  - read.balanceOf(${bob}) { from: ${alice} } on USDC (${USDC})`,
+        "    received 1 call to read.balanceOf:",
         `      balanceOf(…) { from: ${carol} }  ← { from } didn't match`,
-        `  - balanceOf(${carol}) { from: ${alice} } on USDC (${USDC})`,
-        "    received 1 call to balanceOf:",
+        `  - read.balanceOf(${carol}) { from: ${alice} } on USDC (${USDC})`,
+        "    received 1 call to read.balanceOf:",
         `      balanceOf(${bob}) { from: ${carol} }  ← account didn't match`,
         // A pin that matches isn't shown.
-        `  - balanceOf(${alice}) { from: ${carol} } on USDC (${USDC})`,
-        "    received 1 call to balanceOf:",
+        `  - read.balanceOf(${alice}) { from: ${carol} } on USDC (${USDC})`,
+        "    received 1 call to read.balanceOf:",
         `      balanceOf(${bob})  ← account didn't match`,
       ].join("\n"),
       () => {
