@@ -117,6 +117,8 @@ The mock's errors:
   bare, and so is a field's name, as in a subject: `fee isn't a field of …`.
   A contract's mock is named with its namespace, as it's registered
   (`write.withdraw(150n)`), and a call without one (`withdraw(150n)`).
+  Where the mock engine names a mock in prose, the name is quoted:
+  `Mock resolver for "write.transfer" threw`.
   An error's own message and a summary's words are prose, printed
   bare: `✗ fault: RPC error -32005 (limit exceeded)`, `success, block 10n`.
 - A request param a node can't parse is `invalidParams` (`chain/params.ts`),

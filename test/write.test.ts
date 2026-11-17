@@ -680,7 +680,7 @@ describe("the estimate a write mock implies", () => {
     );
 
     expect(expectCause(error, MockResolverError).shortMessage).toBe(
-      'Matcher where(small) for "transfer" threw: too large',
+      'Matcher where(small) for "write.transfer" threw: too large',
     );
     expect(usdc.estimateGas.transfer.calls).toMatchObject([{ args: [bob, 500n], from: alice }]);
     expect(mock.history.at(-1)).toMatchObject({
@@ -1623,10 +1623,38 @@ describe("a send mock's resolver", () => {
 
     const error = expectCause(await rejectionOf(transfer()), MockResolverError);
 
-    expect(error.shortMessage).toContain('Mock resolver for "transfer" threw:');
+    expect(error.shortMessage).toContain('Mock resolver for "write.transfer" threw:');
     expect(mock.unhandled.map(({ method }) => method)).toEqual(["eth_sendRawTransaction"]);
     expect(mock.transactions).toEqual([]);
     expect(await client.getTransactionCount({ address: from })).toBe(0);
+  });
+
+  test("a function's estimateGas resolver and its write resolver that throw name different mocks", async () => {
+    const { mock, usdc, transfer } = setup();
+    usdc.estimateGas
+      .transfer()
+      .once()
+      .returns(() => {
+        throw new Error("boom");
+      });
+    usdc.write.transfer().returns(() => {
+      throw new Error("boom");
+    });
+
+    // A local account's writeContract estimates, then sends: the first stops
+    // at its estimate, and the second's is the one the write mock implies.
+    const estimating = expectCause(await rejectionOf(transfer()), MockResolverError);
+    const sending = expectCause(await rejectionOf(transfer()), MockResolverError);
+
+    expect([estimating.shortMessage, sending.shortMessage]).toEqual([
+      'Mock resolver for "estimateGas.transfer" threw: boom',
+      'Mock resolver for "write.transfer" threw: boom',
+    ]);
+    expect(sentMethods(mock)).toEqual([
+      "eth_estimateGas",
+      "eth_estimateGas",
+      "eth_sendRawTransaction",
+    ]);
   });
 
   test("answers with its outcome's logs, or a reverted status", async () => {

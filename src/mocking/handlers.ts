@@ -173,9 +173,9 @@ export function createHandlers<context, extra>() {
   }
 
   /**
-   * `handler`'s builder, for the function or action `name`. `prepare` checks
-   * a static answer at registration, so one that can't be encoded fails
-   * there, not inside a request, and returns what the mock answers with.
+   * `handler`'s builder. `name` names the mock in its messages. `prepare`
+   * checks a static answer at registration, so one that can't be encoded
+   * fails there, not inside a request, and returns what the mock answers with.
    * With `engine.revertError`, it has `.reverts(spec)`, reverting with what
    * `revertError` makes of `spec` at registration, so a spec that can't be
    * encoded throws there and changes nothing.
@@ -243,7 +243,7 @@ export function createHandlers<context, extra>() {
    * left; one that can't steps aside for the rest, however specific.
    * `differs` gives where a handler's pins first differ from the call (see
    * `firstMismatch`), or `undefined` when it matches. `name` names the
-   * function or action when a predicate throws.
+   * candidates (see `createBuilder`) in the error when a predicate throws.
    *
    * On a miss, for messages, no predicate runs: `missed` says where each
    * candidate that didn't answer first differs from the call (as matching
@@ -294,9 +294,9 @@ export function createHandlers<context, extra>() {
    * Answers with `handler`, counting the use: its answer, encoded. A mock's
    * `.reverts()` answers `reverted` where it's given (a send is mined
    * reverted), and otherwise its revert is thrown. What a resolver throws
-   * becomes a resolver error named `name`, unless it's an answer itself
-   * (see `isDeliberate`). A static value's setup error, from encoding it at
-   * the request (a check that needs the call or the chain, or a value
+   * becomes a resolver error naming the mock `name`, unless it's an answer
+   * itself (see `isDeliberate`). A static value's setup error, from encoding
+   * it at the request (a check that needs the call or the chain, or a value
    * changed after `.returns()`), is the mock's, thrown as it is.
    *
    * A resolver is called before the first `await`: a send relies on it to

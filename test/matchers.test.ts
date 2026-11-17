@@ -5,6 +5,7 @@ import {
   type ContractFunctionArgs,
   ContractFunctionExecutionError,
   InvalidAddressError,
+  createWalletClient,
   erc20Abi,
   erc4626Abi,
   erc721Abi,
@@ -329,11 +330,44 @@ describe("match.where()", () => {
 
     const error = expectCause(await rejectionOf(balanceOf(alice)), MockResolverError);
     expect(error.matcher).toBe("where(throwsBoom)");
-    expect(error.shortMessage).toBe('Matcher where(throwsBoom) for "balanceOf" threw: boom');
+    expect(error.shortMessage).toBe('Matcher where(throwsBoom) for "read.balanceOf" threw: boom');
     expect(mock.unhandled).toHaveLength(1);
     expect(mock.formatHistory({ builtIns: false })).toContain(
       "✗ matcher where(throwsBoom) threw: boom",
     );
+  });
+
+  test("a predicate that throws names the mock it's on, with its namespace", async () => {
+    const { mock, client, usdc } = setup();
+    const wallet = createWalletClient({
+      account: alice,
+      chain: mock.chain,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+    const transfer = {
+      address: USDC,
+      abi: erc20Abi,
+      functionName: "transfer",
+      args: [bob, 5n],
+    } as const;
+    usdc.simulate.transfer([bob, match.where(throwsBoom)]).returns(true);
+    usdc.estimateGas.transfer([bob, match.where(throwsBoom)]).returns(50_000n);
+    usdc.write.transfer([bob, match.where(throwsBoom)]).returns();
+
+    const simulated = await rejectionOf(client.simulateContract({ ...transfer, account: alice }));
+    // Without a sender, the estimate isn't a send's, so no write mock is tried.
+    const estimated = await rejectionOf(client.estimateContractGas(transfer));
+    const sent = await rejectionOf(wallet.writeContract(transfer));
+
+    expect(
+      [simulated, estimated, sent].map(
+        (error) => expectCause(error, MockResolverError).shortMessage,
+      ),
+    ).toEqual([
+      'Matcher where(throwsBoom) for "simulate.transfer" threw: boom',
+      'Matcher where(throwsBoom) for "estimateGas.transfer" threw: boom',
+      'Matcher where(throwsBoom) for "write.transfer" threw: boom',
+    ]);
   });
 });
 

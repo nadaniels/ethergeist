@@ -27,7 +27,7 @@ import { createRevertError } from "./answers.js";
 import { type Pins, firstPinMismatch, pinCall } from "./callPins.js";
 import { type AddTransaction, createContractApi } from "./createContractApi.js";
 import { createFunctions } from "./functions.js";
-import { formatContract, missError, unusedLine } from "./messages.js";
+import { formatContract, missError, mockName, unusedLine } from "./messages.js";
 import { type AnswerIn, answersIn } from "./namespaces.js";
 import type {
   MockCallRecord,
@@ -268,7 +268,7 @@ export function createMockContract<const abi extends Abi>(
     const answers = answersIn[namespace];
     const builder = mocks.createBuilder(
       handler,
-      abiItem.name,
+      mockName(handler),
       (value) => {
         answers.encode(abiItem, value);
         return value;
@@ -535,6 +535,8 @@ export function createMockContract<const abi extends Abi>(
   /**
    * The handler that answers `decoded`, matched on its args, then its `from`
    * and `value` (see `findAnswering`), and what each candidate missed on.
+   * Its candidates share `decoded`'s namespace and function, so one name is
+   * every candidate's.
    */
   function match(decoded: Decoded) {
     const { call } = decoded;
@@ -544,7 +546,7 @@ export function createMockContract<const abi extends Abi>(
         const arg = firstMismatch(handler.pinned, call.args, options);
         return arg === undefined ? firstPinMismatch(handler.pins, call, options) : arg;
       },
-      call.functionName,
+      mockName(decoded),
     );
   }
 
@@ -565,7 +567,7 @@ export function createMockContract<const abi extends Abi>(
       handler,
       context,
       (value) => answers.encode(handler.abiItem, value),
-      call.functionName,
+      mockName(handler),
       answers.reverted,
     );
   }

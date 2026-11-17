@@ -165,10 +165,10 @@ export class MockResolverError extends MockError {
    */
   matcher: string | undefined;
 
-  constructor(functionName: string, cause: unknown, { matcher }: { matcher?: string } = {}) {
+  constructor(mockName: string, cause: unknown, { matcher }: { matcher?: string } = {}) {
     const error = asError(cause);
     const thrower = matcher === undefined ? "Mock resolver" : `Matcher ${matcher}`;
-    super(`${thrower} for "${functionName}" threw: ${summaryOf(error)}`, {
+    super(`${thrower} for "${mockName}" threw: ${summaryOf(error)}`, {
       cause: error,
       metaMessages: metaMessagesOf(error),
     });

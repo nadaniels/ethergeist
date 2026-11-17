@@ -11,6 +11,7 @@ import { describe, expect, test } from "vite-plus/test";
 
 import {
   MockNotFoundError,
+  MockResolverError,
   MockSetupError,
   createMockRpc,
   match,
@@ -1099,6 +1100,29 @@ describe("defaults", () => {
       });
     expect(await balanceOf(alice)).toBe(9n);
     expect(await balanceOf(bob)).toBe(0n);
+  });
+
+  test("a default's resolver that throws is named with its namespace, as a mock is", async () => {
+    const { mock, client } = setup();
+    mock.contract({
+      abi: erc20Abi,
+      address: USDC,
+      defaults: {
+        read: {
+          balanceOf: () => {
+            throw new Error("boom");
+          },
+        },
+      },
+    });
+
+    const error = await rejectionOf(
+      client.readContract({ abi: erc20Abi, address: USDC, functionName: "balanceOf", args: [bob] }),
+    );
+
+    expect(expectCause(error, MockResolverError).shortMessage).toBe(
+      'Mock resolver for "read.balanceOf" threw: boom',
+    );
   });
 
   test("functions missing from defaults still fail loudly", async () => {

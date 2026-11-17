@@ -191,7 +191,7 @@ describe("resolvers that throw", () => {
     expect(findCause(error, ContractFunctionRevertedError)).toBeUndefined();
     const resolverError = expectCause(error, MockResolverError);
     expect(resolverError).toBeInstanceOf(MockResolverError);
-    expect(resolverError.message).toContain('Mock resolver for "ownerOf" threw: fixture bug');
+    expect(resolverError.message).toContain('Mock resolver for "read.ownerOf" threw: fixture bug');
     expect(resolverError.cause).toMatchObject({ message: "fixture bug" });
     expect(mock.history).toHaveLength(1);
   });

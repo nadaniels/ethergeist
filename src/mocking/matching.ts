@@ -53,7 +53,7 @@ export function bestMatch<candidate extends Rankable>(
   /** In registration order; only those that can answer. */
   candidates: readonly candidate[],
   differs: (candidate: candidate, options: MatchOptions) => PinnedKey | undefined,
-  /** The function or action, for the error when a predicate throws. */
+  /** What names the candidates, for the error when a predicate throws. */
   name: string,
 ): { best: candidate | undefined; missed: Map<candidate, PinnedKey> } {
   const ranked = candidates

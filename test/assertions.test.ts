@@ -287,7 +287,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
 
     await rejectionOf(balanceOf(alice));
     const list = unhandledList(mock);
-    expect(list).toContain('  - Mock resolver for "balanceOf" threw:');
+    expect(list).toContain('  - Mock resolver for "read.balanceOf" threw:');
     expect(list).toMatch(/^ {8}data: +0x313ce567$/mu);
     expect(list).toMatch(/^ {8}gas: +1000$/mu);
     expect(list).not.toContain("more");
@@ -306,7 +306,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
     await rejectionOf(balanceOf(alice));
     expect(unhandledList(mock)).toBe(
       "The mock couldn't answer 2 request(s):\n" +
-        '  - Mock resolver for "balanceOf" threw: fixture bug (×2)',
+        '  - Mock resolver for "read.balanceOf" threw: fixture bug (×2)',
     );
   });
 
@@ -322,7 +322,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
     await rejectionOf(balanceOf(alice));
     expect(unhandledList(mock)).toBe(
       "The mock couldn't answer 1 request(s):\n" +
-        '  - Mock resolver for "balanceOf" threw: fixture bug',
+        '  - Mock resolver for "read.balanceOf" threw: fixture bug',
     );
   });
 });
