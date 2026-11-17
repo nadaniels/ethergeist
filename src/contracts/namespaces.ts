@@ -20,7 +20,7 @@ export type AnswerIn<namespace extends MockNamespace> = Answers[namespace];
 /**
  * How a contract's mocks answer in one namespace. The rest is the
  * contract's: a revert is its ABI's in every namespace, and every resolver
- * gets the same context.
+ * gets the same context, but for `revert` (see `minedReverted`).
  */
 type NamespaceAnswers<answer> = {
   /**
@@ -32,8 +32,8 @@ type NamespaceAnswers<answer> = {
   /** Adds to a mock's builder: a send's `.emits()`. */
   extendBuilder?: (builder: Builder) => void;
   /**
-   * What a revert answers instead of being thrown, encoded as a mock's answer
-   * is: a send is mined reverted.
+   * What a mock's `.reverts()` answers instead of being thrown, encoded as a
+   * mock's answer is: a send is mined reverted.
    */
   reverted?: MockWriteOutcome;
 };

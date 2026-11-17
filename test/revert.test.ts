@@ -3,7 +3,6 @@ import {
   ContractFunctionRevertedError,
   IntegerOutOfRangeError,
   createPublicClient,
-  createWalletClient,
   encodeErrorResult,
   getAddress,
   parseAbi,
@@ -374,19 +373,17 @@ describe("a revert spec is checked at .reverts(), on every builder", () => {
     ]);
   });
 
-  test("a resolver's revert() with a spec the types rule out throws the mock's error, sends too", async () => {
-    const { mock, nft, ownerOf } = setup();
+  test("a resolver's revert() with a spec the types rule out throws the mock's error, an estimate's too", async () => {
+    const { mock, client, nft, ownerOf } = setup();
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
     nft.read.ownerOf().returns(({ revert }) => revert(null as never));
     // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
-    mock.actions.sendTransaction().returns(({ revert }) => revert({} as never));
-    const wallet = createWalletClient({
-      account: alice,
-      chain: mainnet,
-      transport: mock.transport({ retryCount: 0 }),
-    });
+    mock.actions.estimateGas().returns(({ revert }) => revert({} as never));
 
     expectCause(await rejectionOf(ownerOf(1n)), MockSetupError);
-    expectCause(await rejectionOf(wallet.sendTransaction({ to: alice })), MockSetupError);
+    expectCause(
+      await rejectionOf(client.estimateGas({ account: alice, to: alice })),
+      MockSetupError,
+    );
   });
 });

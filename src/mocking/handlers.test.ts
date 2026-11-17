@@ -56,17 +56,6 @@ describe("answerWith()", () => {
       status: "reverted",
     });
   });
-
-  test("a resolver's revert answers what the caller gives for it too", async () => {
-    const { builder, answer } = setup();
-    builder.returns(() => {
-      throw new MockRevertError("0x");
-    });
-
-    await expect(answer(undefined, { status: "reverted" })).resolves.toEqual({
-      status: "reverted",
-    });
-  });
 });
 
 describe("createBuilder()", () => {

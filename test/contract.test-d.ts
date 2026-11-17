@@ -5,11 +5,13 @@ import {
   type CreateMockContractParameters,
   type MockBatch,
   type ContractDefaults,
+  type FaultContext,
   type MockFault,
   type MockNamespace,
   type MockOutcome,
   type MockRpc,
   type NodeErrorName,
+  type WriteResolverContext,
   createMockRpc,
   match,
   testLog,
@@ -131,6 +133,13 @@ describe("defaults", () => {
             return true;
           },
         },
+        write: {
+          transfer: (context) => {
+            expectTypeOf(context.args).toEqualTypeOf<readonly [Address, bigint]>();
+            expectTypeOf(context.from).toEqualTypeOf<Address>();
+            expectTypeOf(context).not.toHaveProperty("revert");
+          },
+        },
       },
     });
   });
@@ -212,6 +221,8 @@ describe("reverts", () => {
   });
 });
 
+const timeOut = (context: FaultContext): never => context.fail("timeout");
+
 describe("faults", () => {
   test("fails() takes a MockFault", () => {
     usdc.read.decimals().fails({ status: 503, retryAfter: 1 });
@@ -286,6 +297,23 @@ describe("faults", () => {
       return true;
     });
   });
+
+  test("a helper that takes a FaultContext fits every resolver", () => {
+    usdc.read.decimals().returns(timeOut);
+    usdc.simulate.transfer().returns(timeOut);
+    usdc.estimateGas.transfer().returns(timeOut);
+    usdc.write.transfer().returns(timeOut);
+    defaultsOf({
+      read: { decimals: timeOut },
+      simulate: { transfer: timeOut },
+      estimateGas: { transfer: timeOut },
+      write: { transfer: timeOut },
+    });
+    mock.actions.getBalance().returns(timeOut);
+    mock.actions.estimateGas().returns(timeOut);
+    mock.actions.sendTransaction().returns(timeOut);
+    mock.method("eth_getProof").returns(timeOut);
+  });
 });
 
 describe("simulate", () => {
@@ -300,10 +328,11 @@ describe("simulate", () => {
 
   test("args, returns, and resolver context are typed from the ABI", () => {
     usdc.simulate.transfer([USDC, 1n]).returns(true);
-    usdc.simulate.transfer().returns(({ args, from, value }) => {
+    usdc.simulate.transfer().returns(({ args, from, value, revert }) => {
       expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
       expectTypeOf(from).toEqualTypeOf<Address | undefined>();
       expectTypeOf(value).toEqualTypeOf<bigint>();
+      expectTypeOf(revert).returns.toBeNever();
       return true;
     });
 
@@ -342,11 +371,14 @@ describe("estimateGas", () => {
     token.estimateGas.transfer([USDC, 1n]).returns(65_000n);
     token.estimateGas.transfer().once().refuses("feeCapTooLow");
     token.estimateGas.transfer().fails({ status: 503 });
-    token.estimateGas.transfer().returns(({ args, from }) => {
+    token.estimateGas.transfer().returns(({ args, from, revert }) => {
       expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
       expectTypeOf(from).toEqualTypeOf<Address | undefined>();
+      if (args[1] > 5n) revert({ errorName: "Paused", args: [USDC] });
       return 65_000n;
     });
+    // @ts-expect-error -- not an error on the ABI
+    token.estimateGas.transfer().returns(({ revert }) => revert({ errorName: "Nope" }));
     token.estimateGas.transfer().reverts({ errorName: "Paused", args: [USDC] });
     expectTypeOf(token.estimateGas.transfer.calls[0]!.args).toEqualTypeOf<
       readonly [Address, bigint]
@@ -376,6 +408,10 @@ describe("estimateGas", () => {
   });
 });
 
+/** A `write` resolver annotated with its context's type. */
+const overFive = ({ args: [, amount] }: WriteResolverContext<readonly [Address, bigint]>) =>
+  amount > 5n ? { status: "reverted" as const } : undefined;
+
 describe("write", () => {
   const token = createMockRpc().contract({
     abi: parseAbi([
@@ -398,17 +434,19 @@ describe("write", () => {
     token.write.transfer().once().refuses("insufficientFunds");
     token.write.transfer().fails("timeout");
     token.write.transfer().reverts({ errorName: "Paused", args: [USDC] });
-    token.write.transfer().returns(({ args, from, revert }) => {
+    token.write.transfer().returns(({ args, from }) => {
       expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
       expectTypeOf(from).toEqualTypeOf<Address>();
-      if (args[1] > 5n) revert({ errorName: "Paused", args: [from] });
+      if (args[1] > 5n) return { status: "reverted" };
       return {
         logs: [token.events.Transfer({ from, to: args[0], value: args[1] }), testLog("noise")],
       };
     });
     token.write.transfer().returns((context) => {
       expectTypeOf(context).not.toHaveProperty("emit");
+      expectTypeOf(context).not.toHaveProperty("revert");
     });
+    token.write.transfer().returns(overFive);
     // @ts-expect-error -- not a log: no address, topics, or data
     token.write.transfer().returns(() => ({ logs: [{ logIndex: 0 }] }));
     token.write.transfer().returns(() => Promise.resolve({ logs: [] }));

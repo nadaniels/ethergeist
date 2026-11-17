@@ -19,7 +19,7 @@ import {
 } from "../mocking/handlers.js";
 import { checkNoRunnerMatchers, firstMismatch, specificity } from "../mocking/matching.js";
 import { failureOutcome, type MockOutcome } from "../mocking/outcomes.js";
-import type { NodeErrorName, RefusalContext } from "../mocking/types.js";
+import type { FaultContext, NodeErrorName, RefusalContext } from "../mocking/types.js";
 import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, type RecordList, createRecordList } from "../shared/records.js";
@@ -37,7 +37,6 @@ import type {
   MockCall,
   MockContract,
   MockNamespace,
-  ResolverContext,
   RevertFn,
   RevertSpec,
   MockTaggedCall,
@@ -47,7 +46,7 @@ import type {
  * What every resolver gets: the types offer `refuse` only where a node can
  * refuse.
  */
-type Context = ResolverContext<Abi, readonly unknown[]> & RefusalContext<NodeErrorName>;
+type Context = MockCall & FaultContext & RefusalContext<NodeErrorName> & { revert?: RevertFn<Abi> };
 
 /**
  * What a contract's mock adds to the engine's: which function it's for, in
@@ -195,7 +194,6 @@ export function createMockContract<const abi extends Abi>(
   }
   /** What `.reverts(spec)` and a resolver's `revert(spec)` revert with. */
   const revertError = (spec?: RevertSpec) => createRevertError(abi, spec);
-  /** Handed to every resolver. */
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- createRevertError takes any RevertSpec, which the generic only narrows
   const revert = ((spec?: RevertSpec) => {
     throw revertError(spec);
@@ -561,9 +559,11 @@ export function createMockContract<const abi extends Abi>(
     namespace: namespace,
   ): Promise<AnswerIn<namespace>> {
     const answers = answersIn[namespace];
+    const context: Context = { ...call, fail, refuse };
+    if (answers.reverted === undefined) context.revert = revert;
     return mocks.answerWith(
       handler,
-      { ...call, revert, fail, refuse },
+      context,
       (value) => answers.encode(handler.abiItem, value),
       call.functionName,
       answers.reverted,

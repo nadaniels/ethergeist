@@ -1093,10 +1093,10 @@ describe("reverts", () => {
     },
   );
 
-  test("a resolver's revert() mines it reverted; its estimate passes", async () => {
+  test("a resolver that returns a reverted status mines it reverted; its estimate passes", async () => {
     const { mock, client, usdc, transfer } = setup();
-    usdc.write.transfer().returns(({ from, args: [to, value], revert }) => {
-      if (value > 5n) revert("too much");
+    usdc.write.transfer().returns(({ from, args: [to, value] }) => {
+      if (value > 5n) return { status: "reverted" };
       return { logs: [usdc.events.Transfer({ from, to, value })] };
     });
 
@@ -1580,10 +1580,57 @@ describe("adding a transaction while a write's resolver waits", () => {
 });
 
 describe("a send mock's resolver", () => {
-  test("answers with its outcome's logs, or reverts with revert()", async () => {
+  test("has no revert: a write mock's, a default's, and a sendTransaction mock's", async () => {
+    const { mock, wallet, usdc, transfer } = setup();
+    const keys: Record<string, string[]> = {};
+    usdc.write.transfer().returns((context) => {
+      keys.write = Object.keys(context);
+    });
+    mock.contract({
+      abi: vaultAbi,
+      address: VAULT,
+      defaults: {
+        write: {
+          deposit: (context) => {
+            keys.default = Object.keys(context);
+          },
+        },
+      },
+    });
+    mock.actions.sendTransaction({ to: bob }).returns((context) => {
+      keys.sendTransaction = Object.keys(context);
+    });
+
+    await transfer();
+    await wallet.writeContract({ address: VAULT, abi: vaultAbi, functionName: "deposit" });
+    await wallet.sendTransaction({ to: bob });
+
+    expect(Object.keys(keys)).toEqual(["write", "default", "sendTransaction"]);
+    for (const list of Object.values(keys)) {
+      expect(list).toEqual(expect.arrayContaining(["from", "value", "fail", "refuse"]));
+      expect(list).not.toContain("revert");
+    }
+  });
+
+  test("a write mock's resolver that calls revert() untyped is a resolver error: nothing is placed, and no nonce is taken", async () => {
+    const { mock, client, usdc, from, transfer } = setup();
+    usdc.write.transfer().returns((context: object) => {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+      (context as { revert: () => never }).revert();
+    });
+
+    const error = expectCause(await rejectionOf(transfer()), MockResolverError);
+
+    expect(error.shortMessage).toContain('Mock resolver for "transfer" threw:');
+    expect(mock.unhandled.map(({ method }) => method)).toEqual(["eth_sendRawTransaction"]);
+    expect(mock.transactions).toEqual([]);
+    expect(await client.getTransactionCount({ address: from })).toBe(0);
+  });
+
+  test("answers with its outcome's logs, or a reverted status", async () => {
     const { mock, client, wallet } = setup();
-    mock.actions.sendTransaction({ to: bob }).returns(({ value, revert }) => {
-      if (value > 1n) revert("too much");
+    mock.actions.sendTransaction({ to: bob }).returns(({ value }) => {
+      if (value > 1n) return { status: "reverted" };
       return { logs: [testLog("paid")] };
     });
 
@@ -1609,18 +1656,20 @@ describe("state the test owns (controlled mocks)", () => {
   const TOKEN = testAddress("token");
 
   /**
-   * The docs' example: balances in a closure, read by `balanceOf`, changed only
-   * by `transfer`.
+   * The docs' example: balances in a closure, read by `balanceOf`, changed
+   * only by `transfer`. `resolved` records each amount the write mock's
+   * resolver gets.
    */
-  function ledger() {
-    const { mock, client, wallet, from: sender } = setup();
+  function ledger(account: "local" | "node" = "local") {
+    const { mock, client, wallet, from: sender } = setup(account);
     const token = mock.contract({ abi: tokenAbi, address: TOKEN, name: "Token" });
     const balances = new Map([[sender, 10n]]);
+    const resolved = vi.fn<(amount: bigint) => void>();
     token.read.balanceOf().returns(({ args: [who] }) => balances.get(who) ?? 0n);
-    token.write.transfer().returns(({ from, args: [to, amount], revert }) => {
+    token.write.transfer().returns(({ from, args: [to, amount] }) => {
+      resolved(amount);
       const have = balances.get(from) ?? 0n;
-      if (have < amount)
-        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
+      if (have < amount) return { status: "reverted" };
       balances.set(from, have - amount);
       balances.set(to, (balances.get(to) ?? 0n) + amount);
       return { logs: [token.events.Transfer({ from, to, value: amount })] };
@@ -1639,7 +1688,23 @@ describe("state the test owns (controlled mocks)", () => {
         functionName: "transfer",
         args: [bob, amount],
       });
-    return { mock, client, token, balances, sender, balanceOf, transfer };
+    return { mock, client, token, balances, resolved, sender, balanceOf, transfer };
+  }
+
+  /**
+   * The ledger, with an estimate mock whose resolver reverts a transfer of
+   * more than the sender has.
+   */
+  function ledgerWithEstimate() {
+    const fixture = ledger();
+    const { token, balances } = fixture;
+    token.estimateGas.transfer().returns(({ from = zeroAddress, args: [, amount], revert }) => {
+      const have = balances.get(from) ?? 0n;
+      if (have < amount)
+        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
+      return 50_000n;
+    });
+    return fixture;
   }
 
   test("a transfer moves the balances its reads answer, once, though it's estimated first", async () => {
@@ -1663,7 +1728,7 @@ describe("state the test owns (controlled mocks)", () => {
   test("a transfer over the balance is mined reverted and changes nothing", async () => {
     const { mock, client, sender, balanceOf, transfer } = ledger();
 
-    // The resolver runs only at the send, so its revert isn't the estimate's: it's mined reverted.
+    // The resolver runs only at the send, so the estimate passes, and the send is mined reverted.
     const hash = await transfer(11n);
 
     expect(await client.waitForTransactionReceipt({ hash, pollingInterval: 10 })).toMatchObject({
@@ -1675,13 +1740,7 @@ describe("state the test owns (controlled mocks)", () => {
   });
 
   test("an estimate that reads the closure makes an overdraft throw before it's sent", async () => {
-    const { mock, token, balances, sender, balanceOf, transfer } = ledger();
-    token.estimateGas.transfer().returns(({ from = zeroAddress, args: [, amount], revert }) => {
-      const have = balances.get(from) ?? 0n;
-      if (have < amount)
-        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
-      return 50_000n;
-    });
+    const { mock, sender, balanceOf, transfer } = ledgerWithEstimate();
 
     const error = await rejectionOf(transfer(11n));
 
@@ -1694,27 +1753,122 @@ describe("state the test owns (controlled mocks)", () => {
     expect(await balanceOf(sender)).toBe(6n);
   });
 
-  test("a resolver's revert() undoes nothing it changed before it", async () => {
-    const { mock, client, wallet } = setup();
-    const token = mock.contract({ abi: tokenAbi, address: TOKEN });
-    let transfers = 0;
-    let after = false;
-    token.write.transfer().returns(({ revert }) => {
-      transfers += 1;
-      revert("paused");
-      after = true;
+  test("a write mock that answers ahead of the write mock's resolver still leaves the estimate reverting", async () => {
+    const { mock, token, resolved, sender, balanceOf, transfer } = ledgerWithEstimate();
+    token.write.transfer([bob, 11n]).returns();
+
+    const error = await rejectionOf(transfer(11n));
+
+    expect(expectCause(error, ContractFunctionRevertedError).data?.errorName).toBe(
+      "ERC20InsufficientBalance",
+    );
+    expect(mock.transactions).toEqual([]);
+    expect(resolved).not.toHaveBeenCalled();
+    expect(await balanceOf(sender)).toBe(10n);
+  });
+
+  test("an estimate mock that answers ahead of the estimate resolver hides its revert, and the write mock's resolver mines the send reverted", async () => {
+    const { client, token, sender, balanceOf, transfer } = ledgerWithEstimate();
+    token.estimateGas.transfer([bob, 11n]).returns(60_000n);
+
+    const hash = await transfer(11n);
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      status: "reverted",
+      logs: [],
+    });
+    expect([await balanceOf(sender), await balanceOf(bob)]).toEqual([10n, 0n]);
+  });
+
+  test("a .reverts() mock pinned to an amount answers it over the ledger's resolver", async () => {
+    const { mock, token, sender, balanceOf, transfer } = ledger();
+    token.write
+      .transfer([bob, 3n])
+      .reverts({ errorName: "ERC20InsufficientBalance", args: [sender, 10n, 3n] });
+
+    const error = await rejectionOf(transfer(3n));
+
+    expect(expectCause(error, ContractFunctionRevertedError).data?.errorName).toBe(
+      "ERC20InsufficientBalance",
+    );
+    expect(sentMethods(mock)).toEqual(["eth_estimateGas"]);
+    expect(mock.transactions).toEqual([]);
+    expect(await balanceOf(sender)).toBe(10n);
+    await transfer(4n);
+    expect(await balanceOf(sender)).toBe(6n);
+  });
+
+  test("a .reverts() mock pinned to an amount, registered first, answers that amount over a limited resolver mock without args", async () => {
+    const { mock, usdc, transfer } = setup();
+    const resolver = vi.fn();
+    usdc.write.transfer([bob, 3n]).reverts("paused");
+    usdc.write.transfer().once().returns(resolver);
+
+    const error = await rejectionOf(transfer(3n));
+
+    expect(expectCause(error, ContractFunctionRevertedError).reason).toBe("paused");
+    expect(resolver).not.toHaveBeenCalled();
+    await transfer(4n);
+    expect(resolver).toHaveBeenCalledOnce();
+    expect(mock.transactions).toHaveLength(1);
+  });
+
+  describe("a .reverts() mock pinned with match.where() beside the ledger's resolver", () => {
+    const tooMuch = "ERC20: transfer amount exceeds balance";
+    /**
+     * The ledger, with a `.reverts()` mock of a transfer of more than the
+     * sender has.
+     */
+    function revertingOverdrafts(account: "local" | "node" = "local") {
+      const fixture = ledger(account);
+      const { token, balances, sender } = fixture;
+      const overBalance = (amount: bigint) => amount > balances.get(sender)!;
+      token.write.transfer([match.any(), match.where(overBalance, "overBalance")]).reverts(tooMuch);
+      return fixture;
+    }
+
+    test("reverts the estimate of what the balance can't pay, and leaves the rest to the resolver", async () => {
+      const { mock, client, sender, balanceOf, transfer } = revertingOverdrafts();
+
+      const over = await rejectionOf(transfer(11n));
+      expect(expectCause(over, ContractFunctionRevertedError).reason).toBe(tooMuch);
+      expect(mock.transactions).toEqual([]);
+      expect(await balanceOf(sender)).toBe(10n);
+
+      const hash = await transfer(4n);
+      expect((await client.getTransactionReceipt({ hash })).status).toBe("success");
+      expect([await balanceOf(sender), await balanceOf(bob)]).toEqual([6n, 4n]);
+
+      const overLowered = await rejectionOf(transfer(7n));
+      expect(expectCause(overLowered, ContractFunctionRevertedError).reason).toBe(tooMuch);
+      expect(mock.transactions).toHaveLength(1);
     });
 
-    const hash = await wallet.writeContract({
-      address: TOKEN,
-      abi: tokenAbi,
-      functionName: "transfer",
-      args: [bob, 1n],
+    test("mines a JSON-RPC account's send reverted, without running the resolver", async () => {
+      const { mock, client, resolved, transfer } = revertingOverdrafts("node");
+
+      const hash = await transfer(11n);
+
+      expect(sentMethods(mock)).toEqual(["eth_sendTransaction"]);
+      expect((await client.getTransactionReceipt({ hash })).status).toBe("reverted");
+      expect(resolved).not.toHaveBeenCalled();
     });
 
-    expect(transfers).toBe(1);
-    expect(after).toBe(false);
-    expect((await client.getTransactionReceipt({ hash })).status).toBe("reverted");
+    test("is reported by mock.assertAllUsed() when it's shadowed", async () => {
+      const { mock, token, transfer } = revertingOverdrafts();
+      token.write.transfer([bob, 11n]).returns();
+
+      await transfer(11n);
+
+      const error = expectThrows(MockCheckError, "answered no call", () => {
+        mock.assertAllUsed();
+      });
+      expect(error.message).toContain(
+        "  - transfer(any, where(overBalance)) reverts on Token " +
+          `(${TOKEN})\n    received 1 call to transfer:\n      transfer(${bob}, 11n)  ` +
+          "← matches; another mock answered it",
+      );
+    });
   });
 
   test("a native balance: getBalance reads the closure, and a payable write changes it", async () => {

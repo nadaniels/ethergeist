@@ -329,12 +329,13 @@ describe("sendTransaction", () => {
     // @ts-expect-error -- nor can a resolver refuse a send with it
     mock.actions.sendTransaction().returns(({ refuse }) => refuse("gasExceedsAllowance"));
     mock.actions.sendTransaction().returns(() => {});
-    mock.actions.sendTransaction().returns(({ from, value, revert }) => {
-      if (value > 1n) revert("paused");
+    mock.actions.sendTransaction().returns(({ from, value }) => {
+      if (value > 1n) return { status: "reverted" };
       return { logs: [usdc.events.Transfer({ from, to: alice, value }), testLog("noise")] };
     });
     mock.actions.sendTransaction().returns((context) => {
       expectTypeOf(context).not.toHaveProperty("emit");
+      expectTypeOf(context).not.toHaveProperty("revert");
     });
     // @ts-expect-error -- not a log: no address, topics, or data
     mock.actions.sendTransaction().returns(() => ({ logs: [{ logIndex: 0 }] }));

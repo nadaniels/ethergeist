@@ -3,7 +3,7 @@ import { type Hash, isAddress } from "viem";
 import { transactionParam } from "../chain/params.js";
 import { decodeRawTransaction, sentType } from "../chain/transactions.js";
 import { createRevertError } from "../contracts/answers.js";
-import type { RevertFn, RevertSpec } from "../contracts/types.js";
+import type { RevertSpec } from "../contracts/types.js";
 import type { RefusalContext, SendErrorName, WithLimits } from "../mocking/types.js";
 import { invalidParams } from "../shared/errors.js";
 import { isNonArrayObject } from "../shared/values.js";
@@ -19,19 +19,11 @@ import type { MockDefinition } from "./mockSet.js";
 import type { ActionContext, SendTransactionCall } from "./types.js";
 
 /**
- * What a `sendTransaction` resolver gets: the call's fields, `fail`,
- * `refuse`, and `revert`.
+ * What a `sendTransaction` resolver gets: the call's fields, `fail`, and
+ * `refuse`.
  */
 export type SendTransactionContext = ActionContext<SendTransactionCall> &
-  RefusalContext<SendErrorName> & {
-    /**
-     * Mines the transaction reverted, e.g. `revert("paused")`. Without an
-     * ABI, it takes a reason, a panic code, raw data, or nothing: see
-     * `RevertSpec`. A resolver runs only at the send, so the estimate doesn't
-     * revert: see `.reverts()` for that.
-     */
-    revert: RevertFn<readonly []>;
-  };
+  RefusalContext<SendErrorName>;
 
 /**
  * A send mock, as `mock.actions.sendTransaction()` returns it: it answers

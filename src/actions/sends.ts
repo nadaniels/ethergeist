@@ -134,8 +134,7 @@ export function createSends(
    * to answer, in order:
    * 1. for an estimate with a sender, its `write` mock that would answer the
    *    send, if it `.reverts()`: the estimate reverts as the send would,
-   *    which counts as that mock's use. A resolver's `revert()` runs only at
-   *    the send;
+   *    which counts as that mock's use;
    * 2. its `estimateGas` mocks and `defaults.estimateGas`;
    * 3. for an estimate with a sender, the gas its `write` mock implies (see
    *    `impliedGas`), without running it or using it up;

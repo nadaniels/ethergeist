@@ -58,7 +58,7 @@ type Encoding<call extends object> = {
  * for `.reverts()`, or for a static answer `pinnedCall` and `encode` (`zero`
  * for one left out). At a request, the mocks are matched (`actual`), and the
  * one that answers gets `extendContext`, then `encode` of its answer or, for
- * a revert, of `reverted`. A miss names `hint`.
+ * `.reverts()`, of `reverted`. A miss names `hint`.
  *
  * Members are methods, whose parameters TypeScript checks both ways, so a
  * `MockDefinition<BalanceCall>` is a `MockDefinition`: a mock set holds
@@ -81,8 +81,8 @@ export type MockDefinition<call extends object = object, answer = unknown> = {
    */
   extendBuilder?(builder: Builder): void;
   /**
-   * What `.reverts(spec)` and a resolver's `revert(spec)` revert with;
-   * without it, a mock has neither.
+   * What `.reverts(spec)` reverts with; without it, a mock has no
+   * `.reverts()`.
    */
   revertError?(spec?: unknown): MockRevertError;
   /**
@@ -102,10 +102,7 @@ export type MockDefinition<call extends object = object, answer = unknown> = {
    * itself.
    */
   actual?(pinned: unknown, call: call): unknown;
-  /**
-   * Adds to what a resolver gets, beyond the call, `fail`, `revert`, and
-   * `refuse`.
-   */
+  /** Adds to what a resolver gets, beyond the call, `fail`, and `refuse`. */
   extendContext?(context: object, call: call): void;
   /**
    * Validates a value in viem's types and converts it to its JSON-RPC form.
@@ -114,9 +111,9 @@ export type MockDefinition<call extends object = object, answer = unknown> = {
    */
   encode(value: unknown, at: Encoding<call>): answer;
   /**
-   * What a revert answers instead of being thrown, a mock's `.reverts()` or
-   * a resolver's `revert()`: a send's is mined reverted. It's a value in
-   * viem's types, encoded as a mock's answer is.
+   * What a mock's `.reverts()` answers instead of being thrown: a send's is
+   * mined reverted. It's a value in viem's types, encoded as a mock's answer
+   * is.
    */
   reverted?: unknown;
   /** Where to register a mock, for "No mock for" messages. */
@@ -290,12 +287,6 @@ export function createMockSet<answer>(
   /** Answers `call` with `handler`, the mock `match` found for it. */
   function answerWith(handler: Handler, call: object): Promise<answer> {
     const context = { ...call, fail, refuse };
-    if (definition.revertError !== undefined)
-      Object.assign(context, {
-        revert(spec?: unknown): never {
-          throw definition.revertError!(spec);
-        },
-      });
     definition.extendContext?.(context, call);
     return mocks.answerWith(
       handler,

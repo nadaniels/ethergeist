@@ -83,6 +83,8 @@ export function decodeEstimateGas(
   return { call, sent };
 }
 
+const revertError = (spec?: RevertSpec) => createRevertError([], spec);
+
 /**
  * `mock.actions.estimateGas`'s mocks: they answer with gas, or revert the
  * estimate.
@@ -94,5 +96,12 @@ export const estimateGas: MockDefinition<EstimateGasCall, Hex> = {
   /** No zero estimate: `encodeGas` refuses `.returns()` without a value. */
   zero: undefined,
   encode: (value) => encodeGas(value, "estimateGas's answer"),
-  revertError: (spec?: RevertSpec) => createRevertError([], spec),
+  revertError,
+  extendContext(context) {
+    Object.assign(context, {
+      revert(spec?: RevertSpec): never {
+        throw revertError(spec);
+      },
+    });
+  },
 };

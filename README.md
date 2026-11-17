@@ -204,7 +204,9 @@ mock.contract({
 
 A resolver is a function in place of a value. It runs for each call, and what
 it returns is the answer. It gets the call (its decoded `args`, the sender, the
-value, and the block) and `revert`, to revert this call only. It can also be async.
+value, and the block). A `read`, `simulate`, or `estimateGas` resolver also gets
+`revert`, to revert this call only. A `write` resolver runs only as the send
+is mined, so it has none. A resolver can also be async.
 
 A resolver can keep its own state, e.g. a balance that a withdrawal lowers:
 
@@ -213,10 +215,17 @@ const savings = mock.contract({ abi: vaultAbi, address: testAddress("savings") }
 
 let balance = 100n;
 savings.read.balanceOf([alice]).returns(() => balance);
-savings.write.withdraw().returns(({ args: [amount], revert }) => {
-  if (amount > balance) revert({ errorName: "InsufficientBalance" });
+savings.write.withdraw().returns(({ args: [amount] }) => {
   balance -= amount;
 });
+```
+
+To make one withdrawal revert, pin a `.reverts()` mock to its amount. It's more
+specific than the resolver's mock, so it answers that withdrawal and leaves the
+rest to the resolver (see [Matching](#matching)):
+
+```ts continued
+savings.write.withdraw([150n]).reverts({ errorName: "InsufficientBalance" });
 ```
 
 ## Matching

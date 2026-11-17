@@ -1,7 +1,7 @@
 import {
   MockNotFoundError,
   MockResolverError,
-  MockRevertError,
+  type MockRevertError,
   MockSetupError,
   refuseUnencodable,
   removedMockError,
@@ -291,13 +291,13 @@ export function createHandlers<context, extra>() {
     );
 
   /**
-   * Answers with `handler`, counting the use: its answer, encoded. A revert,
-   * the mock's own or a resolver's `revert()`, answers `reverted` where it's
-   * given (a send is mined reverted), and is thrown otherwise. What a
-   * resolver throws becomes a resolver error named `name`, unless it's an
-   * answer itself (see `isDeliberate`). A static value's setup error, from
-   * encoding it at the request (a check that needs the call or the chain,
-   * or a value changed after `.returns()`), is the mock's, thrown as it is.
+   * Answers with `handler`, counting the use: its answer, encoded. A mock's
+   * `.reverts()` answers `reverted` where it's given (a send is mined
+   * reverted), and otherwise its revert is thrown. What a resolver throws
+   * becomes a resolver error named `name`, unless it's an answer itself
+   * (see `isDeliberate`). A static value's setup error, from encoding it at
+   * the request (a check that needs the call or the chain, or a value
+   * changed after `.returns()`), is the mock's, thrown as it is.
    *
    * A resolver is called before the first `await`: a send relies on it to
    * refuse `mock.addTransaction()` in its mock's resolver.
@@ -313,12 +313,14 @@ export function createHandlers<context, extra>() {
     const given = handler.answer!;
     try {
       if (given.kind === "static") return encode(given.prepared);
-      if (given.kind === "revert") throw given.error;
+      if (given.kind === "revert") {
+        if (reverted !== undefined) return encode(reverted);
+        throw given.error;
+      }
       if (given.kind === "fault") return fail(given.fault);
       if (given.kind === "refusal") return refuse(given.name);
       return encode(await given.resolve(context));
     } catch (error) {
-      if (error instanceof MockRevertError && reverted !== undefined) return encode(reverted);
       if (isDeliberate(error)) throw error;
       if (error instanceof MockSetupError && given.kind === "static") throw error;
       throw new MockResolverError(name, error);

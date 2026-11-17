@@ -133,6 +133,21 @@ describe("once() and times()", () => {
     ]);
   });
 
+  test("a limited mock is spent as its resolver starts, so a request made while it awaits gets the next answer", async () => {
+    const { mock } = setup();
+    mock.actions.getBalance().returns(2n);
+    mock.actions
+      .getBalance()
+      .once()
+      .returns(async () => {
+        await Promise.resolve();
+        return 1n;
+      });
+    const getBalance = () => mock.request({ method: "eth_getBalance", params: [alice, "latest"] });
+
+    expect(await Promise.all([getBalance(), getBalance()])).toEqual(["0x1", "0x2"]);
+  });
+
   test("actions and raw methods take limits", async () => {
     const { mock, client } = setup();
     mock.actions.getTransactionReceipt({ hash: txHash }).returns({});

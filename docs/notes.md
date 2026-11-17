@@ -176,7 +176,7 @@ features land; tick them off as pages get written.
 - [ ] Return values: named outputs as objects, partial structs zero-filled,
       `zeroResult`, resolvers that receive the call.
 - [ ] Reverts: reason strings, custom errors, panics, raw data, `revert()` in
-      resolvers, and what viem throws.
+      `read`, `simulate`, and `estimateGas` resolvers, and what viem throws.
 - [ ] Multicall: batching, `batch` info on calls, how reverts and faults
       behave inside a batch.
 - [ ] Writes: `usdc.write.transfer([bob, 5n]).emits([log])` answers the
@@ -200,7 +200,9 @@ features land; tick them off as pages get written.
     static answer does. `mock.addTransaction()` and `contract.emit` are
     refused inside one (up to its first `await`; code elsewhere can still
     add transactions while it waits), as they would place a transaction of
-    their own mid-send. `revert(spec)` mines it reverted.
+    their own mid-send. A `write` mock's resolver has no `revert()`: it
+    runs only at the send, so it returns `{ status: "reverted" }` to mine
+    the send reverted.
     `mock.actions.sendTransaction` resolvers answer the same way.
   - The estimate: a matching write mock answers the transaction's
     `eth_estimateGas` with 100,000 gas when no estimate mock of the
@@ -219,9 +221,10 @@ features land; tick them off as pages get written.
     write's estimate gets the next answer. With `gas` set, or
     from a node's account, nothing estimates and it's mined reverted.
     `.returns({ status: "reverted" })` passes the estimate (an `estimateGas`
-    mock then sets its number) and mines it reverted for any client. A resolver's
-    `revert()` runs only at the send, so it's always mined reverted: for an
-    estimate-time revert, add `estimateGas.fn(args).reverts(spec)`.
+    mock then sets its number) and mines it reverted for any client, and so
+    does a resolver that returns it, since a resolver runs only at the send.
+    For an estimate-time revert, add `estimateGas.fn(args).reverts(spec)`;
+    for one that depends on state, see section 11.
     `.refuses("insufficientFunds")` (or `"nonceTooLow"`, and the other names
     a send takes) is the node refusing the send: nothing goes on the chain.
   - `simulate` is separate: wagmi's simulate-then-write needs both
@@ -1239,7 +1242,8 @@ features land; tick them off as pages get written.
 - [ ] The worked example, ERC-20 balances (in `test/write.test.ts`, "state
       the test owns"). Show:
   - The closure, the read that answers from it, and the write that changes
-    it. `erc20Abi` has no errors, so the ABI adds the one it reverts with:
+    it. `erc20Abi` has no errors, so the ABI adds the one the estimate
+    below reverts with:
     ```ts
     const tokenAbi = [
       ...erc20Abi,
@@ -1250,10 +1254,9 @@ features land; tick them off as pages get written.
     const token = mock.contract({ abi: tokenAbi, address: TOKEN, name: "Token" });
     const balances = new Map([[alice, parseEther("10")]]);
     token.read.balanceOf().returns(({ args: [who] }) => balances.get(who) ?? 0n);
-    token.write.transfer().returns(({ from, args: [to, amount], revert }) => {
+    token.write.transfer().returns(({ from, args: [to, amount] }) => {
       const have = balances.get(from) ?? 0n;
-      if (have < amount)
-        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
+      if (have < amount) return { status: "reverted" };
       balances.set(from, have - amount);
       balances.set(to, (balances.get(to) ?? 0n) + amount);
       return { logs: [token.events.Transfer({ from, to, value: amount })] };
@@ -1275,6 +1278,39 @@ features land; tick them off as pages get written.
       return 50_000n;
     });
     ```
+    It's safer than the short form below, because the two halves cover for
+    each other. A `write` mock without `.reverts()` never answers an
+    estimate ahead of an `estimateGas` mock, so a `write` mock that answers
+    ahead of the write mock's resolver still leaves a local account's
+    estimate reverting. A send that skips the estimate (`gas` set, or a
+    JSON-RPC account) still meets the write mock's resolver, which mines
+    the send reverted. And an `estimateGas` mock that answers ahead of the
+    estimate mock's resolver (a gas number for a fee display, say) hides the
+    estimate's revert, but leaves the write mock's resolver to mine the send
+    reverted. Neither half covers a `write` mock that answers ahead of the
+    write mock's resolver for a send that skips the estimate: that mock
+    answers the send, and neither resolver's check runs.
+  - The short form, for one arg and a fixed error: a `.reverts()` mock
+    pinned with `match.where()`, beside the resolver mock without args:
+    ```ts
+    token.write
+      .transfer([match.any(), match.where((amount) => amount > (balances.get(alice) ?? 0n))])
+      .reverts("ERC20: transfer amount exceeds balance");
+    ```
+    Over the balance, the estimate reverts and nothing changes; up to it,
+    the resolver answers. Its limits:
+    - No predicate sees both the sender and an arg, and the error can't
+      carry the call's values.
+    - The `.reverts()` mock is shadowed by a mock that's more specific, or
+      as specific and either limited or registered later: that mock answers
+      the send instead. `mock.assertAllUsed()` reports the `.reverts()`
+      mock while it has answered no call; a restore's check doesn't when
+      the `.reverts()` mock was registered before its checkpoint. When the
+      mock that answers is a resolver with its own check, the send is
+      mined reverted.
+    - Don't limit the `.reverts()` mock: a fee preview spends a `.once()`,
+      and the send after it reaches the resolver. The send then succeeds
+      unless the resolver keeps a check of its own.
   - `from` and decoded address args are checksummed, so key the map with
     checksummed addresses (`testAddress`, `getAddress`).
 - [ ] Why only a write's resolver changes state: it runs once per
@@ -1284,12 +1320,11 @@ features land; tick them off as pages get written.
       write mock implies doesn't run its resolver, so estimating first
       changes nothing; an `estimateGas` mock's resolver, like a simulate's,
       runs per estimate and only answers.
-- [ ] Change state last, after every `revert()`, `fail()`, and `refuse()`
-      check. `revert()` mines the transaction reverted, but the mock can't
-      undo the closure: a change made before it stays. A resolver that
-      throws, `fail()`s, or `refuse()`s puts nothing on the chain, yet keeps
-      what it changed too, so the app's next attempt starts from a ledger
-      that already moved.
+- [ ] Change state last, after every check that `fail()`s, `refuse()`s,
+      or returns `{ status: "reverted" }`: the mock can't undo the closure,
+      so a change made before it stays. A resolver that throws, `fail()`s,
+      or `refuse()`s after changing state puts nothing on the chain, yet
+      the app's next attempt starts from a ledger that already moved.
 - [ ] Native balances: `mock.actions.getBalance().returns(({ address }) =>
       native.get(address) ?? 0n)`, and a payable write's resolver moves
       `value` (`vault.write.deposit().returns(({ from, value }) => { … })`).
