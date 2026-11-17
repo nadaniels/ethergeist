@@ -78,13 +78,13 @@ export function missError(
   const estimateOfSend = writes !== undefined;
   const what = {
     read: "mock",
-    simulate: "mock",
+    simulate: "simulate mock",
     estimateGas: estimateOfSend ? "write or estimateGas mock" : "estimateGas mock",
     write: "write mock",
   }[namespace];
   const none = {
     read: `No mocks registered for ${name}.`,
-    simulate: `No mocks registered for ${name}.`,
+    simulate: `No simulate mocks registered for ${name}; a write mock doesn't answer simulations.`,
     estimateGas: estimateOfSend
       ? `No write or estimateGas mocks registered for ${name}: a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`
       : `No estimateGas mocks registered for ${name}; a write mock implies one only for an estimate with a sender, and a simulate mock doesn't answer estimates.`,

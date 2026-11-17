@@ -54,6 +54,10 @@ const multiTokenAbi = parseAbi([
   "function quote(address token, bool exact) view returns (uint256)",
   "function quote(address token, uint256 amount) view returns (uint256)",
 ]);
+const viewAndNonpayableAbi = parseAbi([
+  "function quote(uint256 amount) view returns (uint256)",
+  "function quote(address token) returns (uint256)",
+]);
 
 const bookAbi = parseAbi([
   "struct Asset { address token; uint256 amount; }",
@@ -788,20 +792,41 @@ describe("overloads", () => {
 
   test("a view overload's miss names the mocks on a nonpayable overload of its name", async () => {
     const { mock, client } = setup();
-    const pairAbi = parseAbi([
-      "function quote(uint256 amount) view returns (uint256)",
-      "function quote(address token) returns (uint256)",
-    ]);
-    mock.contract({ abi: pairAbi, address: DAI }).simulate.quote([alice]).returns(1n);
+    mock.contract({ abi: viewAndNonpayableAbi, address: DAI }).simulate.quote([alice]).returns(1n);
 
     const error = await rejectionOf(
-      client.readContract({ abi: pairAbi, address: DAI, functionName: "quote", args: [5n] }),
+      client.readContract({
+        abi: viewAndNonpayableAbi,
+        address: DAI,
+        functionName: "quote",
+        args: [5n],
+      }),
     );
 
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "No mocks registered for quote(uint256).",
       "Mocks on quote's other overloads, which don't answer this one:",
       `  quote(${alice}), a simulate mock`,
+    ]);
+  });
+
+  test("a nonpayable overload's miss names the mocks on a view overload of its name", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: viewAndNonpayableAbi, address: DAI }).read.quote([5n]).returns(1n);
+
+    const error = await rejectionOf(
+      client.simulateContract({
+        abi: viewAndNonpayableAbi,
+        address: DAI,
+        functionName: "quote",
+        args: [alice],
+      }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "No simulate mocks registered for quote(address); a write mock doesn't answer simulations.",
+      "Mocks on quote's other overloads, which don't answer this one:",
+      "  quote(5n), a read mock",
     ]);
   });
 

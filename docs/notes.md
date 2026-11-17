@@ -922,7 +922,12 @@ features land; tick them off as pages get written.
       matching found it, including the predicate that said no. A mock used
       up or without an answer says so, and still names an exact arg that
       differs (it wouldn't have matched either); its predicates aren't run
-      for the message. An estimate with `from` is a send's, and a send
+      for the message. A contract's miss outside `read` names its
+      namespace ("No simulate mock for …", "No write mock for …"), and
+      with no mocks registered there, it says which other namespace's
+      mocks don't answer the call: a `write` mock doesn't answer
+      simulations, and a `simulate` mock doesn't answer sends or
+      estimates. An estimate with `from` is a send's, and a send
       mock that matches the send implies it: with a local account, a write
       mock left out or pinned wrong shows as its estimate's miss, since
       viem estimates before it sends. For a contract's function the miss
