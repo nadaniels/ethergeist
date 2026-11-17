@@ -940,7 +940,10 @@ features land; tick them off as pages get written.
       mock, for an estimate or a send that was the contract's, answered or
       not; "received no calls" when the app never made it. Args that
       matched show as `…`, so the line shows what differed (the whole call
-      when everything matched). Show an example.
+      when everything matched). Show an example. For a test's own override,
+      "another mock answered it" has two usual causes: it has fewer pins
+      than the setup's mock it was meant to replace, or the same pins and
+      was registered before it (a helper called after it).
 - [ ] The mock's own errors, all `MockError`s (viem's `BaseError`), each
       with a stable `code` viem doesn't retry: `MockSetupError` (the mock's
       API called wrong: a bad value or option, a removed mock, or a static
@@ -1171,7 +1174,26 @@ features land; tick them off as pages get written.
       `
 - [ ] Setup functions that register fallbacks other than `defaults` end with
       a checkpoint, so `restore({ assertAllUsed: true })` checks only the
-      test's own mocks (see section 6).
+      test's own mocks (see section 6). Run it with `assertNoUnhandled` in
+      `onTestFinished`, where the mock is made.
+- [ ] A helper that registers several mocks, of which each test uses some,
+      doesn't fit after that checkpoint: the unused ones are reported. Put
+      its mocks in the tests that use them, so each test states what it
+      expects the app to do, or else register them before the checkpoint.
+      The example's tests register their own sends for that reason: a test
+      of "doesn't approve" has no approve mock, so an approve goes
+      unanswered and fails it.
+- [ ] A test's override of a mock registered after the checkpoint (a
+      helper's, or its own earlier one) gets the overridden mock reported
+      as "matches; another mock answered it". Override the setup's mocks,
+      which the check leaves out, or register only the variant the test
+      needs.
+- [ ] The restore's checks in `onTestFinished` fail the test like an
+      assertion, so they count toward `test.fails`. A `test.fails` that
+      documents a bug keeps "failing as expected" after the bug is fixed if
+      it registers a mock the app never calls, on the unused mock alone, or
+      if a request in it goes unanswered. Register only the mocks the buggy
+      path uses, or check that the test fails for the reason it names.
 - [ ] Apps that read clients from a global share them across concurrent
       tests whatever the mock does: inject clients, or scope them per test
       (e.g. `AsyncLocalStorage`).

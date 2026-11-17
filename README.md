@@ -276,6 +276,10 @@ usdc.read.balanceOf([alice]).once().returns(2n); // the one after
 usdc.read.balanceOf([alice]).returns(3n); // from then on, over the 100n above
 ```
 
+An override doesn't answer if it has fewer pins than the mock it's meant to
+replace, or the same pins and is registered before it. `assertAllUsed()`
+reports it: see [Shared Setup](#shared-setup) for running it after every test.
+
 A call no mock matches fails with the mocks that came close, and why each
 missed:
 
@@ -477,7 +481,9 @@ expect(usdc.read.balanceOf.calls).toMatchObject([{ args: [alice] }]);
   error your app swallowed. A mock pinned to the args the app should send
   checks them too: with wrong args, the call goes unanswered, and the assertion fails.
 - `mock.assertAllUsed()` fails if a mock never answered, e.g. because its pins
-  are wrong and a broader mock answered instead.
+  are wrong and a broader mock answered instead, or because it's an override
+  that another mock outranks. Under each, it lists the calls its function
+  received, and why the mock didn't answer them.
 
 Run `assertNoUnhandled()` after every test, not just where you suspect a miss:
 with a fresh mock per test, in `onTestFinished` where the mock is made, or with
@@ -506,6 +512,32 @@ afterEach(() => {
   baseline.restore({ assertNoUnhandled: true, assertAllUsed: true });
 });
 ```
+
+With a mock per test, end the setup function with the checkpoint:
+
+```ts skip
+function setup() {
+  const mock = createMockRpc();
+  const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+  usdc.read.decimals().returns(6);
+  usdc.read.balanceOf([alice]).returns(100n);
+
+  const baseline = mock.checkpoint();
+  onTestFinished(() => {
+    baseline.restore({ assertNoUnhandled: true, assertAllUsed: true });
+  });
+  return { mock, usdc };
+}
+```
+
+Either way, `assertAllUsed` checks only the mocks registered since the
+checkpoint. A test may leave the setup's mocks unused, but each mock it
+registers itself must answer a call, so an override that can't win fails the
+test, naming the mock and the call another mock answered.
+
+To check that the app doesn't call or send one of a contract's functions, leave
+it unmocked: the request then goes unanswered and fails the test. A mock
+registered only so its `calls` stay empty is reported as unused.
 
 `mock.clearCalls()` clears only the records, and `mock.reset()` goes back to
 an empty mock.

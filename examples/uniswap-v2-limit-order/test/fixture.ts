@@ -38,8 +38,13 @@ export type Market = {
 
 /**
  * A fresh mock per test: USDC and WETH, a Uniswap V2 router, and the bot's client on them. The
- * reads answer from `market`; nothing is sendable until a test mocks the approve or the swap.
- * Fails the test if any request went unanswered, even one the app swallowed.
+ * reads answer from `market`, and the swap's simulation with the amounts it was given: a
+ * simulation sends nothing, so every test shares it. The sends are each test's own, so nothing is
+ * sendable until a test mocks the approve or the swap.
+ *
+ * Fails the test if any request went unanswered, even one the app swallowed, or if a mock the test
+ * registered never answered a call: a send the bot didn't make, or an override that another mock
+ * outranked. The mocks registered here come before the checkpoint, so a test may leave them unused.
  */
 export function setup(market: Market = {}) {
   const { decimalsIn = 6, decimalsOut = 18 } = market;
@@ -57,6 +62,9 @@ export function setup(market: Market = {}) {
   router.read
     .getAmountsOut()
     .returns(({ args: [amountIn] }) => [amountIn, parseUnits(market.quote ?? "1", decimalsOut)]);
+  router.simulate
+    .swapExactTokensForTokens()
+    .returns(({ args: [amountIn, amountOutMin] }) => [amountIn, amountOutMin]);
 
   const order: Order = {
     router: router.address,
@@ -66,8 +74,9 @@ export function setup(market: Market = {}) {
     minAmountOut: "0.9",
   };
   const client = botClient(mock);
+  const baseline = mock.checkpoint();
   onTestFinished(() => {
-    mock.assertNoUnhandled();
+    baseline.restore({ assertNoUnhandled: true, assertAllUsed: true });
   });
   return { mock, tokenIn, tokenOut, router, order, client };
 }
@@ -83,16 +92,4 @@ export function botClient(mock: MockRpc, transport?: CustomTransportConfig): Bot
     transport: mock.transport(transport),
     pollingInterval,
   }).extend(publicActions);
-}
-
-/** Mocks a successful approve and swap, the sends a fill makes. */
-export function fillable({
-  tokenIn,
-  router,
-}: Pick<ReturnType<typeof setup>, "tokenIn" | "router">) {
-  tokenIn.write.approve().returns();
-  router.simulate
-    .swapExactTokensForTokens()
-    .returns(({ args: [amountIn, amountOutMin] }) => [amountIn, amountOutMin]);
-  router.write.swapExactTokensForTokens().returns();
 }
