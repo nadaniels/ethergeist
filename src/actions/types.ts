@@ -2,7 +2,7 @@ import type { Address, BlockTag, Hash, Hex } from "viem";
 
 import type { MockTransactionType } from "../chain/transactions.js";
 import type { LogsCall } from "../logs/filter.js";
-import type { MockFault, WithLimits } from "../mocking/types.js";
+import type { FaultContext, MockFault, WithLimits } from "../mocking/types.js";
 import type { zeroResult } from "../mocking/zeroResult.js";
 
 /**
@@ -195,13 +195,7 @@ export type ActionCalls = {
  * node can refuse (estimates, sends), it also gets `refuse` (see
  * `RefusalContext`).
  */
-export type ActionContext<call> = call & {
-  /**
-   * Fails the request this call is in with a fault, e.g.
-   * `fail({ status: 503 })`: see `MockFault` for the kinds.
-   */
-  fail: (fault: MockFault) => never;
-};
+export type ActionContext<call> = call & FaultContext;
 
 /**
  * What an action's mock answers with: a value in viem's types, or

@@ -18,6 +18,7 @@ import type { MockCallOutcome } from "../mocking/outcomes.js";
 import type {
   SimulateErrorName,
   EstimateErrorName,
+  FaultContext,
   MockEstimateAnswers,
   MockFault,
   MockRefusalAnswers,
@@ -157,18 +158,14 @@ export type RevertFn<abi extends Abi> = <
  * `MockCall`), `revert`, and `fail`. In `simulate`, `estimateGas`, and
  * `write`, it also gets `refuse` (see `RefusalContext`).
  */
-export type ResolverContext<abi extends Abi, args> = MockCall<args> & {
-  /**
-   * Reverts this call, e.g. `revert("paused")` or
-   * `revert({ errorName, args })`. See `RevertSpec` for the forms.
-   */
-  revert: RevertFn<abi>;
-  /**
-   * Fails the request this call is in with a fault, e.g.
-   * `fail({ status: 503 })`: see `MockFault` for the kinds.
-   */
-  fail: (fault: MockFault) => never;
-};
+export type ResolverContext<abi extends Abi, args> = MockCall<args> &
+  FaultContext & {
+    /**
+     * Reverts this call, e.g. `revert("paused")` or
+     * `revert({ errorName, args })`. See `RevertSpec` for the forms.
+     */
+    revert: RevertFn<abi>;
+  };
 
 /**
  * What a `read` or `simulate` resolver gets: in `simulate`, also `refuse`,

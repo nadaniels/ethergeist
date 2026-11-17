@@ -105,6 +105,15 @@ export type RefusalContext<name extends NodeErrorName> = {
   refuse: (name: name) => never;
 };
 
+/** What every resolver gets: `fail`. */
+export type FaultContext = {
+  /**
+   * Fails the request this call is in with a fault, e.g.
+   * `fail({ status: 503 })`: see `MockFault` for the kinds.
+   */
+  fail: (fault: MockFault) => never;
+};
+
 /**
  * A mock's answers, with `.once()` and `.times()` to limit how often it gives
  * them.

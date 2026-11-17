@@ -94,6 +94,7 @@ export type { FailRequestsOptions, MockFaultHandle } from "./rpc/faults.js";
 export { match } from "./mocking/matchers.js";
 export type {
   EstimateErrorName,
+  FaultContext,
   MockEstimateAnswers,
   MockFault,
   MockRefusalAnswers,
