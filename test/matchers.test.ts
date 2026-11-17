@@ -564,7 +564,7 @@ describe("a miss's reasons", () => {
       MockNotFoundError,
     );
     expect(hintsOf(error)).toBe(
-      `Registered:\n  transfer(${getAddress(bob)}, 1n)  ← amount didn't match`,
+      `estimateGas mocks:\n  transfer(${getAddress(bob)}, 1n)  ← amount didn't match`,
     );
   });
 

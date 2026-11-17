@@ -252,7 +252,7 @@ describe("a write mock", () => {
     expect(mock.transactions.map(({ receipt }) => receipt.gasUsed)).toEqual([1n, 2n, 2n]);
     await expectRejects(
       ContractFunctionExecutionError,
-      /No estimateGas mock for transfer/u,
+      /No write or estimateGas mock for transfer/u,
       transfer(4n),
     );
   });
@@ -355,7 +355,7 @@ describe("a write mock", () => {
     const notFound = expectCause(await rejectionOf(transfer(6n)), MockNotFoundError);
 
     expect(notFound.shortMessage).toBe(
-      `No estimateGas mock for transfer(${bob}, 6n) on USDC (${USDC}).`,
+      `No write or estimateGas mock for transfer(${bob}, 6n) on USDC (${USDC}).`,
     );
     expect(notFound.metaMessages).toEqual([
       "Write mocks, which imply the estimate of a send they match:",
@@ -522,7 +522,7 @@ describe("the estimate a write mock implies", () => {
       }),
     );
     expect(expectCause(missed, MockNotFoundError).shortMessage).toBe(
-      `No estimateGas mock for transfer(${bob}, 6n) on USDC (${USDC}).`,
+      `No write or estimateGas mock for transfer(${bob}, 6n) on USDC (${USDC}).`,
     );
   });
 
@@ -535,7 +535,7 @@ describe("the estimate a write mock implies", () => {
 
     // The estimate finds no mock, so nothing is sent; its hint names the used-up `write` mock.
     const notFound = expectCause(error, MockNotFoundError);
-    expect(notFound.shortMessage).toMatch(/^No estimateGas mock for transfer/u);
+    expect(notFound.shortMessage).toMatch(/^No write or estimateGas mock for transfer/u);
     expect(hintsOf(notFound)).toBe(
       "Write mocks, which imply the estimate of a send they match:\n  transfer(*) once, used up",
     );
@@ -549,7 +549,7 @@ describe("the estimate a write mock implies", () => {
     const notFound = expectCause(await rejectionOf(transfer(7n)), MockNotFoundError);
 
     expect(notFound.shortMessage).toBe(
-      `No estimateGas mock for transfer(${bob}, 7n) on USDC (${USDC}).`,
+      `No write or estimateGas mock for transfer(${bob}, 7n) on USDC (${USDC}).`,
     );
     expect(hintsOf(notFound)).toBe(
       [
@@ -579,12 +579,60 @@ describe("the estimate a write mock implies", () => {
 
     expect(hintsOf(notFound)).toBe(
       [
-        "Registered:",
+        "estimateGas mocks:",
         `  transfer(${alice}, 7n)  ← recipient didn't match`,
         "Write mocks, which imply the estimate of a send they match:",
         `  transfer(${bob}, 5n)  ← amount didn't match`,
       ].join("\n"),
     );
+  });
+
+  test("an app's own estimate with a sender names both kinds too, and labels its estimateGas mocks", async () => {
+    const { client, usdc } = setup();
+    usdc.estimateGas.transfer([bob, 1n]).returns(50_000n);
+
+    const error = await rejectionOf(
+      client.estimateContractGas({
+        account: alice,
+        address: USDC,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [bob, 2n],
+      }),
+    );
+
+    const notFound = expectCause(error, MockNotFoundError);
+    expect(notFound.shortMessage).toBe(
+      `No write or estimateGas mock for transfer(${bob}, 2n) on USDC (${USDC}).`,
+    );
+    expect(notFound.metaMessages).toEqual([
+      "estimateGas mocks:",
+      `  transfer(${bob}, 1n)  ← amount didn't match`,
+    ]);
+  });
+
+  test("an estimate without a sender names only its estimateGas mocks, as Registered", async () => {
+    const { client, usdc } = setup();
+    usdc.estimateGas.transfer([bob, 1n]).returns(50_000n);
+    usdc.write.transfer([bob, 2n]).returns();
+
+    const error = await rejectionOf(
+      client.estimateContractGas({
+        address: USDC,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [bob, 2n],
+      }),
+    );
+
+    const notFound = expectCause(error, MockNotFoundError);
+    expect(notFound.shortMessage).toBe(
+      `No estimateGas mock for transfer(${bob}, 2n) on USDC (${USDC}).`,
+    );
+    expect(notFound.metaMessages).toEqual([
+      "Registered:",
+      `  transfer(${bob}, 1n)  ← amount didn't match`,
+    ]);
   });
 
   test("an estimate without from is no send's: its miss runs no write mock's predicates", async () => {
@@ -659,7 +707,7 @@ describe("the estimate a write mock implies", () => {
     );
 
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
-      "No estimateGas mocks registered for withdraw(uint256,address); a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.",
+      "No write or estimateGas mocks registered for withdraw(uint256,address): a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.",
       "Mocks on withdraw's other overloads, which don't answer this one:",
       "  withdraw(5n)",
       "  withdraw(6n), a write mock",
@@ -762,10 +810,10 @@ describe("only a contract's mocks answer its functions", () => {
       // A local account estimates first; a node's account leaves it to the node.
       if (account === "local") {
         expect(notFound.shortMessage).toBe(
-          `No estimateGas mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
+          `No write or estimateGas mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
         );
         expect(notFound.metaMessages).toEqual([
-          `No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
+          `No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`,
           "Action mocks that match, which don't answer a registered contract's functions:",
           "  estimateGas(*)",
           "  sendTransaction(*)",
@@ -846,7 +894,7 @@ describe("only a contract's mocks answer its functions", () => {
 
       expect(notFound.metaMessages).toEqual([
         account === "local"
-          ? `No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`
+          ? `No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`
           : `No write mocks registered for "transfer"; a simulate mock doesn't answer sends.`,
       ]);
     },
@@ -919,6 +967,11 @@ describe("action mocks answer the rest of what's sent to a registered contract",
     ({ data }) => {
       // A local account estimates first; a node's account leaves it to the node.
       const misses = { local: "estimateGas", node: "sendTransaction" } as const;
+      const hints = {
+        local:
+          "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).",
+        node: "Mock it with mock.actions.sendTransaction({ to }).returns(…).",
+      };
 
       test.each(["local", "node"] as const)(
         "with no action mocks (%s account)",
@@ -931,10 +984,7 @@ describe("action mocks answer the rest of what's sent to a registered contract",
           expect(notFound.shortMessage).toMatch(
             new RegExp(`^No mock for ${misses[account]}\\(`, "u"),
           );
-          expect(notFound.metaMessages).toEqual([
-            notAFunction,
-            `Mock it with mock.actions.${misses[account]}({ to }).returns(…).`,
-          ]);
+          expect(notFound.metaMessages).toEqual([notAFunction, hints[account]]);
           expect(mock.transactions).toEqual([]);
         },
       );

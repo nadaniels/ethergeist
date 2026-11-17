@@ -266,7 +266,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
       }),
     );
     const list = unhandledList(mock);
-    expect(list).toContain("      Registered:\n");
+    expect(list).toContain("      estimateGas mocks:\n");
     expect(list).toContain("      Write mocks, which imply the estimate of a send they match:\n");
     expect(list.match(/recipient didn't match/gu)).toHaveLength(6);
     expect(list.match(/… \d+ more/gu)).toEqual(["… 1 more"]);

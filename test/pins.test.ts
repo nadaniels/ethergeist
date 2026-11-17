@@ -374,7 +374,7 @@ describe("pins and the estimate a write mock implies", () => {
 
     const miss = expectCause(error, MockNotFoundError);
     expect(miss?.shortMessage).toBe(
-      `No estimateGas mock for deposit() { from: ${bob}, value: 1n } on Vault (${VAULT}).`,
+      `No write or estimateGas mock for deposit() { from: ${bob}, value: 1n } on Vault (${VAULT}).`,
     );
     expect(hintsOf(miss)).toBe(
       [

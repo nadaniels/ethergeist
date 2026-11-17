@@ -42,14 +42,14 @@ type Candidates = {
 /**
  * The error for a call no mock answers, on the contract `label`: its `own`
  * namespace's mocks for its function, each with the arg it missed on, or that
- * there are none. An estimate's also lists its function's `write` mocks
- * (`writes`), which imply the estimate of a send they match, for an estimate
- * with `from`. Then come the mocks on the function's other overloads
- * (`overloads.others`), which can't answer it, each in another namespace
- * than the call's marked with it; with any, the call's own overload
- * (`overloads.called`) is named by its signature. Then the mocks of both
- * that the last restore removed, and last the `after` lines of a turn's
- * caller.
+ * there are none. `writes` is given for an estimate with `from`, which is a
+ * send's. Its function's `write` mocks imply the estimate of a send they
+ * match, so the error names both kinds of mock and lists both. Then come the
+ * mocks on the function's other overloads (`overloads.others`), which can't
+ * answer it, each in another namespace than the call's marked with it; with
+ * any, the call's own overload (`overloads.called`) is named by its
+ * signature. Then the mocks of both that the last restore removed, and last
+ * the `after` lines of a turn's caller.
  */
 export function missError(
   call: MockCall,
@@ -75,17 +75,26 @@ export function missError(
     overloads !== undefined && others.length > 0
       ? toFunctionSignature(overloads.called)
       : `"${call.functionName}"`;
-  const what = namespace === "read" || namespace === "simulate" ? "mock" : `${namespace} mock`;
+  const estimateOfSend = writes !== undefined;
+  const what = {
+    read: "mock",
+    simulate: "mock",
+    estimateGas: estimateOfSend ? "write or estimateGas mock" : "estimateGas mock",
+    write: "write mock",
+  }[namespace];
   const none = {
     read: `No mocks registered for ${name}.`,
     simulate: `No mocks registered for ${name}.`,
-    estimateGas: `No estimateGas mocks registered for ${name}; ${call.from === undefined ? "a write mock implies one only for an estimate with a sender" : "a write mock that matches the send implies one"}, and a simulate mock doesn't answer estimates.`,
+    estimateGas: estimateOfSend
+      ? `No write or estimateGas mocks registered for ${name}: a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`
+      : `No estimateGas mocks registered for ${name}; a write mock implies one only for an estimate with a sender, and a simulate mock doesn't answer estimates.`,
     write: `No write mocks registered for ${name}; a simulate mock doesn't answer sends.`,
   }[namespace];
   const pinned = [...own.registered, ...(writes?.registered ?? [])].flatMap((mock) =>
     Object.keys(mock.pins ?? {}),
   );
-  const metaMessages = lines.length > 0 ? ["Registered:", ...lines] : [];
+  const metaMessages =
+    lines.length > 0 ? [estimateOfSend ? "estimateGas mocks:" : "Registered:", ...lines] : [];
   if (writeLines.length > 0)
     metaMessages.push("Write mocks, which imply the estimate of a send they match:", ...writeLines);
   if (metaMessages.length === 0) metaMessages.push(none);

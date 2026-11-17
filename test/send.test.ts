@@ -1068,9 +1068,37 @@ describe("the estimate a send mock implies", () => {
   });
 });
 
+/** An unmocked estimate's hint, for an estimate with a sender. */
+const estimateOfSendHint =
+  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
+
+describe("an estimate no mock answers says how to mock it", () => {
+  test("its send first, for a local account's send: a send mock implies the estimate", async () => {
+    const { wallet } = localSetup();
+
+    const error = await rejectionOf(wallet.sendTransaction({ to: bob, data: "0x12" }));
+
+    const notFound = expectCause(error, MockNotFoundError);
+    expect(notFound.shortMessage).toMatch(/^No mock for estimateGas\(/u);
+    expect(notFound.metaMessages).toEqual([estimateOfSendHint]);
+  });
+
+  test("a deploy by what it has to pin: a null to for its send, its data for its estimate", async () => {
+    const { mock, client, wallet } = localSetup();
+
+    const error = await rejectionOf(wallet.deployContract({ abi: [], bytecode: "0x6000" }));
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "Mock it with mock.actions.sendTransaction({ to: null }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ data }).returns(…).",
+    ]);
+    mock.actions.estimateGas({ data: "0x6000" }).returns(50_000n);
+    expect(await client.estimateGas({ account: alice, data: "0x6000" })).toBe(50_000n);
+  });
+});
+
 describe("an estimate no mock answers lists the sendTransaction mocks", () => {
   const header = "sendTransaction mocks, which imply the estimate of a send they match:";
-  const mockIt = "Mock it with mock.actions.estimateGas({ to }).returns(…).";
+  const mockIt = estimateOfSendHint;
 
   test("with what each missed on, after the hint", async () => {
     const { mock, client } = setup();
@@ -1158,7 +1186,9 @@ describe("an estimate no mock answers lists the sendTransaction mocks", () => {
       mock.request({ method: "eth_estimateGas", params: [{ to: bob, input: "0x12" }] }),
     );
 
-    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([mockIt]);
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+    ]);
   });
 });
 

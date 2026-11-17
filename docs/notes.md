@@ -740,8 +740,10 @@ features land; tick them off as pages get written.
     send, which don't answer it. The action's miss, on data sent to a
     registered contract, says the contract is registered and that this
     isn't a call to one of its nonpayable or payable functions; for an
-    estimate with `from`, it then lists the `sendTransaction` mocks, which
-    imply the estimate of a send they match, each with what it missed on.
+    estimate with `from` and no `estimateGas` mocks registered, its hint
+    is the `sendTransaction` mock first, and with `from` it then lists the
+    `sendTransaction` mocks, which imply the estimate of a send they
+    match, each with what it missed on.
     A number for a contract's writes goes on the contract, per function:
     `token.estimateGas.transfer().returns(n)` or `defaults.estimateGas`.
     An args-less `mock.actions.estimateGas().returns(100_000n)` sets no
@@ -917,15 +919,22 @@ features land; tick them off as pages get written.
       matching found it, including the predicate that said no. A mock used
       up or without an answer says so, and still names an exact arg that
       differs (it wouldn't have matched either); its predicates aren't run
-      for the message. An estimate of a contract's function that nothing
-      answers also lists the function's write mocks, with why each missed:
-      a write mock that matches the send implies its estimate, so the miss
-      is usually there. An estimate that's the actions' and that nothing
-      answers lists the `sendTransaction` mocks the same way, under
-      "sendTransaction mocks, which imply the estimate of a send they
-      match:", after its `estimateGas` mocks or its hint, and those the
-      last restore removed after its own. An estimate without `from` is no
-      send's, so it lists none. A contract's miss also names the action
+      for the message. An estimate with `from` is a send's, and a send
+      mock that matches the send implies it: with a local account, a write
+      mock left out or pinned wrong shows as its estimate's miss, since
+      viem estimates before it sends. For a contract's function the miss
+      names both kinds of mock, the send's first: "No write or estimateGas
+      mock for …", with the function's estimate mocks under "estimateGas
+      mocks:" and then its write mocks, with why each missed. An estimate
+      that's the actions' keeps "No mock for estimateGas(…)". With no
+      `estimateGas` mocks registered, its hint is the `sendTransaction` mock
+      first, then the `estimateGas` mock (`{ to: null }` and `{ data }` for
+      a deploy, which has no `to`); with some, it lists them under
+      "Registered:" and gives no hint. Either way it then lists the
+      `sendTransaction` mocks under "sendTransaction mocks, which imply the
+      estimate of a send they match:", and those the last restore removed
+      after its own. An estimate without `from` is no send's, so it names
+      and lists only estimate mocks. A contract's miss also names the action
       mocks that match the call, under "Action mocks that match, which
       don't answer a registered contract's functions:", by exact values:
       their predicates aren't run, and those used up or without an answer
