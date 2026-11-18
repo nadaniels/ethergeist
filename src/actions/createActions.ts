@@ -2,6 +2,7 @@ import { isAddress } from "viem";
 
 import { withoutTrailingNulls } from "../chain/params.js";
 import { withCalls } from "../mocking/handlers.js";
+import { isMatcher } from "../mocking/matchers.js";
 import { MockRpcError, removedContractLines, removedTransactionNote } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import type { RecordLimit } from "../shared/records.js";
@@ -12,6 +13,14 @@ import { type MockActions, type ActionName, actionMethods, typedActions } from "
 
 /** The typed actions and raw methods: see `createActions`. */
 export type Actions = ReturnType<typeof createActions>;
+
+/**
+ * An action already matches on the fields given, so a `match.partial()` for
+ * all its params is the plain object. A raw method's params are a list,
+ * which `match.partial()` refuses.
+ */
+const plainParams = (params: unknown) =>
+  isMatcher(params) && params.type === "partial" ? params.fields : params;
 
 /**
  * The typed actions (`mock.actions`) and raw methods (`mock.method()`): their
@@ -63,7 +72,7 @@ export function createActions(chain: ActionsContext, recordLimit: RecordLimit) {
     Object.entries(typed).map(([name, table]) => [
       name,
       withCalls(
-        (params?: unknown) => table.register(params),
+        (params?: unknown) => table.register(plainParams(params)),
         () => [...table.calls.kept],
       ),
     ]),

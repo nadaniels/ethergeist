@@ -198,6 +198,42 @@ describe("match.partial()", () => {
       .returns(true);
   });
 
+  test("takes matchers as an action's whole params, and nested in another match.partial()", () => {
+    const mock = createMockRpc();
+    const book = mock.contract({ abi: bookAbi, address: USDC });
+
+    mock.actions
+      .getBalance(
+        match.partial({
+          address: match.where((address) => {
+            expectTypeOf(address).toEqualTypeOf<Address>();
+            return true;
+          }),
+        }),
+      )
+      .returns(1n);
+    book.read
+      .filled([
+        match.partial({
+          sell: match.partial({
+            amount: match.where((amount) => {
+              expectTypeOf(amount).toEqualTypeOf<bigint>();
+              return amount > 0n;
+            }),
+          }),
+        }),
+      ])
+      .returns(true);
+  });
+
+  test("a stored match.partial() fits a nested struct", () => {
+    const mock = createMockRpc();
+    const book = mock.contract({ abi: bookAbi, address: USDC });
+    const sell = match.partial({ amount: 5n });
+
+    book.read.filled([match.partial({ sell })]).returns(true);
+  });
+
   test("rejects unknown fields and wrong types", () => {
     const mock = createMockRpc();
     const book = mock.contract({ abi: bookAbi, address: USDC });

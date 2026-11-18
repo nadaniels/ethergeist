@@ -67,7 +67,11 @@ export const match = {
    * an array still matches whole; use `match.where()` for "contains" or
    * "starts with".
    */
-  partial<value extends object>(fields: PartialFields<NoInfer<value>>): value {
+  // An optional position (an action's params) offers `T | undefined`; a stored
+  // partial has no position to infer from, so the default keeps it `object`.
+  partial<value extends object | undefined = object>(
+    fields: PartialFields<NoInfer<Exclude<value, undefined>>>,
+  ): value {
     return asValue(partialMatcher(fields));
   },
 };

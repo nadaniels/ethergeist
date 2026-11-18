@@ -1522,6 +1522,56 @@ describe("actions and raw methods", () => {
     expect(hintsOf(error)).toBe("Registered:\n  getStorageAt(where(isBob))  ← params didn't match");
   });
 
+  test("an action's whole params in a match.partial() have their addresses checked", () => {
+    const { mock } = setup();
+
+    expect(() => mock.actions.getBalance(match.partial({ address: "0xbad" }))).toThrow(
+      InvalidAddressError,
+    );
+    expect(() => mock.actions.getLogs(match.partial({ address: [alice, "0xbad"] }))).toThrow(
+      InvalidAddressError,
+    );
+  });
+
+  test("an action's whole params in a match.partial() have their slot padded", async () => {
+    const { mock, client } = setup();
+    mock.actions.getStorageAt(match.partial({ address: bob, slot: "0x1" })).returns(pad("0x3"));
+
+    expect(await client.getStorageAt({ address: bob, slot: "0x1" })).toBe(pad("0x3"));
+  });
+
+  test("an action's whole params in a match.partial() rank as the plain object", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: alice }).returns(1n);
+    mock.actions.getBalance(match.partial({ address: alice })).returns(2n);
+
+    expect(await client.getBalance({ address: alice })).toBe(2n);
+    mock.actions.getBalance({ address: alice }).returns(3n);
+    expect(await client.getBalance({ address: alice })).toBe(3n);
+  });
+
+  test("a send's whole params in a match.partial() settle what its static answer can be", () => {
+    const { mock } = setup();
+
+    expectThrows(MockSetupError, "Only a deploy (to: null) has a contractAddress.", () => {
+      mock.actions.sendTransaction(match.partial({ to: bob })).returns({ contractAddress: USDC });
+    });
+  });
+
+  test("a miss lists an action's whole params in a match.partial() as the plain object", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance(match.partial({ address: lowercase(alice) })).returns(1n);
+
+    expect(await client.getBalance({ address: alice })).toBe(1n);
+    const error = expectCause(
+      await rejectionOf(client.getBalance({ address: bob })),
+      MockNotFoundError,
+    );
+    expect(hintsOf(error)).toBe(
+      `Registered:\n  getBalance({ address: ${alice} })  ← address didn't match`,
+    );
+  });
+
   test("one match.any() for all the params ranks below any pinned param, and above no params", async () => {
     const { mock, client } = setup();
     mock.actions.getBalance({ blockTag: match.any() }).returns(1n);
