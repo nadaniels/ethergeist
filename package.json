@@ -36,9 +36,10 @@
   },
   "scripts": {
     "build": "vp pack",
-    "test": "vp test run --typecheck --no-isolate",
+    "test": "vp run typecheck:consumer && vp test run --typecheck --no-isolate",
     "test:coverage": "vp test run --no-isolate --coverage",
     "typecheck": "tsc",
+    "typecheck:consumer": "tsc -p tsconfig.consumer.json",
     "examples": "vp run build && vp run --filter ./examples lint && vp run --filter './examples/*' test",
     "knip": "knip && knip --production --strict",
     "mutate": "stryker run",

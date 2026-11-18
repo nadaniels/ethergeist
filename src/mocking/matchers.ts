@@ -46,7 +46,7 @@ export const match = {
    * predicate's name, e.g. `where(isLarge)`. An unnamed one shows its
    * source, cut to 60 characters, e.g. `where((n) => n > 5n)`.
    */
-  where<value>(predicate: (value: value) => boolean, label?: string): value {
+  where<value>(predicate: (value: Exclude<value, undefined>) => boolean, label?: string): value {
     return asValue({
       [matcherKey]: true,
       type: "where",

@@ -127,6 +127,17 @@ export const request = typeOf<typeof mock.request>();
 
 export const anything = match.any();
 export const where = match.where((value: bigint) => value > 1n);
+// Compiled without `exactOptionalPropertyTypes`, where an optional field's
+// type has `undefined`: a predicate there is still given the value without it.
+export const whereParam = mock.actions.getBalance({
+  address: match.where((address) => address.startsWith("0x")),
+});
+export const whereFrom = contract.write.pay(undefined, {
+  from: match.where((from) => from.startsWith("0x")),
+});
+export const whereValue = contract.write.pay(undefined, {
+  value: match.where((value) => value > 0n),
+});
 export const partial = typeOf<typeof match.partial>();
 export const zero = zeroResult;
 export const address = testAddress;

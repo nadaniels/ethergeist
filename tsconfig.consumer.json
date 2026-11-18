@@ -1,0 +1,8 @@
+{
+  // The type tests as most consumers compile them: without
+  // exactOptionalPropertyTypes, where an optional field's type has `undefined`.
+  // `vp run test` runs it first, so the args after it reach Vitest.
+  "extends": "./tsconfig.json",
+  "compilerOptions": { "exactOptionalPropertyTypes": false },
+  "include": ["src/**/*.test-d.ts", "test/**/*.test-d.ts"]
+}

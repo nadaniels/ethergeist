@@ -247,7 +247,6 @@ export type MockFunctionBuilder<
  *   an ABI without literal types (not `as const`).
  */
 export type CallPins<abi extends Abi, functionName extends string> = {
-  // Without `| undefined`, so a `match.where` predicate isn't given one.
   from?: Address;
   // By name, not the args' overload, so a `match.where` value keeps its type.
 } & ("payable" extends Extract<

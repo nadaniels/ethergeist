@@ -621,7 +621,12 @@ describe("pins: fn(args, { from, value })", () => {
     usdc.read.balanceOf([USDC], { from: USDC });
     usdc.simulate.transfer(undefined, { from: match.any() });
     usdc.estimateGas.transfer([USDC, 1n], { from: USDC });
-    usdc.write.transfer(undefined, { from: match.where((from) => from !== USDC) });
+    usdc.write.transfer(undefined, {
+      from: match.where((from) => {
+        expectTypeOf(from).toEqualTypeOf<Address>();
+        return from !== USDC;
+      }),
+    });
     // @ts-expect-error -- from is an address
     usdc.read.balanceOf([USDC], { from: 1n });
     // @ts-expect-error -- a call pins only `from` and `value`

@@ -1,7 +1,7 @@
 import { type Address, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
 
-import { createMockRpc, match } from "../src/index.js";
+import { type BalanceCall, createMockRpc, match } from "../src/index.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
@@ -99,6 +99,26 @@ describe("matchers take the type of their position", () => {
       })
       .returns(null);
     mock.method("eth_getProof", [match.any(), ["0x1"]]).returns(null);
+  });
+
+  test("a predicate for an action's whole params is typed as the params, without undefined", () => {
+    createMockRpc()
+      .actions.getBalance(
+        match.where((call) => {
+          expectTypeOf(call).toEqualTypeOf<Partial<BalanceCall>>();
+          return call.address === USDC;
+        }),
+      )
+      .returns(1n);
+  });
+
+  test("a predicate keeps null, as a deploy's to", () => {
+    createMockRpc().actions.sendTransaction({
+      to: match.where((to) => {
+        expectTypeOf(to).toEqualTypeOf<Address | null>();
+        return to === null;
+      }),
+    });
   });
 });
 
