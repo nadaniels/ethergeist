@@ -231,19 +231,19 @@ describe("historyLimit", () => {
       }),
     );
 
-    expectThrows(
-      MockCheckError,
-      /received 3 calls to read\.balanceOf \(the last 2 kept, past historyLimit\):/u,
-      () => {
-        mock.assertAllUsed();
-      },
-    );
-    expectThrows(
-      MockCheckError,
-      /received 3 calls to getBalance \(the last 2 kept, past historyLimit\):/u,
-      () => {
-        mock.assertAllUsed();
-      },
+    const error = expectThrows(MockCheckError, "answered no call", () => {
+      mock.assertAllUsed();
+    });
+    expect(error.shortMessage).toBe(
+      [
+        "2 mock(s) answered no call:",
+        `  - read.balanceOf(${bob}) on USDC (${USDC})`,
+        "    received 3 calls to read.balanceOf (the last 2 kept, past historyLimit):",
+        `      balanceOf(${alice}) (×2)  ← account didn't match`,
+        `  - getBalance({ address: ${bob} })`,
+        "    received 3 calls to getBalance (the last 2 kept, past historyLimit):",
+        `      getBalance({ address: ${alice}, … }) (×2)  ← address didn't match`,
+      ].join("\n"),
     );
   });
 

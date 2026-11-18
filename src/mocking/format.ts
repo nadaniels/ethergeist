@@ -161,9 +161,35 @@ function formatReceivedReason({ differs, forContract }: ReceivedCall): string {
   return "matches; another mock answered it";
 }
 
+/** In the order first seen, so a folded list reads in the order it came. */
+export function foldCounted<item>(
+  items: readonly item[],
+  keyOf: (item: item) => string,
+): { item: item; count: number }[] {
+  const folded = new Map<string, { item: item; count: number }>();
+  for (const item of items) {
+    const key = keyOf(item);
+    const seen = folded.get(key);
+    if (seen === undefined) folded.set(key, { item, count: 1 });
+    else seen.count += 1;
+  }
+  return [...folded.values()];
+}
+
+/**
+ * The count goes before the line's closing period, if it has one; a single
+ * entry's line is unchanged.
+ */
+export const withCount = (line: string, count: number) => {
+  if (count === 1) return line;
+  return line.endsWith(".") ? `${line.slice(0, -1)} (×${count}).` : `${line} (×${count})`;
+};
+
 /**
  * The lines under an unused mock, for messages: the calls its function did
- * receive (up to 3) and why each wasn't its use, or that it received none.
+ * receive and why each wasn't its use, or that it received none. Calls that
+ * read the same, reason included, are one line, and `… N more` counts the
+ * calls past the 3 lines shown, not the lines.
  */
 export function formatReceived(
   name: string,
@@ -172,14 +198,20 @@ export function formatReceived(
   total = received.length,
 ): string {
   if (total === 0) return `\n    received no calls to ${name}`;
-  const lines = received
-    .slice(0, 3)
-    .map((entry) => `\n      ${entry.call}  ← ${formatReceivedReason(entry)}`);
-  if (received.length > 3) lines.push(`\n      … ${received.length - 3} more`);
-  const count = total === 1 ? "1 call" : `${total} calls`;
+  const entries = received.map((entry) => ({
+    call: entry.call,
+    reason: formatReceivedReason(entry),
+  }));
+  const shown = foldCounted(entries, ({ call, reason }) => `${call}  ← ${reason}`).slice(0, 3);
+  const lines = shown.map(
+    ({ item: { call, reason }, count }) => `\n      ${withCount(call, count)}  ← ${reason}`,
+  );
+  const hidden = received.length - shown.reduce((sum, { count }) => sum + count, 0);
+  if (hidden > 0) lines.push(`\n      … ${hidden} more`);
+  const calls = total === 1 ? "1 call" : `${total} calls`;
   const kept =
     received.length === total ? "" : ` (the last ${received.length} kept, past historyLimit)`;
-  return `\n    received ${count} to ${name}${kept}:${lines.join("")}`;
+  return `\n    received ${calls} to ${name}${kept}:${lines.join("")}`;
 }
 
 type FormatOptions = {
