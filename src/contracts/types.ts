@@ -233,7 +233,7 @@ export type MockFunctionBuilder<
 
 /**
  * What a contract function's mock pins beside its args, matched as they are,
- * matchers included. Each pin makes the mock more specific:
+ * matchers included. Each pin, `match.any()` too, makes the mock more specific:
  * `transfer([bob, 5n], { from: alice })` beats `transfer([bob, 5n])`, and
  * `transfer(undefined, { from: alice })` is any args from alice.
  * - `from`: the sender, compared checksummed. It doesn't match a call without

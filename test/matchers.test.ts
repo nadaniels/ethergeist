@@ -106,6 +106,11 @@ function setupBook() {
 function setup() {
   const mock = createMockRpc();
   const client = mock.publicClient();
+  const wallet = createWalletClient({
+    account: alice,
+    chain: mock.chain,
+    transport: mock.transport({ retryCount: 0 }),
+  });
   const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
   const balanceOf = (account: `0x${string}`) =>
     client.readContract({
@@ -121,7 +126,7 @@ function setup() {
       functionName: "allowance",
       args: [owner, spender],
     });
-  return { mock, client, usdc, balanceOf, allowance };
+  return { mock, client, wallet, usdc, balanceOf, allowance };
 }
 
 // Named functions: messages show a predicate by its function name.
@@ -193,12 +198,7 @@ describe("match.any()", () => {
   });
 
   test("needs a value: it doesn't match a call that leaves its field out", async () => {
-    const { mock, client } = setup();
-    const wallet = createWalletClient({
-      account: alice,
-      chain: mock.chain,
-      transport: mock.transport({ retryCount: 0 }),
-    });
+    const { mock, client, wallet } = setup();
     mock.actions.sendTransaction({ gas: match.any() }).returns({ status: "reverted" });
     mock.actions.getBalance({ blockTag: match.any() }).returns(7n);
     mock.actions.getBalance().returns(1n);
@@ -210,6 +210,30 @@ describe("match.any()", () => {
     expect((await client.getTransactionReceipt({ hash: withGas })).status).toBe("reverted");
     expect(await client.getBalance({ address: alice, blockNumber: 1n })).toBe(1n);
     expect(await client.getBalance({ address: alice, blockTag: "safe" })).toBe(7n);
+  });
+
+  test("outranks a later mock that leaves its field unpinned", async () => {
+    const { mock, client, wallet } = setup();
+    mock.actions.sendTransaction({ to: bob, gas: match.any() }).returns({ status: "reverted" });
+    mock.actions.sendTransaction({ to: bob }).returns();
+    mock.method("eth_custom", ["0x1", match.any()]).returns("0xa");
+    mock.method("eth_custom", ["0x1"]).returns("0xb");
+
+    const withGas = await wallet.sendTransaction({ to: bob, gas: 30_000n });
+    const withoutGas = await wallet.sendTransaction({ to: bob });
+
+    expect((await client.getTransactionReceipt({ hash: withGas })).status).toBe("reverted");
+    expect((await client.getTransactionReceipt({ hash: withoutGas })).status).toBe("success");
+    expect(await mock.request({ method: "eth_custom", params: ["0x1", "0x2"] })).toBe("0xa");
+    expect(await mock.request({ method: "eth_custom", params: ["0x1"] })).toBe("0xb");
+  });
+
+  test("counts toward rank where every call has the value, so an override that leaves it out loses", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: match.any(), blockTag: "latest" }).returns(1n);
+    mock.actions.getBalance({ blockTag: "latest" }).returns(2n);
+
+    expect(await client.getBalance({ address: alice })).toBe(1n);
   });
 });
 
@@ -358,12 +382,7 @@ describe("match.where()", () => {
   });
 
   test("a predicate that throws names the mock it's on, with its namespace", async () => {
-    const { mock, client, usdc } = setup();
-    const wallet = createWalletClient({
-      account: alice,
-      chain: mock.chain,
-      transport: mock.transport({ retryCount: 0 }),
-    });
+    const { client, usdc, wallet } = setup();
     const transfer = {
       address: USDC,
       abi: erc20Abi,
@@ -483,6 +502,19 @@ describe("match.partial()", () => {
     // The exact struct pins 6 values; the two-field partial outranks the rest.
     expect(await filled(order)).toBe(false);
     expect(await filled({ ...order, sell: { token: DAI, amount: 1n } })).toBe(true);
+  });
+
+  test("counts a match.any() among its fields, and a struct with one inside beats a partial without it", async () => {
+    const { book, filled } = setupBook();
+    book.read.filled([match.partial({ maker: alice, expiry: match.any() })]).returns(true);
+    book.read.filled([match.partial({ maker: alice })]).returns(false);
+    book.read.filled([{ ...order, buy: { token: DAI, amount: match.any() } }]).returns(true);
+    book.read
+      .filled([match.partial({ ...order, buy: match.partial({ token: DAI }) })])
+      .returns(false);
+
+    expect(await filled({ ...order, sell: { token: DAI, amount: 1n } })).toBe(true);
+    expect(await filled(order)).toBe(true);
   });
 
   test("exact addresses inside are validated and checksummed", () => {
@@ -1448,12 +1480,7 @@ describe("actions and raw methods", () => {
   });
 
   test("a whole-params predicate selects a call that leaves a field out", async () => {
-    const { mock, client } = setup();
-    const wallet = createWalletClient({
-      account: alice,
-      chain: mock.chain,
-      transport: mock.transport({ retryCount: 0 }),
-    });
+    const { mock, client, wallet } = setup();
     mock.actions
       .sendTransaction(match.where((call) => call.gas === undefined, "noGas"))
       .returns({ status: "reverted" });

@@ -95,8 +95,10 @@ features land; tick them off as pages get written.
     at registration, pointing to `match.any()`/`match.where()`. They're
     typed `any`, so they'd type-check and then never match.
   - Ranking: exact values, then predicates, then `any`, compared in that
-    order (one exact value beats any number of predicates); a mock with args,
-    even all `any`, beats an args-less one.
+    order (one exact value beats any number of predicates, and one predicate
+    any number of `any`s); a mock with args, even empty ones, beats an
+    args-less one. An `any` counts because it needs a value: a send's
+    `{ to, gas: any }` beats its `{ to }`.
   - Ties between equally specific matchers go to the most recent: `[X, any]`
     and `[any, Y]` both match `[X, Y]`.
   - Predicates get decoded values in viem's types. Addresses arrive
@@ -977,9 +979,9 @@ features land; tick them off as pages get written.
       not; "received no calls" when the app never made it. Args that
       matched show as `…`, so the line shows what differed (the whole call
       when everything matched). Show an example. For a test's own override,
-      "another mock answered it" has two usual causes: it has fewer pins
-      than the setup's mock it was meant to replace, or the same pins and
-      was registered before it (a helper called after it).
+      "another mock answered it" has two usual causes: it's less specific
+      than the setup's mock it was meant to replace, or as specific and
+      registered before it (a helper called after it).
 - [ ] The mock's own errors, all `MockError`s (viem's `BaseError`), each
       with a stable `code` viem doesn't retry: `MockSetupError` (the mock's
       API called wrong: a bad value or option, a removed mock, or a static

@@ -216,24 +216,33 @@ describe("pinning from", () => {
     const { usdc, balanceOf } = setup();
     usdc.read.balanceOf([bob], { from: match.any() }).returns(1n);
     usdc.read.balanceOf([match.any()], { from: alice }).returns(2n);
-    usdc.read.balanceOf([bob]).returns(3n);
 
-    expect(await balanceOf(alice)).toBe(3n);
+    expect(await balanceOf(alice)).toBe(2n);
 
-    usdc.read.balanceOf([bob], { from: alice }).once().returns(4n);
-    expect(await balanceOf(alice)).toBe(4n);
+    usdc.read.balanceOf([bob], { from: match.any() }).once().returns(3n);
     expect(await balanceOf(alice)).toBe(3n);
+    expect(await balanceOf(alice)).toBe(2n);
   });
 
-  test("match.any() as a from adds nothing to pinned args' rank, and needs a from", async () => {
+  test("match.any() as a from ranks above no from, whichever is registered first, and needs a from", async () => {
     const { usdc, balanceOf } = setup();
     usdc.read.balanceOf([bob], { from: match.any() }).returns(1n);
     usdc.read.balanceOf([bob]).returns(2n);
 
-    expect(await balanceOf(alice)).toBe(2n);
+    expect(await balanceOf(alice)).toBe(1n);
+    usdc.read.balanceOf([bob]).returns(4n);
     usdc.read.balanceOf([bob], { from: match.any() }).returns(3n);
     expect(await balanceOf(alice)).toBe(3n);
-    expect(await balanceOf()).toBe(2n);
+    expect(await balanceOf()).toBe(4n);
+  });
+
+  test("match.any() as a from outranks a limited mock without one", async () => {
+    const { usdc, balanceOf } = setup();
+    usdc.read.balanceOf([bob]).once().returns(1n);
+    usdc.read.balanceOf([bob], { from: match.any() }).returns(2n);
+
+    expect(await balanceOf(alice)).toBe(2n);
+    expect(await balanceOf()).toBe(1n);
   });
 });
 

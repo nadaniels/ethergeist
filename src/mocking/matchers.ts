@@ -29,11 +29,11 @@ export type Matcher =
  * To match a call with or without a value, leave its key out.
  *
  * The most specific matching mock wins: the one with the most exact values,
- * then the most predicates (`where`). An `any` counts as neither, and a
- * `partial` counts what its fields pin. A mock that pins nothing ranks below
- * them all. Among mocks as specific, limited ones (`.once()`,
- * `.times()`) go ahead of unlimited ones and answer oldest first; among
- * unlimited ones, the most recent wins.
+ * then the most predicates (`where`), then the most `any`s. A `partial`
+ * counts what its fields pin. A mock that pins nothing ranks below them all.
+ * Among mocks as specific, limited ones (`.once()`, `.times()`) go ahead of
+ * unlimited ones and answer oldest first; among unlimited ones, the most
+ * recent wins.
  */
 export const match = {
   /** Matches any value at this position, when the call has one. */
