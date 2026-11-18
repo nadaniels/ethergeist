@@ -67,8 +67,9 @@ export const match = {
    * an array still matches whole; use `match.where()` for "contains" or
    * "starts with".
    */
-  // An optional position (an action's params) offers `T | undefined`; a stored
-  // partial has no position to infer from, so the default keeps it `object`.
+  // An optional position (an action's params) offers `T | undefined`, and a
+  // stored partial, with nothing to infer from, defaults to `object`. Returning
+  // `value`, not `Exclude<…>`, lets TS pick a struct's overload over a scalar's.
   partial<value extends object | undefined = object>(
     fields: PartialFields<NoInfer<Exclude<value, undefined>>>,
   ): value {

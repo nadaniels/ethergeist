@@ -887,7 +887,7 @@ describe("registration", () => {
     expect(refused.metaMessages).toBeUndefined();
 
     expectThrows(MockSetupError, "match.partial() can't go in read.balanceOf's answer", () => {
-      // The types allow it: `partial` takes the resolver function's type from `.returns()`.
+      // TS 6 and up allow it: `partial` takes the resolver function's type from `.returns()`.
       usdc.read.balanceOf([alice]).returns(match.partial({}));
     });
     expectThrows(MockSetupError, "match.any() can't go in simulate.transfer's answer", () => {

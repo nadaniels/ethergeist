@@ -16,6 +16,8 @@ const bookAbi = parseAbi([
   "function filled(Order order) view returns (bool)",
   "function anyFilled(Order[] orders) view returns (bool)",
   "function makers(address[] path) view returns (bool)",
+  "function settle(Order order) view returns (bool)",
+  "function settle(address maker, uint256 amount) view returns (uint256)",
 ]);
 
 function isLarge(n?: bigint): boolean {
@@ -232,6 +234,17 @@ describe("match.partial()", () => {
     const sell = match.partial({ amount: 5n });
 
     book.read.filled([match.partial({ sell })]).returns(true);
+  });
+
+  test("picks the struct's overload where another takes a scalar", () => {
+    const mock = createMockRpc();
+    const book = mock.contract({ abi: bookAbi, address: USDC });
+
+    book.read.settle([match.partial({ expiry: 1n })]).returns(true);
+    // @ts-expect-error -- the struct's overload returns a bool
+    book.read.settle([match.partial({ expiry: 1n })]).returns(1n);
+    // @ts-expect-error -- `expiry` is a uint64: a bigint
+    book.read.settle([match.partial({ expiry: "soon" })]).returns(true);
   });
 
   test("rejects unknown fields and wrong types", () => {
