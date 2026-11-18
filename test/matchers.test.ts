@@ -369,6 +369,41 @@ describe("match.where()", () => {
       'Matcher where(throwsBoom) for "write.transfer" threw: boom',
     ]);
   });
+
+  test("a predicate that throws stops the match there: better mocks' predicates run, and the rest don't", async () => {
+    const { usdc, allowance } = setup();
+    const tried: string[] = [];
+    const tries = (label: string, answer: () => boolean) =>
+      match.where<Address>(() => {
+        tried.push(label);
+        return answer();
+      }, label);
+    // Registered worst first: the older of two equally specific mocks, the newer, then the most specific.
+    usdc.read.allowance([tries("older", () => true), match.any()]).returns(1n);
+    usdc.read.allowance([tries("newer", throwsBoom), match.any()]).returns(2n);
+    usdc.read.allowance([tries("most specific", () => false), bob]).returns(3n);
+
+    const error = expectCause(await rejectionOf(allowance(alice, bob)), MockResolverError);
+    expect(error.matcher).toBe("where(newer)");
+    expect(tried).toEqual(["most specific", "newer"]);
+  });
+
+  test("a predicate that throws leaves the call unanswered: no mock answers it, counts a use, or spends its limit", async () => {
+    const { mock, usdc, balanceOf } = setup();
+    const throwsForBob = match.where((account: Address) => {
+      if (isAddressEqual(account, bob)) throw new Error("boom");
+      return false;
+    }, "throwsForBob");
+    // Less specific, so it's tried after the predicate, and would answer any call.
+    usdc.read.balanceOf().once().returns(1n);
+    usdc.read.balanceOf([throwsForBob]).returns(2n);
+
+    expectCause(await rejectionOf(balanceOf(bob)), MockResolverError);
+    expectThrows(MockCheckError, "2 mock(s) answered no call", () => {
+      mock.assertAllUsed();
+    });
+    expect(await balanceOf(alice)).toBe(1n);
+  });
 });
 
 describe("match.partial()", () => {
@@ -728,6 +763,21 @@ describe("registration", () => {
     expect(() => {
       mock.assertAllUsed();
     }).not.toThrow();
+  });
+
+  test("a Jest or Vitest matcher is refused past the first arg, key, or param too", () => {
+    const { mock, usdc } = setup();
+
+    expectThrows(MockSetupError, "(got Any<String>)", () =>
+      usdc.read.allowance([alice, expect.any(String)]),
+    );
+    expectThrows(MockSetupError, "(got Any<BigInt>)", () =>
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
+      mock.actions.getBalance({ address: alice, blockNumber: expect.any(BigInt) }),
+    );
+    expectThrows(MockSetupError, "(got Anything)", () =>
+      mock.method("eth_custom", ["0x1", expect.anything()]),
+    );
   });
 
   test("matchers can't be return values", async () => {

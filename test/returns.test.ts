@@ -143,9 +143,14 @@ describe("named outputs", () => {
   test("a value the encoder can't convert fails at registration as the mock's error", () => {
     const { mock } = setup();
     const feed = mock.contract({
-      abi: parseAbi(["function total() view returns (uint256)"]),
+      abi: parseAbi([
+        "function decimals() view returns (uint8)",
+        "function total() view returns (uint256)",
+      ]),
       address: FEED,
     });
+    // Another function's mock, registered first: the error names the one given the value.
+    feed.read.decimals().returns(18);
 
     const error = expectThrows(
       MockSetupError,

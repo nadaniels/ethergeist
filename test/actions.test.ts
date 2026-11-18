@@ -1030,6 +1030,21 @@ describe("method()", () => {
     expect(other.balance).toBe(0n);
   });
 
+  test("a pinned list or object doesn't match a param the request leaves out", async () => {
+    const { mock } = setup();
+    const hash = testHash("traced");
+    mock.method("eth_getProof", [USDC]).returns("no keys");
+    mock.method("eth_getProof", [USDC, ["0x1"]]).returns("keys");
+    mock.method("debug_traceTransaction", [hash]).returns("no options");
+    mock.method("debug_traceTransaction", [hash, { tracer: "callTracer" }]).returns("options");
+
+    // The mock that pins more is tried first, and steps aside.
+    expect(await mock.request({ method: "eth_getProof", params: [USDC] })).toBe("no keys");
+    expect(await mock.request({ method: "debug_traceTransaction", params: [hash] })).toBe(
+      "no options",
+    );
+  });
+
   test("resolvers get the raw params", async () => {
     const { mock, client } = setup();
     const received: (readonly RpcValue[])[] = [];
