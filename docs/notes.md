@@ -48,12 +48,19 @@ features land; tick them off as pages get written.
       default as a value (`balanceOf: 0n`). `.returns()` and
       `.returns(undefined)` are the zero answer, since that's an argument
       left out of a call, not a key.
-      In a pin, a key set to `undefined` is left out too, so any value
-      matches there: to match a call without the key, pin
-      `match.where((v) => v === undefined)` (`match.any()` matches an
-      absent key too). A list's element can't be left out, so an
-      `undefined` arg or topic is refused at registration; only a raw
-      method's last params can be.
+      In a pin, a key set to `undefined` is left out too, so it pins
+      nothing: a call matches with any value there, or none. A pinned key
+      doesn't match a call that leaves it out, whatever the pin
+      (`match.any()` included). No predicate is given `undefined`. `null`
+      is a value, so a send's `to` for a deploy matches `match.any()`. To
+      check that the app left a field out, leave the key out of the pin and
+      assert on `.calls`. To select an action's call on it, use a
+      whole-params predicate, e.g.
+      `match.where((call) => call.gas === undefined)`. A contract mock's
+      `from` has no such spelling: a mock without a `from` pin answers, and
+      its resolver can check the call's `from`. A list's element can't be
+      left out, so an `undefined` arg or topic is refused at registration;
+      only a raw method's last params can be.
 - [ ] `read` vs `simulate` namespaces (view/pure vs nonpayable/payable),
       mirroring `getContract`, and `estimateGas` (the same functions as
       `simulate`, for `estimateContractGas` and a write's prepare). A

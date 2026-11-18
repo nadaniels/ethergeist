@@ -21,7 +21,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, mainnet } from "viem/chains";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
   MockCheckError,
@@ -1046,6 +1046,34 @@ describe("method()", () => {
     expect(await mock.request({ method: "debug_traceTransaction", params: [hash] })).toBe(
       "no options",
     );
+  });
+
+  test("match.any() and a predicate don't match a param past the end of the request's, and a null param reaches both", async () => {
+    const { mock } = setup();
+    const predicate = vi.fn(() => true);
+    mock.method("eth_any", ["0x1", match.any()]).returns("any");
+    mock.method("eth_where", ["0x1", match.where(predicate, "predicate")]).returns("where");
+
+    for (const method of ["eth_any", "eth_where"])
+      expectCause(await rejectionOf(mock.request({ method, params: ["0x1"] })), MockNotFoundError);
+    expect(predicate).not.toHaveBeenCalled();
+    expect(await mock.request({ method: "eth_any", params: ["0x1", null] })).toBe("any");
+    expect(await mock.request({ method: "eth_where", params: ["0x1", null] })).toBe("where");
+    expect(predicate.mock.calls).toEqual([[null]]);
+  });
+
+  test("match.any() and a predicate in an object param don't match a key the request leaves out, and a null one reaches both", async () => {
+    const { mock } = setup();
+    const predicate = vi.fn(() => true);
+    mock.method("eth_any", [{ a: match.any() }]).returns("any");
+    mock.method("eth_where", [{ a: match.where(predicate, "predicate") }]).returns("where");
+
+    for (const method of ["eth_any", "eth_where"])
+      expectCause(await rejectionOf(mock.request({ method, params: [{}] })), MockNotFoundError);
+    expect(predicate).not.toHaveBeenCalled();
+    expect(await mock.request({ method: "eth_any", params: [{ a: null }] })).toBe("any");
+    expect(await mock.request({ method: "eth_where", params: [{ a: null }] })).toBe("where");
+    expect(predicate.mock.calls).toEqual([[null]]);
   });
 
   test("resolvers get the raw params", async () => {

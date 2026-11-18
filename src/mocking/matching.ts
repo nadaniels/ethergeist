@@ -198,12 +198,16 @@ export type MatchOptions = {
  * Whether `actual` matches `expected`: deep equality where hex strings
  * (addresses, bytes) compare case-insensitively and equal integers match as
  * either `number` or `bigint`. Objects match on the fields `expected` has.
- * `match.*` matchers in `expected` match as they say.
+ * `match.*` matchers in `expected` match as they say, and none matches a
+ * value left out (`undefined`).
  *
  * @internal Exported for its unit test.
  */
 export function isMatch(expected: unknown, actual: unknown, options: MatchOptions = {}): boolean {
   if (isMatcher(expected)) {
+    // Before `predicates: false`, so a left-out value rules its mock out in
+    // the exact-values pass, and none of its predicates run.
+    if (actual === undefined) return false;
     if (expected.type === "partial")
       return (
         isNonArrayObject(actual) &&

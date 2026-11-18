@@ -463,6 +463,35 @@ describe("pins in assertAllUsed()", () => {
     expect(isAlice).not.toHaveBeenCalled();
   });
 
+  test("an unused mock shows its call's from and value when both differ, and names the first", async () => {
+    const { mock, client, vault } = setup();
+    vault.simulate.deposit([], { from: match.any(), value: 5n }).returns();
+
+    const error = await rejectionOf(
+      client.simulateContract({
+        address: VAULT,
+        abi: vaultAbi,
+        functionName: "deposit",
+        value: 3n,
+      }),
+    );
+
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
+      "Registered:\n  simulate.deposit() { from: any, value: 5n }  ← { from } didn't match",
+    );
+    expectThrows(
+      MockCheckError,
+      [
+        `  - simulate.deposit() { from: any, value: 5n } on Vault (${VAULT})`,
+        "    received 1 call to simulate.deposit:",
+        "      deposit() { from: undefined, value: 3n }  ← { from } didn't match",
+      ].join("\n"),
+      () => {
+        mock.assertAllUsed();
+      },
+    );
+  });
+
   test("an unused mock shows the from or value its function's calls had instead", async () => {
     const { mock, usdc, balanceOf } = setup();
     usdc.read.balanceOf([bob]).returns(1n);

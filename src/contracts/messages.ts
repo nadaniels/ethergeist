@@ -15,7 +15,7 @@ import { mismatches, mismatchesAsMatched } from "../mocking/matching.js";
 import type { Answer, PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import { inputName } from "./argTypes.js";
-import { type Pins, pinMismatches } from "./callPins.js";
+import type { Pins } from "./callPins.js";
 import type { MockCall, MockNamespace } from "./types.js";
 
 /** A contract's mock, as messages describe it. */
@@ -154,7 +154,7 @@ export function unusedLine(
 function received(mock: Mock, call: MockCall): ReceivedCall {
   const mismatched = mismatchesAsMatched((options) => [
     ...mismatches(mock.pinned, call.args, options),
-    ...pinMismatches(mock.pins, call, options),
+    ...mismatches(mock.pins, call, options),
   ]);
   const [key] = mismatched;
   return {

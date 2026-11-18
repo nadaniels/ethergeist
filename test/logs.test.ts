@@ -8,13 +8,14 @@ import {
   createPublicClient,
   encodeEventTopics,
   erc20Abi,
+  isAddressEqual,
   pad,
   parseAbiItem,
   parseGwei,
   toEventSelector,
   zeroAddress,
 } from "viem";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
   MockCheckError,
@@ -976,14 +977,19 @@ describe("mock.actions.getLogs", () => {
     expect(logs.map((log) => log.args.value)).toEqual([2n]);
   });
 
-  test("a mock pinned to a list of addresses doesn't answer a call with no address filter", async () => {
+  test("a mock pinned to a list of addresses, or a predicate, doesn't answer a call with no address filter", async () => {
     const { mock, client, usdc } = setup();
     const log = usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
+    const isUsdc = vi.fn(
+      (address: Address | Address[]) => !Array.isArray(address) && isAddressEqual(address, USDC),
+    );
     mock.actions.getLogs({ address: [USDC, DAI] }).returns([]);
+    mock.actions.getLogs({ address: match.where(isUsdc, "isUsdc") }).returns([]);
 
     expect(await client.getLogs({ address: [USDC, DAI], fromBlock: 0n })).toEqual([]);
     const logs = await client.getLogs({ fromBlock: 0n });
     expect(logs.map((each) => each.transactionHash)).toEqual([log.transactionHash]);
+    expect(isUsdc).not.toHaveBeenCalled();
   });
 
   test("returns() answers no logs", async () => {

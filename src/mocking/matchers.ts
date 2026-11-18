@@ -26,6 +26,8 @@ export type Matcher =
  * Matchers for a mock's args or params, in place of exact values. Each is
  * typed as the value it stands in for, so args keep viem's types.
  *
+ * To match a call with or without a value, leave its key out.
+ *
  * The most specific matching mock wins: the one with the most exact values,
  * then the most predicates (`where`). An `any` counts as neither, and a
  * `partial` counts what its fields pin. A mock that pins nothing ranks below
@@ -34,16 +36,17 @@ export type Matcher =
  * unlimited ones, the most recent wins.
  */
 export const match = {
-  /** Matches any value at this position. */
+  /** Matches any value at this position, when the call has one. */
   // oxlint-disable-next-line typescript/no-unnecessary-type-parameters -- typed by its position, like expect.any()
   any<value>(): value {
     return asValue({ [matcherKey]: true, type: "any" });
   },
   /**
    * Matches when `predicate` returns `true` for the decoded value, in viem's
-   * types. Addresses arrive checksummed: compare them with viem's
-   * `isAddressEqual()`, not `===`. Messages show `label`, or else the
-   * predicate's name, e.g. `where(isLarge)`. An unnamed one shows its
+   * types. When the call leaves the value out, the predicate isn't called,
+   * and the mock doesn't match. Addresses arrive checksummed: compare them
+   * with viem's `isAddressEqual()`, not `===`. Messages show `label`, or else
+   * the predicate's name, e.g. `where(isLarge)`. An unnamed one shows its
    * source, cut to 60 characters, e.g. `where((n) => n > 5n)`.
    */
   where<value>(predicate: (value: Exclude<value, undefined>) => boolean, label?: string): value {

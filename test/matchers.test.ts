@@ -191,6 +191,26 @@ describe("match.any()", () => {
     expect(await totalOf([alice, bob])).toBe(5n);
     await expectRejects(ContractFunctionExecutionError, "No mock for totalOf", totalOf([alice]));
   });
+
+  test("needs a value: it doesn't match a call that leaves its field out", async () => {
+    const { mock, client } = setup();
+    const wallet = createWalletClient({
+      account: alice,
+      chain: mock.chain,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+    mock.actions.sendTransaction({ gas: match.any() }).returns({ status: "reverted" });
+    mock.actions.getBalance({ blockTag: match.any() }).returns(7n);
+    mock.actions.getBalance().returns(1n);
+
+    const withoutGas = await wallet.sendTransaction({ to: bob });
+    const withGas = await wallet.sendTransaction({ to: bob, gas: 30_000n });
+
+    expect((await client.getTransactionReceipt({ hash: withoutGas })).status).toBe("success");
+    expect((await client.getTransactionReceipt({ hash: withGas })).status).toBe("reverted");
+    expect(await client.getBalance({ address: alice, blockNumber: 1n })).toBe(1n);
+    expect(await client.getBalance({ address: alice, blockTag: "safe" })).toBe(7n);
+  });
 });
 
 describe("match.where()", () => {
@@ -1425,6 +1445,24 @@ describe("actions and raw methods", () => {
       MockNotFoundError,
     );
     expect(hintsOf(error)).toBe("Registered:\n  getStorageAt(where(isBob))  ← params didn't match");
+  });
+
+  test("a whole-params predicate selects a call that leaves a field out", async () => {
+    const { mock, client } = setup();
+    const wallet = createWalletClient({
+      account: alice,
+      chain: mock.chain,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+    mock.actions
+      .sendTransaction(match.where((call) => call.gas === undefined, "noGas"))
+      .returns({ status: "reverted" });
+
+    const withoutGas = await wallet.sendTransaction({ to: bob });
+    const withGas = await wallet.sendTransaction({ to: bob, gas: 30_000n });
+
+    expect((await client.getTransactionReceipt({ hash: withoutGas })).status).toBe("reverted");
+    expect((await client.getTransactionReceipt({ hash: withGas })).status).toBe("success");
   });
 
   test("action params take matchers", async () => {

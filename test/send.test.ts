@@ -18,6 +18,7 @@ import {
   keccak256,
   parseGwei,
   serializeTransaction,
+  toFunctionSelector,
   toHex,
   zeroAddress,
 } from "viem";
@@ -568,6 +569,51 @@ describe("send mocks", () => {
     );
   });
 
+  test("a predicate isn't asked about a field the send leaves out, and another mock answers it", async () => {
+    const { mock, client, wallet } = nodeSetup();
+    const isTransfer = vi.fn((data: Hex) =>
+      data.startsWith(toFunctionSelector("transfer(address,uint256)")),
+    );
+    mock.actions
+      .sendTransaction({ to: bob, data: match.where(isTransfer, "isTransfer") })
+      .returns({ status: "reverted" });
+    mock.actions.sendTransaction({ to: bob }).returns({ gasUsed: 30_000n });
+
+    const hash = await wallet.sendTransaction({ to: bob, value: 1n });
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      status: "success",
+      gasUsed: 30_000n,
+    });
+    expect(isTransfer).not.toHaveBeenCalled();
+  });
+
+  test("a deploy's to is null, a value that match.any() and a predicate match", async () => {
+    const { mock, client, wallet } = nodeSetup();
+    const isDeploy = vi.fn((to: Address | null) => to === null);
+    mock.actions
+      .sendTransaction({ to: match.where(isDeploy, "isDeploy") })
+      .once()
+      .returns({ status: "reverted" });
+    mock.actions.sendTransaction({ to: match.any() }).returns({ gasUsed: 30_000n });
+
+    const first = await wallet.deployContract({ abi: [], bytecode: "0x6000" });
+    const second = await wallet.deployContract({ abi: [], bytecode: "0x6000" });
+
+    expect((await client.getTransactionReceipt({ hash: first })).status).toBe("reverted");
+    expect((await client.getTransactionReceipt({ hash: second })).gasUsed).toBe(30_000n);
+    expect(isDeploy.mock.calls).toEqual([[null]]);
+  });
+
+  test("a deploy's estimate leaves to out, so match.any() there doesn't answer it", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ to: match.any() }).returns(1n);
+
+    const error = await rejectionOf(client.estimateGas({ data: "0x6000" }));
+
+    expectCause(error, MockNotFoundError);
+  });
+
   test(".once() counts sends", async () => {
     const { mock, wallet } = nodeSetup();
     mock.actions.sendTransaction({ to: bob }).once().returns({ status: "reverted" });
@@ -1113,6 +1159,22 @@ describe("an estimate no mock answers lists the sendTransaction mocks", () => {
       header,
       `  sendTransaction({ to: ${carol} })  ← to didn't match`,
     ]);
+  });
+
+  test("a gas pin misses, since viem estimates without gas, so the estimate needs its own mock", async () => {
+    const { mock, client, wallet } = localSetup();
+    mock.actions.sendTransaction({ to: bob, gas: match.any() }).returns({ gasUsed: 30_000n });
+
+    const error = await rejectionOf(wallet.sendTransaction({ to: bob, data: "0x12" }));
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      mockIt,
+      header,
+      `  sendTransaction({ to: ${bob}, gas: any })  ← gas didn't match`,
+    ]);
+    mock.actions.estimateGas({ to: bob }).returns(50_000n);
+    const hash = await wallet.sendTransaction({ to: bob, data: "0x12" });
+    expect((await client.getTransactionReceipt({ hash })).gasUsed).toBe(30_000n);
   });
 
   test("after the estimateGas mocks", async () => {

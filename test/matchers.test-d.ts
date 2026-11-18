@@ -1,4 +1,4 @@
-import { type Address, erc20Abi, parseAbi } from "viem";
+import { type Address, type BlockTag, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
 
 import { type BalanceCall, createMockRpc, match } from "../src/index.js";
@@ -110,6 +110,29 @@ describe("matchers take the type of their position", () => {
         }),
       )
       .returns(1n);
+  });
+
+  test("a predicate at a field a call can leave out is typed without undefined", () => {
+    const mock = createMockRpc();
+
+    mock.actions.getBalance({
+      blockTag: match.where((tag) => {
+        expectTypeOf(tag).toEqualTypeOf<BlockTag>();
+        return tag === "safe";
+      }),
+    });
+    mock.actions.sendTransaction({
+      gas: match.where((gas) => {
+        expectTypeOf(gas).toEqualTypeOf<bigint>();
+        return gas > 21_000n;
+      }),
+    });
+    mock.actions.getLogs({
+      address: match.where((address) => {
+        expectTypeOf(address).toEqualTypeOf<Address | Address[]>();
+        return Array.isArray(address);
+      }),
+    });
   });
 
   test("a predicate keeps null, as a deploy's to", () => {

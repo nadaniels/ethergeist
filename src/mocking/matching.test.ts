@@ -36,6 +36,10 @@ const cases: [name: string, pinned: unknown, actual: unknown, key: unknown][] = 
   ["any for all the params", match.any(), { address: "0x1" }, undefined],
   ["a predicate for all the params", no, { address: "0x1" }, null],
   ["a predicate for all the params, saying yes", yes, { address: "0x1" }, undefined],
+  ["any against a param left out", { gas: match.any() }, {}, "gas"],
+  ["a predicate against a param left out", { gas: yes }, {}, "gas"],
+  ["a partial against a param left out", { tx: match.partial({ a: 1 }) }, {}, "tx"],
+  ["any against null, a value", [match.any()], [null], undefined],
 ];
 
 describe("firstMismatch()", () => {
@@ -67,6 +71,10 @@ describe("firstMismatch()", () => {
   test("skips predicates with predicates: false", () => {
     expect(firstMismatch([no, 2n], [1n, 2n], { predicates: false })).toBeUndefined();
     expect(firstMismatch([no, 2n], [1n, 3n], { predicates: false })).toBe(1);
+  });
+
+  test("a param left out matches no predicate, with predicates: false too", () => {
+    expect(firstMismatch({ gas: yes }, {}, { predicates: false })).toBe("gas");
   });
 });
 
