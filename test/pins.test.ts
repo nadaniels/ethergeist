@@ -413,7 +413,7 @@ describe("pins and the estimate a write mock implies", () => {
     );
     expect(hintsOf(miss)).toBe(
       [
-        "Write mocks, which imply the estimate of a send they match:",
+        "Write mocks (each also answers its send's estimate):",
         `  write.deposit() { from: ${alice}, value: 1n }  ← { from } didn't match`,
       ].join("\n"),
     );

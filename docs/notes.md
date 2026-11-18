@@ -765,8 +765,8 @@ features land; tick them off as pages get written.
     isn't a call to one of its nonpayable or payable functions; for an
     estimate with `from` and no `estimateGas` mocks registered, its hint
     is the `sendTransaction` mock first, and with `from` it then lists the
-    `sendTransaction` mocks, which imply the estimate of a send they
-    match, each with what it missed on.
+    `sendTransaction` mocks, which also answer the estimate of a send
+    they match, each with what it missed on.
     A number for a contract's writes goes on the contract, per function:
     `token.estimateGas.transfer().returns(n)` or `defaults.estimateGas`.
     An args-less `mock.actions.estimateGas().returns(100_000n)` sets no
@@ -966,9 +966,9 @@ features land; tick them off as pages get written.
       first, then the `estimateGas` mock (both `{ to: null }` for a
       deploy); with some, it lists them under "Registered:" and gives no
       hint. Either way it then lists the `sendTransaction` mocks under
-      "sendTransaction mocks, which imply the estimate of a send they
-      match:", and those the last restore removed after its own. An
-      estimate without `from` is no send's, so it names and lists only
+      "sendTransaction mocks (each also answers its send's estimate):", and
+      those the last restore removed after its own. An estimate without
+      `from` is no send's, so it names and lists only
       estimate mocks, and its hint is the `estimateGas` mock alone. A contract's miss also names the action
       mocks that match the call, under "Action mocks that match, which
       don't answer a registered contract's functions:", by exact values:

@@ -144,8 +144,9 @@ its `Transfer` log are there for the app to find (see [The Chain](#the-chain)).
 A local account (`privateKeyToAccount()`) works too: viem estimates the gas
 first, and the write mock answers the estimate as well (default 100,000 gas).
 A `.reverts()` mock reverts the estimate instead, as a node would, and the
-contract's `estimateGas` mock sets a number. Only a contract's mocks answer its functions: `mock.actions.estimateGas`
-and `mock.actions.sendTransaction` answer everything else.
+contract's `estimateGas` mock sets a number. Only a contract's mocks answer its
+functions: `mock.actions.estimateGas` and `mock.actions.sendTransaction` answer
+everything else.
 
 Reads batched through Multicall3 are answered call by call, so viem's
 `multicall()` and wagmi's `useReadContracts` work unchanged.

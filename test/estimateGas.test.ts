@@ -42,7 +42,7 @@ const alice = testAddress("alice");
 const bob = testAddress("bob");
 /** An unmocked estimate's hint, for an estimate with a sender. */
 const estimateOfSendHint =
-  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
+  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which also answers the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
 const tokenAbi = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
   "function mint(uint256 amount) payable",
@@ -689,7 +689,7 @@ describe("contract estimates", () => {
       `No write or estimateGas mock for transfer(${bob}, 1n) on Token (${token.address}).`,
     );
     expect(hintsOf(error)).toBe(
-      'No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn\'t answer estimates.',
+      'No write or estimateGas mocks registered for "transfer": a write mock that matches the send also answers its estimate, and a simulate mock doesn\'t answer estimates.',
     );
     expect(mock.unhandled).toHaveLength(1);
     // The contract didn't answer, so its record has the request's outcome.
@@ -769,7 +769,7 @@ describe("whose mocks answer an estimate sent to a contract", () => {
       `No write or estimateGas mock for mint(1n) on Token (${token.address}).`,
     );
     expect(error.metaMessages).toEqual([
-      `No write or estimateGas mocks registered for "mint": a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`,
+      `No write or estimateGas mocks registered for "mint": a write mock that matches the send also answers its estimate, and a simulate mock doesn't answer estimates.`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       "  estimateGas(*)",
       "  estimateGas({ value: 1n }) refuses",

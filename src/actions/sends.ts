@@ -102,7 +102,7 @@ export function createSends(
     const estimate = to === null ? deployEstimateHint : estimateGas.hint;
     if (!withSender) return estimate;
     const send = to === null ? deploySendHint : sendTransaction.hint;
-    return `${send}, which implies the estimate of a send it matches, or with ${estimate}`;
+    return `${send}, which also answers the estimate of a send it matches, or with ${estimate}`;
   }
 
   /**
@@ -200,7 +200,7 @@ export function createSends(
         before: notAFunctionLines(called),
         others: sent &&
           sendMatch && {
-            header: "sendTransaction mocks, which imply the estimate of a send they match:",
+            header: "sendTransaction mocks (each also answers its send's estimate):",
             listing: sendTransactionMocks.missListing(sent, sendMatch),
           },
       });

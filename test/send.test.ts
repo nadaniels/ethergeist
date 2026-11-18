@@ -1162,7 +1162,7 @@ describe("the estimate a send mock implies", () => {
 
 /** An unmocked estimate's hint, for an estimate with a sender. */
 const estimateOfSendHint =
-  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
+  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which also answers the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
 
 describe("an estimate no mock answers says how to mock it", () => {
   test("its send first, for a local account's send: a send mock implies the estimate", async () => {
@@ -1181,7 +1181,7 @@ describe("an estimate no mock answers says how to mock it", () => {
     const error = await rejectionOf(wallet.deployContract({ abi: [], bytecode: "0x6000" }));
 
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
-      "Mock it with mock.actions.sendTransaction({ to: null }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to: null }).returns(…).",
+      "Mock it with mock.actions.sendTransaction({ to: null }).returns(…), which also answers the estimate of a send it matches, or with mock.actions.estimateGas({ to: null }).returns(…).",
     ]);
     mock.actions.estimateGas({ to: null }).returns(50_000n);
     expect(await client.estimateGas({ account: alice, data: "0x6000" })).toBe(50_000n);
@@ -1199,7 +1199,7 @@ describe("an estimate no mock answers says how to mock it", () => {
 });
 
 describe("an estimate no mock answers lists the sendTransaction mocks", () => {
-  const header = "sendTransaction mocks, which imply the estimate of a send they match:";
+  const header = "sendTransaction mocks (each also answers its send's estimate):";
   const mockIt = estimateOfSendHint;
 
   test("with what each missed on, after the hint", async () => {

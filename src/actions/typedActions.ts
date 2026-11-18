@@ -207,9 +207,10 @@ export type MockActions = {
    * estimate first, before these mocks.
    *
    * Unmocked, a plain transfer, with no data, to an address without code is
-   * 21,000 gas, as a node estimates it, even with a send mock. Otherwise, a
-   * `sendTransaction` mock that would answer the transaction implies
-   * 100,000 gas, and anything else isn't answered.
+   * 21,000 gas, as a node estimates it, even with a send mock. Otherwise, for
+   * an estimate with a sender, a `sendTransaction` mock that would answer the
+   * transaction answers its estimate with 100,000 gas, and anything else
+   * isn't answered.
    * `.refuses()` refuses an estimate by name, e.g. `"insufficientFunds"`.
    */
   estimateGas: MockEstimateGasAction;

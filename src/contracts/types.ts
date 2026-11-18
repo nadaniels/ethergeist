@@ -453,9 +453,9 @@ export type MockContract<abi extends Abi> = {
    * `eth_estimateGas` as viem's `estimateContractGas()` sends it, and as
    * viem prepares a write. These mocks and `defaults.estimateGas` answer
    * estimates of these functions, and `mock.actions.estimateGas` doesn't.
-   * A `write` mock that would answer the send implies what they don't. A
-   * `.reverts()` `write` mock reverts the estimate of a send it would
-   * answer before any of them.
+   * A `write` mock that would answer the send also answers an estimate they
+   * don't. A `.reverts()` `write` mock reverts the estimate of a send it
+   * would answer before any of them.
    */
   estimateGas: {
     [functionName in ContractFunctionName<abi, WriteMutability>]: MockEstimateGasFunction<

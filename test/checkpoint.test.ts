@@ -34,7 +34,7 @@ const alice = testAddress("alice");
 
 /** An unmocked estimate's hint, for an estimate with a sender. */
 const estimateOfSendHint =
-  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
+  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which also answers the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
 const layoutHint =
   "If this test is in a nested describe, an afterEach in a parent describe that restores or " +
   "resets per test removes its setup; keep the two describes siblings.";
@@ -530,7 +530,7 @@ describe("nesting", () => {
       client.request({ method: "eth_estimateGas", params: [{ from: alice, to: USDC, data }] }),
     );
     expect(error.metaMessages).toEqual([
-      'No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn\'t answer estimates.',
+      'No write or estimateGas mocks registered for "transfer": a write mock that matches the send also answers its estimate, and a simulate mock doesn\'t answer estimates.',
       "Removed by the last restore() or reset():",
       `  estimateGas.transfer(${DAI}, 1n)`,
       `  write.transfer(${DAI}, 1n)`,
@@ -558,7 +558,7 @@ describe("nesting", () => {
     const error = await notFound(deploy());
     expect(error.shortMessage).toMatch(/^No mock for estimateGas\(/u);
     expect(error.metaMessages).toEqual([
-      "Mock it with mock.actions.sendTransaction({ to: null }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to: null }).returns(…).",
+      "Mock it with mock.actions.sendTransaction({ to: null }).returns(…), which also answers the estimate of a send it matches, or with mock.actions.estimateGas({ to: null }).returns(…).",
       "Removed by the last restore() or reset():",
       "  sendTransaction({ to: null })",
       layoutHint,

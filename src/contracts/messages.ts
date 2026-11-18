@@ -96,8 +96,8 @@ export function missError(
     read: `No mocks registered for ${name}.`,
     simulate: `No simulate mocks registered for ${name}; a write mock doesn't answer simulations.`,
     estimateGas: estimateOfSend
-      ? `No write or estimateGas mocks registered for ${name}: a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`
-      : `No estimateGas mocks registered for ${name}; a write mock implies one only for an estimate with a sender, and a simulate mock doesn't answer estimates.`,
+      ? `No write or estimateGas mocks registered for ${name}: a write mock that matches the send also answers its estimate, and a simulate mock doesn't answer estimates.`
+      : `No estimateGas mocks registered for ${name}; a write mock answers an estimate only when it has a sender, and a simulate mock doesn't answer estimates.`,
     write: `No write mocks registered for ${name}; a simulate mock doesn't answer sends.`,
   }[namespace];
   const pinned = [...own.registered, ...(writes?.registered ?? [])].flatMap((mock) =>
@@ -106,7 +106,7 @@ export function missError(
   const metaMessages =
     lines.length > 0 ? [estimateOfSend ? "estimateGas mocks:" : "Registered:", ...lines] : [];
   if (writeLines.length > 0)
-    metaMessages.push("Write mocks, which imply the estimate of a send they match:", ...writeLines);
+    metaMessages.push("Write mocks (each also answers its send's estimate):", ...writeLines);
   if (metaMessages.length === 0) metaMessages.push(none);
   if (others.length > 0)
     metaMessages.push(
