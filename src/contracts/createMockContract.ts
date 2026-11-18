@@ -263,7 +263,9 @@ export function createMockContract<const abi extends Abi>(
     const handler = mocks.register(
       pinned,
       { namespace, abiItem, selector: toFunctionSelector(abiItem), pins },
-      { isDefault, ranked: specificity(pins === undefined ? pinned : [pinned ?? [], pins]) },
+      // Beside the pins, not nested: nested, an empty args list would count as
+      // an exact value.
+      { isDefault, ranked: specificity(pins === undefined ? pinned : [...(pinned ?? []), pins]) },
     );
     const answers = answersIn[namespace];
     const builder = mocks.createBuilder(

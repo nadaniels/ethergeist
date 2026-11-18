@@ -98,7 +98,14 @@ features land; tick them off as pages get written.
     order (one exact value beats any number of predicates, and one predicate
     any number of `any`s); a mock with args, even empty ones, beats an
     args-less one. An `any` counts because it needs a value: a send's
-    `{ to, gas: any }` beats its `{ to }`.
+    `{ to, gas: any }` beats its `{ to }`. An empty list inside args or
+    params is an exact value, so `[[]]` beats `[any]` and `[where]`. One
+    `any` in place of all the params counts nothing, as every call has
+    params. It still beats no params.
+    Known and left: a list of matchers doesn't count its length, so `[[any]]`
+    ties with `[any]`; two predicates tie even when one is narrower; and an
+    object in a raw method's params ranks as its fields, so `{}` there
+    doesn't beat `any`.
   - Ties between equally specific matchers go to the most recent: `[X, any]`
     and `[any, Y]` both match `[X, Y]`.
   - Predicates get decoded values in viem's types. Addresses arrive

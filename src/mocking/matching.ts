@@ -10,24 +10,31 @@ import type { PinnedKey } from "./types.js";
  * How specific a mock's pinned args or params are:
  * `[exact values, predicates, anys]`, compared in that order. `match.any()`
  * counts because it needs a value. `match.partial()` counts what its fields
- * pin. Mocks with nothing pinned match anything and rank below all others.
+ * pin. An empty list inside a pin counts as an exact value: it matches only
+ * an empty list, and has no elements to count. Mocks with nothing pinned
+ * match anything and rank below all others. `specificity` says what a pin's
+ * top level counts.
  */
 export type Specificity = readonly [exact: number, predicates: number, anys: number];
 
-/** `pinned`'s specificity: see `Specificity`. */
+/**
+ * `pinned`'s specificity: see `Specificity`. The pin's own `[]` counts
+ * nothing, as it matches every call: a raw method's params are compared
+ * only as far as the pinned ones go, and a function without inputs takes
+ * none. One `match.any()` for all the params counts nothing too, as every
+ * call has params.
+ */
 export function specificity(pinned: unknown): Specificity {
   if (pinned === undefined) return [-1, 0, 0];
-  const count = (value: unknown): Specificity => {
+  function count(value: unknown): Specificity {
     if (isMatcher(value)) {
       if (value.type === "partial") return count(value.fields);
       return value.type === "where" ? [0, 1, 0] : [0, 0, 1];
     }
-    const parts = Array.isArray(value)
-      ? value
-      : isNonArrayObject(value)
-        ? Object.values(value)
-        : undefined;
-    if (!parts) return [1, 0, 0];
+    if (Array.isArray(value)) return value.length === 0 ? [1, 0, 0] : sum(value);
+    return isNonArrayObject(value) ? sum(Object.values(value)) : [1, 0, 0];
+  }
+  function sum(parts: readonly unknown[]): Specificity {
     return parts.reduce<Specificity>(
       ([exact, predicates, anys], v) => {
         const [e, p, a] = count(v);
@@ -35,8 +42,9 @@ export function specificity(pinned: unknown): Specificity {
       },
       [0, 0, 0],
     );
-  };
-  return count(pinned);
+  }
+  if (isMatcher(pinned) && pinned.type === "any") return [0, 0, 0];
+  return Array.isArray(pinned) ? sum(pinned) : count(pinned);
 }
 
 /**

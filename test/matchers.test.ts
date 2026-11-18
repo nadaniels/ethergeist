@@ -26,6 +26,7 @@ import {
   createMockRpc,
   match,
   testAddress,
+  testLog,
 } from "../src/index.js";
 import {
   expectCause,
@@ -126,7 +127,14 @@ function setup() {
       functionName: "allowance",
       args: [owner, spender],
     });
-  return { mock, client, wallet, usdc, balanceOf, allowance };
+  const totalOf = (owners: Address[]) =>
+    client.readContract({
+      abi: registryAbi,
+      address: DAI,
+      functionName: "totalOf",
+      args: [owners],
+    });
+  return { mock, client, wallet, usdc, balanceOf, allowance, totalOf };
 }
 
 // Named functions: messages show a predicate by its function name.
@@ -182,19 +190,22 @@ describe("match.any()", () => {
   });
 
   test("works inside arrays", async () => {
-    const { mock, client } = setup();
+    const { mock, totalOf } = setup();
     const registry = mock.contract({ abi: registryAbi, address: DAI });
     registry.read.totalOf([[alice, match.any()]]).returns(5n);
-    const totalOf = (owners: `0x${string}`[]) =>
-      client.readContract({
-        abi: registryAbi,
-        address: DAI,
-        functionName: "totalOf",
-        args: [owners],
-      });
 
     expect(await totalOf([alice, bob])).toBe(5n);
     await expectRejects(ContractFunctionExecutionError, "No mock for totalOf", totalOf([alice]));
+  });
+
+  test("inside a list, ranks below an exact value, whichever is registered first", async () => {
+    const { mock, totalOf } = setup();
+    const registry = mock.contract({ abi: registryAbi, address: DAI });
+    registry.read.totalOf([[alice, bob]]).returns(1n);
+    registry.read.totalOf([[alice, match.any()]]).returns(2n);
+
+    expect(await totalOf([alice, bob])).toBe(1n);
+    expect(await totalOf([alice, carol])).toBe(2n);
   });
 
   test("needs a value: it doesn't match a call that leaves its field out", async () => {
@@ -234,6 +245,38 @@ describe("match.any()", () => {
     mock.actions.getBalance({ blockTag: "latest" }).returns(2n);
 
     expect(await client.getBalance({ address: alice })).toBe(1n);
+  });
+
+  test("ranks below an empty list in its place, which matches only an empty list", async () => {
+    const { mock, totalOf } = setup();
+    const registry = mock.contract({ abi: registryAbi, address: DAI });
+    registry.read.totalOf([[]]).returns(1n);
+    registry.read.totalOf([match.any()]).returns(2n);
+    registry.read.totalOf([match.where(() => true)]).returns(3n);
+
+    expect(await totalOf([])).toBe(1n);
+    expect(await totalOf([alice])).toBe(3n);
+  });
+
+  test("ranks below an empty list in an action's params, or a raw method's", async () => {
+    const { mock, client } = setup();
+    mock.actions.getLogs({ topics: [] }).returns([]);
+    mock.actions.getLogs({ topics: match.any() }).returns([mock.buildLog(testLog("any"))]);
+    mock.method("eth_getProof", [match.any(), []]).returns({ balance: "0x1" });
+    mock.method("eth_getProof", [match.any(), match.any()]).returns({ balance: "0x2" });
+
+    expect(await client.getLogs()).toEqual([]);
+    expect((await client.getProof({ address: USDC, storageKeys: [] })).balance).toBe(1n);
+    expect((await client.getProof({ address: USDC, storageKeys: ["0x1"] })).balance).toBe(2n);
+  });
+
+  test("outranks a raw method's empty params, which match any params", async () => {
+    const { mock } = setup();
+    mock.method("eth_custom", [match.any()]).returns("any");
+    mock.method("eth_custom", []).returns("empty");
+
+    expect(await mock.request({ method: "eth_custom", params: ["0x1"] })).toBe("any");
+    expect(await mock.request({ method: "eth_custom", params: [] })).toBe("empty");
   });
 });
 
@@ -1477,6 +1520,31 @@ describe("actions and raw methods", () => {
       MockNotFoundError,
     );
     expect(hintsOf(error)).toBe("Registered:\n  getStorageAt(where(isBob))  ← params didn't match");
+  });
+
+  test("one match.any() for all the params ranks below any pinned param, and above no params", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ blockTag: match.any() }).returns(1n);
+    mock.actions.getBalance(match.any()).returns(2n);
+    mock.actions.getBalance().returns(3n);
+    mock.method("eth_custom", [match.any()]).returns("one");
+    mock.method("eth_custom", match.any()).returns("all");
+
+    expect(await client.getBalance({ address: alice, blockTag: "safe" })).toBe(1n);
+    expect(await client.getBalance({ address: alice, blockNumber: 1n })).toBe(2n);
+    expect(await mock.request({ method: "eth_custom", params: ["0x1"] })).toBe("one");
+    expect(await mock.request({ method: "eth_custom", params: [] })).toBe("all");
+  });
+
+  test("a match.partial() or match.where() for all the params outranks one match.any() for them", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance(match.partial({ address: alice })).returns(1n);
+    mock.actions.getBalance(match.where((call) => call.blockTag === "safe", "isSafe")).returns(2n);
+    mock.actions.getBalance(match.any()).returns(3n);
+
+    expect(await client.getBalance({ address: alice })).toBe(1n);
+    expect(await client.getBalance({ address: bob, blockTag: "safe" })).toBe(2n);
+    expect(await client.getBalance({ address: bob })).toBe(3n);
   });
 
   test("a whole-params predicate selects a call that leaves a field out", async () => {
