@@ -18,6 +18,10 @@ const bookAbi = parseAbi([
   "function makers(address[] path) view returns (bool)",
 ]);
 
+function isLarge(n?: bigint): boolean {
+  return n !== undefined && n > 5n;
+}
+
 describe("matchers take the type of their position", () => {
   test("predicates get the field's type", () => {
     const mock = createMockRpc();
@@ -79,6 +83,15 @@ describe("matchers take the type of their position", () => {
     token.read.balanceOf([match.any(), match.where((id) => id > 0n)]).returns(1n);
   });
 
+  test("a named predicate that takes undefined fits an arg, and the resolver keeps the args' types", () => {
+    const token = createMockRpc().contract({ abi, address: USDC });
+
+    token.read.balanceOf([match.any(), match.where(isLarge)]).returns(({ args }) => {
+      expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
+      return 1n;
+    });
+  });
+
   test("action and method params take matchers", () => {
     const mock = createMockRpc();
 
@@ -133,6 +146,24 @@ describe("matchers take the type of their position", () => {
         return Array.isArray(address);
       }),
     });
+  });
+
+  test("a logs range takes a predicate at each end", () => {
+    createMockRpc().actions.getLogs({
+      fromBlock: match.where((n) => n > 5n),
+      toBlock: match.where((n) => n < 9n),
+    });
+  });
+
+  test("a named predicate that takes undefined fits a field a call can leave out", () => {
+    createMockRpc().actions.sendTransaction({ gas: match.where(isLarge) });
+  });
+
+  test("a predicate that takes undefined stands for its value without undefined", () => {
+    expectTypeOf(match.where((n: bigint | undefined) => n !== undefined)).toEqualTypeOf<bigint>();
+    expectTypeOf(
+      match.where<Address | null | undefined>(() => true),
+    ).toEqualTypeOf<Address | null>();
   });
 
   test("a predicate keeps null, as a deploy's to", () => {

@@ -417,7 +417,7 @@ describe("the args count", () => {
       address: bob,
     });
 
-    // `match.any()` takes the args' type, so it type-checks.
+    // A matcher takes the args' type, so it type-checks.
     const error = expectThrows(
       MockSetupError,
       "read.allowance's args must be a list; got any.",
@@ -429,6 +429,13 @@ describe("the args count", () => {
     expect(error.metaMessages).toEqual([
       "Wrap them in a list, or leave them out to match any args.",
     ]);
+    expectThrows(
+      MockSetupError,
+      "read.allowance's args must be a list; got where((args) => args[0] === alice).",
+      () => {
+        usdc.read.allowance(match.where((args) => args[0] === alice));
+      },
+    );
     expectThrows(MockSetupError, `read.balanceOf's args must be a list; got ${alice}.`, () =>
       // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- a bare address, cast as tests write one
       usdc.read.balanceOf(alice as never),
