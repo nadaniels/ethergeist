@@ -168,15 +168,15 @@ features land; tick them off as pages get written.
   - A write mock's pins narrow the estimate it implies or reverts too: a
     send's estimate from someone else isn't implied, and the miss says the
     write mock's `from` didn't match.
-  - Messages show pins after the call: `transfer(*) { from: 0x… }`, `← {
-    from } didn't match` (braced, so it can't be read as an input named
-    `from`, as in `transferFrom`), and the call's own `from` or `value`
-    where they differ.
+  - Messages show pins after the call: `write.transfer(*) { from: 0x… }`,
+    `← { from } didn't match` (braced, so it can't be read as an input
+    named `from`, as in `transferFrom`), and the call's own `from` or
+    `value` where they differ.
   - `defaults` take no pins: they're one answer per function.
 - [ ] Return values: named outputs as objects, partial structs zero-filled,
       `zeroResult`, resolvers that receive the call.
 - [ ] Reverts: reason strings, custom errors, panics, raw data, `revert()` in
-      resolvers, and what viem throws.
+      `read`, `simulate`, and `estimateGas` resolvers, and what viem throws.
 - [ ] Multicall: batching, `batch` info on calls, how reverts and faults
       behave inside a batch.
 - [ ] Writes: `usdc.write.transfer([bob, 5n]).emits([log])` answers the
@@ -200,7 +200,9 @@ features land; tick them off as pages get written.
     static answer does. `mock.addTransaction()` and `contract.emit` are
     refused inside one (up to its first `await`; code elsewhere can still
     add transactions while it waits), as they would place a transaction of
-    their own mid-send. `revert(spec)` mines it reverted.
+    their own mid-send. A `write` mock's resolver has no `revert()`: it
+    runs only at the send, so it returns `{ status: "reverted" }` to mine
+    the send reverted.
     `mock.actions.sendTransaction` resolvers answer the same way.
   - The estimate: a matching write mock answers the transaction's
     `eth_estimateGas` with 100,000 gas when no estimate mock of the
@@ -219,9 +221,10 @@ features land; tick them off as pages get written.
     write's estimate gets the next answer. With `gas` set, or
     from a node's account, nothing estimates and it's mined reverted.
     `.returns({ status: "reverted" })` passes the estimate (an `estimateGas`
-    mock then sets its number) and mines it reverted for any client. A resolver's
-    `revert()` runs only at the send, so it's always mined reverted: for an
-    estimate-time revert, add `estimateGas.fn(args).reverts(spec)`.
+    mock then sets its number) and mines it reverted for any client, and so
+    does a resolver that returns it, since a resolver runs only at the send.
+    For an estimate-time revert, add `estimateGas.fn(args).reverts(spec)`;
+    for one that depends on state, see section 11.
     `.refuses("insufficientFunds")` (or `"nonceTooLow"`, and the other names
     a send takes) is the node refusing the send: nothing goes on the chain.
   - `simulate` is separate: wagmi's simulate-then-write needs both
@@ -740,8 +743,10 @@ features land; tick them off as pages get written.
     send, which don't answer it. The action's miss, on data sent to a
     registered contract, says the contract is registered and that this
     isn't a call to one of its nonpayable or payable functions; for an
-    estimate with `from`, it then lists the `sendTransaction` mocks, which
-    imply the estimate of a send they match, each with what it missed on.
+    estimate with `from` and no `estimateGas` mocks registered, its hint
+    is the `sendTransaction` mock first, and with `from` it then lists the
+    `sendTransaction` mocks, which imply the estimate of a send they
+    match, each with what it missed on.
     A number for a contract's writes goes on the contract, per function:
     `token.estimateGas.transfer().returns(n)` or `defaults.estimateGas`.
     An args-less `mock.actions.estimateGas().returns(100_000n)` sets no
@@ -881,8 +886,8 @@ features land; tick them off as pages get written.
       The mock couldn't answer 3 request(s):
         - No mock for previewRedeem(3900000n) on Vault (0x6B17…).
             Registered:
-              previewRedeem(2000000000000000000n)  ← shares didn't match
-              previewRedeem(5n)  ← shares didn't match
+              read.previewRedeem(2000000000000000000n)  ← shares didn't match
+              read.previewRedeem(5n)  ← shares didn't match
         - No mock for getBalance({ address: 0xa41f…, … }) (×2).
             Registered:
               getBalance({ address: 0x4292… })  ← address didn't match
@@ -911,21 +916,35 @@ features land; tick them off as pages get written.
       `restore({ assertAllUsed: true })`. That includes a per-test setup
       function: end it with `mock.checkpoint()` and return the checkpoint.
 - [ ] How to read "No mock for …" and its "Registered:" list: each mock
-      registered for the function, with why it didn't answer. A mock whose
-      args differ says which (`← owner didn't match`, by the ABI's input
-      names, `arg N` for unnamed ones, the key for action params), as
+      registered for the function, with why it didn't answer. A contract's
+      mock is named with its namespace, as it's registered
+      (`write.withdraw(150n)`), and the call bare (`withdraw(150n)`). A mock
+      whose args differ says which (`← owner didn't match`, by the ABI's
+      input names, `arg N` for unnamed ones, the key for action params), as
       matching found it, including the predicate that said no. A mock used
       up or without an answer says so, and still names an exact arg that
       differs (it wouldn't have matched either); its predicates aren't run
-      for the message. An estimate of a contract's function that nothing
-      answers also lists the function's write mocks, with why each missed:
-      a write mock that matches the send implies its estimate, so the miss
-      is usually there. An estimate that's the actions' and that nothing
-      answers lists the `sendTransaction` mocks the same way, under
-      "sendTransaction mocks, which imply the estimate of a send they
-      match:", after its `estimateGas` mocks or its hint, and those the
-      last restore removed after its own. An estimate without `from` is no
-      send's, so it lists none. A contract's miss also names the action
+      for the message. A contract's miss outside `read` names its
+      namespace ("No simulate mock for …", "No write mock for …"), and
+      with no mocks registered there, it says which other namespace's
+      mocks don't answer the call: a `write` mock doesn't answer
+      simulations, and a `simulate` mock doesn't answer sends or
+      estimates. An estimate with `from` is a send's, and a send
+      mock that matches the send implies it: with a local account, a write
+      mock left out or pinned wrong shows as its estimate's miss, since
+      viem estimates before it sends. For a contract's function the miss
+      names both kinds of mock, the send's first: "No write or estimateGas
+      mock for …", with the function's estimate mocks under "estimateGas
+      mocks:" and then its write mocks, with why each missed. An estimate
+      that's the actions' keeps "No mock for estimateGas(…)". With no
+      `estimateGas` mocks registered, its hint is the `sendTransaction` mock
+      first, then the `estimateGas` mock (`{ to: null }` and `{ data }` for
+      a deploy, which has no `to`); with some, it lists them under
+      "Registered:" and gives no hint. Either way it then lists the
+      `sendTransaction` mocks under "sendTransaction mocks, which imply the
+      estimate of a send they match:", and those the last restore removed
+      after its own. An estimate without `from` is no send's, so it names
+      and lists only estimate mocks. A contract's miss also names the action
       mocks that match the call, under "Action mocks that match, which
       don't answer a registered contract's functions:", by exact values:
       their predicates aren't run, and those used up or without an answer
@@ -934,7 +953,10 @@ features land; tick them off as pages get written.
       (`clearCalls()`, `restore()`, `reset()`), so a `.times(n)` mock that
       answered before it can read "3 times, 2 left". Under each unused mock, the calls
       its function received (up to 3, then a count) and the first arg, field,
-      or param that didn't match, by its ABI name; "matches; another mock
+      or param that didn't match, by its ABI name. Under a contract's mock,
+      the count names its namespace ("received 2 calls to
+      write.withdraw:"), since it counts only that namespace's calls to the
+      mock's own overload; "matches; another mock
       answered it" for a shadowed mock; "matches; it's to a registered
       contract's function, which action mocks don't answer" under an action
       mock, for an estimate or a send that was the contract's, answered or
@@ -1230,7 +1252,8 @@ features land; tick them off as pages get written.
 - [ ] The worked example, ERC-20 balances (in `test/write.test.ts`, "state
       the test owns"). Show:
   - The closure, the read that answers from it, and the write that changes
-    it. `erc20Abi` has no errors, so the ABI adds the one it reverts with:
+    it. `erc20Abi` has no errors, so the ABI adds the one the estimate
+    below reverts with:
     ```ts
     const tokenAbi = [
       ...erc20Abi,
@@ -1241,10 +1264,9 @@ features land; tick them off as pages get written.
     const token = mock.contract({ abi: tokenAbi, address: TOKEN, name: "Token" });
     const balances = new Map([[alice, parseEther("10")]]);
     token.read.balanceOf().returns(({ args: [who] }) => balances.get(who) ?? 0n);
-    token.write.transfer().returns(({ from, args: [to, amount], revert }) => {
+    token.write.transfer().returns(({ from, args: [to, amount] }) => {
       const have = balances.get(from) ?? 0n;
-      if (have < amount)
-        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
+      if (have < amount) return { status: "reverted" };
       balances.set(from, have - amount);
       balances.set(to, (balances.get(to) ?? 0n) + amount);
       return { logs: [token.events.Transfer({ from, to, value: amount })] };
@@ -1266,6 +1288,39 @@ features land; tick them off as pages get written.
       return 50_000n;
     });
     ```
+    It's safer than the short form below, because the two halves cover for
+    each other. A `write` mock without `.reverts()` never answers an
+    estimate ahead of an `estimateGas` mock, so a `write` mock that answers
+    ahead of the write mock's resolver still leaves a local account's
+    estimate reverting. A send that skips the estimate (`gas` set, or a
+    JSON-RPC account) still meets the write mock's resolver, which mines
+    the send reverted. And an `estimateGas` mock that answers ahead of the
+    estimate mock's resolver (a gas number for a fee display, say) hides the
+    estimate's revert, but leaves the write mock's resolver to mine the send
+    reverted. Neither half covers a `write` mock that answers ahead of the
+    write mock's resolver for a send that skips the estimate: that mock
+    answers the send, and neither resolver's check runs.
+  - The short form, for one arg and a fixed error: a `.reverts()` mock
+    pinned with `match.where()`, beside the resolver mock without args:
+    ```ts
+    token.write
+      .transfer([match.any(), match.where((amount) => amount > (balances.get(alice) ?? 0n))])
+      .reverts("ERC20: transfer amount exceeds balance");
+    ```
+    Over the balance, the estimate reverts and nothing changes; up to it,
+    the resolver answers. Its limits:
+    - No predicate sees both the sender and an arg, and the error can't
+      carry the call's values.
+    - The `.reverts()` mock is shadowed by a mock that's more specific, or
+      as specific and either limited or registered later: that mock answers
+      the send instead. `mock.assertAllUsed()` reports the `.reverts()`
+      mock while it has answered no call; a restore's check doesn't when
+      the `.reverts()` mock was registered before its checkpoint. When the
+      mock that answers is a resolver with its own check, the send is
+      mined reverted.
+    - Don't limit the `.reverts()` mock: a fee preview spends a `.once()`,
+      and the send after it reaches the resolver. The send then succeeds
+      unless the resolver keeps a check of its own.
   - `from` and decoded address args are checksummed, so key the map with
     checksummed addresses (`testAddress`, `getAddress`).
 - [ ] Why only a write's resolver changes state: it runs once per
@@ -1275,12 +1330,11 @@ features land; tick them off as pages get written.
       write mock implies doesn't run its resolver, so estimating first
       changes nothing; an `estimateGas` mock's resolver, like a simulate's,
       runs per estimate and only answers.
-- [ ] Change state last, after every `revert()`, `fail()`, and `refuse()`
-      check. `revert()` mines the transaction reverted, but the mock can't
-      undo the closure: a change made before it stays. A resolver that
-      throws, `fail()`s, or `refuse()`s puts nothing on the chain, yet keeps
-      what it changed too, so the app's next attempt starts from a ledger
-      that already moved.
+- [ ] Change state last, after every check that `fail()`s, `refuse()`s,
+      or returns `{ status: "reverted" }`: the mock can't undo the closure,
+      so a change made before it stays. A resolver that throws, `fail()`s,
+      or `refuse()`s after changing state puts nothing on the chain, yet
+      the app's next attempt starts from a ledger that already moved.
 - [ ] Native balances: `mock.actions.getBalance().returns(({ address }) =>
       native.get(address) ?? 0n)`, and a payable write's resolver moves
       `value` (`vault.write.deposit().returns(({ from, value }) => { … })`).

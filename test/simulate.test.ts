@@ -188,8 +188,33 @@ describe("simulate", () => {
     token.simulate.approve().returns(true);
 
     const error = expectCause(await rejectionOf(transfer(bob, 1n)), MockNotFoundError);
-    expect(error.shortMessage).toBe(`No mock for transfer(${bob}, 1n) on ${TOKEN}.`);
-    expect(error.message).toContain('No mocks registered for "transfer"');
+    expect(error.shortMessage).toBe(`No simulate mock for transfer(${bob}, 1n) on ${TOKEN}.`);
+    expect(error.metaMessages).toEqual([
+      'No simulate mocks registered for "transfer"; a write mock doesn\'t answer simulations.',
+    ]);
+  });
+
+  test("a simulation's miss lists the function's simulate mocks, each with why it missed", async () => {
+    const { token, transfer } = setup();
+    token.simulate.transfer([bob, 5n]).returns(true);
+
+    const error = expectCause(await rejectionOf(transfer(bob, 1n)), MockNotFoundError);
+    expect(error.shortMessage).toBe(`No simulate mock for transfer(${bob}, 1n) on ${TOKEN}.`);
+    expect(error.metaMessages).toEqual([
+      "Registered:",
+      `  simulate.transfer(${bob}, 5n)  ← amount didn't match`,
+    ]);
+  });
+
+  test("unmocked, a simulation isn't answered, even with a write mock", async () => {
+    const { token, transfer } = setup();
+    token.write.transfer().reverts("paused");
+
+    const error = expectCause(await rejectionOf(transfer(bob, 1n)), MockNotFoundError);
+    expect(error.shortMessage).toBe(`No simulate mock for transfer(${bob}, 1n) on ${TOKEN}.`);
+    expect(error.metaMessages).toEqual([
+      'No simulate mocks registered for "transfer"; a write mock doesn\'t answer simulations.',
+    ]);
   });
 
   test("an overload shared across read and simulate binds to its own namespace", async () => {

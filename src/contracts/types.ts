@@ -18,6 +18,7 @@ import type { MockCallOutcome } from "../mocking/outcomes.js";
 import type {
   SimulateErrorName,
   EstimateErrorName,
+  FaultContext,
   MockEstimateAnswers,
   MockFault,
   MockRefusalAnswers,
@@ -153,22 +154,19 @@ export type RevertFn<abi extends Abi> = <
 ) => never;
 
 /**
- * What a contract function's resolver gets: the call's fields (see
- * `MockCall`), `revert`, and `fail`. In `simulate`, `estimateGas`, and
- * `write`, it also gets `refuse` (see `RefusalContext`).
+ * What a contract function's `read`, `simulate`, or `estimateGas` resolver
+ * gets: the call's fields (see `MockCall`), `revert`, and `fail`. In
+ * `simulate` and `estimateGas`, it also gets `refuse` (see
+ * `RefusalContext`). A `write` resolver gets `WriteResolverContext`.
  */
-export type ResolverContext<abi extends Abi, args> = MockCall<args> & {
-  /**
-   * Reverts this call, e.g. `revert("paused")` or
-   * `revert({ errorName, args })`. See `RevertSpec` for the forms.
-   */
-  revert: RevertFn<abi>;
-  /**
-   * Fails the request this call is in with a fault, e.g.
-   * `fail({ status: 503 })`: see `MockFault` for the kinds.
-   */
-  fail: (fault: MockFault) => never;
-};
+export type ResolverContext<abi extends Abi, args> = MockCall<args> &
+  FaultContext & {
+    /**
+     * Reverts this call, e.g. `revert("paused")` or
+     * `revert({ errorName, args })`. See `RevertSpec` for the forms.
+     */
+    revert: RevertFn<abi>;
+  };
 
 /**
  * What a `read` or `simulate` resolver gets: in `simulate`, also `refuse`,
@@ -330,18 +328,13 @@ export type MockEstimateGasFunction<
 
 /**
  * What a contract function's `write` resolver gets: the call's fields,
- * `fail`, `refuse`, and `revert`.
+ * `fail`, and `refuse`.
  */
-export type WriteResolverContext<abi extends Abi, args> = ResolverContext<abi, args> &
+export type WriteResolverContext<args> = MockCall<args> &
+  FaultContext &
   RefusalContext<SendErrorName> & {
     /** The sender: a send always has one. */
     from: Address;
-    /**
-     * Mines the transaction reverted, e.g. `revert("paused")`. A resolver
-     * runs only at the send, so the estimate doesn't revert: see `.reverts()`
-     * for that.
-     */
-    revert: RevertFn<abi>;
   };
 
 /**
@@ -349,7 +342,7 @@ export type WriteResolverContext<abi extends Abi, args> = ResolverContext<abi, a
  * says, with `.reverts()` taking the contract's errors.
  */
 export type MockContractWriteAnswers<abi extends Abi, args> = Omit<
-  MockWriteAnswers<WriteResolverContext<abi, args>, never>,
+  MockWriteAnswers<WriteResolverContext<args>, never>,
   "reverts"
 > & {
   /**
@@ -573,10 +566,7 @@ export type ContractDefaults<abi extends Abi> = {
     [functionName in ContractFunctionName<abi, WriteMutability>]?:
       | MockWriteOutcome
       | ((
-          context: WriteResolverContext<
-            abi,
-            ContractFunctionArgs<abi, WriteMutability, functionName>
-          >,
+          context: WriteResolverContext<ContractFunctionArgs<abi, WriteMutability, functionName>>,
         ) => MockWriteOutcome | void | Promise<MockWriteOutcome | void>);
   };
 };

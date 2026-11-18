@@ -252,7 +252,7 @@ describe("a write mock", () => {
     expect(mock.transactions.map(({ receipt }) => receipt.gasUsed)).toEqual([1n, 2n, 2n]);
     await expectRejects(
       ContractFunctionExecutionError,
-      /No estimateGas mock for transfer/u,
+      /No write or estimateGas mock for transfer/u,
       transfer(4n),
     );
   });
@@ -355,11 +355,11 @@ describe("a write mock", () => {
     const notFound = expectCause(await rejectionOf(transfer(6n)), MockNotFoundError);
 
     expect(notFound.shortMessage).toBe(
-      `No estimateGas mock for transfer(${bob}, 6n) on USDC (${USDC}).`,
+      `No write or estimateGas mock for transfer(${bob}, 6n) on USDC (${USDC}).`,
     );
     expect(notFound.metaMessages).toEqual([
       "Write mocks, which imply the estimate of a send they match:",
-      `  transfer(${bob}, 5n)  ← amount didn't match`,
+      `  write.transfer(${bob}, 5n)  ← amount didn't match`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       `  sendTransaction({ to: ${USDC} })`,
     ]);
@@ -376,7 +376,7 @@ describe("a write mock", () => {
     expect(notFound.shortMessage).toBe(`No write mock for transfer(${bob}, 6n) on USDC (${USDC}).`);
     expect(notFound.metaMessages).toEqual([
       "Registered:",
-      `  transfer(${bob}, 5n)  ← amount didn't match`,
+      `  write.transfer(${bob}, 5n)  ← amount didn't match`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       `  sendTransaction({ to: ${USDC} })`,
     ]);
@@ -451,7 +451,7 @@ describe("the estimate a write mock implies", () => {
     expect(usdc.calls.map(({ namespace }) => namespace)).toEqual(["estimateGas"]);
     expectThrows(
       MockCheckError,
-      /transfer\(.*\) once on USDC .*\n.*received no calls to transfer/u,
+      /write\.transfer\(.*\) once on USDC .*\n.*received no calls to write\.transfer/u,
       () => {
         mock.assertAllUsed();
       },
@@ -522,7 +522,7 @@ describe("the estimate a write mock implies", () => {
       }),
     );
     expect(expectCause(missed, MockNotFoundError).shortMessage).toBe(
-      `No estimateGas mock for transfer(${bob}, 6n) on USDC (${USDC}).`,
+      `No write or estimateGas mock for transfer(${bob}, 6n) on USDC (${USDC}).`,
     );
   });
 
@@ -535,9 +535,9 @@ describe("the estimate a write mock implies", () => {
 
     // The estimate finds no mock, so nothing is sent; its hint names the used-up `write` mock.
     const notFound = expectCause(error, MockNotFoundError);
-    expect(notFound.shortMessage).toMatch(/^No estimateGas mock for transfer/u);
+    expect(notFound.shortMessage).toMatch(/^No write or estimateGas mock for transfer/u);
     expect(hintsOf(notFound)).toBe(
-      "Write mocks, which imply the estimate of a send they match:\n  transfer(*) once, used up",
+      "Write mocks, which imply the estimate of a send they match:\n  write.transfer(*) once, used up",
     );
   });
 
@@ -549,13 +549,13 @@ describe("the estimate a write mock implies", () => {
     const notFound = expectCause(await rejectionOf(transfer(7n)), MockNotFoundError);
 
     expect(notFound.shortMessage).toBe(
-      `No estimateGas mock for transfer(${bob}, 7n) on USDC (${USDC}).`,
+      `No write or estimateGas mock for transfer(${bob}, 7n) on USDC (${USDC}).`,
     );
     expect(hintsOf(notFound)).toBe(
       [
         "Write mocks, which imply the estimate of a send they match:",
-        `  transfer(${bob}, 5n)  ← amount didn't match`,
-        `  transfer(${bob}, 6n)  ← amount didn't match`,
+        `  write.transfer(${bob}, 5n)  ← amount didn't match`,
+        `  write.transfer(${bob}, 6n)  ← amount didn't match`,
       ].join("\n"),
     );
   });
@@ -567,7 +567,9 @@ describe("the estimate a write mock implies", () => {
     const notFound = expectCause(await rejectionOf(transfer(7n)), MockNotFoundError);
 
     expect(notFound.shortMessage).toBe(`No write mock for transfer(${bob}, 7n) on USDC (${USDC}).`);
-    expect(hintsOf(notFound)).toBe(`Registered:\n  transfer(${bob}, 5n)  ← amount didn't match`);
+    expect(hintsOf(notFound)).toBe(
+      `Registered:\n  write.transfer(${bob}, 5n)  ← amount didn't match`,
+    );
   });
 
   test("an estimate's miss lists its estimateGas mocks, then its write mocks", async () => {
@@ -579,12 +581,60 @@ describe("the estimate a write mock implies", () => {
 
     expect(hintsOf(notFound)).toBe(
       [
-        "Registered:",
-        `  transfer(${alice}, 7n)  ← recipient didn't match`,
+        "estimateGas mocks:",
+        `  estimateGas.transfer(${alice}, 7n)  ← recipient didn't match`,
         "Write mocks, which imply the estimate of a send they match:",
-        `  transfer(${bob}, 5n)  ← amount didn't match`,
+        `  write.transfer(${bob}, 5n)  ← amount didn't match`,
       ].join("\n"),
     );
+  });
+
+  test("an app's own estimate with a sender names both kinds too, and labels its estimateGas mocks", async () => {
+    const { client, usdc } = setup();
+    usdc.estimateGas.transfer([bob, 1n]).returns(50_000n);
+
+    const error = await rejectionOf(
+      client.estimateContractGas({
+        account: alice,
+        address: USDC,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [bob, 2n],
+      }),
+    );
+
+    const notFound = expectCause(error, MockNotFoundError);
+    expect(notFound.shortMessage).toBe(
+      `No write or estimateGas mock for transfer(${bob}, 2n) on USDC (${USDC}).`,
+    );
+    expect(notFound.metaMessages).toEqual([
+      "estimateGas mocks:",
+      `  estimateGas.transfer(${bob}, 1n)  ← amount didn't match`,
+    ]);
+  });
+
+  test("an estimate without a sender names only its estimateGas mocks, as Registered", async () => {
+    const { client, usdc } = setup();
+    usdc.estimateGas.transfer([bob, 1n]).returns(50_000n);
+    usdc.write.transfer([bob, 2n]).returns();
+
+    const error = await rejectionOf(
+      client.estimateContractGas({
+        address: USDC,
+        abi: erc20Abi,
+        functionName: "transfer",
+        args: [bob, 2n],
+      }),
+    );
+
+    const notFound = expectCause(error, MockNotFoundError);
+    expect(notFound.shortMessage).toBe(
+      `No estimateGas mock for transfer(${bob}, 2n) on USDC (${USDC}).`,
+    );
+    expect(notFound.metaMessages).toEqual([
+      "Registered:",
+      `  estimateGas.transfer(${bob}, 1n)  ← amount didn't match`,
+    ]);
   });
 
   test("an estimate without from is no send's: its miss runs no write mock's predicates", async () => {
@@ -630,7 +680,7 @@ describe("the estimate a write mock implies", () => {
     );
 
     expect(expectCause(error, MockResolverError).shortMessage).toBe(
-      'Matcher where(small) for "transfer" threw: too large',
+      'Matcher where(small) for "write.transfer" threw: too large',
     );
     expect(usdc.estimateGas.transfer.calls).toMatchObject([{ args: [bob, 500n], from: alice }]);
     expect(mock.history.at(-1)).toMatchObject({
@@ -659,10 +709,10 @@ describe("the estimate a write mock implies", () => {
     );
 
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
-      "No estimateGas mocks registered for withdraw(uint256,address); a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.",
+      "No write or estimateGas mocks registered for withdraw(uint256,address): a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.",
       "Mocks on withdraw's other overloads, which don't answer this one:",
-      "  withdraw(5n)",
-      "  withdraw(6n), a write mock",
+      "  estimateGas.withdraw(5n)",
+      "  write.withdraw(6n)",
     ]);
   });
 
@@ -703,7 +753,7 @@ describe("the estimate a write mock implies", () => {
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "No write mocks registered for withdraw(uint256,address); a simulate mock doesn't answer sends.",
       "Mocks on withdraw's other overloads, which don't answer this one:",
-      "  withdraw(5n)",
+      "  write.withdraw(5n)",
     ]);
   });
 });
@@ -762,10 +812,10 @@ describe("only a contract's mocks answer its functions", () => {
       // A local account estimates first; a node's account leaves it to the node.
       if (account === "local") {
         expect(notFound.shortMessage).toBe(
-          `No estimateGas mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
+          `No write or estimateGas mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
         );
         expect(notFound.metaMessages).toEqual([
-          `No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
+          `No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`,
           "Action mocks that match, which don't answer a registered contract's functions:",
           "  estimateGas(*)",
           "  sendTransaction(*)",
@@ -846,7 +896,7 @@ describe("only a contract's mocks answer its functions", () => {
 
       expect(notFound.metaMessages).toEqual([
         account === "local"
-          ? `No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`
+          ? `No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`
           : `No write mocks registered for "transfer"; a simulate mock doesn't answer sends.`,
       ]);
     },
@@ -919,6 +969,11 @@ describe("action mocks answer the rest of what's sent to a registered contract",
     ({ data }) => {
       // A local account estimates first; a node's account leaves it to the node.
       const misses = { local: "estimateGas", node: "sendTransaction" } as const;
+      const hints = {
+        local:
+          "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).",
+        node: "Mock it with mock.actions.sendTransaction({ to }).returns(…).",
+      };
 
       test.each(["local", "node"] as const)(
         "with no action mocks (%s account)",
@@ -931,10 +986,7 @@ describe("action mocks answer the rest of what's sent to a registered contract",
           expect(notFound.shortMessage).toMatch(
             new RegExp(`^No mock for ${misses[account]}\\(`, "u"),
           );
-          expect(notFound.metaMessages).toEqual([
-            notAFunction,
-            `Mock it with mock.actions.${misses[account]}({ to }).returns(…).`,
-          ]);
+          expect(notFound.metaMessages).toEqual([notAFunction, hints[account]]);
           expect(mock.transactions).toEqual([]);
         },
       );
@@ -1043,10 +1095,10 @@ describe("reverts", () => {
     },
   );
 
-  test("a resolver's revert() mines it reverted; its estimate passes", async () => {
+  test("a resolver that returns a reverted status mines it reverted; its estimate passes", async () => {
     const { mock, client, usdc, transfer } = setup();
-    usdc.write.transfer().returns(({ from, args: [to, value], revert }) => {
-      if (value > 5n) revert("too much");
+    usdc.write.transfer().returns(({ from, args: [to, value] }) => {
+      if (value > 5n) return { status: "reverted" };
       return { logs: [usdc.events.Transfer({ from, to, value })] };
     });
 
@@ -1530,10 +1582,85 @@ describe("adding a transaction while a write's resolver waits", () => {
 });
 
 describe("a send mock's resolver", () => {
-  test("answers with its outcome's logs, or reverts with revert()", async () => {
+  test("has no revert: a write mock's, a default's, and a sendTransaction mock's", async () => {
+    const { mock, wallet, usdc, transfer } = setup();
+    const keys: Record<string, string[]> = {};
+    usdc.write.transfer().returns((context) => {
+      keys.write = Object.keys(context);
+    });
+    mock.contract({
+      abi: vaultAbi,
+      address: VAULT,
+      defaults: {
+        write: {
+          deposit: (context) => {
+            keys.default = Object.keys(context);
+          },
+        },
+      },
+    });
+    mock.actions.sendTransaction({ to: bob }).returns((context) => {
+      keys.sendTransaction = Object.keys(context);
+    });
+
+    await transfer();
+    await wallet.writeContract({ address: VAULT, abi: vaultAbi, functionName: "deposit" });
+    await wallet.sendTransaction({ to: bob });
+
+    expect(Object.keys(keys)).toEqual(["write", "default", "sendTransaction"]);
+    for (const list of Object.values(keys)) {
+      expect(list).toEqual(expect.arrayContaining(["from", "value", "fail", "refuse"]));
+      expect(list).not.toContain("revert");
+    }
+  });
+
+  test("a write mock's resolver that calls revert() untyped is a resolver error: nothing is placed, and no nonce is taken", async () => {
+    const { mock, client, usdc, from, transfer } = setup();
+    usdc.write.transfer().returns((context: object) => {
+      // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- what the types rule out
+      (context as { revert: () => never }).revert();
+    });
+
+    const error = expectCause(await rejectionOf(transfer()), MockResolverError);
+
+    expect(error.shortMessage).toContain('Mock resolver for "write.transfer" threw:');
+    expect(mock.unhandled.map(({ method }) => method)).toEqual(["eth_sendRawTransaction"]);
+    expect(mock.transactions).toEqual([]);
+    expect(await client.getTransactionCount({ address: from })).toBe(0);
+  });
+
+  test("a function's estimateGas resolver and its write resolver that throw name different mocks", async () => {
+    const { mock, usdc, transfer } = setup();
+    usdc.estimateGas
+      .transfer()
+      .once()
+      .returns(() => {
+        throw new Error("boom");
+      });
+    usdc.write.transfer().returns(() => {
+      throw new Error("boom");
+    });
+
+    // A local account's writeContract estimates, then sends: the first stops
+    // at its estimate, and the second's is the one the write mock implies.
+    const estimating = expectCause(await rejectionOf(transfer()), MockResolverError);
+    const sending = expectCause(await rejectionOf(transfer()), MockResolverError);
+
+    expect([estimating.shortMessage, sending.shortMessage]).toEqual([
+      'Mock resolver for "estimateGas.transfer" threw: boom',
+      'Mock resolver for "write.transfer" threw: boom',
+    ]);
+    expect(sentMethods(mock)).toEqual([
+      "eth_estimateGas",
+      "eth_estimateGas",
+      "eth_sendRawTransaction",
+    ]);
+  });
+
+  test("answers with its outcome's logs, or a reverted status", async () => {
     const { mock, client, wallet } = setup();
-    mock.actions.sendTransaction({ to: bob }).returns(({ value, revert }) => {
-      if (value > 1n) revert("too much");
+    mock.actions.sendTransaction({ to: bob }).returns(({ value }) => {
+      if (value > 1n) return { status: "reverted" };
       return { logs: [testLog("paid")] };
     });
 
@@ -1559,18 +1686,20 @@ describe("state the test owns (controlled mocks)", () => {
   const TOKEN = testAddress("token");
 
   /**
-   * The docs' example: balances in a closure, read by `balanceOf`, changed only
-   * by `transfer`.
+   * The docs' example: balances in a closure, read by `balanceOf`, changed
+   * only by `transfer`. `resolved` records each amount the write mock's
+   * resolver gets.
    */
-  function ledger() {
-    const { mock, client, wallet, from: sender } = setup();
+  function ledger(account: "local" | "node" = "local") {
+    const { mock, client, wallet, from: sender } = setup(account);
     const token = mock.contract({ abi: tokenAbi, address: TOKEN, name: "Token" });
     const balances = new Map([[sender, 10n]]);
+    const resolved = vi.fn<(amount: bigint) => void>();
     token.read.balanceOf().returns(({ args: [who] }) => balances.get(who) ?? 0n);
-    token.write.transfer().returns(({ from, args: [to, amount], revert }) => {
+    token.write.transfer().returns(({ from, args: [to, amount] }) => {
+      resolved(amount);
       const have = balances.get(from) ?? 0n;
-      if (have < amount)
-        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
+      if (have < amount) return { status: "reverted" };
       balances.set(from, have - amount);
       balances.set(to, (balances.get(to) ?? 0n) + amount);
       return { logs: [token.events.Transfer({ from, to, value: amount })] };
@@ -1589,7 +1718,23 @@ describe("state the test owns (controlled mocks)", () => {
         functionName: "transfer",
         args: [bob, amount],
       });
-    return { mock, client, token, balances, sender, balanceOf, transfer };
+    return { mock, client, token, balances, resolved, sender, balanceOf, transfer };
+  }
+
+  /**
+   * The ledger, with an estimate mock whose resolver reverts a transfer of
+   * more than the sender has.
+   */
+  function ledgerWithEstimate() {
+    const fixture = ledger();
+    const { token, balances } = fixture;
+    token.estimateGas.transfer().returns(({ from = zeroAddress, args: [, amount], revert }) => {
+      const have = balances.get(from) ?? 0n;
+      if (have < amount)
+        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
+      return 50_000n;
+    });
+    return fixture;
   }
 
   test("a transfer moves the balances its reads answer, once, though it's estimated first", async () => {
@@ -1613,7 +1758,7 @@ describe("state the test owns (controlled mocks)", () => {
   test("a transfer over the balance is mined reverted and changes nothing", async () => {
     const { mock, client, sender, balanceOf, transfer } = ledger();
 
-    // The resolver runs only at the send, so its revert isn't the estimate's: it's mined reverted.
+    // The resolver runs only at the send, so the estimate passes, and the send is mined reverted.
     const hash = await transfer(11n);
 
     expect(await client.waitForTransactionReceipt({ hash, pollingInterval: 10 })).toMatchObject({
@@ -1625,13 +1770,7 @@ describe("state the test owns (controlled mocks)", () => {
   });
 
   test("an estimate that reads the closure makes an overdraft throw before it's sent", async () => {
-    const { mock, token, balances, sender, balanceOf, transfer } = ledger();
-    token.estimateGas.transfer().returns(({ from = zeroAddress, args: [, amount], revert }) => {
-      const have = balances.get(from) ?? 0n;
-      if (have < amount)
-        revert({ errorName: "ERC20InsufficientBalance", args: [from, have, amount] });
-      return 50_000n;
-    });
+    const { mock, sender, balanceOf, transfer } = ledgerWithEstimate();
 
     const error = await rejectionOf(transfer(11n));
 
@@ -1644,27 +1783,122 @@ describe("state the test owns (controlled mocks)", () => {
     expect(await balanceOf(sender)).toBe(6n);
   });
 
-  test("a resolver's revert() undoes nothing it changed before it", async () => {
-    const { mock, client, wallet } = setup();
-    const token = mock.contract({ abi: tokenAbi, address: TOKEN });
-    let transfers = 0;
-    let after = false;
-    token.write.transfer().returns(({ revert }) => {
-      transfers += 1;
-      revert("paused");
-      after = true;
+  test("a write mock that answers ahead of the write mock's resolver still leaves the estimate reverting", async () => {
+    const { mock, token, resolved, sender, balanceOf, transfer } = ledgerWithEstimate();
+    token.write.transfer([bob, 11n]).returns();
+
+    const error = await rejectionOf(transfer(11n));
+
+    expect(expectCause(error, ContractFunctionRevertedError).data?.errorName).toBe(
+      "ERC20InsufficientBalance",
+    );
+    expect(mock.transactions).toEqual([]);
+    expect(resolved).not.toHaveBeenCalled();
+    expect(await balanceOf(sender)).toBe(10n);
+  });
+
+  test("an estimate mock that answers ahead of the estimate resolver hides its revert, and the write mock's resolver mines the send reverted", async () => {
+    const { client, token, sender, balanceOf, transfer } = ledgerWithEstimate();
+    token.estimateGas.transfer([bob, 11n]).returns(60_000n);
+
+    const hash = await transfer(11n);
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      status: "reverted",
+      logs: [],
+    });
+    expect([await balanceOf(sender), await balanceOf(bob)]).toEqual([10n, 0n]);
+  });
+
+  test("a .reverts() mock pinned to an amount answers it over the ledger's resolver", async () => {
+    const { mock, token, sender, balanceOf, transfer } = ledger();
+    token.write
+      .transfer([bob, 3n])
+      .reverts({ errorName: "ERC20InsufficientBalance", args: [sender, 10n, 3n] });
+
+    const error = await rejectionOf(transfer(3n));
+
+    expect(expectCause(error, ContractFunctionRevertedError).data?.errorName).toBe(
+      "ERC20InsufficientBalance",
+    );
+    expect(sentMethods(mock)).toEqual(["eth_estimateGas"]);
+    expect(mock.transactions).toEqual([]);
+    expect(await balanceOf(sender)).toBe(10n);
+    await transfer(4n);
+    expect(await balanceOf(sender)).toBe(6n);
+  });
+
+  test("a .reverts() mock pinned to an amount, registered first, answers that amount over a limited resolver mock without args", async () => {
+    const { mock, usdc, transfer } = setup();
+    const resolver = vi.fn();
+    usdc.write.transfer([bob, 3n]).reverts("paused");
+    usdc.write.transfer().once().returns(resolver);
+
+    const error = await rejectionOf(transfer(3n));
+
+    expect(expectCause(error, ContractFunctionRevertedError).reason).toBe("paused");
+    expect(resolver).not.toHaveBeenCalled();
+    await transfer(4n);
+    expect(resolver).toHaveBeenCalledOnce();
+    expect(mock.transactions).toHaveLength(1);
+  });
+
+  describe("a .reverts() mock pinned with match.where() beside the ledger's resolver", () => {
+    const tooMuch = "ERC20: transfer amount exceeds balance";
+    /**
+     * The ledger, with a `.reverts()` mock of a transfer of more than the
+     * sender has.
+     */
+    function revertingOverdrafts(account: "local" | "node" = "local") {
+      const fixture = ledger(account);
+      const { token, balances, sender } = fixture;
+      const overBalance = (amount: bigint) => amount > balances.get(sender)!;
+      token.write.transfer([match.any(), match.where(overBalance, "overBalance")]).reverts(tooMuch);
+      return fixture;
+    }
+
+    test("reverts the estimate of what the balance can't pay, and leaves the rest to the resolver", async () => {
+      const { mock, client, sender, balanceOf, transfer } = revertingOverdrafts();
+
+      const over = await rejectionOf(transfer(11n));
+      expect(expectCause(over, ContractFunctionRevertedError).reason).toBe(tooMuch);
+      expect(mock.transactions).toEqual([]);
+      expect(await balanceOf(sender)).toBe(10n);
+
+      const hash = await transfer(4n);
+      expect((await client.getTransactionReceipt({ hash })).status).toBe("success");
+      expect([await balanceOf(sender), await balanceOf(bob)]).toEqual([6n, 4n]);
+
+      const overLowered = await rejectionOf(transfer(7n));
+      expect(expectCause(overLowered, ContractFunctionRevertedError).reason).toBe(tooMuch);
+      expect(mock.transactions).toHaveLength(1);
     });
 
-    const hash = await wallet.writeContract({
-      address: TOKEN,
-      abi: tokenAbi,
-      functionName: "transfer",
-      args: [bob, 1n],
+    test("mines a JSON-RPC account's send reverted, without running the resolver", async () => {
+      const { mock, client, resolved, transfer } = revertingOverdrafts("node");
+
+      const hash = await transfer(11n);
+
+      expect(sentMethods(mock)).toEqual(["eth_sendTransaction"]);
+      expect((await client.getTransactionReceipt({ hash })).status).toBe("reverted");
+      expect(resolved).not.toHaveBeenCalled();
     });
 
-    expect(transfers).toBe(1);
-    expect(after).toBe(false);
-    expect((await client.getTransactionReceipt({ hash })).status).toBe("reverted");
+    test("is reported by mock.assertAllUsed() when it's shadowed", async () => {
+      const { mock, token, transfer } = revertingOverdrafts();
+      token.write.transfer([bob, 11n]).returns();
+
+      await transfer(11n);
+
+      const error = expectThrows(MockCheckError, "answered no call", () => {
+        mock.assertAllUsed();
+      });
+      expect(error.message).toContain(
+        "  - write.transfer(any, where(overBalance)) reverts on Token " +
+          `(${TOKEN})\n    received 1 call to write.transfer:\n      transfer(${bob}, 11n)  ` +
+          "← matches; another mock answered it",
+      );
+    });
   });
 
   test("a native balance: getBalance reads the closure, and a payable write changes it", async () => {
@@ -1822,8 +2056,8 @@ describe("writes in history", () => {
       MockCheckError,
       [
         "1 mock(s) answered no call:",
-        `  - transfer(${bob}, 6n) on USDC (${USDC})`,
-        "    received 1 call to transfer:",
+        `  - write.transfer(${bob}, 6n) on USDC (${USDC})`,
+        "    received 1 call to write.transfer:",
         "      transfer(…, 5n)  ← amount didn't match",
         "",
         "Requests so far:",

@@ -90,8 +90,8 @@ describe("once() and times()", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        "  balanceOf(*) once, used up",
-        `  balanceOf(${USDC}) 3 times  ← account didn't match`,
+        "  read.balanceOf(*) once, used up",
+        `  read.balanceOf(${USDC}) 3 times  ← account didn't match`,
       ].join("\n"),
     );
   });
@@ -131,6 +131,21 @@ describe("once() and times()", () => {
       1n,
       2n,
     ]);
+  });
+
+  test("a limited mock is spent as its resolver starts, so a request made while it awaits gets the next answer", async () => {
+    const { mock } = setup();
+    mock.actions.getBalance().returns(2n);
+    mock.actions
+      .getBalance()
+      .once()
+      .returns(async () => {
+        await Promise.resolve();
+        return 1n;
+      });
+    const getBalance = () => mock.request({ method: "eth_getBalance", params: [alice, "latest"] });
+
+    expect(await Promise.all([getBalance(), getBalance()])).toEqual(["0x1", "0x2"]);
   });
 
   test("actions and raw methods take limits", async () => {
@@ -192,7 +207,7 @@ describe("retries past a limited fault", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        "  balanceOf(*) fails once, used up",
+        "  read.balanceOf(*) fails once, used up",
         "This is viem retrying after a `.once()`/`.times(n)` fault (this transport's " +
           "`retryCount` is 3); each attempt used up an answer. Register a mock to answer " +
           "after it, or use `.fails()` without a limit to fail every attempt.",

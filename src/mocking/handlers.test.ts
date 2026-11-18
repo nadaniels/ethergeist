@@ -15,11 +15,11 @@ function setup({
   prepare?: (value: unknown) => unknown;
   revertError?: () => MockRevertError;
 } = {}) {
-  const mocks = createHandlers<object, unknown>();
+  const mocks = createHandlers<object, unknown>(() => "balanceOf");
   const handler = mocks.register(undefined, undefined);
-  const builder = mocks.createBuilder(handler, "balanceOf", prepare, { revertError });
+  const builder = mocks.createBuilder(handler, prepare, { revertError });
   const answer = (encode: (value: unknown) => unknown = (value) => value, reverted?: unknown) =>
-    mocks.answerWith(handler, {}, encode, "balanceOf", reverted);
+    mocks.answerWith(handler, {}, encode, reverted);
   return { mocks, builder, answer };
 }
 
@@ -56,27 +56,12 @@ describe("answerWith()", () => {
       status: "reverted",
     });
   });
-
-  test("a resolver's revert answers what the caller gives for it too", async () => {
-    const { builder, answer } = setup();
-    builder.returns(() => {
-      throw new MockRevertError("0x");
-    });
-
-    await expect(answer(undefined, { status: "reverted" })).resolves.toEqual({
-      status: "reverted",
-    });
-  });
 });
 
 describe("createBuilder()", () => {
   test("has .reverts() only where its engine gives a revertError", () => {
-    const mocks = createHandlers<object, unknown>();
-    const builder = mocks.createBuilder(
-      mocks.register(undefined, undefined),
-      "getProof",
-      (value) => value,
-    );
+    const mocks = createHandlers<object, unknown>(() => "getProof");
+    const builder = mocks.createBuilder(mocks.register(undefined, undefined), (value) => value);
 
     expect("reverts" in builder).toBe(false);
   });

@@ -1,5 +1,7 @@
 import { describe, expect, test } from "vite-plus/test";
 
+import { expectThrows } from "../../test/utils.js";
+import { MockResolverError, MockSetupError } from "../shared/errors.js";
 import { match } from "./matchers.js";
 import { type Specificity, bestMatch, firstMismatch, isMatch, mismatches } from "./matching.js";
 
@@ -87,11 +89,42 @@ describe("bestMatch()", () => {
         passes.push(options);
         return options.predicates === false ? null : undefined;
       },
-      "fn",
+      () => "fn",
     );
 
     expect(best).toBeUndefined();
     expect(missed.get(candidate)).toBeNull();
     expect(passes).toEqual([{ predicates: false }]);
+  });
+
+  test("a predicate that throws names the candidate it's on", () => {
+    const best = { name: "best", specificity: [2, 0] as Specificity, remaining: undefined };
+    const middle = { name: "middle", specificity: [1, 1] as Specificity, remaining: undefined };
+    const worst = { name: "worst", specificity: [0, 0] as Specificity, remaining: undefined };
+    const boom = match.where(() => {
+      throw new Error("boom");
+    }, "boom");
+
+    expectThrows(MockResolverError, 'Matcher where(boom) for "middle" threw: boom', () =>
+      bestMatch(
+        [worst, middle, best],
+        (candidate, options) => (candidate === middle ? firstMismatch([boom], [1n], options) : 0),
+        (candidate) => candidate.name,
+      ),
+    );
+  });
+
+  test("an error that isn't a predicate's passes through as it is", () => {
+    const candidate = { specificity: [1, 0] as Specificity, remaining: undefined };
+
+    expectThrows(MockSetupError, "not a predicate's", () =>
+      bestMatch(
+        [candidate],
+        () => {
+          throw new MockSetupError("not a predicate's");
+        },
+        () => "fn",
+      ),
+    );
   });
 });

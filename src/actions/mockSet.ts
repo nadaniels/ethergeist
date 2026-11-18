@@ -58,7 +58,7 @@ type Encoding<call extends object> = {
  * for `.reverts()`, or for a static answer `pinnedCall` and `encode` (`zero`
  * for one left out). At a request, the mocks are matched (`actual`), and the
  * one that answers gets `extendContext`, then `encode` of its answer or, for
- * a revert, of `reverted`. A miss names `hint`.
+ * `.reverts()`, of `reverted`. A miss names `hint`.
  *
  * Members are methods, whose parameters TypeScript checks both ways, so a
  * `MockDefinition<BalanceCall>` is a `MockDefinition`: a mock set holds
@@ -81,8 +81,8 @@ export type MockDefinition<call extends object = object, answer = unknown> = {
    */
   extendBuilder?(builder: Builder): void;
   /**
-   * What `.reverts(spec)` and a resolver's `revert(spec)` revert with;
-   * without it, a mock has neither.
+   * What `.reverts(spec)` reverts with; without it, a mock has no
+   * `.reverts()`.
    */
   revertError?(spec?: unknown): MockRevertError;
   /**
@@ -102,10 +102,7 @@ export type MockDefinition<call extends object = object, answer = unknown> = {
    * itself.
    */
   actual?(pinned: unknown, call: call): unknown;
-  /**
-   * Adds to what a resolver gets, beyond the call, `fail`, `revert`, and
-   * `refuse`.
-   */
+  /** Adds to what a resolver gets, beyond the call, `fail`, and `refuse`. */
   extendContext?(context: object, call: call): void;
   /**
    * Validates a value in viem's types and converts it to its JSON-RPC form.
@@ -114,9 +111,9 @@ export type MockDefinition<call extends object = object, answer = unknown> = {
    */
   encode(value: unknown, at: Encoding<call>): answer;
   /**
-   * What a revert answers instead of being thrown, a mock's `.reverts()` or
-   * a resolver's `revert()`: a send's is mined reverted. It's a value in
-   * viem's types, encoded as a mock's answer is.
+   * What a mock's `.reverts()` answers instead of being thrown: a send's is
+   * mined reverted. It's a value in viem's types, encoded as a mock's answer
+   * is.
    */
   reverted?: unknown;
   /** Where to register a mock, for "No mock for" messages. */
@@ -180,7 +177,7 @@ export function createMockSet<answer>(
   recordLimit: RecordLimit,
   { currentBlock, notFoundLines }: MockSetOptions,
 ) {
-  const mocks = createHandlers<ActionContext<object>, unknown>();
+  const mocks = createHandlers<ActionContext<object>, unknown>(() => definition.name);
   const calls = createRecordList<object>(recordLimit);
   /**
    * The calls received that were a registered contract's to answer, which
@@ -190,6 +187,7 @@ export function createMockSet<answer>(
   const forContract = new WeakSet<object>();
   const actualOf = (pinned: unknown, call: object) =>
     definition.actual === undefined ? call : definition.actual(pinned, call);
+  const describeActionMock = (handler: Handler) => describeMock(definition.name, handler);
 
   /**
    * The builder methods that answer, named for a mock registered without
@@ -219,7 +217,6 @@ export function createMockSet<answer>(
     const handler = mocks.register(pinned, undefined);
     const builder = mocks.createBuilder(
       handler,
-      definition.name,
       (value) => {
         const registered = new Registered(value, currentBlock());
         encode(registered, undefined, definition.pinnedCall?.(pinned) ?? {});
@@ -235,7 +232,7 @@ export function createMockSet<answer>(
   const describeUnused = (list: Handler[]) =>
     list.map(
       (handler) =>
-        `${describeMock(definition.name, handler)}${
+        `${describeActionMock(handler)}${
           handler.answer === undefined
             ? formatNoAnswer(answers)
             : formatReceived(definition.name, received(handler), calls.total)
@@ -284,24 +281,16 @@ export function createMockSet<answer>(
    * The handler that answers `call`, and where the others missed: see
    * `findAnswering`.
    */
-  const match = (call: object) =>
-    mocks.findAnswering(() => true, differsFrom(call), definition.name);
+  const match = (call: object) => mocks.findAnswering(() => true, differsFrom(call));
 
   /** Answers `call` with `handler`, the mock `match` found for it. */
   function answerWith(handler: Handler, call: object): Promise<answer> {
     const context = { ...call, fail, refuse };
-    if (definition.revertError !== undefined)
-      Object.assign(context, {
-        revert(spec?: unknown): never {
-          throw definition.revertError!(spec);
-        },
-      });
     definition.extendContext?.(context, call);
     return mocks.answerWith(
       handler,
       context,
       (value) => encode(value, call, call),
-      definition.name,
       definition.reverted,
     );
   }
@@ -312,8 +301,8 @@ export function createMockSet<answer>(
    * again; another action's miss lists them as `others`.
    */
   const missListing = ({ missed, removed }: ReturnType<typeof match>): MissListing => ({
-    registered: missedLines(definition.name, mocks.handlers, missed, (_, key) => paramName(key)),
-    removed: removed.map((handler) => `  ${describeMock(definition.name, handler)}`),
+    registered: missedLines(mocks.handlers, missed, describeActionMock, (_, key) => paramName(key)),
+    removed: removed.map((handler) => `  ${describeActionMock(handler)}`),
   });
 
   /**
@@ -373,7 +362,7 @@ export function createMockSet<answer>(
     matchingLines: (call: object) =>
       mocks
         .matchingByValues(differsFrom(call))
-        .map((handler) => `  ${describeMock(definition.name, handler)}`),
+        .map((handler) => `  ${describeActionMock(handler)}`),
     /** The calls this action received, as they arrive. */
     calls,
     /**

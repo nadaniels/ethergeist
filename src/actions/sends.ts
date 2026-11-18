@@ -77,18 +77,32 @@ export function createSends(
   const minedHash = (raw: { hash: Hash } | undefined) =>
     raw !== undefined && transactions.minedAt(raw.hash) !== undefined ? raw.hash : undefined;
 
+  const deployHint = "mock.actions.sendTransaction({ to: null }).returns(…)";
+
   /**
    * Where to mock a send no mock answers, when its `to` says more than the
    * definition's hint: a deploy, Multicall3, or an `empty()` address.
    */
   function sendHint(to: Address | null): string | undefined {
-    if (to === null)
-      return "mock.actions.sendTransaction({ to: null }).returns(…), which deploys at getContractAddress({ from, nonce })";
+    if (to === null) return `${deployHint}, which deploys at getContractAddress({ from, nonce })`;
     if (to === state.multicallAddress)
       return "mock.actions.sendTransaction({ to }).returns(…): Multicall3's batched writes aren't mocked, so send each call instead";
     if (registry.isEmpty(to))
       return `mock.actions.sendTransaction({ to }).returns(…): ${to} is marked empty(), with no code to run the data`;
     return undefined;
+  }
+
+  /**
+   * The send's mock comes first: a client's send needs it anyway, and an
+   * estimate mock alone leaves the send to miss. A deploy's estimate has no
+   * `to` to pin, so its estimate mock pins `data`.
+   */
+  function estimateOfSendHint(to: Address | null): string {
+    const [send, estimate] =
+      to === null
+        ? [deployHint, "mock.actions.estimateGas({ data }).returns(…)"]
+        : [sendTransaction.hint, estimateGas.hint];
+    return `${send}, which implies the estimate of a send it matches, or with ${estimate}`;
   }
 
   /**
@@ -120,8 +134,7 @@ export function createSends(
    * to answer, in order:
    * 1. for an estimate with a sender, its `write` mock that would answer the
    *    send, if it `.reverts()`: the estimate reverts as the send would,
-   *    which counts as that mock's use. A resolver's `revert()` runs only at
-   *    the send;
+   *    which counts as that mock's use;
    * 2. its `estimateGas` mocks and `defaults.estimateGas`;
    * 3. for an estimate with a sender, the gas its `write` mock implies (see
    *    `impliedGas`), without running it or using it up;
@@ -183,6 +196,7 @@ export function createSends(
       if (isPlainTransfer(registry, call)) return numberToHex(21_000n);
       if (sendMock) return numberToHex(impliedGas);
       throw estimateGasMocks.missError(call, found, {
+        hint: sent && estimateOfSendHint(sent.to),
         before: notAFunctionLines(called),
         others: sendMatch && {
           header: "sendTransaction mocks, which imply the estimate of a send they match:",

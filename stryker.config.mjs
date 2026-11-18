@@ -8,6 +8,7 @@ export default {
   vitest: { configFile: "vite.config.ts" },
   mutate: ["src/mocking/**/*.ts", "src/chain/**/*.ts", "!src/**/*.test.ts"],
   coverageAnalysis: "perTest",
+  timeoutMS: 60_000,
   // Mutants in module-level values rerun every test, for a quarter of the
   // mutants and nearly all the time.
   ignoreStatic: true,

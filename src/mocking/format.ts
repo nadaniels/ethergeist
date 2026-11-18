@@ -41,8 +41,9 @@ const answerVerbs: Partial<Record<Answer["kind"], string>> = {
 /**
  * A mock as messages name it: its call, what else it pins, whether it
  * reverts, fails, or refuses, its limit, and whether it's still without an
- * answer, e.g. `balanceOf(*) once`, `transfer(*) { from: 0x… } reverts`,
- * `getBalance(*) fails once`, or `getBalance() without an answer`.
+ * answer, e.g. `read.balanceOf(*) once`,
+ * `write.transfer(*) { from: 0x… } reverts`, `getBalance(*) fails once`, or
+ * `getBalance() without an answer`.
  */
 export function describeMock(name: string, mock: DescribedMock): string {
   const pins = mock.pins ? ` ${formatValue(mock.pins)}` : "";
@@ -107,19 +108,19 @@ const formatMissReason = (differs: string | undefined) =>
   differs === undefined ? "" : `  ← ${differs} didn't match`;
 
 /**
- * A miss's lines for the mocks of `name` it tried, each with where it first
- * differed from the call (`missed`), as `keyName` names the arg or param.
+ * A miss's lines for the mocks it tried. `missed` holds where each one first
+ * differed from the call; a mock that isn't in it gets no reason.
  */
-export function missedLines<mock extends DescribedMock>(
-  name: string,
+export function missedLines<mock>(
   mocks: readonly mock[],
   missed: ReadonlyMap<mock, PinnedKey>,
+  describe: (mock: mock) => string,
   keyName: (mock: mock, key: PinnedKey) => string,
 ): string[] {
   return mocks.map((mock) => {
     const key = missed.get(mock);
     const reason = formatMissReason(key === undefined ? undefined : keyName(mock, key));
-    return `  ${describeMock(name, mock)}${reason}`;
+    return `  ${describe(mock)}${reason}`;
   });
 }
 

@@ -32,6 +32,9 @@ const DAI = "0x6B175474E89094C44Da98b954EedeAC495271d0F";
 const NOWHERE = "0x000000000000000000000000000000000000dEaD";
 const alice = testAddress("alice");
 
+/** An unmocked estimate's hint, for an estimate with a sender. */
+const estimateOfSendHint =
+  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
 const layoutHint =
   "If this test is in a nested describe, an afterEach in a parent describe that restores or " +
   "resets per test removes its setup; keep the two describes siblings.";
@@ -357,7 +360,7 @@ describe("restore() checks", () => {
     mock.contract({ abi: erc20Abi, address: DAI, defaults: { read: { decimals: 18 } } });
     expectThrows(
       MockCheckError,
-      `1 mock(s) answered no call:\n  - balanceOf(*) fails on ${USDC}`,
+      `1 mock(s) answered no call:\n  - read.balanceOf(*) fails on ${USDC}`,
       () => {
         baseline.restore({ assertAllUsed: true });
       },
@@ -490,7 +493,7 @@ describe("nesting", () => {
     expect(error.metaMessages).toEqual([
       'No mocks registered for "balanceOf".',
       "Removed by the last restore() or reset():",
-      `  balanceOf(${alice})`,
+      `  read.balanceOf(${alice})`,
       layoutHint,
     ]);
   });
@@ -509,7 +512,28 @@ describe("nesting", () => {
     );
     expect(error.metaMessages?.slice(-3)).toEqual([
       "Removed by the last restore() or reset():",
-      `  transfer(${DAI}, 1n)`,
+      `  write.transfer(${DAI}, 1n)`,
+      layoutHint,
+    ]);
+  });
+
+  test("and an estimateGas mock and a write mock of one function, each named with its namespace", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC });
+    const baseline = mock.checkpoint();
+    usdc.estimateGas.transfer([DAI, 1n]).returns(50_000n);
+    usdc.write.transfer([DAI, 1n]).returns();
+    baseline.restore();
+
+    const data = encodeFunctionData({ abi: erc20Abi, functionName: "transfer", args: [DAI, 1n] });
+    const error = await notFound(
+      client.request({ method: "eth_estimateGas", params: [{ from: alice, to: USDC, data }] }),
+    );
+    expect(error.metaMessages).toEqual([
+      'No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn\'t answer estimates.',
+      "Removed by the last restore() or reset():",
+      `  estimateGas.transfer(${DAI}, 1n)`,
+      `  write.transfer(${DAI}, 1n)`,
       layoutHint,
     ]);
   });
@@ -534,7 +558,7 @@ describe("nesting", () => {
     const error = await notFound(deploy());
     expect(error.shortMessage).toMatch(/^No mock for estimateGas\(/u);
     expect(error.metaMessages).toEqual([
-      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+      "Mock it with mock.actions.sendTransaction({ to: null }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ data }).returns(…).",
       "Removed by the last restore() or reset():",
       "  sendTransaction({ to: null })",
       layoutHint,
@@ -639,7 +663,7 @@ describe("nesting", () => {
       }),
     );
     expect(error.metaMessages).toEqual([
-      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+      estimateOfSendHint,
       "Removed by the last restore() or reset():",
       `  estimateGas({ to: ${DAI} })`,
       `  sendTransaction({ to: ${DAI} })`,
@@ -866,11 +890,7 @@ describe("a transaction the last restore() or reset() removed", () => {
       "Removed by the last restore() or reset():",
       `  sendTransaction({ to: ${DAI} })`,
     ];
-    expect(estimate.metaMessages).toEqual([
-      ...removed,
-      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
-      ...removedSend,
-    ]);
+    expect(estimate.metaMessages).toEqual([...removed, estimateOfSendHint, ...removedSend]);
     expect(send.metaMessages).toEqual([
       ...removed,
       "Mock it with mock.actions.sendTransaction({ to }).returns(…).",
@@ -892,9 +912,7 @@ describe("a transaction the last restore() or reset() removed", () => {
       const tx = { from: alice, to: DAI, value: "0x1" } as const;
       const estimate = await notFound(client.request({ method: "eth_estimateGas", params: [tx] }));
       const send = await notFound(mock.request({ method: "eth_sendTransaction", params: [tx] }));
-      expect(estimate.metaMessages).toEqual([
-        "Mock it with mock.actions.estimateGas({ to }).returns(…).",
-      ]);
+      expect(estimate.metaMessages).toEqual([estimateOfSendHint]);
       expect(send.metaMessages).toEqual([
         "Mock it with mock.actions.sendTransaction({ to }).returns(…).",
       ]);

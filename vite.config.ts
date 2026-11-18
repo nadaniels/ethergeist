@@ -27,9 +27,9 @@ export default defineConfig({
   staged: {
     "*": "vp check --fix",
   },
-  fmt: { sortImports: true, sortPackageJson: true },
+  fmt: { sortImports: true, sortPackageJson: true, ignorePatterns: [".claude/worktrees/**"] },
   lint: {
-    ignorePatterns: ["examples/**"],
+    ignorePatterns: ["examples/**", ".claude/worktrees/**"],
     jsPlugins: [{ name: "vite-plus", specifier: "vite-plus/oxlint-plugin" }],
     rules: {
       "vite-plus/prefer-vite-plus-imports": "error",

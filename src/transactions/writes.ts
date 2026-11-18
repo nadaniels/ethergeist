@@ -49,8 +49,10 @@ export type MockWriteAnswers<context, revertSpec> = MockRefusalAnswers<SendError
   returns(): void;
   /**
    * Answers every matching call with `outcome`: see `MockWriteOutcome`. A
-   * resolver returns one, or nothing for a success; it runs at the send, as
-   * the transaction is mined.
+   * resolver returns one, or nothing for a success. It runs only at the
+   * send, as the transaction is mined, so it has no `revert`: it returns
+   * `{ status: "reverted" }` for a send mined reverted, and `.reverts()`
+   * reverts the call, its estimate included.
    *
    * `mock.addTransaction()` and `contract.emit` are refused in a resolver up
    * to its first `await`, and after it they place a transaction of their
@@ -123,9 +125,12 @@ export function encodeWriteOutcome(
 }
 
 /**
- * What a revert answers at a send, a mock's `.reverts()` or a resolver's
- * `revert()`: mined reverted, as a send that reaches the chain is. See
- * `answerWith`'s `reverted`.
+ * What a mock's `.reverts()` answers at a send: mined reverted, as a send
+ * that reaches the chain is. See `answerWith`'s `reverted`.
+ *
+ * Where a revert is mined, a resolver gets no `revert`: it runs only at the
+ * send, so it can't revert the estimate as `.reverts()` does, and returns
+ * `{ status: "reverted" }` instead.
  */
 export const minedReverted: MockWriteOutcome = { status: "reverted" };
 

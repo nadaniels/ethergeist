@@ -143,13 +143,18 @@ describe("named outputs", () => {
   test("a value the encoder can't convert fails at registration as the mock's error", () => {
     const { mock } = setup();
     const feed = mock.contract({
-      abi: parseAbi(["function total() view returns (uint256)"]),
+      abi: parseAbi([
+        "function decimals() view returns (uint8)",
+        "function total() view returns (uint256)",
+      ]),
       address: FEED,
     });
+    // Another function's mock, registered first: the error names the one given the value.
+    feed.read.decimals().returns(18);
 
     const error = expectThrows(
       MockSetupError,
-      `.returns() for "total" was given a value it can't encode: Cannot convert soon to a BigInt`,
+      `.returns() for "read.total" was given a value it can't encode: Cannot convert soon to a BigInt`,
       () => {
         // @ts-expect-error -- a uint256 takes a bigint
         feed.read.total().returns("soon");
@@ -158,7 +163,7 @@ describe("named outputs", () => {
     expect(error.cause).toBeInstanceOf(SyntaxError);
     expectThrows(
       MockSetupError,
-      /^\.returns\(\) for "total" was given a value it can't encode: The number 1\.5 cannot be converted/u,
+      /^\.returns\(\) for "read\.total" was given a value it can't encode: The number 1\.5 cannot be converted/u,
       () => {
         // @ts-expect-error -- a uint256 takes a bigint
         feed.read.total().returns(1.5);
@@ -172,7 +177,7 @@ describe("named outputs", () => {
     };
     const thrown = expectThrows(
       MockSetupError,
-      `"total" was given a value it can't encode: nope`,
+      `"read.total" was given a value it can't encode: nope`,
       () => {
         // @ts-expect-error -- a uint256 takes a bigint
         feed.read.total().returns(throwsOnConversion);

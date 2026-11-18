@@ -159,8 +159,8 @@ describe("assertNoUnhandled(): what each miss shows", () => {
       "The mock couldn't answer 1 request(s):\n" +
         `  - No mock for previewRedeem(3900000n) on Vault (${DAI}).\n` +
         "      Registered:\n" +
-        "        previewRedeem(2000000000000000000n)  ← shares didn't match\n" +
-        "        previewRedeem(5n)  ← shares didn't match",
+        "        read.previewRedeem(2000000000000000000n)  ← shares didn't match\n" +
+        "        read.previewRedeem(5n)  ← shares didn't match",
     );
   });
 
@@ -222,7 +222,8 @@ describe("assertNoUnhandled(): what each miss shows", () => {
 
     await rejectionOf(balanceOf(alice));
     const registered = ["a", "b", "c"].map(
-      (name) => `        balanceOf(${getAddress(testAddress(name))})  ← account didn't match\n`,
+      (name) =>
+        `        read.balanceOf(${getAddress(testAddress(name))})  ← account didn't match\n`,
     );
     expect(unhandledList(mock)).toBe(
       "The mock couldn't answer 1 request(s):\n" +
@@ -266,7 +267,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
       }),
     );
     const list = unhandledList(mock);
-    expect(list).toContain("      Registered:\n");
+    expect(list).toContain("      estimateGas mocks:\n");
     expect(list).toContain("      Write mocks, which imply the estimate of a send they match:\n");
     expect(list.match(/recipient didn't match/gu)).toHaveLength(6);
     expect(list.match(/… \d+ more/gu)).toEqual(["… 1 more"]);
@@ -286,7 +287,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
 
     await rejectionOf(balanceOf(alice));
     const list = unhandledList(mock);
-    expect(list).toContain('  - Mock resolver for "balanceOf" threw:');
+    expect(list).toContain('  - Mock resolver for "read.balanceOf" threw:');
     expect(list).toMatch(/^ {8}data: +0x313ce567$/mu);
     expect(list).toMatch(/^ {8}gas: +1000$/mu);
     expect(list).not.toContain("more");
@@ -305,7 +306,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
     await rejectionOf(balanceOf(alice));
     expect(unhandledList(mock)).toBe(
       "The mock couldn't answer 2 request(s):\n" +
-        '  - Mock resolver for "balanceOf" threw: fixture bug (×2)',
+        '  - Mock resolver for "read.balanceOf" threw: fixture bug (×2)',
     );
   });
 
@@ -321,7 +322,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
     await rejectionOf(balanceOf(alice));
     expect(unhandledList(mock)).toBe(
       "The mock couldn't answer 1 request(s):\n" +
-        '  - Mock resolver for "balanceOf" threw: fixture bug',
+        '  - Mock resolver for "read.balanceOf" threw: fixture bug',
     );
   });
 });
@@ -535,7 +536,7 @@ describe("assertAllUsed()", () => {
 
     const message = unusedMessage(mock);
     expect(message).toContain(
-      `  - balanceOf(*) without an answer on ${USDC}\n` +
+      `  - read.balanceOf(*) without an answer on ${USDC}\n` +
         "    give it one with .returns(), .reverts(), or .fails(), or don't register it",
     );
     expect(message).not.toContain("received no calls");
@@ -578,9 +579,9 @@ describe("assertAllUsed()", () => {
     usdc.write.transferFrom();
 
     const message = unusedMessage(mock);
-    for (const functionName of ["transfer", "approve", "transferFrom"])
+    for (const name of ["simulate.transfer", "estimateGas.approve", "write.transferFrom"])
       expect(message).toContain(
-        `  - ${functionName}(*) without an answer on ${USDC}\n` +
+        `  - ${name}(*) without an answer on ${USDC}\n` +
           "    give it one with .returns(), .reverts(), .fails(), or .refuses(), or don't register it",
       );
   });
@@ -591,8 +592,28 @@ describe("assertAllUsed()", () => {
     mock.actions.getBalance().fails("timeout");
 
     const message = unusedMessage(mock);
-    expect(message).toContain(`  - transfer(*) reverts once on ${USDC}\n`);
+    expect(message).toContain(`  - write.transfer(*) reverts once on ${USDC}\n`);
     expect(message).toContain("  - getBalance(*) fails\n");
+  });
+
+  test("names a contract's mock with its namespace, so one function's mocks are told apart", () => {
+    const { mock } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
+    usdc.simulate.transfer().returns(true);
+    usdc.estimateGas.transfer().returns(30_000n);
+    usdc.write.transfer().returns();
+
+    expect(unusedMessage(mock)).toBe(
+      [
+        "3 mock(s) answered no call:",
+        `  - simulate.transfer(*) on USDC (${USDC})`,
+        "    received no calls to simulate.transfer",
+        `  - estimateGas.transfer(*) on USDC (${USDC})`,
+        "    received no calls to estimateGas.transfer",
+        `  - write.transfer(*) on USDC (${USDC})`,
+        "    received no calls to write.transfer",
+      ].join("\n"),
+    );
   });
 
   test("a raw method mock without an answer can't be given .reverts()", () => {
@@ -665,8 +686,8 @@ describe("assertAllUsed(): what the function received instead", () => {
     expect(unusedMessage(mock)).toBe(
       [
         "1 mock(s) answered no call:",
-        `  - allowance(${getAddress(alice)}, ${getAddress(bob)}) on USDC (${USDC})`,
-        "    received 1 call to allowance:",
+        `  - read.allowance(${getAddress(alice)}, ${getAddress(bob)}) on USDC (${USDC})`,
+        "    received 1 call to read.allowance:",
         `      allowance(…, ${DAI})  ← spender didn't match`,
         "",
         "Requests so far:",
@@ -680,7 +701,34 @@ describe("assertAllUsed(): what the function received instead", () => {
     mock.contract({ abi: erc20Abi, address: USDC }).read.balanceOf([alice]).returns(1n);
 
     expect(unusedMessage(mock)).toContain(
-      `balanceOf(${getAddress(alice)}) on ${USDC}\n    received no calls to balanceOf`,
+      `read.balanceOf(${getAddress(alice)}) on ${USDC}\n    received no calls to read.balanceOf`,
+    );
+  });
+
+  test("the count is the mock's namespace's alone: a simulation isn't a call to a write mock", async () => {
+    const { mock, client } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
+    usdc.write.transfer([bob, 5n]).returns();
+    usdc.simulate.transfer().returns(true);
+    const simulate = () =>
+      client.simulateContract({
+        abi: erc20Abi,
+        address: USDC,
+        functionName: "transfer",
+        args: [bob, 5n],
+        account: alice,
+      });
+
+    await simulate();
+    await simulate();
+
+    expect(unusedMessage(mock)).toContain(
+      [
+        "1 mock(s) answered no call:",
+        `  - write.transfer(${bob}, 5n) on USDC (${USDC})`,
+        "    received no calls to write.transfer",
+        "",
+      ].join("\n"),
     );
   });
 
@@ -774,7 +822,7 @@ describe("assertAllUsed(): what the function received instead", () => {
 
     await Promise.all(Array.from({ length: 5 }, () => balanceOf(alice)));
     const message = unusedMessage(mock);
-    expect(message).toContain("received 5 calls to balanceOf:");
+    expect(message).toContain("received 5 calls to read.balanceOf:");
     expect(message.match(/account didn't match/gu)).toHaveLength(3);
     expect(message).toContain("      … 2 more");
   });
@@ -793,7 +841,7 @@ describe("assertAllUsed(): what the function received instead", () => {
     await client.readContract({ abi, address: DAI, functionName: "balanceOf", args: [alice, 1n] });
     await client.readContract({ abi, address: DAI, functionName: "balanceOf", args: [alice] });
     const message = unusedMessage(mock);
-    expect(message).toContain("received 1 call to balanceOf:");
+    expect(message).toContain("received 1 call to read.balanceOf:");
     expect(message).toContain(`balanceOf(${getAddress(alice)}, …)  ← arg 1 didn't match`);
   });
 

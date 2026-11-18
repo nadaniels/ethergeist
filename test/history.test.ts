@@ -1024,8 +1024,8 @@ describe("historyOnFailure", () => {
     ).toBe(
       [
         "1 mock(s) answered no call:",
-        `  - symbol(*) on USDC (${USDC})`,
-        "    received no calls to symbol",
+        `  - read.symbol(*) on USDC (${USDC})`,
+        "    received no calls to read.symbol",
         "",
         "Requests so far:",
         "#2 eth_call USDC.decimals() → 6",

@@ -5,6 +5,7 @@ import {
   type ContractFunctionArgs,
   ContractFunctionExecutionError,
   InvalidAddressError,
+  createWalletClient,
   erc20Abi,
   erc4626Abi,
   erc721Abi,
@@ -53,6 +54,10 @@ const multiTokenAbi = parseAbi([
   "function price(uint256 id) view returns (uint256)",
   "function quote(address token, bool exact) view returns (uint256)",
   "function quote(address token, uint256 amount) view returns (uint256)",
+]);
+const viewAndNonpayableAbi = parseAbi([
+  "function quote(uint256 amount) view returns (uint256)",
+  "function quote(address token) returns (uint256)",
 ]);
 
 const bookAbi = parseAbi([
@@ -325,11 +330,79 @@ describe("match.where()", () => {
 
     const error = expectCause(await rejectionOf(balanceOf(alice)), MockResolverError);
     expect(error.matcher).toBe("where(throwsBoom)");
-    expect(error.shortMessage).toBe('Matcher where(throwsBoom) for "balanceOf" threw: boom');
+    expect(error.shortMessage).toBe('Matcher where(throwsBoom) for "read.balanceOf" threw: boom');
     expect(mock.unhandled).toHaveLength(1);
     expect(mock.formatHistory({ builtIns: false })).toContain(
       "✗ matcher where(throwsBoom) threw: boom",
     );
+  });
+
+  test("a predicate that throws names the mock it's on, with its namespace", async () => {
+    const { mock, client, usdc } = setup();
+    const wallet = createWalletClient({
+      account: alice,
+      chain: mock.chain,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+    const transfer = {
+      address: USDC,
+      abi: erc20Abi,
+      functionName: "transfer",
+      args: [bob, 5n],
+    } as const;
+    usdc.simulate.transfer([bob, match.where(throwsBoom)]).returns(true);
+    usdc.estimateGas.transfer([bob, match.where(throwsBoom)]).returns(50_000n);
+    usdc.write.transfer([bob, match.where(throwsBoom)]).returns();
+
+    const simulated = await rejectionOf(client.simulateContract({ ...transfer, account: alice }));
+    // Without a sender, the estimate isn't a send's, so no write mock is tried.
+    const estimated = await rejectionOf(client.estimateContractGas(transfer));
+    const sent = await rejectionOf(wallet.writeContract(transfer));
+
+    expect(
+      [simulated, estimated, sent].map(
+        (error) => expectCause(error, MockResolverError).shortMessage,
+      ),
+    ).toEqual([
+      'Matcher where(throwsBoom) for "simulate.transfer" threw: boom',
+      'Matcher where(throwsBoom) for "estimateGas.transfer" threw: boom',
+      'Matcher where(throwsBoom) for "write.transfer" threw: boom',
+    ]);
+  });
+
+  test("a predicate that throws stops the match there: better mocks' predicates run, and the rest don't", async () => {
+    const { usdc, allowance } = setup();
+    const tried: string[] = [];
+    const tries = (label: string, answer: () => boolean) =>
+      match.where<Address>(() => {
+        tried.push(label);
+        return answer();
+      }, label);
+    // Registered worst first: the older of two equally specific mocks, the newer, then the most specific.
+    usdc.read.allowance([tries("older", () => true), match.any()]).returns(1n);
+    usdc.read.allowance([tries("newer", throwsBoom), match.any()]).returns(2n);
+    usdc.read.allowance([tries("most specific", () => false), bob]).returns(3n);
+
+    const error = expectCause(await rejectionOf(allowance(alice, bob)), MockResolverError);
+    expect(error.matcher).toBe("where(newer)");
+    expect(tried).toEqual(["most specific", "newer"]);
+  });
+
+  test("a predicate that throws leaves the call unanswered: no mock answers it, counts a use, or spends its limit", async () => {
+    const { mock, usdc, balanceOf } = setup();
+    const throwsForBob = match.where((account: Address) => {
+      if (isAddressEqual(account, bob)) throw new Error("boom");
+      return false;
+    }, "throwsForBob");
+    // Less specific, so it's tried after the predicate, and would answer any call.
+    usdc.read.balanceOf().once().returns(1n);
+    usdc.read.balanceOf([throwsForBob]).returns(2n);
+
+    expectCause(await rejectionOf(balanceOf(bob)), MockResolverError);
+    expectThrows(MockCheckError, "2 mock(s) answered no call", () => {
+      mock.assertAllUsed();
+    });
+    expect(await balanceOf(alice)).toBe(1n);
   });
 });
 
@@ -436,11 +509,11 @@ describe("messages", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        "  balanceOf(where(isCarol))  ← account didn't match",
-        "  balanceOf(where(() => false))  ← account didn't match",
-        "  balanceOf(where(isTreasury))  ← account didn't match",
+        "  read.balanceOf(where(isCarol))  ← account didn't match",
+        "  read.balanceOf(where(() => false))  ← account didn't match",
+        "  read.balanceOf(where(isTreasury))  ← account didn't match",
         // Unnamed: the source on one line, cut to 60 characters.
-        "  balanceOf(where((account) => isAddressEqual(account, carol) || isAddressEqu…))  ← account didn't match",
+        "  read.balanceOf(where((account) => isAddressEqual(account, carol) || isAddressEqu…))  ← account didn't match",
       ].join("\n"),
     );
     expectThrows(MockCheckError, `allowance(${getAddress(alice)}, any) on USDC (${USDC})`, () => {
@@ -501,8 +574,8 @@ describe("a miss's reasons", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        "  allowance(where(yes), where(no))  ← spender didn't match",
-        `  allowance(${getAddress(bob)}, where(no))  ← owner didn't match`,
+        "  read.allowance(where(yes), where(no))  ← spender didn't match",
+        `  read.allowance(${getAddress(bob)}, where(no))  ← owner didn't match`,
       ].join("\n"),
     );
     // Once each, for the one mock in contention; none for the message.
@@ -522,9 +595,9 @@ describe("a miss's reasons", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        `  balanceOf(${getAddress(bob)}) once, used up  ← account didn't match`,
-        `  balanceOf(${getAddress(carol)}) without an answer  ← account didn't match`,
-        "  balanceOf(where(never)) without an answer",
+        `  read.balanceOf(${getAddress(bob)}) once, used up  ← account didn't match`,
+        `  read.balanceOf(${getAddress(carol)}) without an answer  ← account didn't match`,
+        "  read.balanceOf(where(never)) without an answer",
       ].join("\n"),
     );
     expect(never.calls).toHaveLength(0);
@@ -541,8 +614,8 @@ describe("a miss's reasons", () => {
     expect(hintsOf(error)).toBe(
       [
         "Registered:",
-        `  filled({ sell: { token: ${USDC}, amount: where(() => false) }, … })  ← order didn't match`,
-        `  filled({ maker: ${getAddress(bob)}, … })  ← order didn't match`,
+        `  read.filled({ sell: { token: ${USDC}, amount: where(() => false) }, … })  ← order didn't match`,
+        `  read.filled({ maker: ${getAddress(bob)}, … })  ← order didn't match`,
       ].join("\n"),
     );
   });
@@ -564,7 +637,7 @@ describe("a miss's reasons", () => {
       MockNotFoundError,
     );
     expect(hintsOf(error)).toBe(
-      `Registered:\n  transfer(${getAddress(bob)}, 1n)  ← amount didn't match`,
+      `estimateGas mocks:\n  estimateGas.transfer(${getAddress(bob)}, 1n)  ← amount didn't match`,
     );
   });
 
@@ -692,6 +765,21 @@ describe("registration", () => {
     }).not.toThrow();
   });
 
+  test("a Jest or Vitest matcher is refused past the first arg, key, or param too", () => {
+    const { mock, usdc } = setup();
+
+    expectThrows(MockSetupError, "(got Any<String>)", () =>
+      usdc.read.allowance([alice, expect.any(String)]),
+    );
+    expectThrows(MockSetupError, "(got Any<BigInt>)", () =>
+      // oxlint-disable-next-line typescript/no-unsafe-assignment -- typed `any`, as users meet it
+      mock.actions.getBalance({ address: alice, blockNumber: expect.any(BigInt) }),
+    );
+    expectThrows(MockSetupError, "(got Anything)", () =>
+      mock.method("eth_custom", ["0x1", expect.anything()]),
+    );
+  });
+
   test("matchers can't be return values", async () => {
     const { usdc, balanceOf } = setup();
     const refused = expectThrows(
@@ -760,7 +848,7 @@ describe("overloads", () => {
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "No mocks registered for balanceOf(address).",
       "Mocks on balanceOf's other overloads, which don't answer this one:",
-      `  balanceOf(${alice}, 1n)`,
+      `  read.balanceOf(${alice}, 1n)`,
     ]);
   });
 
@@ -780,28 +868,49 @@ describe("overloads", () => {
 
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "Registered:",
-      `  balanceOf(${carol})  ← owner didn't match`,
+      `  read.balanceOf(${carol})  ← owner didn't match`,
       "Mocks on balanceOf's other overloads, which don't answer this one:",
-      `  balanceOf(${alice}, 1n)`,
+      `  read.balanceOf(${alice}, 1n)`,
     ]);
   });
 
   test("a view overload's miss names the mocks on a nonpayable overload of its name", async () => {
     const { mock, client } = setup();
-    const pairAbi = parseAbi([
-      "function quote(uint256 amount) view returns (uint256)",
-      "function quote(address token) returns (uint256)",
-    ]);
-    mock.contract({ abi: pairAbi, address: DAI }).simulate.quote([alice]).returns(1n);
+    mock.contract({ abi: viewAndNonpayableAbi, address: DAI }).simulate.quote([alice]).returns(1n);
 
     const error = await rejectionOf(
-      client.readContract({ abi: pairAbi, address: DAI, functionName: "quote", args: [5n] }),
+      client.readContract({
+        abi: viewAndNonpayableAbi,
+        address: DAI,
+        functionName: "quote",
+        args: [5n],
+      }),
     );
 
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       "No mocks registered for quote(uint256).",
       "Mocks on quote's other overloads, which don't answer this one:",
-      `  quote(${alice}), a simulate mock`,
+      `  simulate.quote(${alice})`,
+    ]);
+  });
+
+  test("a nonpayable overload's miss names the mocks on a view overload of its name", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: viewAndNonpayableAbi, address: DAI }).read.quote([5n]).returns(1n);
+
+    const error = await rejectionOf(
+      client.simulateContract({
+        abi: viewAndNonpayableAbi,
+        address: DAI,
+        functionName: "quote",
+        args: [alice],
+      }),
+    );
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "No simulate mocks registered for quote(address); a write mock doesn't answer simulations.",
+      "Mocks on quote's other overloads, which don't answer this one:",
+      "  read.quote(5n)",
     ]);
   });
 

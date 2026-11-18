@@ -189,7 +189,7 @@ describe("through viem", () => {
 
     expect(findCause(error, NonceTooLowError)).toBeUndefined();
     expect(findCause(error, MockResolverError)?.shortMessage).toBe(
-      'Mock resolver for "balanceOf" threw: nonce too low',
+      'Mock resolver for "read.balanceOf" threw: nonce too low',
     );
   });
 

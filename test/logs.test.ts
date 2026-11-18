@@ -976,6 +976,16 @@ describe("mock.actions.getLogs", () => {
     expect(logs.map((log) => log.args.value)).toEqual([2n]);
   });
 
+  test("a mock pinned to a list of addresses doesn't answer a call with no address filter", async () => {
+    const { mock, client, usdc } = setup();
+    const log = usdc.emit.Transfer({ from: alice, to: bob, value: 1n });
+    mock.actions.getLogs({ address: [USDC, DAI] }).returns([]);
+
+    expect(await client.getLogs({ address: [USDC, DAI], fromBlock: 0n })).toEqual([]);
+    const logs = await client.getLogs({ fromBlock: 0n });
+    expect(logs.map((each) => each.transactionHash)).toEqual([log.transactionHash]);
+  });
+
   test("returns() answers no logs", async () => {
     const { mock, client, usdc } = setup();
     usdc.emit.Transfer({ from: alice, to: bob, value: 1n });

@@ -193,8 +193,12 @@ describe("getBalance", () => {
     });
     mock.actions.getBalance({ address: bob }).returns(() => -1n);
 
-    expectCause(await rejectionOf(client.getBalance({ address: alice })), MockResolverError);
+    const error = expectCause(
+      await rejectionOf(client.getBalance({ address: alice })),
+      MockResolverError,
+    );
     expectCause(await rejectionOf(client.getBalance({ address: bob })), MockResolverError);
+    expect(error.shortMessage).toBe('Mock resolver for "getBalance" threw: boom');
     expect(mock.unhandled).toHaveLength(2);
   });
 
@@ -1026,6 +1030,21 @@ describe("method()", () => {
     expect(other.balance).toBe(0n);
   });
 
+  test("a pinned list or object doesn't match a param the request leaves out", async () => {
+    const { mock } = setup();
+    const hash = testHash("traced");
+    mock.method("eth_getProof", [USDC]).returns("no keys");
+    mock.method("eth_getProof", [USDC, ["0x1"]]).returns("keys");
+    mock.method("debug_traceTransaction", [hash]).returns("no options");
+    mock.method("debug_traceTransaction", [hash, { tracer: "callTracer" }]).returns("options");
+
+    // The mock that pins more is tried first, and steps aside.
+    expect(await mock.request({ method: "eth_getProof", params: [USDC] })).toBe("no keys");
+    expect(await mock.request({ method: "debug_traceTransaction", params: [hash] })).toBe(
+      "no options",
+    );
+  });
+
   test("resolvers get the raw params", async () => {
     const { mock, client } = setup();
     const received: (readonly RpcValue[])[] = [];
@@ -1036,6 +1055,19 @@ describe("method()", () => {
 
     await client.getProof({ address: USDC, storageKeys: ["0x1"] });
     expect(received).toEqual([[USDC, ["0x1"], "latest"]]);
+  });
+
+  test("a resolver that throws is named for its method", async () => {
+    const { mock, client } = setup();
+    mock.method("eth_coinbase").returns(() => {
+      throw new Error("boom");
+    });
+
+    const error = await rejectionOf(client.request({ method: "eth_coinbase" }));
+
+    expect(expectCause(error, MockResolverError).shortMessage).toBe(
+      'Mock resolver for "eth_coinbase" threw: boom',
+    );
   });
 
   test("a request sent without params has none", async () => {

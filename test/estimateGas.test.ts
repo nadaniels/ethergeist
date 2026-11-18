@@ -40,6 +40,9 @@ import { expectCause, expectThrows, hintsOf, rejectionOf } from "./utils.js";
 
 const alice = testAddress("alice");
 const bob = testAddress("bob");
+/** An unmocked estimate's hint, for an estimate with a sender. */
+const estimateOfSendHint =
+  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
 const tokenAbi = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
   "function mint(uint256 amount) payable",
@@ -384,9 +387,7 @@ describe("estimateGas unmocked", () => {
     for (const error of errors) expectCause(error, MockNotFoundError);
 
     expect(mock.unhandled).toHaveLength(5);
-    expect(mock.unhandled[0]!.error.message).toContain(
-      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
-    );
+    expect(mock.unhandled[0]!.error.message).toContain(estimateOfSendHint);
   });
 
   test("empty data to a registered contract isn't an estimate of one of its functions", async () => {
@@ -642,10 +643,10 @@ describe("contract estimates", () => {
     const error = expectCause(await rejectionOf(transfer()), MockNotFoundError);
 
     expect(error.shortMessage).toBe(
-      `No estimateGas mock for transfer(${bob}, 1n) on Token (${token.address}).`,
+      `No write or estimateGas mock for transfer(${bob}, 1n) on Token (${token.address}).`,
     );
     expect(hintsOf(error)).toBe(
-      'No estimateGas mocks registered for "transfer"; a write mock that matches the send implies one, and a simulate mock doesn\'t answer estimates.',
+      'No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn\'t answer estimates.',
     );
     expect(mock.unhandled).toHaveLength(1);
     // The contract didn't answer, so its record has the request's outcome.
@@ -722,10 +723,10 @@ describe("whose mocks answer an estimate sent to a contract", () => {
     const error = expectCause(await rejectionOf(mint(1n, 1n)), MockNotFoundError);
 
     expect(error.shortMessage).toBe(
-      `No estimateGas mock for mint(1n) on Token (${token.address}).`,
+      `No write or estimateGas mock for mint(1n) on Token (${token.address}).`,
     );
     expect(error.metaMessages).toEqual([
-      `No estimateGas mocks registered for "mint"; a write mock that matches the send implies one, and a simulate mock doesn't answer estimates.`,
+      `No write or estimateGas mocks registered for "mint": a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       "  estimateGas(*)",
       "  estimateGas({ value: 1n }) refuses",
@@ -752,7 +753,7 @@ describe("whose mocks answer an estimate sent to a contract", () => {
     expect(error.shortMessage).toMatch(/^No mock for estimateGas\(/u);
     expect(error.metaMessages).toEqual([
       `Token (${token.address}) is a registered contract, but this transaction isn't a call to one of its nonpayable or payable functions.`,
-      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+      estimateOfSendHint,
     ]);
     expect(mock.unhandled).toHaveLength(1);
     expect(mock.history[1]).toMatchObject({
@@ -809,7 +810,7 @@ describe("estimates sent to a contract that action mocks answer", () => {
     expect(notFound.shortMessage).toMatch(/^No mock for estimateGas\(/u);
     expect(notFound.metaMessages).toEqual([
       `Token (${token.address}) is a registered contract, but this transaction isn't a call to one of its nonpayable or payable functions.`,
-      "Mock it with mock.actions.estimateGas({ to }).returns(…).",
+      estimateOfSendHint,
     ]);
   });
 
@@ -876,7 +877,7 @@ describe("contract estimate mocks", () => {
 
     expectThrows(
       MockCheckError,
-      `received 1 call to transfer:\n      transfer(${bob}, …)  ← to didn't match`,
+      `received 1 call to estimateGas.transfer:\n      transfer(${bob}, …)  ← to didn't match`,
       () => {
         mock.assertAllUsed();
       },
