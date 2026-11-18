@@ -67,10 +67,14 @@ describe("pinning from", () => {
     expect(await balanceOf(carol)).toBe(1n);
   });
 
-  test("a read without an account sends no from, which a pinned from doesn't match", async () => {
+  test("a read without an account sends no from, which no pinned from matches, and no predicate runs", async () => {
     const { mock, usdc, balanceOf } = setup();
     const isAlice = vi.fn(() => true);
-    usdc.read.balanceOf([bob], { from: match.where(isAlice, "isAlice") }).returns(5n);
+    const isBob = vi.fn(() => true);
+    usdc.read.balanceOf([match.where(isBob, "isBob")], { from: match.any() }).returns(4n);
+    usdc.read
+      .balanceOf([match.where(isBob, "isBob")], { from: match.where(isAlice, "isAlice") })
+      .returns(5n);
 
     const error = await rejectionOf(balanceOf());
 
@@ -82,12 +86,17 @@ describe("pinning from", () => {
       "latest",
     ]);
     expect(isAlice).not.toHaveBeenCalled();
+    expect(isBob).not.toHaveBeenCalled();
     const miss = expectCause(error, MockNotFoundError);
     expect(miss.shortMessage).toBe(
       `No mock for balanceOf(${bob}) { from: undefined } on USDC (${USDC}).`,
     );
     expect(hintsOf(miss)).toBe(
-      `Registered:\n  read.balanceOf(${bob}) { from: where(isAlice) }  ← { from } didn't match`,
+      [
+        "Registered:",
+        "  read.balanceOf(where(isBob)) { from: any }  ← { from } didn't match",
+        "  read.balanceOf(where(isBob)) { from: where(isAlice) }  ← { from } didn't match",
+      ].join("\n"),
     );
   });
 
@@ -413,11 +422,14 @@ describe("pins in assertAllUsed()", () => {
     expect(isBob).not.toHaveBeenCalled();
   });
 
-  test("an unused mock shows the value, or the missing from, its function's calls had", async () => {
+  test("an unused mock shows the value, or the missing from, its function's calls had, whatever its from pin", async () => {
     const { mock, vault, usdc, walletOf, balanceOf } = setup();
+    const isAlice = vi.fn(() => true);
     vault.write.deposit([], { value: 1n }).returns();
     vault.write.deposit().returns();
     usdc.read.balanceOf([bob], { from: alice }).returns(5n);
+    usdc.read.balanceOf([bob], { from: match.any() }).returns(6n);
+    usdc.read.balanceOf([bob], { from: match.where(isAlice, "isAlice") }).returns(7n);
     usdc.read.balanceOf().returns(1n);
 
     await walletOf(alice).writeContract({
@@ -434,6 +446,12 @@ describe("pins in assertAllUsed()", () => {
         `  - read.balanceOf(${bob}) { from: ${alice} } on USDC (${USDC})`,
         "    received 1 call to read.balanceOf:",
         "      balanceOf(…) { from: undefined }  ← { from } didn't match",
+        `  - read.balanceOf(${bob}) { from: any } on USDC (${USDC})`,
+        "    received 1 call to read.balanceOf:",
+        "      balanceOf(…) { from: undefined }  ← { from } didn't match",
+        `  - read.balanceOf(${bob}) { from: where(isAlice) } on USDC (${USDC})`,
+        "    received 1 call to read.balanceOf:",
+        "      balanceOf(…) { from: undefined }  ← { from } didn't match",
         `  - write.deposit() { value: 1n } on Vault (${VAULT})`,
         "    received 1 call to write.deposit:",
         "      deposit() { value: 2n }  ← { value } didn't match",
@@ -442,6 +460,7 @@ describe("pins in assertAllUsed()", () => {
         mock.assertAllUsed();
       },
     );
+    expect(isAlice).not.toHaveBeenCalled();
   });
 
   test("an unused mock shows the from or value its function's calls had instead", async () => {
