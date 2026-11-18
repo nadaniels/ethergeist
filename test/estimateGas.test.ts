@@ -353,6 +353,17 @@ describe("estimateGas reverts", () => {
       `Registered:\n  estimateGas({ to: ${bob} }) reverts  ← to didn't match\n  estimateGas({ to: ${alice} }) fails once  ← to didn't match`,
     );
   });
+
+  test("a miss says when the estimate has no from a mock pins", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ from: alice }).returns(30_000n);
+
+    const error = await rejectionOf(client.estimateGas({ to: bob, data: "0x1234" }));
+
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
+      `Registered:\n  estimateGas({ from: ${alice} })  ← the call has no from`,
+    );
+  });
 });
 
 describe("estimateGas unmocked", () => {

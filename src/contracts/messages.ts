@@ -75,7 +75,9 @@ export function missError(
   } = {},
 ): MockNotFoundError {
   const linesOf = ({ registered, missed }: Candidates) =>
-    missedLines(registered, missed, describeContractMock, argName);
+    missedLines(registered, missed, describeContractMock, (mock, key) =>
+      missedArg(mock, call, key),
+    );
   const lines = linesOf(own);
   const writeLines = writes === undefined ? [] : linesOf(writes);
   const others = overloads?.others ?? [];
@@ -159,9 +161,18 @@ function received(mock: Mock, call: MockCall): ReceivedCall {
   const [key] = mismatched;
   return {
     call: `${formatMismatch(call.functionName, call.args, mismatched)}${formatPins(call, mismatched)}`,
-    differs: key === undefined ? undefined : argName(mock, key),
+    differs: key === undefined ? undefined : missedArg(mock, call, key),
   };
 }
+
+/**
+ * A call has every arg and a `value` (`0n` when it sends none), so only its
+ * sender can be left out.
+ */
+const missedArg = (mock: Mock, call: MockCall, key: PinnedKey) =>
+  key === "from" && call.from === undefined
+    ? { name: "sender", leftOut: true }
+    : { name: argName(mock, key), leftOut: false };
 
 /**
  * A call's `from` and `value` among `keys`, after its args, e.g.

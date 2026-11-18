@@ -18,6 +18,7 @@ import {
   mismatches,
   mismatchesAsMatched,
   pinWithoutUndefined,
+  valueAt,
 } from "../mocking/matching.js";
 import type { PinnedKey } from "../mocking/types.js";
 import { zeroResult } from "../mocking/zeroResult.js";
@@ -188,6 +189,10 @@ export function createMockSet<answer>(
   const actualOf = (pinned: unknown, call: object) =>
     definition.actual === undefined ? call : definition.actual(pinned, call);
   const describeActionMock = (handler: Handler) => describeMock(definition.name, handler);
+  const missedParam = (handler: Handler, call: object, key: PinnedKey) => ({
+    name: paramName(key),
+    leftOut: valueAt(actualOf(handler.pinned, call), key) === undefined,
+  });
 
   /**
    * The builder methods that answer, named for a mock registered without
@@ -251,7 +256,7 @@ export function createMockSet<answer>(
       const [key] = mismatched;
       return {
         call: formatMismatch(definition.name, shown(call), mismatched),
-        differs: key === undefined ? undefined : paramName(key),
+        differs: key === undefined ? undefined : missedParam(handler, call, key),
         forContract: forContract.has(call),
       };
     });
@@ -300,8 +305,13 @@ export function createMockSet<answer>(
    * call: see `MissListing`. Built from the match, so no predicate runs
    * again; another action's miss lists them as `others`.
    */
-  const missListing = ({ missed, removed }: ReturnType<typeof match>): MissListing => ({
-    registered: missedLines(mocks.handlers, missed, describeActionMock, (_, key) => paramName(key)),
+  const missListing = (
+    call: object,
+    { missed, removed }: ReturnType<typeof match>,
+  ): MissListing => ({
+    registered: missedLines(mocks.handlers, missed, describeActionMock, (handler, key) =>
+      missedParam(handler, call, key),
+    ),
     removed: removed.map((handler) => `  ${describeActionMock(handler)}`),
   });
 
@@ -329,7 +339,7 @@ export function createMockSet<answer>(
       others?: { header: string; listing: MissListing } | undefined;
     } = {},
   ): MockNotFoundError {
-    const own = missListing(found);
+    const own = missListing(call, found);
     const targetLines = notFoundLines?.(call) ?? [];
     return new MockNotFoundError(`No mock for ${formatCall(definition.name, shown(call))}.`, {
       metaMessages: [

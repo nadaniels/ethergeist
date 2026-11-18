@@ -1170,7 +1170,7 @@ describe("an estimate no mock answers lists the sendTransaction mocks", () => {
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
       mockIt,
       header,
-      `  sendTransaction({ to: ${bob}, gas: any })  ← gas didn't match`,
+      `  sendTransaction({ to: ${bob}, gas: any })  ← the call has no gas`,
     ]);
     mock.actions.estimateGas({ to: bob }).returns(50_000n);
     const hash = await wallet.sendTransaction({ to: bob, data: "0x12" });

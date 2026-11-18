@@ -862,6 +862,32 @@ describe("assertAllUsed(): what the function received instead", () => {
     expect(message).toContain("← address didn't match");
     expect(message).toContain("eth_getProof(…, [0x2], …)  ← param 2 didn't match");
   });
+
+  test("says when the call has no field or param a mock pins", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ blockTag: match.any() }).returns(1n);
+    mock.actions.getBalance().returns(0n);
+    mock.actions.sendTransaction({ gas: 21_000n }).returns();
+    mock.actions.sendTransaction().returns();
+    mock.method("eth_getProof", [USDC, [], match.any()]).returns({});
+    mock.method("eth_getProof").returns({});
+
+    await client.getBalance({ address: alice, blockNumber: 0n });
+    await walletFor(mock, alice).sendTransaction({ to: bob });
+    await mock.request({ method: "eth_getProof", params: [USDC, []] });
+    const message = unusedMessage(mock);
+    expect(message).toContain(
+      "    received 1 call to getBalance:\n" +
+        "      getBalance({ blockTag: undefined, … })  ← the call has no blockTag",
+    );
+    expect(message).toContain(
+      "    received 1 call to sendTransaction:\n" +
+        "      sendTransaction({ gas: undefined, … })  ← the call has no gas",
+    );
+    expect(message).toContain(
+      "    received 1 call to eth_getProof:\n      eth_getProof(…, …)  ← the call has no param 3",
+    );
+  });
 });
 
 /** The first stack frame of what `check` throws. */

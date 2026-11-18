@@ -177,8 +177,9 @@ features land; tick them off as pages get written.
     write mock's `from` didn't match.
   - Messages show pins after the call: `write.transfer(*) { from: 0x… }`,
     `← { from } didn't match` (braced, so it can't be read as an input
-    named `from`, as in `transferFrom`), and the call's own `from` or
-    `value` where they differ.
+    named `from`, as in `transferFrom`), or `← the call has no sender`
+    for a call without one, and the call's own `from` or `value` where
+    they differ.
   - `defaults` take no pins: they're one answer per function.
 - [ ] Return values: named outputs as objects, partial structs zero-filled,
       `zeroResult`, resolvers that receive the call.
@@ -772,7 +773,10 @@ features land; tick them off as pages get written.
     functions, else a `sendTransaction` mock), with its pins, once per
     estimate, so its predicates run once;
     they run on every estimate of a send it could answer, even one an
-    estimate mock then answers, since it could revert it.
+    estimate mock then answers, since it could revert it. A send mock that
+    pins `gas` implies no estimate, since viem estimates without gas: the
+    estimate's miss lists it with `← the call has no gas`, and the estimate
+    needs its own mock.
 - [ ] Sends: `mock.actions.sendTransaction({ from, to, value, data })`
       answers `eth_sendTransaction` (a node's account, unsigned, with
       `from`) and `eth_sendRawTransaction` (a local account's signed bytes),
@@ -928,7 +932,9 @@ features land; tick them off as pages get written.
       (`write.withdraw(150n)`), and the call bare (`withdraw(150n)`). A mock
       whose args differ says which (`← owner didn't match`, by the ABI's
       input names, `arg N` for unnamed ones, the key for action params), as
-      matching found it, including the predicate that said no. A mock used
+      matching found it, including the predicate that said no. A call that
+      leaves a pinned param out says so (`← the call has no
+      blockTag`, `← the call has no param 2`). A mock used
       up or without an answer says so, and still names an exact arg that
       differs (it wouldn't have matched either); its predicates aren't run
       for the message. A contract's miss outside `read` names its
@@ -960,7 +966,8 @@ features land; tick them off as pages get written.
       (`clearCalls()`, `restore()`, `reset()`), so a `.times(n)` mock that
       answered before it can read "3 times, 2 left". Under each unused mock, the calls
       its function received (up to 3, then a count) and the first arg, field,
-      or param that didn't match, by its ABI name. Under a contract's mock,
+      or param that didn't match, by its ABI name, or a pinned param the
+      call leaves out (`← the call has no gas`). Under a contract's mock,
       the count names its namespace ("received 2 calls to
       write.withdraw:"), since it counts only that namespace's calls to the
       mock's own overload; "matches; another mock

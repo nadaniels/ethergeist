@@ -198,10 +198,11 @@ export function createSends(
       throw estimateGasMocks.missError(call, found, {
         hint: sent && estimateOfSendHint(sent.to),
         before: notAFunctionLines(called),
-        others: sendMatch && {
-          header: "sendTransaction mocks, which imply the estimate of a send they match:",
-          listing: sendTransactionMocks.missListing(sendMatch),
-        },
+        others: sent &&
+          sendMatch && {
+            header: "sendTransaction mocks, which imply the estimate of a send they match:",
+            listing: sendTransactionMocks.missListing(sent, sendMatch),
+          },
       });
     });
   }

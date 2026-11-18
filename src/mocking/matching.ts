@@ -104,16 +104,10 @@ export function mismatches(
       return [null];
     }
   }
-  const at = (key: number | string): unknown =>
-    Array.isArray(actual)
-      ? actual[Number(key)]
-      : isNonArrayObject(actual)
-        ? actual[key]
-        : undefined;
   return pinnedEntries(pinned)
     .filter(([key, value]) => {
       try {
-        return !isMatch(value, at(key), options);
+        return !isMatch(value, valueAt(actual, key), options);
       } catch {
         return true;
       }
@@ -156,13 +150,14 @@ export function firstMismatch(
     ? Array.isArray(actual) && actual.length === pinned.length
     : isNonArrayObject(actual);
   if (!sameShape) return entries[0]?.[0] ?? null;
-  const at = (key: number | string): unknown =>
-    Array.isArray(actual)
-      ? actual[Number(key)]
-      : isNonArrayObject(actual)
-        ? actual[key]
-        : undefined;
-  return entries.find(([key, value]) => !isMatch(value, at(key), options))?.[0];
+  return entries.find(([key, value]) => !isMatch(value, valueAt(actual, key), options))?.[0];
+}
+
+/** All of them at `null`, and `undefined` where the call leaves it out. */
+export function valueAt(actual: unknown, key: PinnedKey): unknown {
+  if (key === null) return actual;
+  if (Array.isArray(actual)) return actual[Number(key)];
+  return isNonArrayObject(actual) ? actual[key] : undefined;
 }
 
 /**

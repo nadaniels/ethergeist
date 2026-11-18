@@ -238,6 +238,22 @@ describe("getBalance", () => {
     );
   });
 
+  test("a miss says when the call has no field a mock pins, after a field that differs", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: bob, blockTag: match.any() }).returns(1n);
+    mock.actions.getBalance({ blockTag: match.any(), address: bob }).returns(2n);
+    mock.actions.getBalance({ address: alice, blockTag: "latest" }).returns(3n);
+
+    const error = await rejectionOf(client.getBalance({ address: alice, blockNumber: 5n }));
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "Registered:",
+      `  getBalance({ address: ${bob}, blockTag: any })  ← address didn't match`,
+      `  getBalance({ blockTag: any, address: ${bob} })  ← the call has no blockTag`,
+      `  getBalance({ address: ${alice}, blockTag: "latest" })  ← the call has no blockTag`,
+    ]);
+  });
+
   test("a mock without an answer steps aside for one with an answer", async () => {
     const { mock, client } = setup();
     mock.actions.getBalance().returns(5n);
@@ -1139,6 +1155,20 @@ describe("method()", () => {
     expect(error.metaMessages).toEqual([
       "Registered:",
       `  eth_getProof(${USDC})  ← param 1 didn't match`,
+    ]);
+  });
+
+  test("a miss says when the call has no param a mock pins", async () => {
+    const { mock } = setup();
+    mock.method("eth_getProof", [USDC, [], match.any()]).returns({});
+
+    const error = expectCause(
+      await rejectionOf(mock.request({ method: "eth_getProof", params: [USDC, []] })),
+      MockNotFoundError,
+    );
+    expect(error.metaMessages).toEqual([
+      "Registered:",
+      `  eth_getProof(${USDC}, [], any)  ← the call has no param 3`,
     ]);
   });
 

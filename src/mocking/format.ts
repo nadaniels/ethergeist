@@ -85,13 +85,18 @@ export function formatMismatch(
   return formatCall(name, actual);
 }
 
+type MissedKey = { name: string; leftOut: boolean };
+
+const missReason = ({ name, leftOut }: MissedKey) =>
+  leftOut ? `the call has no ${name}` : `${name} didn't match`;
+
 /**
  * A call an unused mock's function received, and where it first differs from
  * the mock.
  */
 export type ReceivedCall = {
   call: string;
-  differs: string | undefined;
+  differs: MissedKey | undefined;
   /**
    * Whether the call was a registered contract's to answer, under an
    * action's mock.
@@ -100,12 +105,13 @@ export type ReceivedCall = {
 };
 
 /**
- * What follows a registered mock in a "No mock for" message: which of its
- * args or params didn't match the call, if one didn't. It can follow "used
- * up" or "without an answer": that mock wouldn't have matched either.
+ * What follows a registered mock in a "No mock for" message: where it first
+ * differs from the call, a key the call leaves out included, if it does. It
+ * can follow "used up" or "without an answer": that mock wouldn't have
+ * matched either.
  */
-const formatMissReason = (differs: string | undefined) =>
-  differs === undefined ? "" : `  ← ${differs} didn't match`;
+const formatMissReason = (differs: MissedKey | undefined) =>
+  differs === undefined ? "" : `  ← ${missReason(differs)}`;
 
 /**
  * A miss's lines for the mocks it tried. `missed` holds where each one first
@@ -115,11 +121,11 @@ export function missedLines<mock>(
   mocks: readonly mock[],
   missed: ReadonlyMap<mock, PinnedKey>,
   describe: (mock: mock) => string,
-  keyName: (mock: mock, key: PinnedKey) => string,
+  missedKey: (mock: mock, key: PinnedKey) => MissedKey,
 ): string[] {
   return mocks.map((mock) => {
     const key = missed.get(mock);
-    const reason = formatMissReason(key === undefined ? undefined : keyName(mock, key));
+    const reason = formatMissReason(key === undefined ? undefined : missedKey(mock, key));
     return `  ${describe(mock)}${reason}`;
   });
 }
@@ -149,7 +155,7 @@ export const formatNoAnswer = (answers: string) =>
 
 /** Why a call an unused mock's function received wasn't the mock's use. */
 function formatReceivedReason({ differs, forContract }: ReceivedCall): string {
-  if (differs !== undefined) return `${differs} didn't match`;
+  if (differs !== undefined) return missReason(differs);
   if (forContract === true)
     return "matches; it's to a registered contract's function, which action mocks don't answer";
   return "matches; another mock answered it";
