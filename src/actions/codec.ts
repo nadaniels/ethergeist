@@ -68,23 +68,33 @@ export function pinTransaction(pinned: unknown) {
 }
 
 /**
- * An `eth_sendTransaction`'s call, from its request's fields
- * (`transactionParam`), its sender, and its type: `to` is `null` for a
- * deploy, and empty `data` is left out. An estimate's send is one too, since
- * send mocks are matched against it.
+ * A request's transaction fields as a call has them. A field every
+ * transaction has on chain takes its empty or named value when the request
+ * has none: `to` is `null` for a deploy, and `data` is `"0x"`, as `value` is
+ * `0n`. One a node fills in (the sender, nonce, gas limit, and fees) stays
+ * left out.
+ */
+export function callFields(fields: ReturnType<typeof transactionParam>) {
+  return { ...fields, to: fields.to ?? null, data: fields.data ?? "0x" };
+}
+
+/**
+ * An `eth_sendTransaction`'s call, with the sender and type it's given. An
+ * estimate's send is one too, since send mocks are matched against it.
  */
 export function sendCall(
   fields: ReturnType<typeof transactionParam>,
   from: Address,
   type: MockTransactionType,
 ): SendTransactionCall {
-  const { to, value, data, nonce, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas } = fields;
+  const { to, value, data, nonce, gas, gasPrice, maxFeePerGas, maxPriorityFeePerGas } =
+    callFields(fields);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
   return withoutUndefined({
     from,
-    to: to ?? null,
+    to,
     value,
-    data: data === "0x" ? undefined : data,
+    data,
     nonce,
     gas,
     gasPrice,
@@ -102,9 +112,9 @@ export function sendCall(
  */
 export function isPlainTransfer(
   registry: Registry,
-  { to, data }: { to?: Address | null; data?: Hex },
+  { to, data }: { to: Address | null; data: Hex },
 ) {
-  if (to === undefined || to === null || (data !== undefined && data !== "0x")) return false;
+  if (to === null || data !== "0x") return false;
   const code = registry.codeAt(to);
   return code === undefined || code === "0x";
 }

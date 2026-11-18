@@ -558,7 +558,7 @@ describe("nesting", () => {
     const error = await notFound(deploy());
     expect(error.shortMessage).toMatch(/^No mock for estimateGas\(/u);
     expect(error.metaMessages).toEqual([
-      "Mock it with mock.actions.sendTransaction({ to: null }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ data }).returns(…).",
+      "Mock it with mock.actions.sendTransaction({ to: null }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to: null }).returns(…).",
       "Removed by the last restore() or reset():",
       "  sendTransaction({ to: null })",
       layoutHint,

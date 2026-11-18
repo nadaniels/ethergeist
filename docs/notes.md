@@ -52,10 +52,13 @@ features land; tick them off as pages get written.
       nothing: a call matches with any value there, or none. A pinned key
       doesn't match a call that leaves it out, whatever the pin
       (`match.any()` included). No predicate is given `undefined`. `null`
-      is a value, so a send's `to` for a deploy matches `match.any()`. To
-      check that the app left a field out, leave the key out of the pin and
-      assert on `.calls`. To select an action's call on it, use a
-      whole-params predicate, e.g.
+      is a value, so a deploy's `to`, in a send or an estimate, matches
+      `match.any()`. A send's or an estimate's empty calldata is `"0x"`, as
+      its value is `0n` when it sends none, so `data: "0x"` pins a plain
+      transfer. To check that the app
+      left a field out, leave the key out of the pin and assert on
+      `.calls`. To select an action's call on it, use a whole-params
+      predicate, e.g.
       `match.where((call) => call.gas === undefined)`. A contract mock's
       `from` has no such spelling: a mock without a `from` pin answers, and
       its resolver can check the call's `from`. A list's element can't be
@@ -960,13 +963,13 @@ features land; tick them off as pages get written.
       mocks:" and then its write mocks, with why each missed. An estimate
       that's the actions' keeps "No mock for estimateGas(…)". With no
       `estimateGas` mocks registered, its hint is the `sendTransaction` mock
-      first, then the `estimateGas` mock (`{ to: null }` and `{ data }` for
-      a deploy, which has no `to`); with some, it lists them under
-      "Registered:" and gives no hint. Either way it then lists the
-      `sendTransaction` mocks under "sendTransaction mocks, which imply the
-      estimate of a send they match:", and those the last restore removed
-      after its own. An estimate without `from` is no send's, so it names
-      and lists only estimate mocks. A contract's miss also names the action
+      first, then the `estimateGas` mock (both `{ to: null }` for a
+      deploy); with some, it lists them under "Registered:" and gives no
+      hint. Either way it then lists the `sendTransaction` mocks under
+      "sendTransaction mocks, which imply the estimate of a send they
+      match:", and those the last restore removed after its own. An
+      estimate without `from` is no send's, so it names and lists only
+      estimate mocks, and its hint is the `estimateGas` mock alone. A contract's miss also names the action
       mocks that match the call, under "Action mocks that match, which
       don't answer a registered contract's functions:", by exact values:
       their predicates aren't run, and those used up or without an answer

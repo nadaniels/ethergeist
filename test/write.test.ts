@@ -2019,7 +2019,7 @@ describe("writes in history", () => {
     await wallet.sendTransaction({ to: bob, value: 1n });
 
     expect(mock.formatHistory({ builtIns: false })).toBe(
-      '#2 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, type: "eip1559" }) → 0x340f…155f (mined in block 11n, 0 logs)',
+      '#2 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, data: 0x, type: "eip1559" }) → 0x340f…155f (mined in block 11n, 0 logs)',
     );
   });
 
@@ -2037,7 +2037,7 @@ describe("writes in history", () => {
     expect(mock.formatHistory({ builtIns: false })).toBe(
       [
         "(2 older requests dropped, past historyLimit)",
-        '#4 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, type: "eip1559" }) → 0x7bff…b2a9 (mined in block 12n, 0 logs)',
+        '#4 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, data: 0x, type: "eip1559" }) → 0x7bff…b2a9 (mined in block 12n, 0 logs)',
       ].join("\n"),
     );
     mock.clearCalls();

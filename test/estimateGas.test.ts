@@ -100,7 +100,7 @@ describe("estimateGas", () => {
 
     expect(await client.estimateGas({ account: alice, to: bob, value: 1n })).toBe(30_000n);
     expect(mock.actions.estimateGas.calls).toEqual([
-      { from: alice, to: bob, value: 1n, blockNumber: 10n, blockTag: "latest" },
+      { from: alice, to: bob, value: 1n, data: "0x", blockNumber: 10n, blockTag: "latest" },
     ]);
   });
 
@@ -110,8 +110,26 @@ describe("estimateGas", () => {
 
     expect(await client.estimateGas({ to: bob })).toBe(30_000n);
     expect(mock.actions.estimateGas.calls).toEqual([
-      { to: bob, value: 0n, blockNumber: 10n, blockTag: "latest" },
+      { to: bob, value: 0n, data: "0x", blockNumber: 10n, blockTag: "latest" },
     ]);
+  });
+
+  test('data: "0x" matches a request with empty data or none', async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ to: bob, data: "0x" }).returns(30_000n);
+
+    expect(await client.estimateGas({ account: alice, to: bob, value: 1n })).toBe(30_000n);
+    expect(await client.estimateGas({ account: alice, to: bob, data: "0x" })).toBe(30_000n);
+    expect(await client.estimateGas({ to: bob })).toBe(30_000n);
+  });
+
+  test('a send mock that pins data: "0x" reverts a plain transfer\'s estimate', async () => {
+    const { mock, client } = setup();
+    mock.actions.sendTransaction({ to: bob, data: "0x" }).reverts("paused");
+
+    const error = await refusal(mock, client.estimateGas({ account: alice, to: bob, value: 1n }));
+
+    expect(expectCause(error, ExecutionRevertedError).details).toBe("execution reverted: paused");
   });
 
   test("a value of 0n matches a request without one; malformed pins throw", async () => {
@@ -136,6 +154,7 @@ describe("estimateGas", () => {
         from: account.address,
         to: bob,
         value: 5n,
+        data: "0x",
         maxFeePerGas: parseGwei("13"),
         maxPriorityFeePerGas: parseGwei("1"),
         nonce: 0,
@@ -364,6 +383,19 @@ describe("estimateGas reverts", () => {
       `Registered:\n  estimateGas({ from: ${alice} })  ← the call has no from`,
     );
   });
+
+  test("a deploy's estimate says its to is null, and that a mock's to didn't match", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ to: bob }).returns(30_000n);
+
+    const error = await rejectionOf(client.estimateGas({ data: "0x6000" }));
+
+    const notFound = expectCause(error, MockNotFoundError);
+    expect(notFound.shortMessage).toBe(
+      'No mock for estimateGas({ to: null, value: 0n, data: 0x6000, blockNumber: 10n, blockTag: "latest" }).',
+    );
+    expect(hintsOf(notFound)).toBe(`Registered:\n  estimateGas({ to: ${bob} })  ← to didn't match`);
+  });
 });
 
 describe("estimateGas unmocked", () => {
@@ -495,7 +527,7 @@ describe("named node errors", () => {
     await rejectionOf(client.estimateGas({ account: alice, to: bob }));
 
     expect(mock.formatHistory()).toBe(
-      "#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, " +
+      "#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, data: 0x, " +
         'blockNumber: 10n, blockTag: "latest" }) ✗ refused: insufficientFunds',
     );
   });

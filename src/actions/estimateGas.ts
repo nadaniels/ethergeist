@@ -12,7 +12,7 @@ import type {
   WithLimits,
 } from "../mocking/types.js";
 import { withoutUndefined } from "../shared/values.js";
-import { blockAt, pinTransaction, sendCall } from "./codec.js";
+import { blockAt, callFields, pinTransaction, sendCall } from "./codec.js";
 import type { MockDefinition } from "./mockSet.js";
 import type { ActionContext, EstimateGasCall, SendTransactionCall } from "./types.js";
 
@@ -78,7 +78,10 @@ export function decodeEstimateGas(
   const fields = transactionParam(tx);
   const type = sentType(tx, fields);
   // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- undefined fields are left out
-  const call = withoutUndefined({ ...fields, ...blockAt(block, resolveBlock) }) as EstimateGasCall;
+  const call = withoutUndefined({
+    ...callFields(fields),
+    ...blockAt(block, resolveBlock),
+  }) as EstimateGasCall;
   const sent = fields.from === undefined ? undefined : sendCall(fields, fields.from, type);
   return { call, sent };
 }

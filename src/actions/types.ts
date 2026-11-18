@@ -84,17 +84,18 @@ export type FeeHistoryCall = {
 export type TransactionCountCall = AddressAtBlockCall;
 /**
  * What a call to `estimateGas` asked for: the transaction, and the block it's
- * estimated at. A field the request has none of is left out.
+ * estimated at. A sender, nonce, gas limit, or fee the request has none of is
+ * left out.
  */
 export type EstimateGasCall = {
   /** The sender. */
   from?: Address;
-  /** The recipient; left out for a deploy. */
-  to?: Address;
+  /** The recipient; `null` for a deploy. */
+  to: Address | null;
   /** Wei sent; `0n` when the request has none. */
   value: bigint;
-  /** The calldata. */
-  data?: Hex;
+  /** The calldata; `"0x"` when the request has none. */
+  data: Hex;
   /** The gas limit asked for. */
   gas?: bigint;
   /** A legacy or EIP-2930 transaction's gas price. */
@@ -112,8 +113,9 @@ export type EstimateGasCall = {
 };
 /**
  * What a send asked for: the transaction, from `eth_sendTransaction`'s
- * request or a raw send's signed bytes. A raw send has its nonce and gas;
- * other fields the request has none of are left out.
+ * request or a raw send's signed bytes. A nonce, gas limit, or fee the
+ * request has none of is left out, though a raw send always has its nonce and
+ * gas.
  */
 export type SendTransactionCall = {
   /**
@@ -125,8 +127,8 @@ export type SendTransactionCall = {
   to: Address | null;
   /** Wei sent; `0n` when it has none. */
   value: bigint;
-  /** The calldata; left out when it's empty. */
-  data?: Hex;
+  /** The calldata; `"0x"` when it has none. */
+  data: Hex;
   /** The nonce asked for. */
   nonce?: number;
   /** The gas limit asked for. */

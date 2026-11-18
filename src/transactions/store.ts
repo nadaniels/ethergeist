@@ -42,7 +42,8 @@ export type TransactionRecord = {
    */
   readonly origin: "added" | "sent";
   /**
-   * The transaction's own fields, as its request or signed bytes had them;
+   * The transaction's own fields, as its request or signed bytes had them,
+   * with `value` as `0n` and `input` as `"0x"` for a send that had none;
    * any left out answer a node's defaults: zero or empty, an `"eip1559"`
    * type, and fees suggested at its block. An added one's are what it was
    * given, with `data` as `input`, and with a `from`, the nonce it took.
@@ -115,7 +116,7 @@ type LogsPosition = Pick<
 type SentTransaction = Omit<TransactionRecord["fields"], "from" | "to" | "input"> & {
   from: Address;
   to: Address | null;
-  data?: Hex;
+  data: Hex;
 };
 
 /** What `add` takes: a record's facts, which it places. */
@@ -327,7 +328,7 @@ export function createTransactionStore({
     return add({
       origin: "sent",
       hash,
-      fields: { ...fields, ...(data && { input: data }), gas },
+      fields: { ...fields, input: data, gas },
       receipt,
       logs,
     });
