@@ -34,8 +34,7 @@ type Mock = {
  * `write.withdraw`: a function's mocks in two namespaces would otherwise
  * read the same.
  */
-export const mockName = (mock: Pick<Mock, "namespace" | "abiItem">) =>
-  `${mock.namespace}.${mock.abiItem.name}`;
+export const mockName = (mock: Mock) => `${mock.namespace}.${mock.abiItem.name}`;
 
 const describeContractMock = (mock: Mock) => describeMock(mockName(mock), mock);
 

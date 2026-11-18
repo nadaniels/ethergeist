@@ -177,7 +177,7 @@ export function createMockSet<answer>(
   recordLimit: RecordLimit,
   { currentBlock, notFoundLines }: MockSetOptions,
 ) {
-  const mocks = createHandlers<ActionContext<object>, unknown>();
+  const mocks = createHandlers<ActionContext<object>, unknown>(() => definition.name);
   const calls = createRecordList<object>(recordLimit);
   /**
    * The calls received that were a registered contract's to answer, which
@@ -217,7 +217,6 @@ export function createMockSet<answer>(
     const handler = mocks.register(pinned, undefined);
     const builder = mocks.createBuilder(
       handler,
-      definition.name,
       (value) => {
         const registered = new Registered(value, currentBlock());
         encode(registered, undefined, definition.pinnedCall?.(pinned) ?? {});
@@ -282,8 +281,7 @@ export function createMockSet<answer>(
    * The handler that answers `call`, and where the others missed: see
    * `findAnswering`.
    */
-  const match = (call: object) =>
-    mocks.findAnswering(() => true, differsFrom(call), definition.name);
+  const match = (call: object) => mocks.findAnswering(() => true, differsFrom(call));
 
   /** Answers `call` with `handler`, the mock `match` found for it. */
   function answerWith(handler: Handler, call: object): Promise<answer> {
@@ -293,7 +291,6 @@ export function createMockSet<answer>(
       handler,
       context,
       (value) => encode(value, call, call),
-      definition.name,
       definition.reverted,
     );
   }

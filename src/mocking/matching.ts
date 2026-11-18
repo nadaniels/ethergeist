@@ -53,8 +53,8 @@ export function bestMatch<candidate extends Rankable>(
   /** In registration order; only those that can answer. */
   candidates: readonly candidate[],
   differs: (candidate: candidate, options: MatchOptions) => PinnedKey | undefined,
-  /** What names the candidates, for the error when a predicate throws. */
-  name: string,
+  /** Names a candidate in the error when its predicate throws. */
+  nameOf: (candidate: candidate) => string,
 ): { best: candidate | undefined; missed: Map<candidate, PinnedKey> } {
   const ranked = candidates
     .map((candidate, index) => ({ candidate, index, limited: candidate.remaining !== undefined }))
@@ -67,20 +67,20 @@ export function bestMatch<candidate extends Rankable>(
     )
     .map(({ candidate }) => candidate);
   const missed = new Map<candidate, PinnedKey>();
-  try {
-    for (const candidate of ranked) {
+  for (const candidate of ranked) {
+    try {
       // Predicates run only when the exact values match (`null` is a mismatch
       // too).
       const exact = differs(candidate, { predicates: false });
       const key = exact === undefined ? differs(candidate, {}) : exact;
       if (key === undefined) return { best: candidate, missed };
       missed.set(candidate, key);
+    } catch (error) {
+      if (!(error instanceof MatcherThrewError)) throw error;
+      throw new MockResolverError(nameOf(candidate), error.cause, { matcher: error.matcher });
     }
-    return { best: undefined, missed };
-  } catch (error) {
-    if (!(error instanceof MatcherThrewError)) throw error;
-    throw new MockResolverError(name, error.cause, { matcher: error.matcher });
   }
+  return { best: undefined, missed };
 }
 
 /**

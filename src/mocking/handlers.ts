@@ -131,7 +131,10 @@ export function withCalls<fn extends (...args: never[]) => unknown>(
  * builders, choosing one to answer a call, and saving and restoring them.
  * How calls are decoded, matched, and encoded is the engine's own.
  */
-export function createHandlers<context, extra>() {
+export function createHandlers<context, extra>(
+  /** It's called while an error is built, so it must not throw. */
+  nameOf: (handler: Handler<context, extra>) => string,
+) {
   const handlers: Handler<context, extra>[] = [];
   /** The mocks the last `restore()` or `reset()` removed, for misses. */
   let lastRemoved: Handler<context, extra>[] = [];
@@ -173,16 +176,15 @@ export function createHandlers<context, extra>() {
   }
 
   /**
-   * `handler`'s builder. `name` names the mock in its messages. `prepare`
-   * checks a static answer at registration, so one that can't be encoded
-   * fails there, not inside a request, and returns what the mock answers with.
-   * With `engine.revertError`, it has `.reverts(spec)`, reverting with what
-   * `revertError` makes of `spec` at registration, so a spec that can't be
-   * encoded throws there and changes nothing.
+   * `handler`'s builder. `prepare` checks a static answer at registration, so
+   * one that can't be encoded fails there, not inside a request, and returns
+   * what the mock answers with. With `engine.revertError`, it has
+   * `.reverts(spec)`, reverting with what `revertError` makes of `spec` at
+   * registration, so a spec that can't be encoded throws there and changes
+   * nothing.
    */
   function createBuilder(
     handler: Handler<context, extra>,
-    name: string,
     prepare: (value: unknown) => unknown,
     engine: { revertError?(spec?: unknown): MockRevertError } = {},
   ): Builder {
@@ -197,11 +199,10 @@ export function createHandlers<context, extra>() {
     const builder: Builder = {
       returns(value: unknown = zeroResult) {
         setAnswer(() => {
-          if (typeof value !== "function")
-            return {
-              kind: "static",
-              prepared: refuseUnencodable(`.returns() for "${name}"`, () => prepare(value)),
-            };
+          if (typeof value !== "function") {
+            const given = `.returns() for "${nameOf(handler)}"`;
+            return { kind: "static", prepared: refuseUnencodable(given, () => prepare(value)) };
+          }
           // oxlint-disable-next-line typescript/no-unsafe-type-assertion -- the types check a resolver's signature, which can't be checked at runtime
           return { kind: "resolver", resolve: value as (context: context) => unknown };
         });
@@ -242,8 +243,7 @@ export function createHandlers<context, extra>() {
    * `bestMatch`. A handler can answer when it has an answer and answers
    * left; one that can't steps aside for the rest, however specific.
    * `differs` gives where a handler's pins first differ from the call (see
-   * `firstMismatch`), or `undefined` when it matches. `name` names the
-   * candidates (see `createBuilder`) in the error when a predicate throws.
+   * `firstMismatch`), or `undefined` when it matches.
    *
    * On a miss, for messages, no predicate runs: `missed` says where each
    * candidate that didn't answer first differs from the call (as matching
@@ -254,7 +254,6 @@ export function createHandlers<context, extra>() {
   function findAnswering(
     isCandidate: (handler: Handler<context, extra>) => boolean,
     differs: (handler: Handler<context, extra>, options: MatchOptions) => PinnedKey | undefined,
-    name: string,
   ): {
     handler: Handler<context, extra> | undefined;
     missed: ReadonlyMap<Handler<context, extra>, PinnedKey>;
@@ -264,7 +263,7 @@ export function createHandlers<context, extra>() {
     const { best, missed } = bestMatch(
       candidates.filter((handler) => canAnswer(handler)),
       differs,
-      name,
+      nameOf,
     );
     if (best !== undefined) return { handler: best, missed, removed: [] };
     for (const handler of candidates) {
@@ -294,7 +293,7 @@ export function createHandlers<context, extra>() {
    * Answers with `handler`, counting the use: its answer, encoded. A mock's
    * `.reverts()` answers `reverted` where it's given (a send is mined
    * reverted), and otherwise its revert is thrown. What a resolver throws
-   * becomes a resolver error naming the mock `name`, unless it's an answer
+   * becomes a resolver error naming the mock, unless it's an answer
    * itself (see `isDeliberate`). A static value's setup error, from encoding
    * it at the request (a check that needs the call or the chain, or a value
    * changed after `.returns()`), is the mock's, thrown as it is.
@@ -306,7 +305,6 @@ export function createHandlers<context, extra>() {
     handler: Handler<context, extra>,
     context: context,
     encode: (value: unknown) => answer,
-    name: string,
     reverted?: unknown,
   ): Promise<answer> {
     countUse(handler);
@@ -323,7 +321,7 @@ export function createHandlers<context, extra>() {
     } catch (error) {
       if (isDeliberate(error)) throw error;
       if (error instanceof MockSetupError && given.kind === "static") throw error;
-      throw new MockResolverError(name, error);
+      throw new MockResolverError(nameOf(handler), error);
     }
   }
 
