@@ -117,11 +117,17 @@ export function missError(
     (mock) => `  ${describeContractMock(mock)}`,
   );
   metaMessages.push(...removedLines(removed), ...after);
-  return new MockNotFoundError(
-    `No ${what} for ${formatCall(call.functionName, call.args)}${formatPins(call, pinned)} on ${label}.`,
-    { metaMessages },
-  );
+  return new MockNotFoundError(`No ${what} for ${formatContractCall(call, label, pinned)}.`, {
+    metaMessages,
+  });
 }
+
+/**
+ * A call on the contract `label`, as messages name it, with its `from` and
+ * `value` among `keys`: see `formatPins`.
+ */
+export const formatContractCall = (call: MockCall, label: string, keys: readonly PinnedKey[]) =>
+  `${formatCall(call.functionName, call.args)}${formatPins(call, keys)} on ${label}`;
 
 /**
  * An unused mock on the contract `label`, with the `calls` its function

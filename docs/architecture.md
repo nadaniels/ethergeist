@@ -283,8 +283,11 @@ The two functions keep these rules:
   answer ends, and whichever side answers it;
 - a call that's the contract's is marked in its action's mock set
   (`markForContract`), since the action receives it too: under an unused
-  action mock that matches it, `assertAllUsed()` says action mocks don't
-  answer a registered contract's functions, not that another mock answered;
+  action mock that matches it, `assertAllUsed()` shows it as the contract's
+  call and says action mocks don't answer a registered contract's
+  functions, not that another mock answered. The contract words the call
+  (the turn's `functionMocks.callLine`), so the actions never word a
+  contract's call;
 - a mock's predicates run only while it's in contention, and once per
   estimate, except at a contract's estimate miss, where its `write` mocks
   are matched again for the reasons they missed. A contract's miss names

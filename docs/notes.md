@@ -986,7 +986,8 @@ features land; tick them off as pages get written.
       answered it" for a shadowed mock; "matches; it's to a registered
       contract's function, which action mocks don't answer" under an action
       mock, for an estimate or a send that was the contract's, answered or
-      not; "received no calls" when the app never made it. Args that
+      not, shown as the contract's call (`transfer(…) on USDC (0x…)`);
+      "received no calls" when the app never made it. Args that
       matched show as `…`, so the line shows what differed (the whole call
       when everything matched). Show an example. For a test's own override,
       "another mock answered it" has two usual causes: it's less specific

@@ -27,7 +27,7 @@ import { createRevertError } from "./answers.js";
 import { type Pins, pinCall } from "./callPins.js";
 import { type AddTransaction, createContractApi } from "./createContractApi.js";
 import { createFunctions } from "./functions.js";
-import { formatContract, missError, mockName, unusedLine } from "./messages.js";
+import { formatContract, formatContractCall, missError, mockName, unusedLine } from "./messages.js";
 import { type AnswerIn, answersIn } from "./namespaces.js";
 import type {
   MockCallRecord,
@@ -77,6 +77,12 @@ export type ContractTurn<answer = unknown> = {
    */
   functionMocks:
     | {
+        /**
+         * The call as messages show it, without `from` or `value`, e.g.
+         * `transfer(…) on USDC (0x…)`, for the action mocks that received
+         * it.
+         */
+        callLine: string;
         /**
          * Answers with the best matching mock; `undefined` when none
          * matches.
@@ -385,6 +391,7 @@ export function createMockContract<const abi extends Abi>(
     let matched: ReturnType<typeof match> | undefined;
     const matchOnce = () => (matched ??= match(decoded));
     const functionMocks = {
+      callLine: formatContractCall(call, label, []),
       answer() {
         const { handler } = matchOnce();
         return handler && run(handler, call, namespace);
