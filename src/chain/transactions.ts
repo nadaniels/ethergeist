@@ -404,7 +404,7 @@ export function decodeRawTransaction(serialized: unknown) {
   } catch {
     throw refused();
   }
-  const { to, value = 0n, data, nonce = 0, gas = 0n, type = "legacy" } = parsed;
+  const { to, value = 0n, data = "0x", nonce = 0, gas = 0n, type = "legacy" } = parsed;
   const { gasPrice, maxFeePerGas, maxPriorityFeePerGas } = parsed;
   return {
     hash: keccak256(serialized),
@@ -412,7 +412,7 @@ export function decodeRawTransaction(serialized: unknown) {
     fields: {
       to: to === undefined || to === null ? null : getAddress(to),
       value,
-      ...(data !== undefined && data !== "0x" && { data }),
+      data,
       nonce,
       gas,
       ...(gasPrice !== undefined && { gasPrice }),

@@ -15,7 +15,7 @@ import { mismatches, mismatchesAsMatched } from "../mocking/matching.js";
 import type { Answer, PinnedKey } from "../mocking/types.js";
 import { MockNotFoundError } from "../shared/errors.js";
 import { inputName } from "./argTypes.js";
-import { type Pins, pinMismatches } from "./callPins.js";
+import type { Pins } from "./callPins.js";
 import type { MockCall, MockNamespace } from "./types.js";
 
 /** A contract's mock, as messages describe it. */
@@ -75,7 +75,9 @@ export function missError(
   } = {},
 ): MockNotFoundError {
   const linesOf = ({ registered, missed }: Candidates) =>
-    missedLines(registered, missed, describeContractMock, argName);
+    missedLines(registered, missed, describeContractMock, (mock, key) =>
+      missedArg(mock, call, key),
+    );
   const lines = linesOf(own);
   const writeLines = writes === undefined ? [] : linesOf(writes);
   const others = overloads?.others ?? [];
@@ -94,8 +96,8 @@ export function missError(
     read: `No mocks registered for ${name}.`,
     simulate: `No simulate mocks registered for ${name}; a write mock doesn't answer simulations.`,
     estimateGas: estimateOfSend
-      ? `No write or estimateGas mocks registered for ${name}: a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`
-      : `No estimateGas mocks registered for ${name}; a write mock implies one only for an estimate with a sender, and a simulate mock doesn't answer estimates.`,
+      ? `No write or estimateGas mocks registered for ${name}: a write mock that matches the send also answers its estimate, and a simulate mock doesn't answer estimates.`
+      : `No estimateGas mocks registered for ${name}; a write mock answers an estimate only when it has a sender, and a simulate mock doesn't answer estimates.`,
     write: `No write mocks registered for ${name}; a simulate mock doesn't answer sends.`,
   }[namespace];
   const pinned = [...own.registered, ...(writes?.registered ?? [])].flatMap((mock) =>
@@ -104,7 +106,7 @@ export function missError(
   const metaMessages =
     lines.length > 0 ? [estimateOfSend ? "estimateGas mocks:" : "Registered:", ...lines] : [];
   if (writeLines.length > 0)
-    metaMessages.push("Write mocks, which imply the estimate of a send they match:", ...writeLines);
+    metaMessages.push("Write mocks (each also answers its send's estimate):", ...writeLines);
   if (metaMessages.length === 0) metaMessages.push(none);
   if (others.length > 0)
     metaMessages.push(
@@ -115,11 +117,17 @@ export function missError(
     (mock) => `  ${describeContractMock(mock)}`,
   );
   metaMessages.push(...removedLines(removed), ...after);
-  return new MockNotFoundError(
-    `No ${what} for ${formatCall(call.functionName, call.args)}${formatPins(call, pinned)} on ${label}.`,
-    { metaMessages },
-  );
+  return new MockNotFoundError(`No ${what} for ${formatContractCall(call, label, pinned)}.`, {
+    metaMessages,
+  });
 }
+
+/**
+ * A call on the contract `label`, as messages name it, with its `from` and
+ * `value` among `keys`: see `formatPins`.
+ */
+export const formatContractCall = (call: MockCall, label: string, keys: readonly PinnedKey[]) =>
+  `${formatCall(call.functionName, call.args)}${formatPins(call, keys)} on ${label}`;
 
 /**
  * An unused mock on the contract `label`, with the `calls` its function
@@ -154,14 +162,23 @@ export function unusedLine(
 function received(mock: Mock, call: MockCall): ReceivedCall {
   const mismatched = mismatchesAsMatched((options) => [
     ...mismatches(mock.pinned, call.args, options),
-    ...pinMismatches(mock.pins, call, options),
+    ...mismatches(mock.pins, call, options),
   ]);
   const [key] = mismatched;
   return {
     call: `${formatMismatch(call.functionName, call.args, mismatched)}${formatPins(call, mismatched)}`,
-    differs: key === undefined ? undefined : argName(mock, key),
+    differs: key === undefined ? undefined : missedArg(mock, call, key),
   };
 }
+
+/**
+ * A call has every arg and a `value` (`0n` when it sends none), so only its
+ * sender can be left out.
+ */
+const missedArg = (mock: Mock, call: MockCall, key: PinnedKey) =>
+  key === "from" && call.from === undefined
+    ? { name: "sender", leftOut: true }
+    : { name: argName(mock, key), leftOut: false };
 
 /**
  * A call's `from` and `value` among `keys`, after its args, e.g.

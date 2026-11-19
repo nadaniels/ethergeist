@@ -44,10 +44,10 @@ export function createSends(
    * transaction without data, or one to any other address.
    */
   function contractCalled(
-    { from, to, data, value }: { from?: Address; to?: Address | null; data?: Hex; value: bigint },
+    { from, to, data, value }: { from?: Address; to: Address | null; data: Hex; value: bigint },
     blockNumber: bigint,
   ) {
-    if (to === undefined || to === null || data === undefined || data === "0x") return undefined;
+    if (to === null || data === "0x") return undefined;
     const contract = registry.contractAt(to);
     const callContext: CallContext = { from, value, blockNumber, batch: undefined };
     return contract && { contract, data, context: callContext };
@@ -77,14 +77,16 @@ export function createSends(
   const minedHash = (raw: { hash: Hash } | undefined) =>
     raw !== undefined && transactions.minedAt(raw.hash) !== undefined ? raw.hash : undefined;
 
-  const deployHint = "mock.actions.sendTransaction({ to: null }).returns(…)";
+  const deploySendHint = "mock.actions.sendTransaction({ to: null }).returns(…)";
+  const deployEstimateHint = "mock.actions.estimateGas({ to: null }).returns(…)";
 
   /**
    * Where to mock a send no mock answers, when its `to` says more than the
    * definition's hint: a deploy, Multicall3, or an `empty()` address.
    */
   function sendHint(to: Address | null): string | undefined {
-    if (to === null) return `${deployHint}, which deploys at getContractAddress({ from, nonce })`;
+    if (to === null)
+      return `${deploySendHint}, which deploys at getContractAddress({ from, nonce })`;
     if (to === state.multicallAddress)
       return "mock.actions.sendTransaction({ to }).returns(…): Multicall3's batched writes aren't mocked, so send each call instead";
     if (registry.isEmpty(to))
@@ -93,16 +95,14 @@ export function createSends(
   }
 
   /**
-   * The send's mock comes first: a client's send needs it anyway, and an
-   * estimate mock alone leaves the send to miss. A deploy's estimate has no
-   * `to` to pin, so its estimate mock pins `data`.
+   * For an estimate with a sender, the send's mock comes first: a client's
+   * send needs it anyway, and an estimate mock alone leaves the send to miss.
    */
-  function estimateOfSendHint(to: Address | null): string {
-    const [send, estimate] =
-      to === null
-        ? [deployHint, "mock.actions.estimateGas({ data }).returns(…)"]
-        : [sendTransaction.hint, estimateGas.hint];
-    return `${send}, which implies the estimate of a send it matches, or with ${estimate}`;
+  function estimateHint(to: Address | null, withSender: boolean): string {
+    const estimate = to === null ? deployEstimateHint : estimateGas.hint;
+    if (!withSender) return estimate;
+    const send = to === null ? deploySendHint : sendTransaction.hint;
+    return `${send}, which also answers the estimate of a send it matches, or with ${estimate}`;
   }
 
   /**
@@ -167,7 +167,7 @@ export function createSends(
     return await reportAnswer({ turn, report, view: viewQuantity }, async () => {
       const functionMocks = turn?.functionMocks;
       if (called && functionMocks) {
-        estimateGasMocks.markForContract(call);
+        estimateGasMocks.markForContract(call, functionMocks.callLine);
         // Found once, for steps 1 and 3, so its predicates run once.
         const writeMock = sent && called.contract.writeMock(called.data, called.context);
         if (writeMock?.answer.kind === "revert") {
@@ -196,12 +196,13 @@ export function createSends(
       if (isPlainTransfer(registry, call)) return numberToHex(21_000n);
       if (sendMock) return numberToHex(impliedGas);
       throw estimateGasMocks.missError(call, found, {
-        hint: sent && estimateOfSendHint(sent.to),
+        hint: estimateHint(call.to, sent !== undefined),
         before: notAFunctionLines(called),
-        others: sendMatch && {
-          header: "sendTransaction mocks, which imply the estimate of a send they match:",
-          listing: sendTransactionMocks.missListing(sendMatch),
-        },
+        others: sent &&
+          sendMatch && {
+            header: "sendTransaction mocks (each also answers its send's estimate):",
+            listing: sendTransactionMocks.missListing(sent, sendMatch),
+          },
       });
     });
   }
@@ -289,7 +290,7 @@ export function createSends(
   ): Promise<MockWriteOutcome> {
     const functionMocks = turn?.functionMocks;
     if (functionMocks) {
-      sendTransactionMocks.markForContract(call);
+      sendTransactionMocks.markForContract(call, functionMocks.callLine);
       const answered = functionMocks.answer();
       if (answered) return await answered;
       throw functionMocks.miss(matchingActionLines(sendTransactionMocks.matchingLines(call)));

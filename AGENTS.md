@@ -39,7 +39,7 @@ Use the Oxford comma in all writing: docs, comments, error messages, test names,
 ## Checks
 
 - Run `vp check`, `vp run knip`, `vp run test`, and `vp run examples` before handing a change over. The pre-commit hook runs `vp staged` and then `vp run knip`, so a commit fails if Knip isn't satisfied.
-- `vp run test` is the test command: it adds `--typecheck`, so the `*.test-d.ts` type tests run too. The Vite+ checklist above names the built-in `vp test`, which runs without them.
+- `vp run test` is the test command: it adds `--typecheck`, so the `*.test-d.ts` type tests run too. It first compiles the type tests again with `exactOptionalPropertyTypes` off (`vp run typecheck:consumer`), as most consumers compile them, so a type test has to hold in both modes. The Vite+ checklist above names the built-in `vp test`, which runs without them.
 - `vp run examples` builds the library (`vp pack`), then runs the examples' lint, which type-checks them too, and each example's `test` against the built package. `vp run test` stays the library's suite.
 - Run `vp run smoke` when a change touches the public types, `exports`, `package.json`, or the build. CI runs it on every push; it takes about 30 s and needs the network.
 - `vp run knip` runs [Knip](https://knip.dev) twice: the default mode (all code, tests included), then `--production --strict` (only what ships: `src/` minus colocated tests, with dependencies checked against what ships). Config is in `knip.json`.

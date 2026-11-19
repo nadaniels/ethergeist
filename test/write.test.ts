@@ -358,7 +358,7 @@ describe("a write mock", () => {
       `No write or estimateGas mock for transfer(${bob}, 6n) on USDC (${USDC}).`,
     );
     expect(notFound.metaMessages).toEqual([
-      "Write mocks, which imply the estimate of a send they match:",
+      "Write mocks (each also answers its send's estimate):",
       `  write.transfer(${bob}, 5n)  ← amount didn't match`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       `  sendTransaction({ to: ${USDC} })`,
@@ -537,7 +537,7 @@ describe("the estimate a write mock implies", () => {
     const notFound = expectCause(error, MockNotFoundError);
     expect(notFound.shortMessage).toMatch(/^No write or estimateGas mock for transfer/u);
     expect(hintsOf(notFound)).toBe(
-      "Write mocks, which imply the estimate of a send they match:\n  write.transfer(*) once, used up",
+      "Write mocks (each also answers its send's estimate):\n  write.transfer(*) once, used up",
     );
   });
 
@@ -553,7 +553,7 @@ describe("the estimate a write mock implies", () => {
     );
     expect(hintsOf(notFound)).toBe(
       [
-        "Write mocks, which imply the estimate of a send they match:",
+        "Write mocks (each also answers its send's estimate):",
         `  write.transfer(${bob}, 5n)  ← amount didn't match`,
         `  write.transfer(${bob}, 6n)  ← amount didn't match`,
       ].join("\n"),
@@ -583,7 +583,7 @@ describe("the estimate a write mock implies", () => {
       [
         "estimateGas mocks:",
         `  estimateGas.transfer(${alice}, 7n)  ← recipient didn't match`,
-        "Write mocks, which imply the estimate of a send they match:",
+        "Write mocks (each also answers its send's estimate):",
         `  write.transfer(${bob}, 5n)  ← amount didn't match`,
       ].join("\n"),
     );
@@ -653,7 +653,7 @@ describe("the estimate a write mock implies", () => {
     // The `write` mocks were never in contention, so they aren't matched for the message.
     expect(small).not.toHaveBeenCalled();
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
-      'No estimateGas mocks registered for "transfer"; a write mock implies one only for an estimate with a sender, and a simulate mock doesn\'t answer estimates.',
+      'No estimateGas mocks registered for "transfer"; a write mock answers an estimate only when it has a sender, and a simulate mock doesn\'t answer estimates.',
     );
   });
 
@@ -709,7 +709,7 @@ describe("the estimate a write mock implies", () => {
     );
 
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
-      "No write or estimateGas mocks registered for withdraw(uint256,address): a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.",
+      "No write or estimateGas mocks registered for withdraw(uint256,address): a write mock that matches the send also answers its estimate, and a simulate mock doesn't answer estimates.",
       "Mocks on withdraw's other overloads, which don't answer this one:",
       "  estimateGas.withdraw(5n)",
       "  write.withdraw(6n)",
@@ -731,7 +731,7 @@ describe("the estimate a write mock implies", () => {
     );
 
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
-      'No estimateGas mocks registered for "withdraw"; a write mock implies one only for an estimate with a sender, and a simulate mock doesn\'t answer estimates.',
+      'No estimateGas mocks registered for "withdraw"; a write mock answers an estimate only when it has a sender, and a simulate mock doesn\'t answer estimates.',
     ]);
   });
 
@@ -815,7 +815,7 @@ describe("only a contract's mocks answer its functions", () => {
           `No write or estimateGas mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
         );
         expect(notFound.metaMessages).toEqual([
-          `No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`,
+          `No write or estimateGas mocks registered for "transfer": a write mock that matches the send also answers its estimate, and a simulate mock doesn't answer estimates.`,
           "Action mocks that match, which don't answer a registered contract's functions:",
           "  estimateGas(*)",
           "  sendTransaction(*)",
@@ -852,7 +852,7 @@ describe("only a contract's mocks answer its functions", () => {
       `No estimateGas mock for transfer(${bob}, 5n) on USDC (${USDC}).`,
     );
     expect(notFound.metaMessages).toEqual([
-      `No estimateGas mocks registered for "transfer"; a write mock implies one only for an estimate with a sender, and a simulate mock doesn't answer estimates.`,
+      `No estimateGas mocks registered for "transfer"; a write mock answers an estimate only when it has a sender, and a simulate mock doesn't answer estimates.`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       "  estimateGas(*)",
     ]);
@@ -896,7 +896,7 @@ describe("only a contract's mocks answer its functions", () => {
 
       expect(notFound.metaMessages).toEqual([
         account === "local"
-          ? `No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`
+          ? `No write or estimateGas mocks registered for "transfer": a write mock that matches the send also answers its estimate, and a simulate mock doesn't answer estimates.`
           : `No write mocks registered for "transfer"; a simulate mock doesn't answer sends.`,
       ]);
     },
@@ -971,7 +971,7 @@ describe("action mocks answer the rest of what's sent to a registered contract",
       const misses = { local: "estimateGas", node: "sendTransaction" } as const;
       const hints = {
         local:
-          "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).",
+          "Mock it with mock.actions.sendTransaction({ to }).returns(…), which also answers the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).",
         node: "Mock it with mock.actions.sendTransaction({ to }).returns(…).",
       };
 
@@ -1003,7 +1003,7 @@ describe("action mocks answer the rest of what's sent to a registered contract",
           // A local account's estimate is its send's, so it lists the send mocks too.
           const sendLines = {
             local: [
-              "sendTransaction mocks, which imply the estimate of a send they match:",
+              "sendTransaction mocks (each also answers its send's estimate):",
               `  sendTransaction({ to: ${bob} })  ← to didn't match`,
             ],
             node: [],
@@ -2019,7 +2019,7 @@ describe("writes in history", () => {
     await wallet.sendTransaction({ to: bob, value: 1n });
 
     expect(mock.formatHistory({ builtIns: false })).toBe(
-      '#2 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, type: "eip1559" }) → 0x340f…155f (mined in block 11n, 0 logs)',
+      '#2 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 1n, data: 0x, type: "eip1559" }) → 0x340f…155f (mined in block 11n, 0 logs)',
     );
   });
 
@@ -2037,7 +2037,7 @@ describe("writes in history", () => {
     expect(mock.formatHistory({ builtIns: false })).toBe(
       [
         "(2 older requests dropped, past historyLimit)",
-        '#4 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, type: "eip1559" }) → 0x7bff…b2a9 (mined in block 12n, 0 logs)',
+        '#4 eth_sendTransaction sendTransaction({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 2n, data: 0x, type: "eip1559" }) → 0x7bff…b2a9 (mined in block 12n, 0 logs)',
       ].join("\n"),
     );
     mock.clearCalls();

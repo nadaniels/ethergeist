@@ -5,8 +5,11 @@ import {
   createWalletClient,
   erc20Abi,
   getAddress,
+  keccak256,
   parseAbi,
+  toHex,
 } from "viem";
+import { privateKeyToAccount } from "viem/accounts";
 import { mainnet } from "viem/chains";
 import { describe, expect, test } from "vite-plus/test";
 
@@ -268,7 +271,7 @@ describe("assertNoUnhandled(): what each miss shows", () => {
     );
     const list = unhandledList(mock);
     expect(list).toContain("      estimateGas mocks:\n");
-    expect(list).toContain("      Write mocks, which imply the estimate of a send they match:\n");
+    expect(list).toContain("      Write mocks (each also answers its send's estimate):\n");
     expect(list.match(/recipient didn't match/gu)).toHaveLength(6);
     expect(list.match(/… \d+ more/gu)).toEqual(["… 1 more"]);
     expect(list.endsWith("        … 1 more")).toBe(true);
@@ -670,6 +673,13 @@ function unusedMessage(mock: ReturnType<typeof setup>["mock"]) {
   return "";
 }
 
+/** `assertAllUsed()`'s list of unused mocks, without the requests so far. */
+function unusedList(mock: ReturnType<typeof setup>["mock"]): string {
+  return expectThrows(MockCheckError, "answered no call", () => {
+    mock.assertAllUsed();
+  }).shortMessage;
+}
+
 describe("assertAllUsed(): what the function received instead", () => {
   test("each call the function received, with the first arg that didn't match", async () => {
     const { mock, client } = setup();
@@ -756,7 +766,10 @@ describe("assertAllUsed(): what the function received instead", () => {
   });
 
   const contractsFunctionReason =
-    /← matches; it's to a registered contract's function, which action mocks don't answer\n/gu;
+    "matches; it's to a registered contract's function, which action mocks don't answer";
+
+  const contractsFunctionReasonTwice =
+    / \(×2\)  ← matches; it's to a registered contract's function, which action mocks don't answer\n/gu;
   const transferArgs = {
     abi: erc20Abi,
     address: USDC,
@@ -778,8 +791,8 @@ describe("assertAllUsed(): what the function received instead", () => {
 
     const message = unusedMessage(mock);
     expect(message).toContain(`  - sendTransaction({ to: ${USDC} })\n`);
-    expect(message.match(contractsFunctionReason)).toHaveLength(2);
-    expect(message.match(/← to didn't match\n/gu)).toHaveLength(2);
+    expect(message.match(contractsFunctionReasonTwice)).toHaveLength(1);
+    expect(message.match(/ \(×2\)  ← to didn't match\n/gu)).toHaveLength(1);
   });
 
   test("an action mock matched estimates of a registered contract's function, missed and implied by its write mock", async () => {
@@ -793,7 +806,60 @@ describe("assertAllUsed(): what the function received instead", () => {
 
     const message = unusedMessage(mock);
     expect(message).toContain("  - estimateGas(*)\n    received 2 calls to estimateGas:\n");
-    expect(message.match(contractsFunctionReason)).toHaveLength(2);
+    expect(message.match(contractsFunctionReasonTwice)).toHaveLength(1);
+  });
+
+  test("an action mock shows a call that was a registered contract's as the contract's call", async () => {
+    const { mock } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" }).write.transfer().returns({});
+    mock.actions.estimateGas().returns(42_000n);
+    mock.actions.sendTransaction().returns({});
+    const wallet = createWalletClient({
+      account: privateKeyToAccount(keccak256(toHex("signer"))),
+      chain: mock.chain,
+      transport: mock.transport({ retryCount: 0 }),
+    });
+    const transfer = {
+      abi: erc20Abi,
+      address: USDC,
+      functionName: "transfer",
+      args: [bob, 5n],
+    } as const;
+
+    // A local account's estimates and sends carry its nonce, so the two
+    // writes' raw calls differ.
+    await wallet.writeContract(transfer);
+    await wallet.writeContract(transfer);
+    const line = `      transfer(${bob}, 5n) on USDC (${USDC}) (×2)  ← ${contractsFunctionReason}`;
+    expect(unusedList(mock)).toBe(
+      [
+        "2 mock(s) answered no call:",
+        "  - estimateGas(*)",
+        "    received 2 calls to estimateGas:",
+        line,
+        "  - sendTransaction(*)",
+        "    received 2 calls to sendTransaction:",
+        line,
+      ].join("\n"),
+    );
+  });
+
+  test("a registered contract's call that an action mock doesn't match is shown as the action's", async () => {
+    const { mock } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" }).write.transfer().returns({});
+    mock.actions.sendTransaction({ from: alice }).returns({});
+
+    await walletFor(mock, alice).writeContract(transferArgs);
+    await walletFor(mock, bob).writeContract({ ...transferArgs, account: bob });
+    expect(unusedList(mock)).toBe(
+      [
+        "1 mock(s) answered no call:",
+        `  - sendTransaction({ from: ${alice} })`,
+        "    received 2 calls to sendTransaction:",
+        `      transfer(${bob}, 5n) on USDC (${USDC})  ← ${contractsFunctionReason}`,
+        `      sendTransaction({ from: ${bob}, … })  ← from didn't match`,
+      ].join("\n"),
+    );
   });
 
   test("data sent to a registered contract that isn't one of its functions is the actions': another mock answered it", async () => {
@@ -820,11 +886,107 @@ describe("assertAllUsed(): what the function received instead", () => {
     usdc.read.balanceOf([bob]).returns(1n);
     usdc.read.balanceOf().returns(0n);
 
-    await Promise.all(Array.from({ length: 5 }, () => balanceOf(alice)));
+    await Promise.all(["a", "b", "c", "d", "e"].map((name) => balanceOf(testAddress(name))));
     const message = unusedMessage(mock);
     expect(message).toContain("received 5 calls to read.balanceOf:");
     expect(message.match(/account didn't match/gu)).toHaveLength(3);
     expect(message).toContain("      … 2 more");
+  });
+
+  test("identical calls with the same reason are one line, with their count", async () => {
+    const { mock, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
+    usdc.read.balanceOf([bob]).returns(1n);
+    usdc.read.balanceOf().returns(0n);
+
+    await balanceOf(alice);
+    await balanceOf(alice);
+    expect(unusedList(mock)).toBe(
+      [
+        "1 mock(s) answered no call:",
+        `  - read.balanceOf(${getAddress(bob)}) on USDC (${USDC})`,
+        "    received 2 calls to read.balanceOf:",
+        `      balanceOf(${getAddress(alice)}) (×2)  ← account didn't match`,
+      ].join("\n"),
+    );
+  });
+
+  test("an action mock's identical calls are one line too", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance().returns(1n);
+    mock.actions.getBalance({ address: alice }).returns(2n);
+
+    await client.getBalance({ address: alice });
+    await client.getBalance({ address: alice });
+    expect(unusedList(mock)).toBe(
+      [
+        "1 mock(s) answered no call:",
+        "  - getBalance(*)",
+        "    received 2 calls to getBalance:",
+        `      getBalance({ address: ${alice}, blockNumber: 1n, blockTag: "latest" }) (×2)  ← matches; another mock answered it`,
+      ].join("\n"),
+    );
+  });
+
+  test("the same estimate before and after its contract is registered is two lines, the action's form, then the contract's", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas().returns(1n);
+    mock.actions.estimateGas({ to: USDC }).returns(2n);
+
+    await client.estimateContractGas(transferArgs);
+    mock.contract({ abi: erc20Abi, address: USDC }).estimateGas.transfer().returns(3n);
+    await client.estimateContractGas(transferArgs);
+    const data = `0xa9059cbb${"0".repeat(24)}${bob.slice(2).toLowerCase()}${"0".repeat(63)}5`;
+    expect(unusedList(mock)).toBe(
+      [
+        "1 mock(s) answered no call:",
+        "  - estimateGas(*)",
+        "    received 2 calls to estimateGas:",
+        `      estimateGas({ from: ${alice}, to: ${USDC}, value: 0n, data: ${data}, blockNumber: 1n, blockTag: "latest" })  ← matches; another mock answered it`,
+        `      transfer(${bob}, 5n) on ${USDC}  ← ${contractsFunctionReason}`,
+      ].join("\n"),
+    );
+  });
+
+  test("identical calls fold wherever they are, in the order first received", async () => {
+    const { mock, balanceOf } = setup();
+    const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
+    usdc.read.balanceOf([bob]).returns(1n);
+    usdc.read.balanceOf().returns(0n);
+    const carol = testAddress("carol");
+
+    await balanceOf(alice);
+    await balanceOf(carol);
+    await balanceOf(alice);
+    expect(unusedList(mock)).toBe(
+      [
+        "1 mock(s) answered no call:",
+        `  - read.balanceOf(${getAddress(bob)}) on USDC (${USDC})`,
+        "    received 3 calls to read.balanceOf:",
+        `      balanceOf(${getAddress(alice)}) (×2)  ← account didn't match`,
+        `      balanceOf(${getAddress(carol)})  ← account didn't match`,
+      ].join("\n"),
+    );
+  });
+
+  test("`… N more` counts the hidden calls, not lines", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: bob }).returns(1n);
+    mock.actions.getBalance().returns(0n);
+    const [a, b, c, d] = [testAddress("a"), testAddress("b"), testAddress("c"), testAddress("d")];
+
+    for (const address of [a, b, b, c, d, d]) await client.getBalance({ address });
+    expect(unusedList(mock)).toBe(
+      [
+        "1 mock(s) answered no call:",
+        `  - getBalance({ address: ${getAddress(bob)} })`,
+        "    received 6 calls to getBalance:",
+        `      getBalance({ address: ${getAddress(a)}, … })  ← address didn't match`,
+        `      getBalance({ address: ${getAddress(b)}, … }) (×2)  ← address didn't match`,
+        `      getBalance({ address: ${getAddress(c)}, … })  ← address didn't match`,
+        "      … 2 more",
+      ].join("\n"),
+    );
   });
 
   test("unnamed inputs are numbered; other overloads' calls are left out", async () => {
@@ -861,6 +1023,32 @@ describe("assertAllUsed(): what the function received instead", () => {
     );
     expect(message).toContain("← address didn't match");
     expect(message).toContain("eth_getProof(…, [0x2], …)  ← param 2 didn't match");
+  });
+
+  test("says when the call has no field or param a mock pins", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ blockTag: match.any() }).returns(1n);
+    mock.actions.getBalance().returns(0n);
+    mock.actions.sendTransaction({ gas: 21_000n }).returns();
+    mock.actions.sendTransaction().returns();
+    mock.method("eth_getProof", [USDC, [], match.any()]).returns({});
+    mock.method("eth_getProof").returns({});
+
+    await client.getBalance({ address: alice, blockNumber: 0n });
+    await walletFor(mock, alice).sendTransaction({ to: bob });
+    await mock.request({ method: "eth_getProof", params: [USDC, []] });
+    const message = unusedMessage(mock);
+    expect(message).toContain(
+      "    received 1 call to getBalance:\n" +
+        "      getBalance({ blockTag: undefined, … })  ← the call has no blockTag",
+    );
+    expect(message).toContain(
+      "    received 1 call to sendTransaction:\n" +
+        "      sendTransaction({ gas: undefined, … })  ← the call has no gas",
+    );
+    expect(message).toContain(
+      "    received 1 call to eth_getProof:\n      eth_getProof(…, …)  ← the call has no param 3",
+    );
   });
 });
 

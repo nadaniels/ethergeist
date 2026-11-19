@@ -8,35 +8,43 @@ import type { PinnedKey } from "./types.js";
 
 /**
  * How specific a mock's pinned args or params are:
- * `[exact values, predicates]`, compared in that order. `match.any()` counts
- * as neither, and `match.partial()` counts what its fields pin. Mocks with
- * nothing pinned match anything and rank below all others.
+ * `[exact values, predicates, anys]`, compared in that order. `match.any()`
+ * counts because it needs a value. `match.partial()` counts what its fields
+ * pin. An empty list inside a pin counts as an exact value: it matches only
+ * an empty list, and has no elements to count. Mocks with nothing pinned
+ * match anything and rank below all others. `specificity` says what a pin's
+ * top level counts.
  */
-export type Specificity = readonly [exact: number, predicates: number];
+export type Specificity = readonly [exact: number, predicates: number, anys: number];
 
-/** `pinned`'s specificity: see `Specificity`. */
+/**
+ * `pinned`'s specificity: see `Specificity`. The pin's own `[]` counts
+ * nothing, as it matches every call: a raw method's params are compared
+ * only as far as the pinned ones go, and a function without inputs takes
+ * none. One `match.any()` for all the params counts nothing too, as every
+ * call has params.
+ */
 export function specificity(pinned: unknown): Specificity {
-  if (pinned === undefined) return [-1, 0];
-  const count = (value: unknown): Specificity => {
+  if (pinned === undefined) return [-1, 0, 0];
+  function count(value: unknown): Specificity {
     if (isMatcher(value)) {
       if (value.type === "partial") return count(value.fields);
-      return value.type === "where" ? [0, 1] : [0, 0];
+      return value.type === "where" ? [0, 1, 0] : [0, 0, 1];
     }
-    const parts = Array.isArray(value)
-      ? value
-      : isNonArrayObject(value)
-        ? Object.values(value)
-        : undefined;
-    if (!parts) return [1, 0];
+    if (Array.isArray(value)) return value.length === 0 ? [1, 0, 0] : sum(value);
+    return isNonArrayObject(value) ? sum(Object.values(value)) : [1, 0, 0];
+  }
+  function sum(parts: readonly unknown[]): Specificity {
     return parts.reduce<Specificity>(
-      ([exact, predicates], v) => {
-        const [e, p] = count(v);
-        return [exact + e, predicates + p];
+      ([exact, predicates, anys], v) => {
+        const [e, p, a] = count(v);
+        return [exact + e, predicates + p, anys + a];
       },
-      [0, 0],
+      [0, 0, 0],
     );
-  };
-  return count(pinned);
+  }
+  if (isMatcher(pinned) && pinned.type === "any") return [0, 0, 0];
+  return Array.isArray(pinned) ? sum(pinned) : count(pinned);
 }
 
 /**
@@ -62,6 +70,7 @@ export function bestMatch<candidate extends Rankable>(
       (a, b) =>
         b.candidate.specificity[0] - a.candidate.specificity[0] ||
         b.candidate.specificity[1] - a.candidate.specificity[1] ||
+        b.candidate.specificity[2] - a.candidate.specificity[2] ||
         Number(b.limited) - Number(a.limited) ||
         (a.limited ? a.index - b.index : b.index - a.index),
     )
@@ -104,16 +113,10 @@ export function mismatches(
       return [null];
     }
   }
-  const at = (key: number | string): unknown =>
-    Array.isArray(actual)
-      ? actual[Number(key)]
-      : isNonArrayObject(actual)
-        ? actual[key]
-        : undefined;
   return pinnedEntries(pinned)
     .filter(([key, value]) => {
       try {
-        return !isMatch(value, at(key), options);
+        return !isMatch(value, valueAt(actual, key), options);
       } catch {
         return true;
       }
@@ -156,13 +159,14 @@ export function firstMismatch(
     ? Array.isArray(actual) && actual.length === pinned.length
     : isNonArrayObject(actual);
   if (!sameShape) return entries[0]?.[0] ?? null;
-  const at = (key: number | string): unknown =>
-    Array.isArray(actual)
-      ? actual[Number(key)]
-      : isNonArrayObject(actual)
-        ? actual[key]
-        : undefined;
-  return entries.find(([key, value]) => !isMatch(value, at(key), options))?.[0];
+  return entries.find(([key, value]) => !isMatch(value, valueAt(actual, key), options))?.[0];
+}
+
+/** All of them at `null`, and `undefined` where the call leaves it out. */
+export function valueAt(actual: unknown, key: PinnedKey): unknown {
+  if (key === null) return actual;
+  if (Array.isArray(actual)) return actual[Number(key)];
+  return isNonArrayObject(actual) ? actual[key] : undefined;
 }
 
 /**
@@ -198,12 +202,16 @@ export type MatchOptions = {
  * Whether `actual` matches `expected`: deep equality where hex strings
  * (addresses, bytes) compare case-insensitively and equal integers match as
  * either `number` or `bigint`. Objects match on the fields `expected` has.
- * `match.*` matchers in `expected` match as they say.
+ * `match.*` matchers in `expected` match as they say, and none matches a
+ * value left out (`undefined`).
  *
  * @internal Exported for its unit test.
  */
 export function isMatch(expected: unknown, actual: unknown, options: MatchOptions = {}): boolean {
   if (isMatcher(expected)) {
+    // Before `predicates: false`, so a left-out value rules its mock out in
+    // the exact-values pass, and none of its predicates run.
+    if (actual === undefined) return false;
     if (expected.type === "partial")
       return (
         isNonArrayObject(actual) &&

@@ -67,10 +67,14 @@ describe("pinning from", () => {
     expect(await balanceOf(carol)).toBe(1n);
   });
 
-  test("a read without an account sends no from, which a pinned from doesn't match", async () => {
+  test("a read without an account sends no from, which no pinned from matches, and no predicate runs", async () => {
     const { mock, usdc, balanceOf } = setup();
     const isAlice = vi.fn(() => true);
-    usdc.read.balanceOf([bob], { from: match.where(isAlice, "isAlice") }).returns(5n);
+    const isBob = vi.fn(() => true);
+    usdc.read.balanceOf([match.where(isBob, "isBob")], { from: match.any() }).returns(4n);
+    usdc.read
+      .balanceOf([match.where(isBob, "isBob")], { from: match.where(isAlice, "isAlice") })
+      .returns(5n);
 
     const error = await rejectionOf(balanceOf());
 
@@ -82,12 +86,28 @@ describe("pinning from", () => {
       "latest",
     ]);
     expect(isAlice).not.toHaveBeenCalled();
+    expect(isBob).not.toHaveBeenCalled();
     const miss = expectCause(error, MockNotFoundError);
     expect(miss.shortMessage).toBe(
       `No mock for balanceOf(${bob}) { from: undefined } on USDC (${USDC}).`,
     );
     expect(hintsOf(miss)).toBe(
-      `Registered:\n  read.balanceOf(${bob}) { from: where(isAlice) }  ← { from } didn't match`,
+      [
+        "Registered:",
+        "  read.balanceOf(where(isBob)) { from: any }  ← the call has no sender",
+        "  read.balanceOf(where(isBob)) { from: where(isAlice) }  ← the call has no sender",
+      ].join("\n"),
+    );
+  });
+
+  test("a miss names an arg that differs before a sender the call leaves out", async () => {
+    const { usdc, balanceOf } = setup();
+    usdc.read.balanceOf([carol], { from: alice }).returns(5n);
+
+    const error = await rejectionOf(balanceOf());
+
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
+      `Registered:\n  read.balanceOf(${carol}) { from: ${alice} }  ← account didn't match`,
     );
   });
 
@@ -100,7 +120,13 @@ describe("pinning from", () => {
     token.read.pull([bob, 1n], { from: alice }).returns(true);
 
     const error = await rejectionOf(
-      client.readContract({ abi, address: USDC, functionName: "pull", args: [bob, 1n] }),
+      client.readContract({
+        abi,
+        address: USDC,
+        functionName: "pull",
+        args: [bob, 1n],
+        account: carol,
+      }),
     );
 
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
@@ -190,24 +216,33 @@ describe("pinning from", () => {
     const { usdc, balanceOf } = setup();
     usdc.read.balanceOf([bob], { from: match.any() }).returns(1n);
     usdc.read.balanceOf([match.any()], { from: alice }).returns(2n);
-    usdc.read.balanceOf([bob]).returns(3n);
 
-    expect(await balanceOf(alice)).toBe(3n);
+    expect(await balanceOf(alice)).toBe(2n);
 
-    usdc.read.balanceOf([bob], { from: alice }).once().returns(4n);
-    expect(await balanceOf(alice)).toBe(4n);
+    usdc.read.balanceOf([bob], { from: match.any() }).once().returns(3n);
     expect(await balanceOf(alice)).toBe(3n);
+    expect(await balanceOf(alice)).toBe(2n);
   });
 
-  test("match.any() as a from adds nothing to pinned args' rank, and needs a from", async () => {
+  test("match.any() as a from ranks above no from, whichever is registered first, and needs a from", async () => {
     const { usdc, balanceOf } = setup();
     usdc.read.balanceOf([bob], { from: match.any() }).returns(1n);
     usdc.read.balanceOf([bob]).returns(2n);
 
-    expect(await balanceOf(alice)).toBe(2n);
+    expect(await balanceOf(alice)).toBe(1n);
+    usdc.read.balanceOf([bob]).returns(4n);
     usdc.read.balanceOf([bob], { from: match.any() }).returns(3n);
     expect(await balanceOf(alice)).toBe(3n);
-    expect(await balanceOf()).toBe(2n);
+    expect(await balanceOf()).toBe(4n);
+  });
+
+  test("match.any() as a from outranks a limited mock without one", async () => {
+    const { usdc, balanceOf } = setup();
+    usdc.read.balanceOf([bob]).once().returns(1n);
+    usdc.read.balanceOf([bob], { from: match.any() }).returns(2n);
+
+    expect(await balanceOf(alice)).toBe(2n);
+    expect(await balanceOf()).toBe(1n);
   });
 });
 
@@ -378,7 +413,7 @@ describe("pins and the estimate a write mock implies", () => {
     );
     expect(hintsOf(miss)).toBe(
       [
-        "Write mocks, which imply the estimate of a send they match:",
+        "Write mocks (each also answers its send's estimate):",
         `  write.deposit() { from: ${alice}, value: 1n }  ← { from } didn't match`,
       ].join("\n"),
     );
@@ -413,11 +448,14 @@ describe("pins in assertAllUsed()", () => {
     expect(isBob).not.toHaveBeenCalled();
   });
 
-  test("an unused mock shows the value, or the missing from, its function's calls had", async () => {
+  test("an unused mock shows the value, or the missing from, its function's calls had, whatever its from pin", async () => {
     const { mock, vault, usdc, walletOf, balanceOf } = setup();
+    const isAlice = vi.fn(() => true);
     vault.write.deposit([], { value: 1n }).returns();
     vault.write.deposit().returns();
     usdc.read.balanceOf([bob], { from: alice }).returns(5n);
+    usdc.read.balanceOf([bob], { from: match.any() }).returns(6n);
+    usdc.read.balanceOf([bob], { from: match.where(isAlice, "isAlice") }).returns(7n);
     usdc.read.balanceOf().returns(1n);
 
     await walletOf(alice).writeContract({
@@ -433,10 +471,46 @@ describe("pins in assertAllUsed()", () => {
       [
         `  - read.balanceOf(${bob}) { from: ${alice} } on USDC (${USDC})`,
         "    received 1 call to read.balanceOf:",
-        "      balanceOf(…) { from: undefined }  ← { from } didn't match",
+        "      balanceOf(…) { from: undefined }  ← the call has no sender",
+        `  - read.balanceOf(${bob}) { from: any } on USDC (${USDC})`,
+        "    received 1 call to read.balanceOf:",
+        "      balanceOf(…) { from: undefined }  ← the call has no sender",
+        `  - read.balanceOf(${bob}) { from: where(isAlice) } on USDC (${USDC})`,
+        "    received 1 call to read.balanceOf:",
+        "      balanceOf(…) { from: undefined }  ← the call has no sender",
         `  - write.deposit() { value: 1n } on Vault (${VAULT})`,
         "    received 1 call to write.deposit:",
         "      deposit() { value: 2n }  ← { value } didn't match",
+      ].join("\n"),
+      () => {
+        mock.assertAllUsed();
+      },
+    );
+    expect(isAlice).not.toHaveBeenCalled();
+  });
+
+  test("an unused mock shows its call's from and value when both differ, and names the first", async () => {
+    const { mock, client, vault } = setup();
+    vault.simulate.deposit([], { from: match.any(), value: 5n }).returns();
+
+    const error = await rejectionOf(
+      client.simulateContract({
+        address: VAULT,
+        abi: vaultAbi,
+        functionName: "deposit",
+        value: 3n,
+      }),
+    );
+
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
+      "Registered:\n  simulate.deposit() { from: any, value: 5n }  ← the call has no sender",
+    );
+    expectThrows(
+      MockCheckError,
+      [
+        `  - simulate.deposit() { from: any, value: 5n } on Vault (${VAULT})`,
+        "    received 1 call to simulate.deposit:",
+        "      deposit() { from: undefined, value: 3n }  ← the call has no sender",
       ].join("\n"),
       () => {
         mock.assertAllUsed();

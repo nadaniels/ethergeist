@@ -26,6 +26,7 @@ import {
   createMockRpc,
   match,
   testAddress,
+  testLog,
 } from "../src/index.js";
 import {
   expectCause,
@@ -106,6 +107,11 @@ function setupBook() {
 function setup() {
   const mock = createMockRpc();
   const client = mock.publicClient();
+  const wallet = createWalletClient({
+    account: alice,
+    chain: mock.chain,
+    transport: mock.transport({ retryCount: 0 }),
+  });
   const usdc = mock.contract({ abi: erc20Abi, address: USDC, name: "USDC" });
   const balanceOf = (account: `0x${string}`) =>
     client.readContract({
@@ -121,7 +127,14 @@ function setup() {
       functionName: "allowance",
       args: [owner, spender],
     });
-  return { mock, client, usdc, balanceOf, allowance };
+  const totalOf = (owners: Address[]) =>
+    client.readContract({
+      abi: registryAbi,
+      address: DAI,
+      functionName: "totalOf",
+      args: [owners],
+    });
+  return { mock, client, wallet, usdc, balanceOf, allowance, totalOf };
 }
 
 // Named functions: messages show a predicate by its function name.
@@ -177,19 +190,93 @@ describe("match.any()", () => {
   });
 
   test("works inside arrays", async () => {
-    const { mock, client } = setup();
+    const { mock, totalOf } = setup();
     const registry = mock.contract({ abi: registryAbi, address: DAI });
     registry.read.totalOf([[alice, match.any()]]).returns(5n);
-    const totalOf = (owners: `0x${string}`[]) =>
-      client.readContract({
-        abi: registryAbi,
-        address: DAI,
-        functionName: "totalOf",
-        args: [owners],
-      });
 
     expect(await totalOf([alice, bob])).toBe(5n);
     await expectRejects(ContractFunctionExecutionError, "No mock for totalOf", totalOf([alice]));
+  });
+
+  test("inside a list, ranks below an exact value, whichever is registered first", async () => {
+    const { mock, totalOf } = setup();
+    const registry = mock.contract({ abi: registryAbi, address: DAI });
+    registry.read.totalOf([[alice, bob]]).returns(1n);
+    registry.read.totalOf([[alice, match.any()]]).returns(2n);
+
+    expect(await totalOf([alice, bob])).toBe(1n);
+    expect(await totalOf([alice, carol])).toBe(2n);
+  });
+
+  test("needs a value: it doesn't match a call that leaves its field out", async () => {
+    const { mock, client, wallet } = setup();
+    mock.actions.sendTransaction({ gas: match.any() }).returns({ status: "reverted" });
+    mock.actions.getBalance({ blockTag: match.any() }).returns(7n);
+    mock.actions.getBalance().returns(1n);
+
+    const withoutGas = await wallet.sendTransaction({ to: bob });
+    const withGas = await wallet.sendTransaction({ to: bob, gas: 30_000n });
+
+    expect((await client.getTransactionReceipt({ hash: withoutGas })).status).toBe("success");
+    expect((await client.getTransactionReceipt({ hash: withGas })).status).toBe("reverted");
+    expect(await client.getBalance({ address: alice, blockNumber: 1n })).toBe(1n);
+    expect(await client.getBalance({ address: alice, blockTag: "safe" })).toBe(7n);
+  });
+
+  test("outranks a later mock that leaves its field unpinned", async () => {
+    const { mock, client, wallet } = setup();
+    mock.actions.sendTransaction({ to: bob, gas: match.any() }).returns({ status: "reverted" });
+    mock.actions.sendTransaction({ to: bob }).returns();
+    mock.method("eth_custom", ["0x1", match.any()]).returns("0xa");
+    mock.method("eth_custom", ["0x1"]).returns("0xb");
+
+    const withGas = await wallet.sendTransaction({ to: bob, gas: 30_000n });
+    const withoutGas = await wallet.sendTransaction({ to: bob });
+
+    expect((await client.getTransactionReceipt({ hash: withGas })).status).toBe("reverted");
+    expect((await client.getTransactionReceipt({ hash: withoutGas })).status).toBe("success");
+    expect(await mock.request({ method: "eth_custom", params: ["0x1", "0x2"] })).toBe("0xa");
+    expect(await mock.request({ method: "eth_custom", params: ["0x1"] })).toBe("0xb");
+  });
+
+  test("counts toward rank where every call has the value, so an override that leaves it out loses", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: match.any(), blockTag: "latest" }).returns(1n);
+    mock.actions.getBalance({ blockTag: "latest" }).returns(2n);
+
+    expect(await client.getBalance({ address: alice })).toBe(1n);
+  });
+
+  test("ranks below an empty list in its place, which matches only an empty list", async () => {
+    const { mock, totalOf } = setup();
+    const registry = mock.contract({ abi: registryAbi, address: DAI });
+    registry.read.totalOf([[]]).returns(1n);
+    registry.read.totalOf([match.any()]).returns(2n);
+    registry.read.totalOf([match.where(() => true)]).returns(3n);
+
+    expect(await totalOf([])).toBe(1n);
+    expect(await totalOf([alice])).toBe(3n);
+  });
+
+  test("ranks below an empty list in an action's params, or a raw method's", async () => {
+    const { mock, client } = setup();
+    mock.actions.getLogs({ topics: [] }).returns([]);
+    mock.actions.getLogs({ topics: match.any() }).returns([mock.buildLog(testLog("any"))]);
+    mock.method("eth_getProof", [match.any(), []]).returns({ balance: "0x1" });
+    mock.method("eth_getProof", [match.any(), match.any()]).returns({ balance: "0x2" });
+
+    expect(await client.getLogs()).toEqual([]);
+    expect((await client.getProof({ address: USDC, storageKeys: [] })).balance).toBe(1n);
+    expect((await client.getProof({ address: USDC, storageKeys: ["0x1"] })).balance).toBe(2n);
+  });
+
+  test("outranks a raw method's empty params, which match any params", async () => {
+    const { mock } = setup();
+    mock.method("eth_custom", [match.any()]).returns("any");
+    mock.method("eth_custom", []).returns("empty");
+
+    expect(await mock.request({ method: "eth_custom", params: ["0x1"] })).toBe("any");
+    expect(await mock.request({ method: "eth_custom", params: [] })).toBe("empty");
   });
 });
 
@@ -338,12 +425,7 @@ describe("match.where()", () => {
   });
 
   test("a predicate that throws names the mock it's on, with its namespace", async () => {
-    const { mock, client, usdc } = setup();
-    const wallet = createWalletClient({
-      account: alice,
-      chain: mock.chain,
-      transport: mock.transport({ retryCount: 0 }),
-    });
+    const { client, usdc, wallet } = setup();
     const transfer = {
       address: USDC,
       abi: erc20Abi,
@@ -463,6 +545,19 @@ describe("match.partial()", () => {
     // The exact struct pins 6 values; the two-field partial outranks the rest.
     expect(await filled(order)).toBe(false);
     expect(await filled({ ...order, sell: { token: DAI, amount: 1n } })).toBe(true);
+  });
+
+  test("counts a match.any() among its fields, and a struct with one inside beats a partial without it", async () => {
+    const { book, filled } = setupBook();
+    book.read.filled([match.partial({ maker: alice, expiry: match.any() })]).returns(true);
+    book.read.filled([match.partial({ maker: alice })]).returns(false);
+    book.read.filled([{ ...order, buy: { token: DAI, amount: match.any() } }]).returns(true);
+    book.read
+      .filled([match.partial({ ...order, buy: match.partial({ token: DAI }) })])
+      .returns(false);
+
+    expect(await filled({ ...order, sell: { token: DAI, amount: 1n } })).toBe(true);
+    expect(await filled(order)).toBe(true);
   });
 
   test("exact addresses inside are validated and checksummed", () => {
@@ -792,7 +887,7 @@ describe("registration", () => {
     expect(refused.metaMessages).toBeUndefined();
 
     expectThrows(MockSetupError, "match.partial() can't go in read.balanceOf's answer", () => {
-      // The types allow it: `partial` takes the resolver function's type from `.returns()`.
+      // TS 6 and up allow it: `partial` takes the resolver function's type from `.returns()`.
       usdc.read.balanceOf([alice]).returns(match.partial({}));
     });
     expectThrows(MockSetupError, "match.any() can't go in simulate.transfer's answer", () => {
@@ -1425,6 +1520,94 @@ describe("actions and raw methods", () => {
       MockNotFoundError,
     );
     expect(hintsOf(error)).toBe("Registered:\n  getStorageAt(where(isBob))  ← params didn't match");
+  });
+
+  test("an action's whole params in a match.partial() have their addresses checked", () => {
+    const { mock } = setup();
+
+    expect(() => mock.actions.getBalance(match.partial({ address: "0xbad" }))).toThrow(
+      InvalidAddressError,
+    );
+    expect(() => mock.actions.getLogs(match.partial({ address: [alice, "0xbad"] }))).toThrow(
+      InvalidAddressError,
+    );
+  });
+
+  test("an action's whole params in a match.partial() have their slot padded", async () => {
+    const { mock, client } = setup();
+    mock.actions.getStorageAt(match.partial({ address: bob, slot: "0x1" })).returns(pad("0x3"));
+
+    expect(await client.getStorageAt({ address: bob, slot: "0x1" })).toBe(pad("0x3"));
+  });
+
+  test("an action's whole params in a match.partial() rank as the plain object", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: alice }).returns(1n);
+    mock.actions.getBalance(match.partial({ address: alice })).returns(2n);
+
+    expect(await client.getBalance({ address: alice })).toBe(2n);
+    mock.actions.getBalance({ address: alice }).returns(3n);
+    expect(await client.getBalance({ address: alice })).toBe(3n);
+  });
+
+  test("a send's whole params in a match.partial() settle what its static answer can be", () => {
+    const { mock } = setup();
+
+    expectThrows(MockSetupError, "Only a deploy (to: null) has a contractAddress.", () => {
+      mock.actions.sendTransaction(match.partial({ to: bob })).returns({ contractAddress: USDC });
+    });
+  });
+
+  test("a miss lists an action's whole params in a match.partial() as the plain object", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance(match.partial({ address: lowercase(alice) })).returns(1n);
+
+    expect(await client.getBalance({ address: alice })).toBe(1n);
+    const error = expectCause(
+      await rejectionOf(client.getBalance({ address: bob })),
+      MockNotFoundError,
+    );
+    expect(hintsOf(error)).toBe(
+      `Registered:\n  getBalance({ address: ${alice} })  ← address didn't match`,
+    );
+  });
+
+  test("one match.any() for all the params ranks below any pinned param, and above no params", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ blockTag: match.any() }).returns(1n);
+    mock.actions.getBalance(match.any()).returns(2n);
+    mock.actions.getBalance().returns(3n);
+    mock.method("eth_custom", [match.any()]).returns("one");
+    mock.method("eth_custom", match.any()).returns("all");
+
+    expect(await client.getBalance({ address: alice, blockTag: "safe" })).toBe(1n);
+    expect(await client.getBalance({ address: alice, blockNumber: 1n })).toBe(2n);
+    expect(await mock.request({ method: "eth_custom", params: ["0x1"] })).toBe("one");
+    expect(await mock.request({ method: "eth_custom", params: [] })).toBe("all");
+  });
+
+  test("a match.partial() or match.where() for all the params outranks one match.any() for them", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance(match.partial({ address: alice })).returns(1n);
+    mock.actions.getBalance(match.where((call) => call.blockTag === "safe", "isSafe")).returns(2n);
+    mock.actions.getBalance(match.any()).returns(3n);
+
+    expect(await client.getBalance({ address: alice })).toBe(1n);
+    expect(await client.getBalance({ address: bob, blockTag: "safe" })).toBe(2n);
+    expect(await client.getBalance({ address: bob })).toBe(3n);
+  });
+
+  test("a whole-params predicate selects a call that leaves a field out", async () => {
+    const { mock, client, wallet } = setup();
+    mock.actions
+      .sendTransaction(match.where((call) => call.gas === undefined, "noGas"))
+      .returns({ status: "reverted" });
+
+    const withoutGas = await wallet.sendTransaction({ to: bob });
+    const withGas = await wallet.sendTransaction({ to: bob, gas: 30_000n });
+
+    expect((await client.getTransactionReceipt({ hash: withoutGas })).status).toBe("reverted");
+    expect((await client.getTransactionReceipt({ hash: withGas })).status).toBe("success");
   });
 
   test("action params take matchers", async () => {

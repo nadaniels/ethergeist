@@ -1,6 +1,7 @@
 import { type FormatContext, formatRecent } from "../history/format.js";
 import type { Recorder } from "../history/recorder.js";
 import type { UnhandledRequest } from "../history/types.js";
+import { foldCounted, withCount } from "../mocking/format.js";
 import { checkCount } from "../mocking/setupChecks.js";
 import {
   MockCheckError,
@@ -44,26 +45,22 @@ function countOf(unhandled: RecordList<UnhandledRequest>): string {
  * The unhandled requests' list: each miss's short message, with its error's
  * hints indented under it, so a test that never saw the error (the app kept
  * it) still gets what was registered. Misses that read the same, hints as
- * shown included, are listed once with `(×n)`, in the order first seen.
+ * shown included, are listed once with `(×n)`.
  */
 function unhandledLines(unhandled: RecordList<UnhandledRequest>): string {
-  const groups = new Map<string, { message: string; hints: string[]; count: number }>();
-  for (const { error } of unhandled.kept) {
-    const message = error.shortMessage;
+  const misses = unhandled.kept.map(({ error }) => {
     const lines = hintLinesOf(error.metaMessages ?? []);
     // Only a miss's own lists are cut: a resolver's hints are its cause's,
     // like viem's block of a call's fields, which a cut would leave partial.
     const hints = error instanceof MockNotFoundError ? cutLists(lines) : lines;
-    const key = [message, ...hints].join("\n");
-    const group = groups.get(key);
-    if (group) group.count += 1;
-    else groups.set(key, { message, hints, count: 1 });
-  }
+    return { message: error.shortMessage, hints };
+  });
+  const folded = foldCounted(misses, ({ message, hints }) => [message, ...hints].join("\n"));
   const lines: string[] = [];
-  for (const { message, hints, count } of groups.values())
+  for (const { item, count } of folded)
     lines.push(
-      `  - ${count === 1 ? message : withCount(message, count)}`,
-      ...hints.map((line) => `      ${line}`),
+      `  - ${withCount(item.message, count)}`,
+      ...item.hints.map((line) => `      ${line}`),
     );
   return lines.join("\n");
 }
@@ -101,13 +98,6 @@ function cutLists(lines: readonly string[]): string[] {
   endRun();
   return cut;
 }
-
-/**
- * A grouped miss's line with its count, before its closing period if it has
- * one.
- */
-const withCount = (line: string, count: number) =>
-  line.endsWith(".") ? `${line.slice(0, -1)} (×${count}).` : `${line} (×${count})`;
 
 /**
  * `assertAllUsed()`'s message, if any mock answered no call since the last

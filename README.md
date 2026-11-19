@@ -144,8 +144,9 @@ its `Transfer` log are there for the app to find (see [The Chain](#the-chain)).
 A local account (`privateKeyToAccount()`) works too: viem estimates the gas
 first, and the write mock answers the estimate as well (default 100,000 gas).
 A `.reverts()` mock reverts the estimate instead, as a node would, and the
-contract's `estimateGas` mock sets a number. Only a contract's mocks answer its functions: `mock.actions.estimateGas`
-and `mock.actions.sendTransaction` answer everything else.
+contract's `estimateGas` mock sets a number. Only a contract's mocks answer its
+functions: `mock.actions.estimateGas` and `mock.actions.sendTransaction` answer
+everything else.
 
 Reads batched through Multicall3 are answered call by call, so viem's
 `multicall()` and wagmi's `useReadContracts` work unchanged.
@@ -262,10 +263,10 @@ const quoter = mock.contract({ abi: quoterAbi, address: testAddress("quoter") })
 quoter.read.quote([match.partial({ tokenIn: USDC })]).returns(990n);
 ```
 
-When several mocks match a call, the most specific one answers: exact values
-beat `match.where()`, which beats `match.any()`. A mock with args, even all
-`match.any()`, beats one with none, and a `match.partial()` counts the fields
-it gives.
+When several mocks match a call, the most specific one answers: the one with
+the most exact values, then the most `match.where()`s, then the most
+`match.any()`s. A mock with args beats one with none, and a `match.partial()`
+counts the fields it gives.
 
 ```ts continued
 usdc.read.balanceOf().returns(0n); // anyone
@@ -285,9 +286,9 @@ usdc.read.balanceOf([alice]).once().returns(2n); // the one after
 usdc.read.balanceOf([alice]).returns(3n); // from then on, over the 100n above
 ```
 
-An override doesn't answer if it has fewer pins than the mock it's meant to
-replace, or the same pins and is registered before it. `assertAllUsed()`
-reports it: see [Shared Setup](#shared-setup) for running it after every test.
+An override doesn't answer if it's less specific than the mock it's meant to
+replace, or as specific and registered before it. `assertAllUsed()` reports it:
+see [Shared Setup](#shared-setup) for running it after every test.
 
 A call no mock matches fails with the mocks that came close, and why each
 missed:

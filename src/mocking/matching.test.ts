@@ -36,6 +36,10 @@ const cases: [name: string, pinned: unknown, actual: unknown, key: unknown][] = 
   ["any for all the params", match.any(), { address: "0x1" }, undefined],
   ["a predicate for all the params", no, { address: "0x1" }, null],
   ["a predicate for all the params, saying yes", yes, { address: "0x1" }, undefined],
+  ["any against a param left out", { gas: match.any() }, {}, "gas"],
+  ["a predicate against a param left out", { gas: yes }, {}, "gas"],
+  ["a partial against a param left out", { tx: match.partial({ a: 1 }) }, {}, "tx"],
+  ["any against null, a value", [match.any()], [null], undefined],
 ];
 
 describe("firstMismatch()", () => {
@@ -68,6 +72,10 @@ describe("firstMismatch()", () => {
     expect(firstMismatch([no, 2n], [1n, 2n], { predicates: false })).toBeUndefined();
     expect(firstMismatch([no, 2n], [1n, 3n], { predicates: false })).toBe(1);
   });
+
+  test("a param left out matches no predicate, with predicates: false too", () => {
+    expect(firstMismatch({ gas: yes }, {}, { predicates: false })).toBe("gas");
+  });
 });
 
 describe("mismatches()", () => {
@@ -82,7 +90,7 @@ describe("mismatches()", () => {
 describe("bestMatch()", () => {
   test("a candidate ruled out on exact values runs no predicates, even when all its params differ", () => {
     const passes: unknown[] = [];
-    const candidate = { specificity: [1, 0] as Specificity, remaining: undefined };
+    const candidate = { specificity: [1, 0, 0] as Specificity, remaining: undefined };
     const { best, missed } = bestMatch(
       [candidate],
       (_, options) => {
@@ -98,9 +106,9 @@ describe("bestMatch()", () => {
   });
 
   test("a predicate that throws names the candidate it's on", () => {
-    const best = { name: "best", specificity: [2, 0] as Specificity, remaining: undefined };
-    const middle = { name: "middle", specificity: [1, 1] as Specificity, remaining: undefined };
-    const worst = { name: "worst", specificity: [0, 0] as Specificity, remaining: undefined };
+    const best = { name: "best", specificity: [2, 0, 0] as Specificity, remaining: undefined };
+    const middle = { name: "middle", specificity: [1, 1, 0] as Specificity, remaining: undefined };
+    const worst = { name: "worst", specificity: [0, 0, 0] as Specificity, remaining: undefined };
     const boom = match.where(() => {
       throw new Error("boom");
     }, "boom");
@@ -115,7 +123,7 @@ describe("bestMatch()", () => {
   });
 
   test("an error that isn't a predicate's passes through as it is", () => {
-    const candidate = { specificity: [1, 0] as Specificity, remaining: undefined };
+    const candidate = { specificity: [1, 0, 0] as Specificity, remaining: undefined };
 
     expectThrows(MockSetupError, "not a predicate's", () =>
       bestMatch(

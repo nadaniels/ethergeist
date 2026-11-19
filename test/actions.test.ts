@@ -21,7 +21,7 @@ import {
 } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { base, mainnet } from "viem/chains";
-import { describe, expect, test } from "vite-plus/test";
+import { describe, expect, test, vi } from "vite-plus/test";
 
 import {
   MockCheckError,
@@ -236,6 +236,22 @@ describe("getBalance", () => {
     expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
       `Registered:\n  getBalance({ address: ${bob} }) once  ← address didn't match\n  getBalance({ address: ${alice} }) without an answer`,
     );
+  });
+
+  test("a miss says when the call has no field a mock pins, after a field that differs", async () => {
+    const { mock, client } = setup();
+    mock.actions.getBalance({ address: bob, blockTag: match.any() }).returns(1n);
+    mock.actions.getBalance({ blockTag: match.any(), address: bob }).returns(2n);
+    mock.actions.getBalance({ address: alice, blockTag: "latest" }).returns(3n);
+
+    const error = await rejectionOf(client.getBalance({ address: alice, blockNumber: 5n }));
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "Registered:",
+      `  getBalance({ address: ${bob}, blockTag: any })  ← address didn't match`,
+      `  getBalance({ blockTag: any, address: ${bob} })  ← the call has no blockTag`,
+      `  getBalance({ address: ${alice}, blockTag: "latest" })  ← the call has no blockTag`,
+    ]);
   });
 
   test("a mock without an answer steps aside for one with an answer", async () => {
@@ -1030,19 +1046,50 @@ describe("method()", () => {
     expect(other.balance).toBe(0n);
   });
 
-  test("a pinned list or object doesn't match a param the request leaves out", async () => {
+  test("a pinned list, object, or match.partial() doesn't match a param the request leaves out", async () => {
     const { mock } = setup();
     const hash = testHash("traced");
     mock.method("eth_getProof", [USDC]).returns("no keys");
     mock.method("eth_getProof", [USDC, ["0x1"]]).returns("keys");
     mock.method("debug_traceTransaction", [hash]).returns("no options");
     mock.method("debug_traceTransaction", [hash, { tracer: "callTracer" }]).returns("options");
+    mock
+      .method("debug_traceTransaction", [hash, match.partial({ tracer: "callTracer" })])
+      .returns("partial options");
 
     // The mock that pins more is tried first, and steps aside.
     expect(await mock.request({ method: "eth_getProof", params: [USDC] })).toBe("no keys");
     expect(await mock.request({ method: "debug_traceTransaction", params: [hash] })).toBe(
       "no options",
     );
+  });
+
+  test("match.any() and a predicate don't match a param past the end of the request's, and a null param reaches both", async () => {
+    const { mock } = setup();
+    const predicate = vi.fn(() => true);
+    mock.method("eth_any", ["0x1", match.any()]).returns("any");
+    mock.method("eth_where", ["0x1", match.where(predicate, "predicate")]).returns("where");
+
+    for (const method of ["eth_any", "eth_where"])
+      expectCause(await rejectionOf(mock.request({ method, params: ["0x1"] })), MockNotFoundError);
+    expect(predicate).not.toHaveBeenCalled();
+    expect(await mock.request({ method: "eth_any", params: ["0x1", null] })).toBe("any");
+    expect(await mock.request({ method: "eth_where", params: ["0x1", null] })).toBe("where");
+    expect(predicate.mock.calls).toEqual([[null]]);
+  });
+
+  test("match.any() and a predicate in an object param don't match a key the request leaves out, and a null one reaches both", async () => {
+    const { mock } = setup();
+    const predicate = vi.fn(() => true);
+    mock.method("eth_any", [{ a: match.any() }]).returns("any");
+    mock.method("eth_where", [{ a: match.where(predicate, "predicate") }]).returns("where");
+
+    for (const method of ["eth_any", "eth_where"])
+      expectCause(await rejectionOf(mock.request({ method, params: [{}] })), MockNotFoundError);
+    expect(predicate).not.toHaveBeenCalled();
+    expect(await mock.request({ method: "eth_any", params: [{ a: null }] })).toBe("any");
+    expect(await mock.request({ method: "eth_where", params: [{ a: null }] })).toBe("where");
+    expect(predicate.mock.calls).toEqual([[null]]);
   });
 
   test("resolvers get the raw params", async () => {
@@ -1108,6 +1155,20 @@ describe("method()", () => {
     expect(error.metaMessages).toEqual([
       "Registered:",
       `  eth_getProof(${USDC})  ← param 1 didn't match`,
+    ]);
+  });
+
+  test("a miss says when the call has no param a mock pins", async () => {
+    const { mock } = setup();
+    mock.method("eth_getProof", [USDC, [], match.any()]).returns({});
+
+    const error = expectCause(
+      await rejectionOf(mock.request({ method: "eth_getProof", params: [USDC, []] })),
+      MockNotFoundError,
+    );
+    expect(error.metaMessages).toEqual([
+      "Registered:",
+      `  eth_getProof(${USDC}, [], any)  ← the call has no param 3`,
     ]);
   });
 

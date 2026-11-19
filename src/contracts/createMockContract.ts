@@ -24,10 +24,10 @@ import { MockNotFoundError, MockSetupError } from "../shared/errors.js";
 import type { PartSnapshot } from "../shared/parts.js";
 import { type RecordLimit, type RecordList, createRecordList } from "../shared/records.js";
 import { createRevertError } from "./answers.js";
-import { type Pins, firstPinMismatch, pinCall } from "./callPins.js";
+import { type Pins, pinCall } from "./callPins.js";
 import { type AddTransaction, createContractApi } from "./createContractApi.js";
 import { createFunctions } from "./functions.js";
-import { formatContract, missError, mockName, unusedLine } from "./messages.js";
+import { formatContract, formatContractCall, missError, mockName, unusedLine } from "./messages.js";
 import { type AnswerIn, answersIn } from "./namespaces.js";
 import type {
   MockCallRecord,
@@ -77,6 +77,12 @@ export type ContractTurn<answer = unknown> = {
    */
   functionMocks:
     | {
+        /**
+         * The call as messages show it, without `from` or `value`, e.g.
+         * `transfer(…) on USDC (0x…)`, for the action mocks that received
+         * it.
+         */
+        callLine: string;
         /**
          * Answers with the best matching mock; `undefined` when none
          * matches.
@@ -263,7 +269,9 @@ export function createMockContract<const abi extends Abi>(
     const handler = mocks.register(
       pinned,
       { namespace, abiItem, selector: toFunctionSelector(abiItem), pins },
-      { isDefault, ranked: specificity(pins === undefined ? pinned : [pinned ?? [], pins]) },
+      // Beside the pins, not nested: nested, an empty args list would count as
+      // an exact value.
+      { isDefault, ranked: specificity(pins === undefined ? pinned : [...(pinned ?? []), pins]) },
     );
     const answers = answersIn[namespace];
     const builder = mocks.createBuilder(
@@ -383,6 +391,7 @@ export function createMockContract<const abi extends Abi>(
     let matched: ReturnType<typeof match> | undefined;
     const matchOnce = () => (matched ??= match(decoded));
     const functionMocks = {
+      callLine: formatContractCall(call, label, []),
       answer() {
         const { handler } = matchOnce();
         return handler && run(handler, call, namespace);
@@ -541,7 +550,7 @@ export function createMockContract<const abi extends Abi>(
       (handler) => isFor(decoded, handler),
       (handler, options) => {
         const arg = firstMismatch(handler.pinned, call.args, options);
-        return arg === undefined ? firstPinMismatch(handler.pins, call, options) : arg;
+        return arg === undefined ? firstMismatch(handler.pins, call, options) : arg;
       },
     );
   }

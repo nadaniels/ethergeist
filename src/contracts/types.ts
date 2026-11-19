@@ -233,7 +233,7 @@ export type MockFunctionBuilder<
 
 /**
  * What a contract function's mock pins beside its args, matched as they are,
- * matchers included. Each pin makes the mock more specific:
+ * matchers included. Each pin, `match.any()` too, makes the mock more specific:
  * `transfer([bob, 5n], { from: alice })` beats `transfer([bob, 5n])`, and
  * `transfer(undefined, { from: alice })` is any args from alice.
  * - `from`: the sender, compared checksummed. It doesn't match a call without
@@ -247,7 +247,6 @@ export type MockFunctionBuilder<
  *   an ABI without literal types (not `as const`).
  */
 export type CallPins<abi extends Abi, functionName extends string> = {
-  // Without `| undefined`, so a `match.where` predicate isn't given one.
   from?: Address;
   // By name, not the args' overload, so a `match.where` value keeps its type.
 } & ("payable" extends Extract<
@@ -454,9 +453,9 @@ export type MockContract<abi extends Abi> = {
    * `eth_estimateGas` as viem's `estimateContractGas()` sends it, and as
    * viem prepares a write. These mocks and `defaults.estimateGas` answer
    * estimates of these functions, and `mock.actions.estimateGas` doesn't.
-   * A `write` mock that would answer the send implies what they don't. A
-   * `.reverts()` `write` mock reverts the estimate of a send it would
-   * answer before any of them.
+   * A `write` mock that would answer the send also answers an estimate they
+   * don't. A `.reverts()` `write` mock reverts the estimate of a send it
+   * would answer before any of them.
    */
   estimateGas: {
     [functionName in ContractFunctionName<abi, WriteMutability>]: MockEstimateGasFunction<

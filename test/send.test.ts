@@ -18,6 +18,7 @@ import {
   keccak256,
   parseGwei,
   serializeTransaction,
+  toFunctionSelector,
   toHex,
   zeroAddress,
 } from "viem";
@@ -99,6 +100,7 @@ describe("a raw send (local account)", () => {
         from: signer.address,
         to: bob,
         value: 5n,
+        data: "0x",
         nonce: 0,
         gas: 21_000n,
         maxFeePerGas: parseGwei("13"),
@@ -230,6 +232,7 @@ describe("a raw send (local account)", () => {
       from: signer.address,
       to: bob,
       value: 0n,
+      data: "0x",
       nonce: 0,
       gas: 21_000n,
       gasPrice: 7n,
@@ -369,7 +372,7 @@ describe("eth_sendTransaction (node account)", () => {
     ]);
     expect(hash).toBe(testHash("tx:1:11:0"));
     expect(mock.actions.sendTransaction.calls).toEqual([
-      { from: alice, to: bob, value: 5n, type: "eip1559" },
+      { from: alice, to: bob, value: 5n, data: "0x", type: "eip1559" },
     ]);
     expect(await client.getTransaction({ hash })).toMatchObject({
       from: alice.toLowerCase(),
@@ -566,6 +569,81 @@ describe("send mocks", () => {
     expect((await client.getTransactionReceipt({ hash: second })).contractAddress).toBe(
       USDC.toLowerCase(),
     );
+  });
+
+  test("a predicate at data is asked about a plain transfer's 0x, and another mock answers it", async () => {
+    const { mock, client, wallet } = nodeSetup();
+    const isTransfer = vi.fn((data: Hex) =>
+      data.startsWith(toFunctionSelector("transfer(address,uint256)")),
+    );
+    mock.actions
+      .sendTransaction({ to: bob, data: match.where(isTransfer, "isTransfer") })
+      .returns({ status: "reverted" });
+    mock.actions.sendTransaction({ to: bob }).returns({ gasUsed: 30_000n });
+
+    const hash = await wallet.sendTransaction({ to: bob, value: 1n });
+
+    expect(await client.getTransactionReceipt({ hash })).toMatchObject({
+      status: "success",
+      gasUsed: 30_000n,
+    });
+    expect(isTransfer.mock.calls).toEqual([["0x"]]);
+  });
+
+  test.each([
+    ["a node account", nodeSetup],
+    ["a local account", localSetup],
+  ])('data: "0x" pins a plain transfer from %s', async (_, makeSetup) => {
+    const { mock, client, wallet } = makeSetup();
+    mock.actions.sendTransaction({ to: bob, data: "0x" }).returns({ gasUsed: 30_000n });
+
+    const hash = await wallet.sendTransaction({ to: bob, value: 1n });
+
+    expect((await client.getTransactionReceipt({ hash })).gasUsed).toBe(30_000n);
+    expect(mock.actions.sendTransaction.calls[0]).toMatchObject({ to: bob, data: "0x" });
+  });
+
+  test("data: match.any() matches a plain transfer, and outranks a mock that pins only to", async () => {
+    const { mock, client, wallet } = nodeSetup();
+    mock.actions.sendTransaction({ to: bob }).returns({ gasUsed: 30_000n });
+    mock.actions.sendTransaction({ to: bob, data: match.any() }).returns({ gasUsed: 40_000n });
+
+    const hash = await wallet.sendTransaction({ to: bob, value: 1n });
+
+    expect((await client.getTransactionReceipt({ hash })).gasUsed).toBe(40_000n);
+  });
+
+  test("a deploy's to is null, a value that match.any() and a predicate match", async () => {
+    const { mock, client, wallet } = nodeSetup();
+    const isDeploy = vi.fn((to: Address | null) => to === null);
+    mock.actions
+      .sendTransaction({ to: match.where(isDeploy, "isDeploy") })
+      .once()
+      .returns({ status: "reverted" });
+    mock.actions.sendTransaction({ to: match.any() }).returns({ gasUsed: 30_000n });
+
+    const first = await wallet.deployContract({ abi: [], bytecode: "0x6000" });
+    const second = await wallet.deployContract({ abi: [], bytecode: "0x6000" });
+
+    expect((await client.getTransactionReceipt({ hash: first })).status).toBe("reverted");
+    expect((await client.getTransactionReceipt({ hash: second })).gasUsed).toBe(30_000n);
+    expect(isDeploy.mock.calls).toEqual([[null]]);
+  });
+
+  test("a deploy's estimate has to: null, which a null pin and match.any() match", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ to: null }).once().returns(25_000n);
+    mock.actions.estimateGas({ to: match.any() }).returns(30_000n);
+
+    expect(await client.estimateGas({ data: "0x6000" })).toBe(25_000n);
+    expect(await client.estimateGas({ data: "0x6000" })).toBe(30_000n);
+    expect(mock.actions.estimateGas.calls[0]).toEqual({
+      to: null,
+      value: 0n,
+      data: "0x6000",
+      blockNumber: 10n,
+      blockTag: "latest",
+    });
   });
 
   test(".once() counts sends", async () => {
@@ -805,6 +883,20 @@ describe("sends unmocked", () => {
     expect(mock.transactions).toHaveLength(2);
     expect(mock.unhandled).toEqual([]);
   });
+
+  test.each([
+    ["a node account", nodeSetup],
+    ["a local account", localSetup],
+  ])(
+    "a plain transfer's record from %s holds input 0x, as it holds value 0n",
+    async (_, makeSetup) => {
+      const { mock, wallet } = makeSetup();
+
+      await wallet.sendTransaction({ to: bob });
+
+      expect(mock.transactions[0]!.fields).toMatchObject({ value: 0n, input: "0x" });
+    },
+  );
 
   test.each([
     { name: "data to an unknown address", to: bob, data: "0x1234", hint: "({ to }).returns(…)." },
@@ -1070,7 +1162,7 @@ describe("the estimate a send mock implies", () => {
 
 /** An unmocked estimate's hint, for an estimate with a sender. */
 const estimateOfSendHint =
-  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
+  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which also answers the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
 
 describe("an estimate no mock answers says how to mock it", () => {
   test("its send first, for a local account's send: a send mock implies the estimate", async () => {
@@ -1083,21 +1175,31 @@ describe("an estimate no mock answers says how to mock it", () => {
     expect(notFound.metaMessages).toEqual([estimateOfSendHint]);
   });
 
-  test("a deploy by what it has to pin: a null to for its send, its data for its estimate", async () => {
+  test("a deploy by its null to, for its send and for its estimate", async () => {
     const { mock, client, wallet } = localSetup();
 
     const error = await rejectionOf(wallet.deployContract({ abi: [], bytecode: "0x6000" }));
 
     expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
-      "Mock it with mock.actions.sendTransaction({ to: null }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ data }).returns(…).",
+      "Mock it with mock.actions.sendTransaction({ to: null }).returns(…), which also answers the estimate of a send it matches, or with mock.actions.estimateGas({ to: null }).returns(…).",
     ]);
-    mock.actions.estimateGas({ data: "0x6000" }).returns(50_000n);
+    mock.actions.estimateGas({ to: null }).returns(50_000n);
     expect(await client.estimateGas({ account: alice, data: "0x6000" })).toBe(50_000n);
+  });
+
+  test("a deploy's estimate without a sender hints at its null to", async () => {
+    const { client } = setup();
+
+    const error = await rejectionOf(client.estimateGas({ data: "0x6000" }));
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      "Mock it with mock.actions.estimateGas({ to: null }).returns(…).",
+    ]);
   });
 });
 
 describe("an estimate no mock answers lists the sendTransaction mocks", () => {
-  const header = "sendTransaction mocks, which imply the estimate of a send they match:";
+  const header = "sendTransaction mocks (each also answers its send's estimate):";
   const mockIt = estimateOfSendHint;
 
   test("with what each missed on, after the hint", async () => {
@@ -1113,6 +1215,36 @@ describe("an estimate no mock answers lists the sendTransaction mocks", () => {
       header,
       `  sendTransaction({ to: ${carol} })  ← to didn't match`,
     ]);
+  });
+
+  test("a data pin misses a transfer with no data, whose data is 0x", async () => {
+    const { mock, client } = setup();
+    mock.contract({ abi: erc20Abi, address: USDC });
+    mock.actions.sendTransaction({ to: USDC, data: "0x1234" }).returns();
+
+    const error = await rejectionOf(client.estimateGas({ account: alice, to: USDC, value: 1n }));
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      mockIt,
+      header,
+      `  sendTransaction({ to: ${USDC}, data: 0x1234 })  ← data didn't match`,
+    ]);
+  });
+
+  test("a gas pin misses, since viem estimates without gas, so the estimate needs its own mock", async () => {
+    const { mock, client, wallet } = localSetup();
+    mock.actions.sendTransaction({ to: bob, gas: match.any() }).returns({ gasUsed: 30_000n });
+
+    const error = await rejectionOf(wallet.sendTransaction({ to: bob, data: "0x12" }));
+
+    expect(expectCause(error, MockNotFoundError).metaMessages).toEqual([
+      mockIt,
+      header,
+      `  sendTransaction({ to: ${bob}, gas: any })  ← the call has no gas`,
+    ]);
+    mock.actions.estimateGas({ to: bob }).returns(50_000n);
+    const hash = await wallet.sendTransaction({ to: bob, data: "0x12" });
+    expect((await client.getTransactionReceipt({ hash })).gasUsed).toBe(30_000n);
   });
 
   test("after the estimateGas mocks", async () => {

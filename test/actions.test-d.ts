@@ -294,6 +294,15 @@ describe("estimateGas", () => {
     // @ts-expect-error -- a refusal isn't a fault
     mock.actions.getBalance().fails("insufficientFunds");
   });
+
+  test("an estimate's call always has data and a to, which is null for a deploy", () => {
+    mock.actions.estimateGas({ to: null }).returns(50_000n);
+    mock.actions.estimateGas().returns(({ to, data }) => {
+      expectTypeOf(to).toEqualTypeOf<Address | null>();
+      expectTypeOf(data).toEqualTypeOf<Hex>();
+      return 21_000n;
+    });
+  });
 });
 
 describe("sendTransaction", () => {
@@ -346,6 +355,12 @@ describe("sendTransaction", () => {
     mock.actions.sendTransaction().returns({ blockNumber: 1n });
     // @ts-expect-error -- without an ABI, there are no custom errors
     mock.actions.sendTransaction().reverts({ errorName: "Paused" });
+  });
+
+  test("a send's call always has data", () => {
+    mock.actions.sendTransaction().returns(({ data }) => {
+      expectTypeOf(data).toEqualTypeOf<Hex>();
+    });
   });
 });
 

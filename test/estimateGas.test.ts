@@ -42,7 +42,7 @@ const alice = testAddress("alice");
 const bob = testAddress("bob");
 /** An unmocked estimate's hint, for an estimate with a sender. */
 const estimateOfSendHint =
-  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which implies the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
+  "Mock it with mock.actions.sendTransaction({ to }).returns(…), which also answers the estimate of a send it matches, or with mock.actions.estimateGas({ to }).returns(…).";
 const tokenAbi = parseAbi([
   "function transfer(address to, uint256 amount) returns (bool)",
   "function mint(uint256 amount) payable",
@@ -100,7 +100,7 @@ describe("estimateGas", () => {
 
     expect(await client.estimateGas({ account: alice, to: bob, value: 1n })).toBe(30_000n);
     expect(mock.actions.estimateGas.calls).toEqual([
-      { from: alice, to: bob, value: 1n, blockNumber: 10n, blockTag: "latest" },
+      { from: alice, to: bob, value: 1n, data: "0x", blockNumber: 10n, blockTag: "latest" },
     ]);
   });
 
@@ -110,8 +110,26 @@ describe("estimateGas", () => {
 
     expect(await client.estimateGas({ to: bob })).toBe(30_000n);
     expect(mock.actions.estimateGas.calls).toEqual([
-      { to: bob, value: 0n, blockNumber: 10n, blockTag: "latest" },
+      { to: bob, value: 0n, data: "0x", blockNumber: 10n, blockTag: "latest" },
     ]);
+  });
+
+  test('data: "0x" matches a request with empty data or none', async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ to: bob, data: "0x" }).returns(30_000n);
+
+    expect(await client.estimateGas({ account: alice, to: bob, value: 1n })).toBe(30_000n);
+    expect(await client.estimateGas({ account: alice, to: bob, data: "0x" })).toBe(30_000n);
+    expect(await client.estimateGas({ to: bob })).toBe(30_000n);
+  });
+
+  test('a send mock that pins data: "0x" reverts a plain transfer\'s estimate', async () => {
+    const { mock, client } = setup();
+    mock.actions.sendTransaction({ to: bob, data: "0x" }).reverts("paused");
+
+    const error = await refusal(mock, client.estimateGas({ account: alice, to: bob, value: 1n }));
+
+    expect(expectCause(error, ExecutionRevertedError).details).toBe("execution reverted: paused");
   });
 
   test("a value of 0n matches a request without one; malformed pins throw", async () => {
@@ -136,6 +154,7 @@ describe("estimateGas", () => {
         from: account.address,
         to: bob,
         value: 5n,
+        data: "0x",
         maxFeePerGas: parseGwei("13"),
         maxPriorityFeePerGas: parseGwei("1"),
         nonce: 0,
@@ -353,6 +372,30 @@ describe("estimateGas reverts", () => {
       `Registered:\n  estimateGas({ to: ${bob} }) reverts  ← to didn't match\n  estimateGas({ to: ${alice} }) fails once  ← to didn't match`,
     );
   });
+
+  test("a miss says when the estimate has no from a mock pins", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ from: alice }).returns(30_000n);
+
+    const error = await rejectionOf(client.estimateGas({ to: bob, data: "0x1234" }));
+
+    expect(hintsOf(expectCause(error, MockNotFoundError))).toBe(
+      `Registered:\n  estimateGas({ from: ${alice} })  ← the call has no from`,
+    );
+  });
+
+  test("a deploy's estimate says its to is null, and that a mock's to didn't match", async () => {
+    const { mock, client } = setup();
+    mock.actions.estimateGas({ to: bob }).returns(30_000n);
+
+    const error = await rejectionOf(client.estimateGas({ data: "0x6000" }));
+
+    const notFound = expectCause(error, MockNotFoundError);
+    expect(notFound.shortMessage).toBe(
+      'No mock for estimateGas({ to: null, value: 0n, data: 0x6000, blockNumber: 10n, blockTag: "latest" }).',
+    );
+    expect(hintsOf(notFound)).toBe(`Registered:\n  estimateGas({ to: ${bob} })  ← to didn't match`);
+  });
 });
 
 describe("estimateGas unmocked", () => {
@@ -484,7 +527,7 @@ describe("named node errors", () => {
     await rejectionOf(client.estimateGas({ account: alice, to: bob }));
 
     expect(mock.formatHistory()).toBe(
-      "#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, " +
+      "#1 eth_estimateGas estimateGas({ from: 0xa41f…2D9e, to: 0x4292…207f, value: 0n, data: 0x, " +
         'blockNumber: 10n, blockTag: "latest" }) ✗ refused: insufficientFunds',
     );
   });
@@ -646,7 +689,7 @@ describe("contract estimates", () => {
       `No write or estimateGas mock for transfer(${bob}, 1n) on Token (${token.address}).`,
     );
     expect(hintsOf(error)).toBe(
-      'No write or estimateGas mocks registered for "transfer": a write mock that matches the send implies its estimate, and a simulate mock doesn\'t answer estimates.',
+      'No write or estimateGas mocks registered for "transfer": a write mock that matches the send also answers its estimate, and a simulate mock doesn\'t answer estimates.',
     );
     expect(mock.unhandled).toHaveLength(1);
     // The contract didn't answer, so its record has the request's outcome.
@@ -726,7 +769,7 @@ describe("whose mocks answer an estimate sent to a contract", () => {
       `No write or estimateGas mock for mint(1n) on Token (${token.address}).`,
     );
     expect(error.metaMessages).toEqual([
-      `No write or estimateGas mocks registered for "mint": a write mock that matches the send implies its estimate, and a simulate mock doesn't answer estimates.`,
+      `No write or estimateGas mocks registered for "mint": a write mock that matches the send also answers its estimate, and a simulate mock doesn't answer estimates.`,
       "Action mocks that match, which don't answer a registered contract's functions:",
       "  estimateGas(*)",
       "  estimateGas({ value: 1n }) refuses",

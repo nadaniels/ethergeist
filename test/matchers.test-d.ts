@@ -1,7 +1,7 @@
-import { type Address, erc20Abi, parseAbi } from "viem";
+import { type Address, type BlockTag, erc20Abi, parseAbi } from "viem";
 import { describe, expectTypeOf, test } from "vite-plus/test";
 
-import { createMockRpc, match } from "../src/index.js";
+import { type BalanceCall, createMockRpc, match } from "../src/index.js";
 
 const USDC = "0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48";
 
@@ -16,7 +16,13 @@ const bookAbi = parseAbi([
   "function filled(Order order) view returns (bool)",
   "function anyFilled(Order[] orders) view returns (bool)",
   "function makers(address[] path) view returns (bool)",
+  "function settle(Order order) view returns (bool)",
+  "function settle(address maker, uint256 amount) view returns (uint256)",
 ]);
+
+function isLarge(n?: bigint): boolean {
+  return n !== undefined && n > 5n;
+}
 
 describe("matchers take the type of their position", () => {
   test("predicates get the field's type", () => {
@@ -79,6 +85,15 @@ describe("matchers take the type of their position", () => {
     token.read.balanceOf([match.any(), match.where((id) => id > 0n)]).returns(1n);
   });
 
+  test("a named predicate that takes undefined fits an arg, and the resolver keeps the args' types", () => {
+    const token = createMockRpc().contract({ abi, address: USDC });
+
+    token.read.balanceOf([match.any(), match.where(isLarge)]).returns(({ args }) => {
+      expectTypeOf(args).toEqualTypeOf<readonly [Address, bigint]>();
+      return 1n;
+    });
+  });
+
   test("action and method params take matchers", () => {
     const mock = createMockRpc();
 
@@ -99,6 +114,67 @@ describe("matchers take the type of their position", () => {
       })
       .returns(null);
     mock.method("eth_getProof", [match.any(), ["0x1"]]).returns(null);
+  });
+
+  test("a predicate for an action's whole params is typed as the params, without undefined", () => {
+    createMockRpc()
+      .actions.getBalance(
+        match.where((call) => {
+          expectTypeOf(call).toEqualTypeOf<Partial<BalanceCall>>();
+          return call.address === USDC;
+        }),
+      )
+      .returns(1n);
+  });
+
+  test("a predicate at a field a call can leave out is typed without undefined", () => {
+    const mock = createMockRpc();
+
+    mock.actions.getBalance({
+      blockTag: match.where((tag) => {
+        expectTypeOf(tag).toEqualTypeOf<BlockTag>();
+        return tag === "safe";
+      }),
+    });
+    mock.actions.sendTransaction({
+      gas: match.where((gas) => {
+        expectTypeOf(gas).toEqualTypeOf<bigint>();
+        return gas > 21_000n;
+      }),
+    });
+    mock.actions.getLogs({
+      address: match.where((address) => {
+        expectTypeOf(address).toEqualTypeOf<Address | Address[]>();
+        return Array.isArray(address);
+      }),
+    });
+  });
+
+  test("a logs range takes a predicate at each end", () => {
+    createMockRpc().actions.getLogs({
+      fromBlock: match.where((n) => n > 5n),
+      toBlock: match.where((n) => n < 9n),
+    });
+  });
+
+  test("a named predicate that takes undefined fits a field a call can leave out", () => {
+    createMockRpc().actions.sendTransaction({ gas: match.where(isLarge) });
+  });
+
+  test("a predicate that takes undefined stands for its value without undefined", () => {
+    expectTypeOf(match.where((n: bigint | undefined) => n !== undefined)).toEqualTypeOf<bigint>();
+    expectTypeOf(
+      match.where<Address | null | undefined>(() => true),
+    ).toEqualTypeOf<Address | null>();
+  });
+
+  test("a predicate keeps null, as a deploy's to", () => {
+    createMockRpc().actions.sendTransaction({
+      to: match.where((to) => {
+        expectTypeOf(to).toEqualTypeOf<Address | null>();
+        return to === null;
+      }),
+    });
   });
 });
 
@@ -122,6 +198,53 @@ describe("match.partial()", () => {
         }),
       ])
       .returns(true);
+  });
+
+  test("takes matchers as an action's whole params, and nested in another match.partial()", () => {
+    const mock = createMockRpc();
+    const book = mock.contract({ abi: bookAbi, address: USDC });
+
+    mock.actions
+      .getBalance(
+        match.partial({
+          address: match.where((address) => {
+            expectTypeOf(address).toEqualTypeOf<Address>();
+            return true;
+          }),
+        }),
+      )
+      .returns(1n);
+    book.read
+      .filled([
+        match.partial({
+          sell: match.partial({
+            amount: match.where((amount) => {
+              expectTypeOf(amount).toEqualTypeOf<bigint>();
+              return amount > 0n;
+            }),
+          }),
+        }),
+      ])
+      .returns(true);
+  });
+
+  test("a stored match.partial() fits a nested struct", () => {
+    const mock = createMockRpc();
+    const book = mock.contract({ abi: bookAbi, address: USDC });
+    const sell = match.partial({ amount: 5n });
+
+    book.read.filled([match.partial({ sell })]).returns(true);
+  });
+
+  test("picks the struct's overload where another takes a scalar", () => {
+    const mock = createMockRpc();
+    const book = mock.contract({ abi: bookAbi, address: USDC });
+
+    book.read.settle([match.partial({ expiry: 1n })]).returns(true);
+    // @ts-expect-error -- the struct's overload returns a bool
+    book.read.settle([match.partial({ expiry: 1n })]).returns(1n);
+    // @ts-expect-error -- `expiry` is a uint64: a bigint
+    book.read.settle([match.partial({ expiry: "soon" })]).returns(true);
   });
 
   test("rejects unknown fields and wrong types", () => {
