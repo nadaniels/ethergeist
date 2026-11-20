@@ -180,8 +180,8 @@ catalogs:
       specifier: ^7.0.2
       version: 7.0.2
     viem:
-      specifier: ^2.57.19
-      version: 2.57.19
+      specifier: ^2.58.0
+      version: 2.58.0
     vite-plus:
       specifier: 1.6.0
       version: 1.6.0
@@ -227,7 +227,7 @@ importers:
         version: 7.0.2
       viem:
         specifier: 'catalog:'
-        version: 2.57.19(typescript@7.0.2)(zod@4.6.7)
+        version: 2.58.0(typescript@7.0.2)(zod@4.6.7)
       vite-plus:
         specifier: 'catalog:'
         version: 1.6.0(@arethetypeswrong/core@0.18.5)(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(@vitest/ui@5.1.0)(jiti@2.7.0)(publint@0.3.25)(typescript@7.0.2)(yaml@2.9.1)
@@ -257,7 +257,7 @@ importers:
     dependencies:
       viem:
         specifier: 'catalog:'
-        version: 2.57.19(typescript@7.0.2)(zod@4.6.7)
+        version: 2.58.0(typescript@7.0.2)(zod@4.6.7)
     devDependencies:
       ethergeist:
         specifier: workspace:*
@@ -2117,14 +2117,6 @@ packages:
     resolution: {integrity: sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==}
     engines: {node: '>=12.20.0'}
 
-  ox@0.14.65:
-    resolution: {integrity: sha512-K7oj+jvEP4Gf78ZOYuWAWzKEX/g5z7p6ukj84gdbFnezmFSt6SpprEp9tH5tymXsywSqRdeqk+8JL4+9o0Schw==}
-    peerDependencies:
-      typescript: '>=5.4.0'
-    peerDependenciesMeta:
-      typescript:
-        optional: true
-
   ox@0.14.67:
     resolution: {integrity: sha512-6v6UlwgsmiyTujZp0aVDuN8uIBAtl/QZadBADFRZ2zp1+CM9TqDzd+rPKJ5PYvWPlCvz8JvoO9dTr42+1PhBhA==}
     peerDependencies:
@@ -2391,8 +2383,8 @@ packages:
     resolution: {integrity: sha512-u4J1hr6Y+C/hit34GwL3eIcUf3wngT8TlYUjK7tk0jxydKLAq3sYvifjdTDA6U3KCKRcQCQDGf/srjxfZF3l7g==}
     engines: {node: '>=18.12.0'}
 
-  viem@2.57.19:
-    resolution: {integrity: sha512-ULAHSwef42oL1reV41Os40iR34PF9BFNIX/RBapHLAJL1X6VmrgQikS4q4ulZ7/8GqlFLqrRI5GoNms3hcxsHw==}
+  viem@2.58.0:
+    resolution: {integrity: sha512-oBGZGy6VptLmAATtEua71a7FzCXT5y74dQoeDP8EDHmBsWhQ34rXeHKz6tHeciKWnJ3zBT1u8sby8tAtg0gouA==}
     peerDependencies:
       mppx: '>=0.17.0'
       typescript: '>=5.0.4'
@@ -3981,21 +3973,6 @@ snapshots:
 
   obug@3.0.0: {}
 
-  ox@0.14.65(typescript@7.0.2)(zod@4.6.7):
-    dependencies:
-      '@adraffy/ens-normalize': 1.11.1
-      '@noble/ciphers': 1.3.0
-      '@noble/curves': 1.9.1
-      '@noble/hashes': 1.8.0
-      '@scure/bip32': 1.7.0
-      '@scure/bip39': 1.6.0
-      abitype: 1.2.3(typescript@7.0.2)(zod@4.6.7)
-      eventemitter3: 5.0.1
-    optionalDependencies:
-      typescript: 7.0.2
-    transitivePeerDependencies:
-      - zod
-
   ox@0.14.67(typescript@7.0.2)(zod@4.6.7):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
@@ -4310,7 +4287,7 @@ snapshots:
 
   verkit@0.5.0: {}
 
-  viem@2.57.19(typescript@7.0.2)(zod@4.6.7):
+  viem@2.58.0(typescript@7.0.2)(zod@4.6.7):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
@@ -4318,7 +4295,7 @@ snapshots:
       '@scure/bip39': 1.6.0
       abitype: 1.2.3(typescript@7.0.2)(zod@4.6.7)
       isows: 1.0.7(ws@8.21.0)
-      ox: 0.14.65(typescript@7.0.2)(zod@4.6.7)
+      ox: 0.14.67(typescript@7.0.2)(zod@4.6.7)
       ws: 8.21.0
     optionalDependencies:
       typescript: 7.0.2
