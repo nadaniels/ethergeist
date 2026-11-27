@@ -180,8 +180,8 @@ catalogs:
       specifier: ^7.0.2
       version: 7.0.2
     viem:
-      specifier: ^2.57.19
-      version: 2.57.19
+      specifier: ^2.58.6
+      version: 2.58.6
     vite-plus:
       specifier: 1.6.0
       version: 1.6.0
@@ -217,8 +217,8 @@ importers:
         specifier: ^6.45.1
         version: 6.45.1
       ox:
-        specifier: ^0.14.67
-        version: 0.14.67(typescript@7.0.2)(zod@4.6.7)
+        specifier: ^0.14.71
+        version: 0.14.71(typescript@7.0.2)(zod@4.6.7)
       publint:
         specifier: ^0.3.25
         version: 0.3.25
@@ -227,7 +227,7 @@ importers:
         version: 7.0.2
       viem:
         specifier: 'catalog:'
-        version: 2.57.19(typescript@7.0.2)(zod@4.6.7)
+        version: 2.58.6(typescript@7.0.2)(zod@4.6.7)
       vite-plus:
         specifier: 'catalog:'
         version: 1.6.0(@arethetypeswrong/core@0.18.5)(@types/node@26.6.6)(@vitest/coverage-v8@5.1.0)(@vitest/ui@5.1.0)(jiti@2.7.0)(publint@0.3.25)(typescript@7.0.2)(yaml@2.9.1)
@@ -257,7 +257,7 @@ importers:
     dependencies:
       viem:
         specifier: 'catalog:'
-        version: 2.57.19(typescript@7.0.2)(zod@4.6.7)
+        version: 2.58.6(typescript@7.0.2)(zod@4.6.7)
     devDependencies:
       ethergeist:
         specifier: workspace:*
@@ -2117,16 +2117,16 @@ packages:
     resolution: {integrity: sha512-5vvB5+W7ePv+p3uqxi+RcW1XAzLW0/hxt3/4X4Lc4qHudzOhmBiBwOY6DRob4WnanAEGvNcLjF+KNOufrUoEQw==}
     engines: {node: '>=12.20.0'}
 
-  ox@0.14.65:
-    resolution: {integrity: sha512-K7oj+jvEP4Gf78ZOYuWAWzKEX/g5z7p6ukj84gdbFnezmFSt6SpprEp9tH5tymXsywSqRdeqk+8JL4+9o0Schw==}
+  ox@0.14.67:
+    resolution: {integrity: sha512-6v6UlwgsmiyTujZp0aVDuN8uIBAtl/QZadBADFRZ2zp1+CM9TqDzd+rPKJ5PYvWPlCvz8JvoO9dTr42+1PhBhA==}
     peerDependencies:
       typescript: '>=5.4.0'
     peerDependenciesMeta:
       typescript:
         optional: true
 
-  ox@0.14.67:
-    resolution: {integrity: sha512-6v6UlwgsmiyTujZp0aVDuN8uIBAtl/QZadBADFRZ2zp1+CM9TqDzd+rPKJ5PYvWPlCvz8JvoO9dTr42+1PhBhA==}
+  ox@0.14.71:
+    resolution: {integrity: sha512-ltg2UL2aeWmOga9d6cOv9gOoQSYlLkx8idv11J5eheOTSNWD0P6tP3POrY4Q2iIeaGdHjVCMHJWbOHoVnDsGfg==}
     peerDependencies:
       typescript: '>=5.4.0'
     peerDependenciesMeta:
@@ -2391,8 +2391,8 @@ packages:
     resolution: {integrity: sha512-u4J1hr6Y+C/hit34GwL3eIcUf3wngT8TlYUjK7tk0jxydKLAq3sYvifjdTDA6U3KCKRcQCQDGf/srjxfZF3l7g==}
     engines: {node: '>=18.12.0'}
 
-  viem@2.57.19:
-    resolution: {integrity: sha512-ULAHSwef42oL1reV41Os40iR34PF9BFNIX/RBapHLAJL1X6VmrgQikS4q4ulZ7/8GqlFLqrRI5GoNms3hcxsHw==}
+  viem@2.58.6:
+    resolution: {integrity: sha512-dBxl7nsHrENzD3HR/wOeeH2NcfXSwoEibTSZKJR7kcQOyqIDa50O27H2JU2ZMAQqS1QrEojaYCy6dLWIsdb9cA==}
     peerDependencies:
       mppx: '>=0.17.0'
       typescript: '>=5.0.4'
@@ -2512,10 +2512,12 @@ packages:
   yuku-core@0.19.0:
     resolution: {integrity: sha512-kYK9e1XdfirNhkipzW0wmMcSWcVF/CWnuugodfVYRCUwvoBefweL9HzB96OiKEhsx78V5WbUxbJqlizMX869Qg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   yuku-parser@0.19.0:
     resolution: {integrity: sha512-XrBh9ZiQK5mJVRxZBAvD6LwRyAYrK3MFtH3+onyuxFL5hFD44EC3QOmIC1FjTj6H2MMwq46/NAI+NZxLZPZgxg==}
     engines: {node: '>=14.18.0'}
+    deprecated: 'Yuku is now one package with one core. Use "yuku" instead: https://yuku.fyi/javascript/. Existing installs keep working but get no more fixes.'
 
   zod@4.6.7:
     resolution: {integrity: sha512-g8W2D2kU6a8untc053fX1uVBKzM7yqAxW/3zwk83+6RyF2+SKOuV+c0wBDhUwzV1PaGapmZH+rmcUzPf+3CGwg==}
@@ -3981,7 +3983,7 @@ snapshots:
 
   obug@3.0.0: {}
 
-  ox@0.14.65(typescript@7.0.2)(zod@4.6.7):
+  ox@0.14.67(typescript@7.0.2)(zod@4.6.7):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -3996,7 +3998,7 @@ snapshots:
     transitivePeerDependencies:
       - zod
 
-  ox@0.14.67(typescript@7.0.2)(zod@4.6.7):
+  ox@0.14.71(typescript@7.0.2)(zod@4.6.7):
     dependencies:
       '@adraffy/ens-normalize': 1.11.1
       '@noble/ciphers': 1.3.0
@@ -4310,7 +4312,7 @@ snapshots:
 
   verkit@0.5.0: {}
 
-  viem@2.57.19(typescript@7.0.2)(zod@4.6.7):
+  viem@2.58.6(typescript@7.0.2)(zod@4.6.7):
     dependencies:
       '@noble/curves': 1.9.1
       '@noble/hashes': 1.8.0
@@ -4318,7 +4320,7 @@ snapshots:
       '@scure/bip39': 1.6.0
       abitype: 1.2.3(typescript@7.0.2)(zod@4.6.7)
       isows: 1.0.7(ws@8.21.0)
-      ox: 0.14.65(typescript@7.0.2)(zod@4.6.7)
+      ox: 0.14.67(typescript@7.0.2)(zod@4.6.7)
       ws: 8.21.0
     optionalDependencies:
       typescript: 7.0.2

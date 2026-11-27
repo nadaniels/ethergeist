@@ -54,7 +54,7 @@
     "@types/node": "catalog:",
     "@vitest/coverage-v8": "catalog:",
     "knip": "^6.45.1",
-    "ox": "^0.14.67",
+    "ox": "^0.14.71",
     "publint": "^0.3.25",
     "typescript": "catalog:",
     "viem": "catalog:",
