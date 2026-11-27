@@ -14,7 +14,7 @@ catalog:
   typescript: ^7.0.2
   viem: ^2.57.19
   vite: npm:@voidzero-dev/vite-plus-core@1.6.0
-  vite-plus: 1.6.0
+  vite-plus: 1.8.0
   # Stryker's runner needs vitest as a direct dependency.
   vitest: 5.1.0
 overrides:
