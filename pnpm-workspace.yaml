@@ -9,7 +9,7 @@ catalog:
   # Vite+ wants coverage providers at its vitest exactly.
   "@vitest/coverage-v8": 5.1.0
   # The examples' lint, at the versions the root's lint runs.
-  oxlint: 1.93.0
+  oxlint: 1.95.0
   oxlint-tsgolint: 7.0.2006
   typescript: ^7.0.2
   viem: ^2.57.19
